@@ -82,6 +82,21 @@ part4-kernel/ch30-kernel-configuration
 part4-kernel/ch30A-kernel-lifecycle
 ```
 
+```{toctree}
+:hidden:
+:caption: Part V — Root filesystem & user space
+:maxdepth: 2
+
+part5-rootfs/ch31-rootfs-by-hand
+part5-rootfs/ch32-proc-sys-devtmpfs
+part5-rootfs/ch33-init-systems
+part5-rootfs/ch34-libc-dynamic-linking
+part5-rootfs/ch35-buildroot
+part5-rootfs/ch35A-ubuntu-base
+part5-rootfs/ch35B-readonly-rootfs-overlayfs
+part5-rootfs/ch35C-containers-on-embedded
+```
+
 ---
 
 ## What this is
@@ -129,7 +144,7 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
   - ✅ Drafted
 * - Part V — Root filesystem & user space
   - 5 + 3 supplementary (35A–C)
-  - ⬜ Not yet drafted
+  - ✅ Drafted
 * - Part VI — Driver development
   - 20 + 13 supplementary
   - ⬜ Not yet drafted
