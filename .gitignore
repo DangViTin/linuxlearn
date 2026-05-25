@@ -1,0 +1,41 @@
+build/
+*.pdf
+*.epub
+*.html
+*.aux
+*.log
+*.out
+*.toc
+
+# MkDocs build output
+site/
+
+# Python venv for the docs build
+.venv/
+__pycache__/
+*.pyc
+
+# Auto-generated mirror of BOOK_TOC.md (created by the GitHub Action / local cp)
+book/toc.md
+
+# Vendor dumps and large binaries — not versioned
+*.imx
+*.bin
+*.img
+*.dtb
+*.dtbo
+*.uImage
+*.zImage
+*.tar.xz
+*.tar.gz
+
+# The reference PDF (already in the dir, not part of the book)
+【Point_Atom】*.pdf
+PA_P*.pdf
+PA_P*.txt
+
+# Editor cruft
+.vscode/
+.idea/
+*.swp
+.DS_Store

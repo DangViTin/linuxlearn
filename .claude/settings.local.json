@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pdftotext --version)",
+      "Bash(pdftotext -layout \"【Point_Atom】I.MX6U_Embedded_Linux_Driver_Development_Guide_V1.81_P1.pdf\" P1.txt)",
+      "Bash(pdftotext -layout \"【Point_Atom】I.MX6U_Embedded_Linux_Driver_Development_Guide_V1.81_P2.pdf\" P2.txt)",
+      "Bash(pdftotext -layout \"【Point_Atom】I.MX6U_Embedded_Linux_Driver_Development_Guide_V1.81_P3.pdf\" P3.txt)",
+      "Bash(pdftotext -layout \"【Point_Atom】I.MX6U_Embedded_Linux_Driver_Development_Guide_V1.81_P4.pdf\" P4.txt)",
+      "Bash(pdftotext -layout PA_P1.pdf PA_P1.txt)",
+      "Bash(pdftotext -layout PA_P2.pdf PA_P2.txt)",
+      "Bash(pdftotext -layout PA_P3.pdf PA_P3.txt)",
+      "Bash(pdftotext -layout PA_P4.pdf PA_P4.txt)"
+    ]
+  }
+}

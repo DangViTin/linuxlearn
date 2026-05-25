@@ -1,0 +1,150 @@
+site_name: Embedded Linux on i.MX6ULL
+site_description: From First Boot to First Driver — The Raw Approach
+site_author: (your name)
+# Update site_url and repo URLs after pushing to GitHub:
+site_url: https://example.github.io/linuxlearn/
+repo_url: https://github.com/example/linuxlearn
+repo_name: example/linuxlearn
+edit_uri: edit/main/book/
+copyright: "Book prose: CC-BY-SA-4.0 (tentative). Companion code: MIT OR Apache-2.0."
+
+# Point MkDocs at our existing book/ directory instead of the default docs/
+docs_dir: book
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+
+# Markdown extensions
+markdown_extensions:
+  # Python-Markdown built-ins
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - meta
+  - tables
+  - toc:
+      permalink: "¶"
+      toc_depth: 4
+  # PyMdown extensions (ship with mkdocs-material)
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+plugins:
+  - search:
+      lang: en
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/example/linuxlearn
+  generator: false   # hide "Made with Material for MkDocs"
+  version:
+    provider: mike  # optional: enable later for v1.0 / v1.1 / v1.2 site versions
+    default: latest
+
+# Navigation — mirrors BOOK_TOC.md
+nav:
+  - Home: index.md
+  - Table of Contents: toc.md
+  - "Part I — Foundations":
+      - "Ch 1 — Preface": part1-foundations/ch01-preface.md
+      - "Ch 2 — What Embedded Linux is": part1-foundations/ch02-what-is-embedded-linux.md
+      - "Ch 3 — Host environment setup": part1-foundations/ch03-host-setup.md
+      - "Ch 4 — ARMv7-A for the MCU engineer": part1-foundations/ch04-armv7a-for-mcu-engineer.md
+      - "Ch 5 — i.MX6ULL SoC tour": part1-foundations/ch05-imx6ull-tour.md
+      - "Ch 6 — The toolchain": part1-foundations/ch06-toolchain.md
+      - "Ch 7 — Boot ROM, IVT, DCD": part1-foundations/ch07-boot-rom-ivt-dcd.md
+      - "Ch 8 — Hardware bring-up checklist": part1-foundations/ch08-board-bring-up.md
+  - "Part II — Bare-metal i.MX6ULL":
+      - "Ch 9 — First LED, pure assembly": part2-baremetal/ch09-asm-led.md
+      - "Ch 10 — C + startup + linker": part2-baremetal/ch10-c-startup-linker.md
+      - "Ch 11 — Hand-built IVT image": part2-baremetal/ch11-ivt-dcd-image.md
+      - "Ch 12 — UART and printf": part2-baremetal/ch12-uart-printf.md
+      - "Ch 13 — CCM clock tree bring-up": part2-baremetal/ch13-ccm-clocks.md
+      - "Ch 14 — DDR3 initialization with MMDC": part2-baremetal/ch14-ddr3-init.md
+      - "Ch 15 — Exceptions and the GIC": part2-baremetal/ch15-exceptions-gic.md
+      - "Ch 16 — Timers (EPIT and GPT)": part2-baremetal/ch16-timers.md
+      - "Ch 17 — MMU and caches": part2-baremetal/ch17-mmu-caches.md
+      - "Ch 18 — Optional bare-metal peripherals": part2-baremetal/ch18-bare-metal-peripherals.md
+      - "Ch 18A — Project organization (insert)": part2-baremetal/ch18A-project-organization.md
+      - "Ch 18B — Button + beep (insert)": part2-baremetal/ch18B-button-beep.md
+      - "Ch 18C — Bare-metal RTC (insert)": part2-baremetal/ch18C-baremetal-rtc.md
+  - "Part III — U-Boot, deeply":  # not yet drafted; nav stub
+      - "(Coming soon)": status.md
+  - "Part IV — The Kernel":
+      - "(Coming soon)": status.md
+  - "Part V — Root filesystem & user space":
+      - "(Coming soon)": status.md
+  - "Part VI — Driver development":
+      - "(Coming soon)": status.md
+  - "Part VII — Debug, production, advanced":
+      - "(Coming soon)": status.md
