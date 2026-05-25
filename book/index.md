@@ -37,7 +37,7 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
 |------|----------|--------|
 | Part I — Foundations | 8 | ✅ Drafted |
 | Part II — Bare-metal i.MX6ULL | 10 + 3 inserted (18A–C) | ✅ Drafted |
-| Part III — U-Boot, deeply | 6 + 1 inserted (23A) | ⬜ Not yet drafted |
+| Part III — U-Boot, deeply | 6 + 1 inserted (23A) | ✅ Drafted |
 | Part IV — The Kernel | 6 + 2 inserted (27A, 30A) | ⬜ Not yet drafted |
 | Part V — Root filesystem & user space | 5 + 3 inserted (35A–C) | ⬜ Not yet drafted |
 | Part VI — Driver development | 20 + 13 inserted (51A, 51B, 52A, 54A, 54B, 55A–I) | ⬜ Not yet drafted |

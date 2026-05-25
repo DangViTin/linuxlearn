@@ -138,8 +138,14 @@ nav:
       - "Ch 18A — Project organization (insert)": part2-baremetal/ch18A-project-organization.md
       - "Ch 18B — Button + beep (insert)": part2-baremetal/ch18B-button-beep.md
       - "Ch 18C — Bare-metal RTC (insert)": part2-baremetal/ch18C-baremetal-rtc.md
-  - "Part III — U-Boot, deeply":  # not yet drafted; nav stub
-      - "(Coming soon)": status.md
+  - "Part III — U-Boot, deeply":
+      - "Ch 19 — U-Boot from source, first boot": part3-uboot/ch19-uboot-from-source.md
+      - "Ch 20 — U-Boot SPL, the missing link": part3-uboot/ch20-uboot-spl.md
+      - "Ch 21 — U-Boot internals": part3-uboot/ch21-uboot-internals.md
+      - "Ch 22 — Porting U-Boot to a custom board": part3-uboot/ch22-uboot-board-port.md
+      - "Ch 23 — bootcmd, bootargs, FIT images": part3-uboot/ch23-bootcmd-bootargs-fit.md
+      - "Ch 23A — Multi-variant FIT + DT overlays (insert)": part3-uboot/ch23A-multi-variant-fit.md
+      - "Ch 24 — Workflows: TFTP, NFS, USB-OTG": part3-uboot/ch24-workflows-tftp-nfs-usb.md
   - "Part IV — The Kernel":
       - "(Coming soon)": status.md
   - "Part V — Root filesystem & user space":
