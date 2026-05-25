@@ -2,9 +2,9 @@ site_name: Embedded Linux on i.MX6ULL
 site_description: From First Boot to First Driver — The Raw Approach
 site_author: (your name)
 # Update site_url and repo URLs after pushing to GitHub:
-site_url: https://example.github.io/linuxlearn/
-repo_url: https://github.com/example/linuxlearn
-repo_name: example/linuxlearn
+site_url: https://DangViTin.github.io/linuxlearn/
+repo_url: https://github.com/DangViTin/linuxlearn
+repo_name: DangViTin/linuxlearn
 edit_uri: edit/main/book/
 copyright: "Book prose: CC-BY-SA-4.0 (tentative). Companion code: MIT OR Apache-2.0."
 

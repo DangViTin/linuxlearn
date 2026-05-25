@@ -67,7 +67,7 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
 
 This is a work in progress. If you spot an error or have suggestions:
 
-- **Errata:** open an issue on the [GitHub repository](https://github.com/example/linuxlearn/issues) (will be live after first push).
+- **Errata:** open an issue on the [GitHub repository](https://github.com/DangViTin/linuxlearn/issues) (will be live after first push).
 - **Pull requests** for typos, broken links, and clarifications are welcome.
 - **Substantive changes** — please open an issue first to discuss.
 
