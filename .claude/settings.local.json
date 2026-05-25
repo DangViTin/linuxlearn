@@ -9,7 +9,9 @@
       "Bash(pdftotext -layout PA_P1.pdf PA_P1.txt)",
       "Bash(pdftotext -layout PA_P2.pdf PA_P2.txt)",
       "Bash(pdftotext -layout PA_P3.pdf PA_P3.txt)",
-      "Bash(pdftotext -layout PA_P4.pdf PA_P4.txt)"
+      "Bash(pdftotext -layout PA_P4.pdf PA_P4.txt)",
+      "Bash(gh run *)",
+      "PowerShell(gh run *)"
     ]
   }
 }
