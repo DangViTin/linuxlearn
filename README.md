@@ -82,7 +82,7 @@ git push                   # site rebuilds automatically; live in ~30 s
 | Part I — Foundations | ✅ Drafted (Ch 1–8, patched v1.1 + v1.2) | ~136 |
 | Part II — Bare-metal | ✅ Drafted (Ch 9–18 + inserted 18A / 18B / 18C) | ~252 |
 | Part III — U-Boot | ✅ Drafted (Ch 19–24 + inserted 23A) | ~128 |
-| Part IV — Kernel | ⬜ Not yet drafted (6 numbered + 2 inserts: 27A, 30A) | ~148 |
+| Part IV — Kernel | ✅ Drafted (Ch 25–30 + inserted 27A, 30A) | ~148 |
 | Part V — Rootfs | ⬜ Not yet drafted (5 numbered + 3 inserts: 35A, B, C) | ~140 |
 | Part VI — Drivers | ⬜ Not yet drafted (20 numbered + 13 inserts: 51A–55I) | ~644 |
 | Part VII — Debug, production | ⬜ Not yet drafted (9 numbered + 5 inserts: 58A–63A) | ~290 |

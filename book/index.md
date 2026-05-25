@@ -67,6 +67,21 @@ part3-uboot/ch23A-multi-variant-fit
 part3-uboot/ch24-workflows-tftp-nfs-usb
 ```
 
+```{toctree}
+:hidden:
+:caption: Part IV — The Kernel
+:maxdepth: 2
+
+part4-kernel/ch25-building-mainline-linux
+part4-kernel/ch26-booting-kernel-from-uboot
+part4-kernel/ch27-device-tree
+part4-kernel/ch27A-dt-bindings-yaml
+part4-kernel/ch28-kernel-startup-traced
+part4-kernel/ch29-initramfs-from-scratch
+part4-kernel/ch30-kernel-configuration
+part4-kernel/ch30A-kernel-lifecycle
+```
+
 ---
 
 ## What this is
@@ -111,7 +126,7 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
   - ✅ Drafted
 * - Part IV — The Kernel
   - 6 + 2 supplementary (27A, 30A)
-  - ⬜ Not yet drafted
+  - ✅ Drafted
 * - Part V — Root filesystem & user space
   - 5 + 3 supplementary (35A–C)
   - ⬜ Not yet drafted
