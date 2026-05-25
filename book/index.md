@@ -97,6 +97,21 @@ part5-rootfs/ch35B-readonly-rootfs-overlayfs
 part5-rootfs/ch35C-containers-on-embedded
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VI — Driver development (foundations)
+:maxdepth: 2
+
+part6-drivers/ch36-hello-lkm
+part6-drivers/ch37-character-driver
+part6-drivers/ch38-auto-device-nodes
+part6-drivers/ch39-platform-driver-dt
+part6-drivers/ch40-misc-framework
+part6-drivers/ch41-concurrency
+part6-drivers/ch42-sleeping-waiting-polling
+part6-drivers/ch43-interrupts
+```
+
 ---
 
 ## What this is
@@ -147,7 +162,7 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
   - ✅ Drafted
 * - Part VI — Driver development
   - 20 + 13 supplementary
-  - ⬜ Not yet drafted
+  - 🟡 Drafting (Ch 36–43 done; 44–55I + insertions in progress)
 * - Part VII — Debug, production, advanced
   - 9 + 5 supplementary
   - ⬜ Not yet drafted
