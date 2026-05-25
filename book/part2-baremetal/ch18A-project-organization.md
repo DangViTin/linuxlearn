@@ -10,7 +10,7 @@ status: draft
 
 > **What:** refactor the monolithic single-file layout we used through Chapter 17 into a real project tree — `bsp/` folder with one subdirectory per peripheral, a single `imx6ull.h` containing all register definitions, and a top-level Makefile that builds and links everything cleanly.
 > **Why:** once a bare-metal project crosses ~500 lines and ~3 peripherals, the single-file layout costs more than it saves. Every new peripheral becomes a merge conflict with the one before it. Every register `#define` competes for namespace with every other. We pay this debt off now, before Part III's U-Boot work expects us to organize larger codebases.
-> **Focus:** **the BSP folder pattern** (one driver = one folder = one `.h` + one `.c`) and **`imx6ull.h` as a single source of truth** for register layout. Both are conventions the Point Atom guide adopts in its Chapter 11, and both are what the NXP SDK's `MCIMX6Y2.h` formalizes. We do the *manual* version so the *automated* version makes sense.
+> **Focus:** **the BSP folder pattern** (one driver = one folder = one `.h` + one `.c`) and **`imx6ull.h` as a single source of truth** for register layout. Both are what the NXP SDK's `MCIMX6Y2.h` formalizes at the level of generated struct headers. We do the *manual* version so the *automated* version makes sense.
 
 ## 18A.1  The problem we are solving
 
@@ -26,7 +26,7 @@ Two specific kinds of pain start to appear:
 1. **Header pollution.** `uart.c` defines `UART_UCR1`. `main.c` happens to define it again with a slightly different value (typo). Both compile. The behavior of the program depends on which `#define` `cpp` saw last.
 2. **Reuse friction.** You want to use the I²C driver from Chapter 18 in a new project. You have to copy `i2c.c`, *and* the relevant `#define`s from `main.c`, *and* the relevant CCM gate bit, *and* the IOMUX writes. Five files involved per peripheral.
 
-The fix is structural: separate **what the hardware looks like** (one file: `imx6ull.h`) from **what each driver does** (one folder per peripheral). The Point Atom guide adopts this in its Chapter 11 and uses it for every subsequent chapter; the NXP SDK does the same thing with auto-generated headers.
+The fix is structural: separate **what the hardware looks like** (one file: `imx6ull.h`) from **what each driver does** (one folder per peripheral). The NXP SDK does the same thing with auto-generated headers — we are reaching for the same structure by hand.
 
 ## 18A.2  Target layout
 
@@ -331,7 +331,7 @@ Both compile to the same machine code. The struct version:
 - Plays nicely with debuggers: GDB displays `CCM` as a struct with named fields.
 - Hides the address. You can `printf("base = %p\r\n", CCM)` to recover it, but it's not in your face.
 
-The Point Atom guide adopts this style from its Chapter 12 onward. We do not — for *this* book — for the same reason we did not start with U-Boot in Chapter 9: when you can hand-roll it, the SDK becomes a productivity tool rather than a black box.
+Most production projects on NXP parts adopt this style by the time they have three peripherals. We do not — for *this* book — for the same reason we did not start with U-Boot in Chapter 9: when you can hand-roll it, the SDK becomes a productivity tool rather than a black box.
 
 If you ship products with NXP parts, use the SDK headers in production. They are correct, kept in sync with silicon revisions, and save typos. Use the macro style in this book to *learn*; switch styles when you are ready to ship.
 

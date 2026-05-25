@@ -14,7 +14,7 @@ status: draft
 
 ## 18B.1  The hardware on the Point Atom MINI
 
-From the Point Atom V1.81 schematics (consistent across ALPHA and MINI):
+From the Point Atom MINI / ALPHA schematics (the wiring is identical between the two boards on these three signals):
 
 - **KEY0** — a normally-open momentary tactile switch wired between the **UART1_CTS_B** pad (which in ALT5 becomes **GPIO1_IO18**) and **GND**. The pin sits high through an external 10 kΩ pull-up. Pressed: low; released: high. **Active-low.**
 - **BEEP** — a passive piezo buzzer driven through a **PNP transistor (Q1, 8550-class)** whose base is controlled by the **SNVS_TAMPER1** pad (ALT5 = **GPIO5_IO01**). When GPIO5_IO01 = **0**, the PNP turns on, the buzzer's positive terminal sees 3V3, and the buzzer beeps. When GPIO5_IO01 = **1**, the PNP is off and the buzzer is silent. **Active-low** at the GPIO. The buzzer itself is *passive* (no internal oscillator) — you must toggle GPIO5_IO01 at the audible frequency to produce a tone.

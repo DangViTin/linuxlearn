@@ -14,13 +14,16 @@ description: Embedded Linux on i.MX6ULL — From First Boot to First Driver
 
 ## What this is
 
-A 1,700-page book in progress (~21 of 87 chapters drafted as of May 2026), aimed at engineers who already write firmware for microcontrollers and want to take the same first-principles approach to Linux. We build the entire stack by hand — bare-metal startup, U-Boot from source, mainline Linux, hand-built root filesystem, every driver subsystem — before adopting any framework that hides what just happened.
+A 1,700-page book in progress, aimed at engineers who already write firmware for microcontrollers and want to take the same first-principles approach to Linux. We build the entire stack by hand — bare-metal startup, U-Boot from source, mainline Linux, hand-built root filesystem, every driver subsystem — before adopting any framework that hides what just happened.
 
-The target board is the **Point Atom (正点原子) i.MX6ULL ALPHA / MINI**, but every chapter explains the *pattern* — pin lookups, register layouts, kernel APIs — that transfers to any i.MX6ULL board, and most patterns transfer to any Cortex-A Linux SoC.
+The target board is the **i.MX6ULL on the Point Atom MINI** (or ALPHA — both work; pin assignments are noted where they differ). Every chapter explains the *pattern* — pin lookups, register layouts, kernel APIs — that transfers to any i.MX6ULL board, and most patterns transfer to any Cortex-A Linux SoC.
 
-## Why another i.MX6ULL book
+## Approach
 
-The Point Atom guide already exists and is excellent at what it does (a procedural how-to on top of a 2017-era vendor BSP). We aim higher: mainline Linux and U-Boot throughout; pedagogy that names *what / why / how / focus / pitfalls* for every step; and the production-grade chapters (kernel-lifecycle, PREEMPT_RT, watchdog, OTA, secure boot, BSP-to-mainline migration, mainline patch-submission workflow) that PA structurally cannot teach because it commits to a frozen vendor fork. See [How this book differs from Point Atom](part1-foundations/ch01-preface.md#14a-how-this-book-differs-from-the-point-atom-正点原子-guide) in Chapter 1 for the detail.
+- **Mainline-first.** We use current mainline U-Boot and Linux throughout. The 5–10 hours saved up front by adopting a vendor fork is paid back many times over the life of a product as security fixes, new toolchains, and modern features (DT bindings YAML validation, FIT image overlays, PREEMPT_RT in mainline, Rust-for-Linux) become reachable.
+- **Explanatory, not procedural.** Every chapter follows the same seven-section template: *What / Why / How / Focus / Lab / Pitfalls / Going deeper*. Reading a chapter, you should always know which paragraph answers which question.
+- **Hand-built where it teaches.** Our own bare-metal stack (Part II), our own image-builder (Ch 11), our own cross-toolchain (Ch 60). Tools become productivity wins only after you can do without them.
+- **Production-grade where it matters.** Watchdog, runtime PM, PREEMPT_RT real-time, secure boot, OTA, mainline patch-submission, CI/CD — these chapters appear because real products require them, not because the dev board does.
 
 ## Reading order
 

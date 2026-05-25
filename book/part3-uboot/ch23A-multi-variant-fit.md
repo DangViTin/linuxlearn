@@ -9,7 +9,7 @@ status: draft
 # Chapter 23A — Multi-variant FIT images and DT overlays
 
 > **What:** one FIT image that boots correctly on three different board variants — same kernel, different DTBs — with the variant selected at boot time from a strap pin or an EEPROM ID.
-> **Why:** real products ship in revisions. Rev A has a 4.3" display; Rev B has a 7" display and a fan controller; Rev C drops the display and adds a Wi-Fi module. Shipping three separate images means three separate OTA targets and three release-engineering pipelines. **Shipping one image** means one OTA stream and one set of QA artifacts. PA never confronts this; mainline-shipping products always do.
+> **Why:** real products ship in revisions. Rev A has a 4.3" display; Rev B has a 7" display and a fan controller; Rev C drops the display and adds a Wi-Fi module. Shipping three separate images means three separate OTA targets and three release-engineering pipelines. **Shipping one image** means one OTA stream and one set of QA artifacts.
 > **Focus:** the **runtime-selection mechanism** — strap pin or EEPROM ID read by U-Boot before `bootm` selects which `configurations` entry to apply. Plus DT overlays, which let you patch one base DTB with small fragments rather than maintaining N full DTBs.
 
 ## 23A.1  The scenario
@@ -293,7 +293,7 @@ The overlay is compiled with `dtc -@ -O dtb` and shipped alongside the base DTB.
 
 For a dev board with ~5 variants, separate DTBs are simpler. For a product line with ~50 variants, overlays scale better.
 
-The Point Atom guide uses neither; it ships one image per board model. Our v1.2 approach assumes you grow into a product line where one image must support many revs.
+For a dev board, you can usually ship one image per board model and call it done. This chapter exists because real product lines outgrow that approach: once you have three or more variants, the per-variant build matrix and OTA-channel overhead push you toward the multi-DTB or overlay model described above.
 
 ## 23A.6  Putting it together — the full multi-variant boot script
 

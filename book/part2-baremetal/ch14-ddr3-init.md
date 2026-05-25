@@ -18,6 +18,21 @@ Set an afternoon aside. This is the most complex bring-up step in the book. The 
 
 We will keep the entire chapter in **OCRAM** until the very last section, where DRAM works and we relocate to it.
 
+## 14.1a  RAM/ROM/SRAM/SDRAM/DDR — the lineage
+
+If you have only ever worked with SRAM (on Cortex-M parts with built-in 64 KB-2 MB SRAM) or with the bus-controller view of SDRAM, here is the family tree in 60 seconds:
+
+- **SRAM** — Static RAM. Six-transistor cell per bit. Fast (~5 ns access), low-power-when-idle, but expensive per bit. A 1 MB SRAM costs more than 32 MB of SDRAM. Used for CPU caches and small on-chip memories (like the i.MX6ULL's 128 KB OCRAM).
+- **SDRAM** — Synchronous Dynamic RAM. One-capacitor cell per bit; must be **refreshed** every 64 ms or the charge bleeds away. Synchronous = clocked. Cheaper than SRAM but slower and needs refresh logic. The classic "PC100" / "PC133" memory of the late 1990s.
+- **DDR (DDR1)** — Double Data Rate. Same density as SDRAM but transfers on both clock edges, doubling bandwidth. A 200 MHz clock yields 400 MT/s ("MegaTransfers per second"). 2.5 V.
+- **DDR2** — Quadruples the prefetch (4-bit vs DDR1's 2-bit), runs at half the cell clock but double the bus clock. 1.8 V.
+- **DDR3** — 8-bit prefetch. 1.5 V at standard voltage.
+- **DDR3L** — *L* for *Low-voltage*. Same protocol as DDR3, runs at **1.35 V**. Designed for mobile / industrial / embedded. **This is what i.MX6ULL boards use.**
+- **LPDDR3** — Low Power DDR3. Different protocol, 1.2 V, more aggressive power-saving features. Used in phones, supported by i.MX6ULL but uncommon on dev boards.
+- **DDR4 / DDR5** — Successors; not supported by i.MX6ULL's MMDC controller.
+
+The i.MX6ULL MMDC supports **DDR3, DDR3L, and LPDDR2** — at up to 400 MHz cell clock (actually 396 MHz), giving up to 800 MT/s on a 16-bit bus = 1.6 GB/s peak. The Point Atom boards always use **DDR3L** (the low-voltage variant), not standard 1.5 V DDR3.
+
 ## 14.2  DDR3, in just enough detail
 
 A DDR3 chip is a 2D array (or 3D, with multiple banks) of capacitor cells, accessed by:
@@ -42,7 +57,20 @@ The controller schedules these operations subject to **timing parameters**:
 | `tWL`  | Write latency | CL - 2 = 9 clocks |
 | `tREFI` | Average refresh interval | 7.8 µs |
 
-These come from the **chip's datasheet**. You cannot guess them; you must look them up. Our Point Atom MINI has a Micron MT41K128M16 (typical) — 256 MB, 16-bit, ×2 chips for 512 MiB total, ×8 banks each, 14-bit row × 10-bit column.
+These come from the **chip's datasheet**. You cannot guess them; you must look them up.
+
+DDR datasheets often summarize three of the most-cited timings as a triple **"CL-tRCD-tRP"** (in clock cycles). A "13-13-13 DDR3-1600" part means CL = 13 clocks, tRCD = 13 clocks, tRP = 13 clocks at a 1600 MT/s rate. Tighter (smaller) numbers are better; for our 400 MHz cell clock (= 2.5 ns per cycle), 13 clocks = 32.5 ns of latency.
+
+The Point Atom boards use Nanya DDR3L parts (verified):
+
+| Part | Capacity | Density | CL-tRCD-tRP | tRC | tRAS | Used on |
+|------|---------|---------|-------------|-----|------|---------|
+| **NT5CC128M16JR-EK** | 256 MiB | 2 Gb | 13.91 / 13.91 / 13.91 ns | 47.91 ns | 34 ns | NAND core board |
+| **NT5CC256M16EP-EK** | 512 MiB | 4 Gb | 13.91 / 13.91 / 13.91 ns | 47.91 ns | 34 ns | eMMC core board |
+
+Both are 16-bit-wide, 8-bank, with row × column = 14 × 10 (256 MiB part) or 15 × 10 (512 MiB part). Same pinout, same package — the board accepts either without PCB changes; the difference is in the controller's row-address-count setting.
+
+For other vendors' parts in the same density and rate class (Micron MT41K, ISSI IS43TR, Samsung K4B), the timings are within ±10% and the controller config is essentially identical. Verify against your specific chip's datasheet before powering up.
 
 > **The first thing you do in this chapter is open your specific DDR chip's datasheet.** If you guess timings, the DRAM may "kind of work" — pass a 1 MB memtest, fail at 16 MB — which is the worst kind of bug. Look up your part. Write the timings down. They feed every register value below.
 
@@ -293,7 +321,43 @@ The MMDC can do this **in hardware** if you set the right bits — write 1 to `M
 
 Real-world flow: NXP's DDR Stress Tool runs the hardware calibration *with diagnostics*, reports the optimal values, and emits a "DCD list" — a sequence of register writes you can drop into your code (or your DCD blob).
 
+### The six registers the stress tool updates
+
+After the tool completes its calibration sweep, it reports values for **exactly six registers** that you must update in your initialization code:
+
+| Register | Address | Calibration step |
+|----------|---------|------------------|
+| `MMDC_MPWLDECTRL0` | `0x021B080C` | Write leveling, byte 0 |
+| `MMDC_MPWLDECTRL1` | `0x021B0810` | Write leveling, byte 1 |
+| `MPDGCTRL0`        | `0x021B083C` | Read DQS gating, byte 0 |
+| `MPDGCTRL1`        | `0x021B0840` | Read DQS gating, byte 1 |
+| `MPRDDLCTL`        | `0x021B0848` | Read delay (all bytes) |
+| `MPWRDLCTL`        | `0x021B0850` | Write delay (all bytes) |
+
+A typical stress-tool report for the Point Atom eMMC core board (NT5CC256M16EP-EK) might be:
+
+```
+Write leveling:
+  MMDC_MPWLDECTRL0 = 0x00000000
+  MMDC_MPWLDECTRL1 = 0x000B000B
+Read DQS gating:
+  MPDGCTRL0        = 0x0138013C
+  MPDGCTRL1        = 0x00000000
+Read calibration:
+  MPRDDLCTL        = 0x40402E34
+Write calibration:
+  MPWRDLCTL        = 0x40403A34
+```
+
+Plug these six values into the `mx6_mmdc_calib` struct in `ddr.c` (§14.7). **Do not** copy these specific numbers from one board to another — they reflect trace lengths, PCB stack-up, and the specific DDR3L chip. Always re-derive them on your own board.
+
 **For this book**, we copy the values the DDR Stress Tool emits. Treat them as a black box you can re-derive at any time by running the tool. If your DRAM begins to fail occasionally during DRAM workloads, re-run the tool — calibration drifts with temperature.
+
+### The 10–15 % overclock heuristic
+
+A useful design-validation trick: after calibration, the stress tool can attempt to run DRAM at increasing clock rates above the nominal 396 MHz. **If your board can sustain 10–15 % overclock** (i.e., DDR working clean at ~440–460 MHz), the PCB routing and termination are healthy. **If it fails at less than 10 % over**, the board has signal-integrity issues — likely mismatched trace lengths, missing termination, or excessive cross-talk. The fix is in hardware, not software.
+
+This is the cheapest pre-production sanity check available for embedded boards with DDR.
 
 ## 14.9  Calling from `main()` and the OCRAM → DRAM jump
 

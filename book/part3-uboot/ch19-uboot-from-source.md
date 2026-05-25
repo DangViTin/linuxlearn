@@ -12,20 +12,20 @@ status: draft
 > **Why:** Part II proved we can boot the chip ourselves. From here on the question is no longer "can we?" but "what does the professional version of this work look like?" U-Boot is that version. Reading its source is the most concentrated lesson in real-world embedded-Linux engineering available.
 > **Focus:** **recognition**. By the end of Part III you should be able to point at any line of U-Boot's `arch/arm/cpu/armv7/start.S` or `arch/arm/mach-imx/spl.c` and say "that is Chapter 14 §14.6, rewritten by someone who has done it a thousand times." That recognition is what Part II bought us.
 
-## 19.1  Why mainline U-Boot, not the NXP fork
+## 19.1  Why mainline U-Boot
 
 There are two U-Boot trees you will see referenced for the i.MX6ULL:
 
 - **Mainline U-Boot**, hosted at `https://source.denx.de/u-boot/u-boot.git` (a.k.a. `git.denx.de`). The canonical project. Current version as of 2026 is in the v2024.x → v2025.x range.
-- **NXP's vendor fork**, `https://github.com/nxp-imx/uboot-imx.git`, tagged `imx_v2016.03_4.1.15_2.0.0_ga` and later. The Point Atom guide uses this.
+- **NXP's vendor fork**, `https://github.com/nxp-imx/uboot-imx.git`, frozen at tags like `imx_v2016.03_4.1.15_2.0.0_ga`. Many Chinese-language guides and existing customer projects use this.
 
 We use mainline. Three reasons:
 
 1. **Mainline has full support for the i.MX6ULL EVK** since 2017 and tracks every silicon revision and DT change. Nothing about the i.MX6ULL requires a fork.
-2. **The fork is from 2016**. Eight years of kernel and U-Boot security fixes are missing.
-3. **Mainline is what every shipping product should converge on** (Ch 60A is the playbook). Starting on mainline avoids the migration cost later.
+2. **The 2016-era fork has missed years of security fixes.** Every project that pins to it eventually pays the migration cost (Chapter 60A is the playbook).
+3. **Starting on mainline removes a future migration entirely.**
 
-The Point Atom defconfig (`mx6ull_alientek_emmc`) is *not* in mainline. We use mainline's `mx6ull_14x14_evk_defconfig` (NXP's reference EVK) and port it to the Point Atom MINI in Chapter 22. The boards are close enough that the EVK config boots on the MINI with only minor DT changes for IOMUX and DDR timings.
+We use mainline's `mx6ull_14x14_evk_defconfig` (NXP's reference EVK) and port it to the Point Atom MINI in Chapter 22. The boards are close enough that the EVK config boots on the MINI with only minor DT changes for IOMUX and DDR timings.
 
 ## 19.2  Clone and look around
 

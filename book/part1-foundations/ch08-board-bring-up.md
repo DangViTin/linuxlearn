@@ -178,24 +178,18 @@ The `sdp_recovery` script in `uuu` does exactly what the recovery flow does: `WR
 
 ### 8.6a  `uuu` vs MfgTool — same protocol, different shells
 
-The Point Atom guide and most Chinese-language Linux references for this hardware use **MfgTool** (Manufacturing Tool), NXP's Windows-only GUI utility. `uuu` is the cross-platform CLI replacement NXP recommended for new work starting in 2018; under the hood, both speak the same SDP protocol over the same `15a2:0080` USB device.
+Two host-side tools speak the i.MX SDP protocol over the `15a2:0080` USB enumeration:
 
-| | MfgTool | `uuu` |
-|---|---|---|
-| Platform | Windows only | Linux, macOS, Windows |
-| Interface | GUI with `.vbs` scripts and an XML profile | CLI with a small built-in DSL |
-| Recovery workflow | Click "Start," then "Stop" when done | One command, exits when done |
-| Scripting | OK (`.vbs`) | Excellent (UUU files) |
-| Used by Point Atom guide | Yes | Mentioned briefly |
-| Used by this book | No | Yes |
+- **`uuu`** (Universal Update Utility) — NXP's modern, cross-platform CLI tool. What this book uses throughout.
+- **MfgTool** (Manufacturing Tool) — NXP's older Windows-only GUI utility. Still widely used in factory programming flows.
 
-If you are joining this book from the Point Atom ecosystem, the translation is roughly:
+Both push the same byte sequences to the same Boot ROM. The translation is straightforward:
 
 - "Run MfgTool to flash" → `uuu -b emmc u-boot.imx zImage.itb rootfs.tar.xz`
-- "Manufacturing profile" → a `uuu_script.uuu` file with one line per `WRITE_FILE` / `JUMP_ADDRESS` step
+- "Manufacturing profile" (MfgTool's XML config) → a `uuu_script.uuu` file with one line per `WRITE_FILE` / `JUMP_ADDRESS` step
 - "Stop the MfgTool process" → not needed; `uuu` exits after the script
 
-Both are bit-equivalent. Pick whichever one your team standardizes on.
+Pick whichever one your team standardizes on.
 
 ## 8.7  JTAG (optional but recommended)
 

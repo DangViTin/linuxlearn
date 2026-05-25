@@ -28,6 +28,27 @@ Full U-Boot's job, once SPL hands it control:
 
 Each step has a name we can grep for. Each step is < 200 lines. Total reading time, all of it, end-to-end, ~3 hours. Do it once and the bootloader stops being a black box.
 
+## 21.1a  The linker script and the named address-range symbols
+
+Before tracing code, look at where it lives. The linker script `u-boot.lds` (generated at the top of the source tree only **after** a successful build — pre-build there's only the unprocessed `arch/arm/cpu/u-boot.lds`) defines several symbols that the U-Boot startup and relocation code uses by name. A representative `u-boot.map`-derived snapshot for our `mx6ull_14x14_evk_defconfig` build:
+
+| Symbol | Sample value | Meaning |
+|--------|--------------|---------|
+| `__image_copy_start` | `0x87800000` | First byte of U-Boot's code image |
+| `_start` | `0x87800000` | Same — the entry point (defined in `arch/arm/lib/vectors.S`) |
+| `__image_copy_end` | `0x8785DD54` | One past the last byte of code+data |
+| `__rel_dyn_start` | `0x8785DD54` | Start of the `.rel.dyn` relocation table |
+| `__rel_dyn_end` | `0x878668F4` | End of the relocation table |
+| `_image_binary_end` | `0x878668F4` | The "loadable image" ends here |
+| `__bss_start` | `0x878668F4` | Start of `.bss` (zero-initialized at runtime) |
+| `__bss_end` | `0x878A8E74` | End of `.bss` |
+
+The starting address `0x87800000` is what makes the EVK config's `CONFIG_SYS_TEXT_BASE` what it is. It's a deliberate choice: the kernel's typical load address is `0x82000000` (= 32 MB into DRAM), and U-Boot relocates itself **above** the kernel's eventual landing zone so it can `bootz` without writing over itself.
+
+**Every value in this table changes each time you change a CONFIG_FOO, add a feature, or upgrade compilers.** Always read your own `u-boot.map` to confirm. The relative *structure* — what symbols exist, their meaning — is what's stable across builds.
+
+`u-boot.map` is the file to grep when chasing any "what address is this symbol at?" question. It is generated automatically by the linker; no extra command needed.
+
 ## 21.2  `_start` and `_main`
 
 Open `arch/arm/cpu/armv7/start.S`. We saw this in Chapter 20:
@@ -62,8 +83,53 @@ ENTRY(_main)
 
 A few worth knowing:
 
-- `CONFIG_SYS_INIT_SP_ADDR` is per-board. For the EVK it's a high address near the top of DRAM (DRAM is up; SPL did it). U-Boot's *initial* stack here is in DRAM, just at a different address than where U-Boot will eventually end up.
+- `CONFIG_SYS_INIT_SP_ADDR` is per-board. For the EVK it's a high address near the top of OCRAM — *before* relocation, U-Boot uses OCRAM for its stack, even though its code is already in DRAM (SPL put it there). After relocation, U-Boot moves the stack into high DRAM.
 - `gd_t` is "global data" — a single structure that holds pointers and state used everywhere. `board_init_f_alloc_reserve` carves space for it from the stack.
+
+### Walking the SP arithmetic for the EVK
+
+The macro expansion in `include/configs/mx6ullevk.h`:
+
+```c
+#define CONFIG_SYS_INIT_RAM_ADDR       IRAM_BASE_ADDR      /* 0x00900000 */
+#define CONFIG_SYS_INIT_RAM_SIZE       IRAM_SIZE           /* 0x00020000 = 128 KB */
+#define CONFIG_SYS_INIT_SP_OFFSET \
+    (CONFIG_SYS_INIT_RAM_SIZE - GENERATED_GBL_DATA_SIZE)   /* - 256 */
+#define CONFIG_SYS_INIT_SP_ADDR \
+    (CONFIG_SYS_INIT_RAM_ADDR + CONFIG_SYS_INIT_SP_OFFSET)
+```
+
+With `GENERATED_GBL_DATA_SIZE = 256` (`(sizeof(struct global_data) + 15) & ~15`) and `GD_SIZE = 248`:
+
+```
+CONFIG_SYS_INIT_SP_OFFSET  = 0x00020000 − 0x100 = 0x0001FF00
+CONFIG_SYS_INIT_SP_ADDR    = 0x00900000 + 0x1FF00 = 0x0091FF00
+```
+
+So `_main` sets the initial SP to `0x0091FF00` — near the top of the i.MX6ULL's 128 KB OCRAM, leaving room for the `gd_t` itself and a few stack frames. After `lowlevel_init` allocates GD on the stack, the real SP sits at:
+
+```
+SP = 0x0091FF00 − GD_SIZE (248) → 0x0091FE08
+```
+
+Visually:
+
+```
+  0x00900000  ┌────────────────────────────┐  <- start of OCRAM
+              │     U-Boot pre-reloc       │
+              │       (code in DRAM,       │
+              │        but stack here)     │
+              │                            │
+              │            ↓ grows down    │
+              │     ...                    │
+  0x0091FE08  ├────────────────────────────┤  <- SP after gd_t allocation
+              │     gd_t (248 bytes)       │
+  0x0091FF00  ├────────────────────────────┤  <- CONFIG_SYS_INIT_SP_ADDR
+              │  generated GD slack 256 B  │
+  0x0091FFFF  └────────────────────────────┘  <- top of OCRAM (128 KB)
+```
+
+This is the layout when `_main` first runs. After relocation in §21.4, SP moves to high DRAM near `relocaddr`.
 
 When `board_init_f` returns... it doesn't. Like SPL, the flow ends in a tail-call. We'll see the actual return path is via relocation: `board_init_f` arranges for the next phase to live elsewhere, then jumps there.
 

@@ -33,7 +33,7 @@ That is, literally, the program. About 50 instructions, 200 bytes of `.text`, ze
 
 We will not use a linker script in this chapter — the program is small enough that we hand-place it. Chapter 10 introduces the linker script as soon as we want C.
 
-> **Which pin?** On both Point Atom ALPHA and MINI, the user LED ("LED0", marked **D1** on the silkscreen) drives **GPIO1_IO03** active-LOW (the GPIO pulls the cathode side of the LED low to turn it on, with the anode tied to the 3.3 V rail through a current-limiting resistor). This is the layout the Point Atom guide V1.81 uses throughout — both ALPHA and MINI use the same pin. *Confirm against your board's schematic for safety.* If your LED is on a different pin, every register address in this chapter changes, but the pattern does not. Because we are merely *toggling* the bit in this chapter, the active-low wiring is invisible to the program (the LED just blinks opposite-phase from what you might naively expect).
+> **Which pin?** On both Point Atom ALPHA and MINI, the user LED ("LED0", marked **D1** on the silkscreen) drives **GPIO1_IO03** active-LOW (the GPIO pulls the cathode side of the LED low to turn it on, with the anode tied to the 3.3 V rail through a current-limiting resistor). Both boards use the same pin. *Confirm against your board's schematic for safety.* If your LED is on a different pin, every register address in this chapter changes, but the pattern does not. Because we are merely *toggling* the bit in this chapter, the active-low wiring is invisible to the program (the LED just blinks opposite-phase from what you might naively expect).
 
 ## 9.2  The three-write pattern, explained
 

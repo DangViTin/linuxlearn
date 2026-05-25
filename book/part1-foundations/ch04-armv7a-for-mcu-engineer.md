@@ -56,21 +56,42 @@ In Cortex-M, when an interrupt fires:
 3. Your ISR runs.
 4. `BX LR` (with the magic EXC_RETURN value in LR) tells the CPU to unstack and resume.
 
-In Cortex-A (ARMv7-A), there is no auto-stacking. Instead, the CPU has **seven processor modes**, each with its own banked copies of certain registers. When an exception fires, the CPU switches to the appropriate mode; the new mode's banked registers shadow the user-mode ones; *your handler is responsible* for saving anything else it wants to preserve.
+In Cortex-A (ARMv7-A), there is no auto-stacking. Instead, the CPU has **nine processor modes**, each with its own banked copies of certain registers. When an exception fires, the CPU switches to the appropriate mode; the new mode's banked registers shadow the user-mode ones; *your handler is responsible* for saving anything else it wants to preserve.
 
-### The seven modes
+### The nine modes
 
-| Mode | Abbreviation | Entered on | Banked regs (in addition to USR's R0–R14) |
-|------|-------------|-----------|-------------------------------------------|
-| User | USR | (normal program execution) | — |
-| FIQ | FIQ | Fast-interrupt | R8–R14, SPSR |
-| IRQ | IRQ | Normal interrupt | R13, R14, SPSR |
-| Supervisor | SVC | Reset, `svc` instruction | R13, R14, SPSR |
-| Abort | ABT | Memory/prefetch abort | R13, R14, SPSR |
-| Undefined | UND | Undefined instruction | R13, R14, SPSR |
-| System | SYS | (privileged user-equivalent) | — |
+| Mode | Abbreviation | Entered on | Banked regs (in addition to USR's R0–R14) | `M[4:0]` |
+|------|-------------|-----------|-------------------------------------------|----------|
+| User | USR | (normal program execution) | — | `10000` |
+| FIQ | FIQ | Fast-interrupt | R8–R12, R13, R14, SPSR | `10001` |
+| IRQ | IRQ | Normal interrupt | R13, R14, SPSR | `10010` |
+| Supervisor | SVC | Reset, `svc` instruction | R13, R14, SPSR | `10011` |
+| Monitor | MON | Secure Monitor Call (`smc`) | R13, R14, SPSR | `10110` |
+| Abort | ABT | Memory/prefetch abort | R13, R14, SPSR | `10111` |
+| Hyp | HYP | Hypervisor (virtualization) | R13, ELR_hyp, SPSR | `11010` |
+| Undefined | UND | Undefined instruction | R13, R14, SPSR | `11011` |
+| System | SYS | (privileged user-equivalent) | — | `11111` |
 
 R13 is SP. R14 is LR. SPSR is the saved-program-status register — the snapshot of CPSR at the moment the exception was taken.
+
+> **Cortex-A7 specifics.** All nine modes exist on every Cortex-A profile core, but their use varies. On Cortex-A7 in i.MX6ULL, **MON mode is real** and used by TrustZone-enabled secure-boot flows (Ch 62). **HYP mode is present in the architecture** but not used in our work — the i.MX6ULL is a single-core part rarely used as a hypervisor host. SYS mode is rarely entered by anyone except in low-level diagnostics. Our daily work concerns USR, SVC, IRQ, FIQ, ABT, and UND.
+
+The full banked-register layout, columns showing per-mode visibility:
+
+```
+            USR/SYS   FIQ        IRQ      SVC      ABT      UND      MON      HYP
+  R0-R7     shared    shared     shared   shared   shared   shared   shared   shared
+  R8-R12    shared    R8-12_fiq  shared   shared   shared   shared   shared   shared
+  R13(SP)   sp_usr    sp_fiq     sp_irq   sp_svc   sp_abt   sp_und   sp_mon   sp_hyp
+  R14(LR)   lr_usr    lr_fiq     lr_irq   lr_svc   lr_abt   lr_und   lr_mon   lr_usr*
+  R15(PC)   shared
+  CPSR      shared
+  SPSR      —         SPSR_fiq   SPSR_irq SPSR_svc SPSR_abt SPSR_und SPSR_mon SPSR_hyp + ELR_hyp
+```
+
+`*` HYP mode shares the LR with USR (uses ELR_hyp instead for exception-return).
+
+Total physical register count exposed by Cortex-A7: **34 general-purpose**, **8 status (CPSR + 7×SPSR)**, plus ELR_hyp — 43 registers, of which at most 18 are visible from any single mode.
 
 In other words, each exception mode has **its own stack pointer** and **its own link register**. When an IRQ fires, the CPU does not push anything; it simply switches to IRQ mode, and now `SP` refers to a different physical register than it did a microsecond ago. The IRQ handler runs with that IRQ-mode stack. To return, it copies `SPSR_irq` back into CPSR and `LR_irq` back into PC.
 
@@ -91,9 +112,17 @@ irq_entry:
 
 The Cortex-M equivalent is nothing — the hardware did it for you. The A-profile design trades hardware simplicity (cheaper silicon) for software complexity (more careful entry/exit code). Linux's `entry-armv.S` is one large fortress of code dedicated to exactly this.
 
-### PL0 vs PL1
+### PL0 vs PL1 vs PL2
 
-Across all seven modes, ARM defines two **privilege levels**: PL0 (unprivileged, user-mode equivalent) and PL1 (privileged). USR mode is PL0; the other six are PL1. Every system register, every cache maintenance instruction, every CP15 access requires PL1.
+Across the nine modes, ARM defines three **privilege levels**:
+
+- **PL0** (unprivileged, user-mode equivalent) — only USR mode. The mode applications run in.
+- **PL1** (privileged) — most modes: SVC, IRQ, FIQ, ABT, UND, SYS. The level the kernel runs at.
+- **PL2** (hypervisor) — only HYP mode. Above PL1; allows trapping of PL1 actions.
+
+A separate **Security state** (Normal World / Secure World) is orthogonal to PL: MON mode straddles the boundary.
+
+Every system register, every cache maintenance instruction, every CP15 access requires at least PL1.
 
 Linux runs user space in USR mode (PL0) and the kernel in SVC mode (PL1). The transition between them — what the kernel calls "userspace ↔ kernelspace" — is, mechanically, a mode switch triggered by an `svc` instruction or an interrupt.
 
@@ -108,7 +137,11 @@ CPSR (Current Program Status Register) is the A-profile equivalent of M-profile'
  N  Z  C  V  Q       E  A  I  F  T  M4 M3 M2 M1 M0
 ```
 
-- **N, Z, C, V, Q** — condition flags (the same as M-profile)
+- **N, Z, C, V** — condition flags (the same as M-profile: negative, zero, carry, overflow)
+- **Q** — saturation flag (ARMv5TE-J and later; set by saturating arithmetic instructions)
+- **IT[7:0]** (split bits 26:25 + 15:10) — IF-THEN block state for Thumb-2 conditional execution
+- **J** (bit 24), **T** (bit 5) — together select the active instruction set: ARM (J=0,T=0), Thumb (J=0,T=1), ThumbEE (J=1,T=1), Jazelle (J=1,T=0)
+- **GE[3:0]** (bits 19:16) — SIMD greater-or-equal flags, set by NEON parallel comparisons
 - **E** — endianness (set per-load/store; ARMv7-A supports mixed)
 - **A** — asynchronous abort mask
 - **I** — IRQ mask (`I=1` disables IRQs)

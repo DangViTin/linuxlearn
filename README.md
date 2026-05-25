@@ -49,9 +49,9 @@ LinuxLearn/
 
 ## Target board
 
-**Point Atom (正点原子) i.MX6ULL MINI** — i.MX6ULL @ 696 MHz, 512 MiB DDR3L, slim peripheral set.
+**i.MX6ULL on Point Atom MINI** — i.MX6ULL @ 696 MHz, 512 MiB DDR3L, slim peripheral set.
 
-ALPHA is fully supported with sidebars where peripherals differ. See [Chapter 5 §5.9a](book/part1-foundations/ch05-imx6ull-tour.md#59a-point-atom-alpha-vs-mini--whats-on-each-board) for the exact peripheral comparison.
+ALPHA is fully supported with sidebars where peripherals differ. See Chapter 5 §5.9a for the per-peripheral table.
 
 ## Host environment
 

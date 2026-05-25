@@ -247,8 +247,10 @@ The two Point Atom dev boards built around the i.MX6ULL share the same SoC but d
 | **KEY0** (user button) | GPIO1_IO18 (UART1_CTS_B pad) | ✅ | ✅ | 18B, 45, 49 |
 | **BEEP** (passive buzzer, PNP-driven, active-LOW) | GPIO5_IO01 (SNVS_TAMPER1 pad) | ✅ | ✅ | 18B, 46 |
 | **UART1** (debug console) | UART1_TX_DATA / UART1_RX_DATA | ✅ | ✅ | 3, 12, 13, all |
-| **DDR3L** size | — | 512 MiB | 512 MiB | 14, 25+ |
-| **eMMC** | USDHC2 | 8 GiB | 8 GiB | 30, 39 |
+| **DDR3L** size | — | 256 MiB (NAND core) / 512 MiB (eMMC core) | 256 MiB / 512 MiB | 14, 25+ |
+| **DDR3L part** | — | Nanya NT5CC128M16JR-EK (256 MiB) or NT5CC256M16EP-EK (512 MiB) | same | 14 |
+| **NAND part** (when present) | NAND interface | Micron MT29F2G08ABAEAWP-IT (256 MiB) or MT29F4G08ABADAWP-IT (512 MiB) | same | 14, 30, 54A |
+| **eMMC** | USDHC2 | Samsung KLM8G1GET (8 GiB) | Samsung KLM8G1GET (8 GiB) | 30, 39 |
 | **NAND** alternate boot | NAND interface | optional (rev-dependent) | optional | 30, 54A |
 | **RGB LCD** | LCDIF + capacitive touch (GT911 typical) | ✅ on the board | optional add-on | 18, 24, 54, 64 |
 | **WM8960 audio codec** + headphone jack + mic | SAI2 + I²C2 | ✅ | ❌ (no audio path) | 53, 65 |
@@ -264,10 +266,11 @@ The two Point Atom dev boards built around the i.MX6ULL share the same SoC but d
 | **JTAG header** | JTAG | populated | populated | 56 |
 | **HDMI out** (RGB→HDMI via SiI902x) | LCDIF + I²C | optional add-on | optional add-on | 55H, 72 |
 
-**Two practical consequences for the MINI reader:**
+**Three practical consequences:**
 
-1. The MINI lacks the on-board WM8960 audio codec, AP3216C light sensor, ICM-20608 IMU, and CAN transceivers. The corresponding chapters (53/65 audio, 26/61 I²C+AP3216C, 27/62 SPI+ICM-20608, 66 CAN) still teach the *subsystems*, but the lab requires either skipping or wiring up an external part. Each affected chapter calls this out at its lab section.
-2. Pin assignments for LED, KEY, BEEP, UART1 debug, eMMC, USDHC2 are **identical** between ALPHA and MINI in the Point Atom V1.81 revisions — the bare-metal Part II labs work unchanged on both boards.
+1. **Core-board variant matters more than ALPHA-vs-MINI baseboard.** Both boards accept the same i.MX6ULL "BTB" core-board module; the same core board plugs into either base. There are two flavors of core board — a **NAND** flavor with 256 MiB DDR3L + 256-512 MiB NAND, and an **eMMC** flavor with 512 MiB DDR3L + 8 GiB eMMC. Identify which you have; Chapter 14's DDR3 init values depend on it.
+2. **The MINI lacks** the on-board WM8960 audio codec, AP3216C light sensor, ICM-20608 IMU, and CAN transceivers that the ALPHA base carries. The corresponding chapters (53/65 audio, 26/61 I²C+AP3216C, 27/62 SPI+ICM-20608, 66 CAN) still teach the *subsystems*, but the lab requires either skipping or wiring an external part. Each affected chapter calls this out.
+3. **Pin assignments for LED, KEY, BEEP, UART1 debug, eMMC, USDHC2 are identical** between ALPHA and MINI. The bare-metal Part II labs work unchanged on both.
 
 If you have a third-party i.MX6ULL board (NXP MCIMX6ULL-EVK, ToraDex Colibri, BoundaryDevices Nitrogen, ...), all chapters apply but the LED/KEY/BEEP pin assignments must be re-derived from your board's schematic. The `bsp/` folder pattern from Chapter 18A makes that a per-folder edit, not a per-chapter rewrite.
 

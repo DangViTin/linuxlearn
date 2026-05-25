@@ -393,7 +393,7 @@ Commit the working result to `code/ch10-c-startup/`.
 
 ## Sidebar — `REG(addr)` macro vs the NXP SDK header
 
-We are using `#define REG(addr) (*(volatile uint32_t *)(addr))` plus raw addresses. The Point Atom guide, after Chapter 11, switches to the **NXP SDK header** `MCIMX6Y2.h` (downloadable from `mcuxpresso.nxp.com`), which provides struct-based register access:
+We are using `#define REG(addr) (*(volatile uint32_t *)(addr))` plus raw addresses. The professional alternative is the **NXP SDK header** `MCIMX6Y2.h` (downloadable from `mcuxpresso.nxp.com`), which provides struct-based register access:
 
 ```c
 #include "MCIMX6Y2.h"

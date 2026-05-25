@@ -233,19 +233,131 @@ A libc bundles:
 
 When we write bare-metal code, *none of this is available*. There is no `malloc`. There is no `printf` (we write one). There is no `errno` (we set our own). This is liberating once you accept it.
 
-## 6.7  Make, briefly
+## 6.7  Make, in working depth
 
-`make` is older than most engineers reading this, but for the kind of small bare-metal projects in Part II it is still the right tool.
+`make` is older than most engineers reading this, but for the bare-metal projects in Part II — and for every kernel / U-Boot / Buildroot build later — it is the tool of record. This section is longer than it might first seem because every later chapter references it; once you have it, you do not need it again.
 
-The pieces you must know:
+### 6.7.1  Rule shape
 
-- **Variables.** `CC := arm-none-eabi-gcc`. `:=` is immediate-eval; `=` is deferred-eval. Use `:=` unless you need recursion.
-- **Pattern rules.** `%.o: %.c` lets one rule build any `.o` from any `.c`.
-- **Automatic variables.** `$@` is the target; `$<` is the first prerequisite; `$^` is all prerequisites; `$*` is the stem.
-- **Phony targets.** `.PHONY: all clean` — tells make these aren't files.
-- **`make -j$(nproc)`** — parallelism. Most builds in this book are small enough that it doesn't matter; the kernel build cares.
+```make
+target ...: prerequisite ...
+<TAB>command
+<TAB>command
+```
 
-A complete Makefile for the Chapter 9 LED:
+`make` builds the *target* by running the *command(s)* when (a) the target does not exist, or (b) any prerequisite is newer than the target. Commands **must** be indented with a literal `TAB` — spaces do not work; the first time you cut-and-paste a rule, this bites everyone.
+
+### 6.7.2  Variables: four flavors of assignment
+
+```make
+CC     = arm-none-eabi-gcc         # 1) recursive ("deferred")
+CC    := arm-none-eabi-gcc         # 2) simple ("immediate")
+CFLAGS ?= -O2                       # 3) only if not already set
+OBJS  += extra.o                   # 4) append
+```
+
+The pair people misunderstand most is `=` vs `:=`:
+
+```make
+name = world
+greet = hello $(name)
+name = there
+$(info $(greet))   # prints "hello there"   ← deferred expansion
+```
+
+```make
+name := world
+greet := hello $(name)
+name := there
+$(info $(greet))   # prints "hello world"   ← immediate expansion
+```
+
+Use `:=` everywhere by default. The `=` form is occasionally necessary (recursive expansion of generated variables) but mostly a footgun.
+
+### 6.7.3  Pattern rules and automatic variables
+
+A pattern rule with `%` matches every file fitting the pattern:
+
+```make
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+```
+
+Inside the recipe, **automatic variables** carry the per-instance pieces:
+
+| Var | Meaning |
+|-----|---------|
+| `$@` | The target being built |
+| `$<` | The first prerequisite |
+| `$^` | All prerequisites (de-duplicated, space-separated) |
+| `$+` | All prerequisites (with duplicates) |
+| `$?` | Prerequisites newer than the target |
+| `$*` | The stem matched by `%` |
+
+A pair of pattern rules and one main rule, plus a `clean` phony, is 90% of every Makefile you will write in this book.
+
+### 6.7.4  Phony targets
+
+```make
+.PHONY: all clean install
+```
+
+Tells `make` that `all` / `clean` / `install` are **not** filenames. Without `.PHONY`, if you ever happen to create a file literally named `clean`, `make clean` would consider that file "up to date" and skip the recipe. With `.PHONY`, the recipe always runs.
+
+### 6.7.5  Useful functions
+
+`make` has a small set of built-in functions, called as `$(name args,...)`:
+
+| Function | What it does | Example |
+|----------|--------------|---------|
+| `$(wildcard PATTERN)` | List files matching a glob (no quoting) | `$(wildcard *.c)` → `a.c b.c` |
+| `$(patsubst PAT,REPL,LIST)` | Pattern substitution | `$(patsubst %.c,%.o,a.c b.c)` → `a.o b.o` |
+| `$(subst FROM,TO,STR)` | Plain string substitution | `$(subst ., _,a.b.c)` → `a_b_c` |
+| `$(dir NAMES)` | Directory part | `$(dir src/a.c)` → `src/` |
+| `$(notdir NAMES)` | Filename part | `$(notdir src/a.c)` → `a.c` |
+| `$(basename NAMES)` | Drop the extension | `$(basename src/a.c)` → `src/a` |
+| `$(addsuffix S,LIST)` / `$(addprefix P,LIST)` | Append / prepend | `$(addsuffix .o,a b)` → `a.o b.o` |
+| `$(filter PAT,LIST)` / `$(filter-out PAT,LIST)` | Keep / remove matching | `$(filter %.c,a.c b.h)` → `a.c` |
+| `$(sort LIST)` | Sort + de-duplicate | `$(sort c a b a)` → `a b c` |
+| `$(shell CMD)` | Run a shell command, capture stdout | `$(shell uname -m)` → `x86_64` |
+
+A common idiom — collect every `.c` in the tree:
+
+```make
+SRCS := $(wildcard bsp/*/*.c) $(wildcard *.c)
+OBJS := $(patsubst %.c,%.o,$(SRCS))
+```
+
+### 6.7.6  Conditionals
+
+```make
+ifeq ($(ARCH),arm)
+  CFLAGS += -mcpu=cortex-a7
+else ifeq ($(ARCH),aarch64)
+  CFLAGS += -mcpu=cortex-a53
+else
+  $(error Unsupported ARCH=$(ARCH))
+endif
+
+ifdef DEBUG
+  CFLAGS += -O0 -g3
+else
+  CFLAGS += -O2
+endif
+```
+
+Four conditional forms: `ifeq`, `ifneq`, `ifdef`, `ifndef`. They work both at the *top level* (selecting variable values) and inside *recipes* — though for recipe-level branching, shell `if` is usually cleaner.
+
+### 6.7.7  Parallelism
+
+```sh
+$ make -j$(nproc)            # use all available cores
+$ make -j8                    # 8 jobs in parallel
+```
+
+For our bare-metal builds (~10 files), `-j` makes no measurable difference. For the kernel (~30 000 files) it cuts build time by ~7× on an 8-core host. Always use it for kernel work; harmless for everything else.
+
+### 6.7.8  A complete Makefile for the Chapter 9 LED
 
 ```make
 CROSS  := arm-none-eabi-

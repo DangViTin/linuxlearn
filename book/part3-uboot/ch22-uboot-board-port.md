@@ -158,7 +158,7 @@ Key changes from the EVK DTS:
         compatible = "gpio-leds";
         led0 {
             label = "led0";
-            gpios = <&gpio1 3 GPIO_ACTIVE_LOW>;   /* PA's LED, Ch 9 fix */
+            gpios = <&gpio1 3 GPIO_ACTIVE_LOW>;   /* Point Atom LED, Ch 9 fix */
             default-state = "off";
         };
     };
@@ -167,7 +167,7 @@ Key changes from the EVK DTS:
         compatible = "gpio-keys";
         key0 {
             label = "KEY0";
-            gpios = <&gpio1 18 GPIO_ACTIVE_LOW>;  /* PA's KEY0 */
+            gpios = <&gpio1 18 GPIO_ACTIVE_LOW>;  /* Point Atom KEY0 */
             linux,code = <KEY_HOME>;
         };
     };

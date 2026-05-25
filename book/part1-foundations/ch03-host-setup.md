@@ -194,9 +194,9 @@ Quit with **Ctrl-A Ctrl-X**. Send Ctrl-C with **Ctrl-A Ctrl-C** (the leader sequ
 
 ### 3.5a  Windows-side serial terminals (for Windows-mainly readers)
 
-If your host is Windows (WSL2 or dual-boot Linux), or if you sometimes connect from a Windows laptop in the field, the typical Point Atom-ecosystem tools are:
+If your host is Windows (WSL2 or dual-boot Linux), or if you sometimes connect from a Windows laptop in the field, the most-used serial-terminal options are:
 
-- **MobaXterm** (`mobaxterm.mobatek.net`, free Home Edition) — combined SSH client + serial terminal + X server + session-saving + SFTP browser. Recommended; the Point Atom guide standardizes on it.
+- **MobaXterm** (`mobaxterm.mobatek.net`, free Home Edition) — combined SSH client + serial terminal + X server + session-saving + SFTP browser. Recommended for Windows hosts.
 - **SecureCRT** (`vandyke.com`, commercial) — fastest scrollback, best session-tabs, configurable keymap. Worth the money if you live in serial consoles.
 - **Putty** (`putty.org`, free) — minimal, ubiquitous, no scripting. Fine if you only need it occasionally.
 - **Tera Term** (`teratermproject.github.io`, free) — Japanese-origin, popular in industrial settings, has a useful macro language.
@@ -209,7 +209,7 @@ When configuring any of these tools, the settings are the same we used for `pico
 
 The Linux kernel source tree is ~80,000 files. Tools that index it on a fast SSD beat ones that don't.
 
-- **Source Insight 4** (`sourceinsight.com`, commercial Windows) — extremely fast indexer, instant "Go to Definition," visual call graphs. The Point Atom guide uses it. Read-only for our purposes.
+- **Source Insight 4** (`sourceinsight.com`, commercial Windows) — extremely fast indexer, instant "Go to Definition," visual call graphs. Read-only for our purposes; popular in Chinese-language embedded communities.
 - **VSCode + C/C++ extension** (Microsoft) — slower indexer but free, cross-platform, and you can edit. Use `compile_commands.json` from a kernel build so IntelliSense follows the right includes.
 - **`cscope` + `ctags`** in the terminal — old-school, instant, scriptable.
 - **`elixir.bootlin.com`** — kernel cross-reference in your browser, no install. Surprisingly capable.
