@@ -110,4 +110,7 @@ html_context = {
 # Code highlighting
 # ---------------------------------------------------------------------------
 pygments_style = "default"
-highlight_language = "c"  # default; per-block overrides still work
+# Default to "none" so plain prompt examples and ASCII diagrams aren't lexed
+# as some specific language.  Code blocks that DO specify a language (```c,
+# ```sh, ```make, ```asm, ...) still get highlighted normally.
+highlight_language = "none"

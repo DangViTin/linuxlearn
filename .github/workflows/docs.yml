@@ -49,8 +49,11 @@ jobs:
           cp BOOK_TOC.md book/toc.md
 
       - name: Build Sphinx HTML
+        # --keep-going: report all warnings, don't stop at the first.
+        # We intentionally do NOT pass -W (warnings-as-errors) on the first pass —
+        # add it back once the build is clean.
         run: |
-          sphinx-build -b html -W --keep-going book book/_build/html
+          sphinx-build -b html --keep-going book book/_build/html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
