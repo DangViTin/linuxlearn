@@ -6,12 +6,11 @@ on:
     paths:
       - 'book/**'
       - 'BOOK_TOC.md'
-      - 'mkdocs.yml'
       - 'requirements-docs.txt'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
-# Allow GITHUB_TOKEN to push to gh-pages and Pages
+# Allow GITHUB_TOKEN to push to Pages
 permissions:
   contents: read
   pages: write
@@ -29,7 +28,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history (mike uses it for versioning)
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -38,28 +37,25 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-docs.txt
 
-      - name: Install MkDocs and theme
+      - name: Install Sphinx and theme
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-docs.txt
 
       - name: Mirror BOOK_TOC.md into book/toc.md
-        # MkDocs only serves files inside docs_dir (book/).  We keep
-        # BOOK_TOC.md at the repo root for git-clone convenience and
-        # copy it into book/ at build time.
+        # The site only serves files inside book/; we keep BOOK_TOC.md at the
+        # repo root for git-clone convenience and copy it in at build time.
         run: |
           cp BOOK_TOC.md book/toc.md
 
-      - name: Build site
-        run: mkdocs build --strict
-        env:
-          # Site URL will be set by the deploy step; let MkDocs ignore it during build
-          ENABLE_PDF_EXPORT: 0
+      - name: Build Sphinx HTML
+        run: |
+          sphinx-build -b html -W --keep-going book book/_build/html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: book/_build/html
 
   deploy:
     needs: build

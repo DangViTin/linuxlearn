@@ -1,0 +1,88 @@
+/* Custom overrides for sphinx-rtd-theme — keeps things clean and readable. */
+
+/* Wider content area on big screens (default RTD is narrow). */
+.wy-nav-content {
+    max-width: 1100px;
+}
+
+/* Slightly larger body font for readability. */
+.rst-content p,
+.rst-content li,
+.rst-content dl dt,
+.rst-content dl dd {
+    font-size: 16px;
+    line-height: 1.65;
+}
+
+/* Better code-block contrast. */
+.rst-content pre.literal-block,
+.rst-content div[class^='highlight'] pre {
+    font-size: 13.5px;
+    line-height: 1.5;
+    padding: 12px 14px;
+    border-radius: 4px;
+}
+
+/* Inline code: lighter background, no border. */
+.rst-content tt.literal,
+.rst-content code.literal {
+    background: #f5f5f5;
+    border: 0;
+    color: #b94a48;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 90%;
+}
+
+/* Tighter spacing between headings and text. */
+.rst-content h1, .rst-content h2, .rst-content h3, .rst-content h4 {
+    margin-top: 1.6em;
+    margin-bottom: 0.5em;
+}
+
+.rst-content h1 { font-size: 2.0em; }
+.rst-content h2 { font-size: 1.55em; border-bottom: 1px solid #e1e4e5; padding-bottom: 6px; }
+.rst-content h3 { font-size: 1.25em; }
+.rst-content h4 { font-size: 1.10em; }
+
+/* Tables: less aggressive borders. */
+.rst-content table.docutils,
+.wy-table-responsive table {
+    font-size: 14px;
+}
+.rst-content table.docutils td,
+.rst-content table.docutils th {
+    padding: 6px 10px;
+}
+
+/* Blockquotes: subtler styling. */
+.rst-content blockquote {
+    border-left: 4px solid #6ab0de;
+    background: #f7fbfd;
+    padding: 8px 14px;
+    margin: 12px 0;
+    color: #444;
+}
+
+/* Sidebar tweaks: a hair narrower for content prominence. */
+.wy-nav-side {
+    background: #2c3e50;
+}
+.wy-side-nav-search {
+    background-color: #2980b9;
+}
+
+/* Copy-button polish. */
+button.copybtn {
+    opacity: 0.4;
+    transition: opacity 0.2s ease-in-out;
+}
+button.copybtn:hover {
+    opacity: 1;
+}
+
+/* Admonitions: slightly less loud than RTD default. */
+.rst-content .admonition {
+    border-radius: 4px;
+    margin: 12px 0;
+}

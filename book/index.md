@@ -10,6 +10,63 @@ description: Embedded Linux on i.MX6ULL — From First Boot to First Driver
 > An explanatory, mainline-first guide to bringing up embedded Linux on the i.MX6ULL.
 > Built for the MCU engineer who wants to understand every byte, not just `bitbake build`.
 
+```{toctree}
+:hidden:
+:caption: Front matter
+:maxdepth: 1
+
+Table of contents <toc>
+```
+
+```{toctree}
+:hidden:
+:caption: Part I — Foundations
+:maxdepth: 2
+
+part1-foundations/ch01-preface
+part1-foundations/ch02-what-is-embedded-linux
+part1-foundations/ch03-host-setup
+part1-foundations/ch04-armv7a-for-mcu-engineer
+part1-foundations/ch05-imx6ull-tour
+part1-foundations/ch06-toolchain
+part1-foundations/ch07-boot-rom-ivt-dcd
+part1-foundations/ch08-board-bring-up
+```
+
+```{toctree}
+:hidden:
+:caption: Part II — Bare-metal i.MX6ULL
+:maxdepth: 2
+
+part2-baremetal/ch09-asm-led
+part2-baremetal/ch10-c-startup-linker
+part2-baremetal/ch11-ivt-dcd-image
+part2-baremetal/ch12-uart-printf
+part2-baremetal/ch13-ccm-clocks
+part2-baremetal/ch14-ddr3-init
+part2-baremetal/ch15-exceptions-gic
+part2-baremetal/ch16-timers
+part2-baremetal/ch17-mmu-caches
+part2-baremetal/ch18-bare-metal-peripherals
+part2-baremetal/ch18A-project-organization
+part2-baremetal/ch18B-button-beep
+part2-baremetal/ch18C-baremetal-rtc
+```
+
+```{toctree}
+:hidden:
+:caption: Part III — U-Boot, deeply
+:maxdepth: 2
+
+part3-uboot/ch19-uboot-from-source
+part3-uboot/ch20-uboot-spl
+part3-uboot/ch21-uboot-internals
+part3-uboot/ch22-uboot-board-port
+part3-uboot/ch23-bootcmd-bootargs-fit
+part3-uboot/ch23A-multi-variant-fit
+part3-uboot/ch24-workflows-tftp-nfs-usb
+```
+
 ---
 
 ## What this is
@@ -36,16 +93,38 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
 
 ## Status
 
-| Part | Chapters | Status |
-|------|----------|--------|
-| Part I — Foundations | 8 | ✅ Drafted |
-| Part II — Bare-metal i.MX6ULL | 10 + 3 inserted (18A–C) | ✅ Drafted |
-| Part III — U-Boot, deeply | 6 + 1 inserted (23A) | ✅ Drafted |
-| Part IV — The Kernel | 6 + 2 inserted (27A, 30A) | ⬜ Not yet drafted |
-| Part V — Root filesystem & user space | 5 + 3 inserted (35A–C) | ⬜ Not yet drafted |
-| Part VI — Driver development | 20 + 13 inserted (51A, 51B, 52A, 54A, 54B, 55A–I) | ⬜ Not yet drafted |
-| Part VII — Debug, production, advanced | 9 + 5 inserted (58A, 59A, 60A, 61A, 63A) | ⬜ Not yet drafted |
-| **Total** | **64 numbered + 23 inserted = 87** | **~24 % drafted** |
+```{list-table}
+:header-rows: 1
+:widths: 40 30 30
+
+* - Part
+  - Chapters
+  - Status
+* - Part I — Foundations
+  - 8
+  - ✅ Drafted
+* - Part II — Bare-metal i.MX6ULL
+  - 10 + 3 supplementary (18A–C)
+  - ✅ Drafted
+* - Part III — U-Boot, deeply
+  - 6 + 1 supplementary (23A)
+  - ✅ Drafted
+* - Part IV — The Kernel
+  - 6 + 2 supplementary (27A, 30A)
+  - ⬜ Not yet drafted
+* - Part V — Root filesystem & user space
+  - 5 + 3 supplementary (35A–C)
+  - ⬜ Not yet drafted
+* - Part VI — Driver development
+  - 20 + 13 supplementary
+  - ⬜ Not yet drafted
+* - Part VII — Debug, production, advanced
+  - 9 + 5 supplementary
+  - ⬜ Not yet drafted
+* - **Total**
+  - **64 numbered + 23 supplementary = 87**
+  - **~32 % drafted**
+```
 
 ## Hardware
 
@@ -70,7 +149,7 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
 
 This is a work in progress. If you spot an error or have suggestions:
 
-- **Errata:** open an issue on the [GitHub repository](https://github.com/DangViTin/linuxlearn/issues) (will be live after first push).
+- **Errata:** open an issue on the [GitHub repository](https://github.com/DangViTin/linuxlearn/issues).
 - **Pull requests** for typos, broken links, and clarifications are welcome.
 - **Substantive changes** — please open an issue first to discuss.
 

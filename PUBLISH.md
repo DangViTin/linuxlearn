@@ -1,14 +1,14 @@
 # Publishing this book online
 
-We use **MkDocs Material + GitHub Pages**. Free. No server. Auto-rebuilds on every push.
+We use **Sphinx + sphinx-rtd-theme + MyST-Parser** to render the Markdown into a clean Read-the-Docs-style site, then **GitHub Pages** hosts it. Free, no server, auto-rebuilds on every push.
 
-Once set up, the site lives at:
+Site URL after the GitHub Action runs:
 
 ```
 https://<your-github-username>.github.io/linuxlearn/
 ```
 
-You can read it on a laptop, phone, tablet — anything with a browser.
+Mobile-friendly, full text search, prev/next page navigation, copy-button on every code block.
 
 ---
 
@@ -31,51 +31,49 @@ Then log in:
 gh auth login
 ```
 
-### 2. From the project root, initialize git and create the repo
+### 2. Create the repo and push
 
 ```sh
 cd ~/imx6ull/LinuxLearn        # or wherever this folder lives
 git init -b main
 git add .
-git commit -m "Initial commit: Parts I and II drafted; MkDocs Material site"
-
-# Public repo named `linuxlearn` under your user account
+git commit -m "Initial commit"
 gh repo create linuxlearn --public --source=. --remote=origin --push
 ```
 
-That single `gh repo create` command does five things: makes the GitHub repo, adds it as `origin`, pushes `main`, sets the description, and opens the repo page in your browser.
+The single `gh repo create` line creates the GitHub repo, sets `origin`, and pushes.
 
-### 3. Fix the placeholder URLs in `mkdocs.yml`
+### 3. Edit your username into `book/conf.py`
 
-After step 2 you know your GitHub username. Open `mkdocs.yml` and replace **`example`** with it in three places:
+Open `book/conf.py` and find:
 
-```yaml
-site_url: https://YOUR-USERNAME.github.io/linuxlearn/
-repo_url: https://github.com/YOUR-USERNAME/linuxlearn
-repo_name: YOUR-USERNAME/linuxlearn
+```python
+html_context = {
+    "display_github": True,
+    "github_user": "DangViTin",      # <— change to your username
+    "github_repo": "linuxlearn",
+    "github_version": "main",
+    "conf_py_path": "/book/",
+}
 ```
 
-And in `book/index.md`, replace `https://github.com/example/linuxlearn` with the same.
-
-Commit and push:
+Replace `DangViTin` with your GitHub username. Commit and push:
 
 ```sh
-git add mkdocs.yml book/index.md
-git commit -m "Update site_url and repo links"
+git add book/conf.py
+git commit -m "Update github_user for site"
 git push
 ```
 
 ### 4. Enable GitHub Pages
 
-Either via the CLI:
+CLI:
 
 ```sh
 gh api -X POST repos/:owner/linuxlearn/pages -f "build_type=workflow"
 ```
 
-Or via the web UI: open `https://github.com/YOUR-USERNAME/linuxlearn/settings/pages`, under **Build and deployment → Source**, choose **"GitHub Actions"**, save.
-
-That's it. The `.github/workflows/docs.yml` workflow runs on every push to `main` and publishes to GitHub Pages.
+Or web: `https://github.com/YOUR-USERNAME/linuxlearn/settings/pages` → **Build and deployment → Source → "GitHub Actions"** → save.
 
 ### 5. Watch the first build
 
@@ -83,7 +81,7 @@ That's it. The `.github/workflows/docs.yml` workflow runs on every push to `main
 gh run watch
 ```
 
-Or open `https://github.com/YOUR-USERNAME/linuxlearn/actions`. The first run takes ~2 minutes (installing MkDocs); subsequent builds are ~30 seconds.
+Or check `https://github.com/YOUR-USERNAME/linuxlearn/actions`. First run takes ~90 seconds; subsequent builds ~25 seconds.
 
 When the run goes green, the site is live at:
 
@@ -95,40 +93,46 @@ https://YOUR-USERNAME.github.io/linuxlearn/
 
 ## Day-to-day workflow
 
-After the one-time setup:
-
 ```sh
 # edit a chapter
 vim book/part1-foundations/ch01-preface.md
 
 # commit and push
 git add book/
-git commit -m "Ch 1: rewrite the slow-book closing paragraph"
+git commit -m "Ch 1: tighten the closing"
 git push
 ```
 
-GitHub Action rebuilds the site automatically. Refresh the URL in your browser ~30 seconds later.
+GitHub Action rebuilds the site automatically. Refresh the URL ~30 seconds later.
 
 ---
 
-## Preview locally before pushing (optional but recommended)
+## Preview locally before pushing (recommended)
 
 ```sh
-# One-time: install MkDocs locally
+# One-time: create a venv and install dependencies
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate                   # Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements-docs.txt
 
 # Mirror the TOC (the GitHub Action does this automatically; locally we do it by hand)
 cp BOOK_TOC.md book/toc.md
 
-# Live-reload server
-mkdocs serve
+# Live build with auto-rebuild on file save
+sphinx-autobuild book book/_build/html
 ```
 
 Open <http://127.0.0.1:8000/> in your browser. Edit a chapter; the page refreshes automatically.
 
-When done, deactivate the venv:
+For a one-shot build without the dev server:
+
+```sh
+sphinx-build -b html book book/_build/html
+```
+
+Then open `book/_build/html/index.html` directly.
+
+To deactivate the venv when done:
 
 ```sh
 deactivate
@@ -140,50 +144,57 @@ deactivate
 
 | Want to change... | Edit... |
 |-------------------|---------|
-| Site name / description | `mkdocs.yml` → `site_name`, `site_description` |
-| Brand color | `mkdocs.yml` → `theme.palette.primary` (try `indigo`, `teal`, `red`, `green`, `deep purple`) |
-| Light/dark mode default | `mkdocs.yml` → palette ordering |
-| Navigation order | `mkdocs.yml` → `nav:` |
-| Add a new chapter | drop the `.md` in `book/partX-.../` and add the line under `nav:` |
-| Logo / favicon | place files in `book/assets/` and reference them in `mkdocs.yml → theme.logo / theme.favicon` |
-| Custom CSS / JS | `mkdocs.yml → extra_css:` / `extra_javascript:`, files in `book/assets/` |
+| Site title / author / version | `book/conf.py` → `project`, `author`, `release` |
+| Theme colors | `book/_static/custom.css` (already wired in) |
+| Sidebar header background | `book/conf.py` → `html_theme_options.style_nav_header_background` |
+| Navigation depth | `book/conf.py` → `html_theme_options.navigation_depth` |
+| Add a new chapter | drop the `.md` in `book/partX-.../` and add the filename (without `.md`) under the matching `toctree` in `book/index.md` |
+| Sidebar logo / favicon | drop files into `book/_static/`, then set `html_logo` and `html_favicon` in `conf.py` |
 
 ---
 
-## Adding versioned releases (optional, advanced)
+## File map
 
-Once you ship a "v1.0," "v1.1," etc., the **`mike`** tool (already in `requirements-docs.txt`) lets you publish multiple site versions side-by-side at:
-
-- `https://YOUR-USERNAME.github.io/linuxlearn/` (latest)
-- `https://YOUR-USERNAME.github.io/linuxlearn/v1.0/`
-- `https://YOUR-USERNAME.github.io/linuxlearn/v1.1/`
-
-To activate, replace the build step in `.github/workflows/docs.yml` with:
-
-```yaml
-- run: mike deploy --push --update-aliases v1.2 latest
-```
-
-This is optional and not needed for the first publish.
+| File | Purpose |
+|------|---------|
+| `book/conf.py` | Sphinx configuration |
+| `book/index.md` | Site landing page + sidebar toctree |
+| `book/_static/custom.css` | Theme tweaks (font sizes, sidebar color, etc.) |
+| `book/part*-*/ch*.md` | Chapter content (Markdown, untouched) |
+| `book/toc.md` | Auto-generated each build from `BOOK_TOC.md` |
+| `requirements-docs.txt` | Sphinx + extensions, pinned |
+| `.github/workflows/docs.yml` | Build + deploy on every push to main |
 
 ---
 
 ## Custom domain (optional)
 
-If you have a domain you'd like to use (`embedded-linux.example.com`):
+If you have your own domain:
 
 1. In your DNS provider, add a `CNAME` record pointing to `YOUR-USERNAME.github.io`.
-2. In the repo: `https://github.com/YOUR-USERNAME/linuxlearn/settings/pages` → **Custom domain** → enter it → save.
-3. GitHub Actions will write a `CNAME` file into the deployed site and serve under HTTPS via Let's Encrypt.
-
-Free for any domain you already own.
+2. Repo → **Settings → Pages → Custom domain** → enter it → save.
+3. The Action will write a `CNAME` file into the deployed site and serve under HTTPS via Let's Encrypt.
 
 ---
 
 ## If something goes wrong
 
+- **Build fails: "could not find file foo"** — a path in `book/index.md`'s `toctree` doesn't match an actual file. Check the spelling (no `.md` extension in toctree entries).
+- **Build fails: "duplicate toctree"** — a chapter is listed in two different toctrees. Each file may appear in exactly one toctree.
+- **Site shows but looks unstyled** — Pages enabled before the first successful build. Re-run the workflow: `gh workflow run docs.yml`.
 - **Action fails with "Pages not enabled"** → finish step 4.
-- **Action fails with "mkdocs.yml: invalid YAML"** → check indentation; YAML is whitespace-sensitive.
-- **Site shows but pages 404** → check the `nav:` paths in `mkdocs.yml` are relative to `book/` (no leading `book/`).
-- **Frontmatter shows up as plain text at the top of each chapter** → MkDocs Material parses YAML front matter natively when the `meta` extension is enabled. If yours doesn't, upgrade to the pinned version in `requirements-docs.txt`.
-- **Want to test the build locally without pushing** → run `mkdocs build --strict` and it errors out the same way the Action does.
+- **Local `sphinx-autobuild` not found** → it ships with Sphinx but in some installs is a separate package: `pip install sphinx-autobuild`.
+
+---
+
+## Migrating from a previous MkDocs setup
+
+If you used MkDocs Material before:
+
+```sh
+git rm mkdocs.yml                  # already removed by the migration commit
+# requirements-docs.txt is now Sphinx-based; pip-install fresh in your venv:
+pip install -r requirements-docs.txt --upgrade
+```
+
+No chapter `.md` files needed changes. The site URL stays the same.

@@ -10,33 +10,33 @@ This is the source of a ~1,700-page book in progress. The repo holds:
 
 - The Markdown source under `book/`
 - The master TOC `BOOK_TOC.md`
-- A working **MkDocs Material** site that publishes itself to GitHub Pages on every push (see [PUBLISH.md](PUBLISH.md) for the one-time setup)
+- A **Sphinx + sphinx-rtd-theme** site that publishes itself to GitHub Pages on every push (see [PUBLISH.md](PUBLISH.md) for the one-time setup)
 
 ## Repository layout
 
 ```
 LinuxLearn/
-├── BOOK_TOC.md              # Master table of contents (the master copy)
+├── BOOK_TOC.md              # Master table of contents
 ├── README.md                # This file
 ├── PUBLISH.md               # How to publish the site online (10-min setup)
-├── mkdocs.yml               # MkDocs Material configuration
-├── requirements-docs.txt    # Python dependencies for building the site
+├── requirements-docs.txt    # Sphinx + theme + MyST, pinned versions
 ├── .github/workflows/
-│   └── docs.yml             # Auto-build & deploy to GitHub Pages on push
-├── book/                    # Chapter source (Markdown) — also the docs_dir
-│   ├── index.md             # Site landing page
+│   └── docs.yml             # Build with sphinx-build, deploy to Pages on push
+├── book/                    # Chapter source AND Sphinx source root
+│   ├── conf.py              # Sphinx configuration
+│   ├── _static/custom.css   # Theme overrides (fonts, colors, spacing)
+│   ├── index.md             # Site landing page + sidebar toctree
 │   ├── toc.md               # Auto-mirrored from BOOK_TOC.md on build
-│   ├── status.md            # "Coming soon" stub for undrafted Parts
-│   ├── part1-foundations/
-│   ├── part2-baremetal/
-│   ├── part3-uboot/         # (empty; not yet drafted)
-│   ├── part4-kernel/        # (empty)
-│   ├── part5-rootfs/        # (empty)
-│   ├── part6-drivers/       # (empty)
-│   └── part7-debug/         # (empty)
+│   ├── part1-foundations/   # Ch 1–8 (drafted)
+│   ├── part2-baremetal/     # Ch 9–18 + 18A/B/C (drafted)
+│   ├── part3-uboot/         # Ch 19–24 + 23A (drafted)
+│   ├── part4-kernel/        # (not yet drafted)
+│   ├── part5-rootfs/        # (not yet drafted)
+│   ├── part6-drivers/       # (not yet drafted)
+│   └── part7-debug/         # (not yet drafted)
 ├── code/                    # Companion source (MIT / Apache-2.0); ch by ch
 ├── figures/                 # Diagrams, schematics, screenshots
-└── site/                    # MkDocs build output — gitignored
+└── book/_build/             # Sphinx HTML output — gitignored
 ```
 
 ## Reading the book

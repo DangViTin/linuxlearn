@@ -7,13 +7,15 @@ build/
 *.out
 *.toc
 
-# MkDocs build output
-site/
+# Sphinx build output
+book/_build/
+site/                   # (legacy mkdocs output)
 
 # Python venv for the docs build
 .venv/
 __pycache__/
 *.pyc
+*.pyo
 
 # Auto-generated mirror of BOOK_TOC.md (created by the GitHub Action / local cp)
 book/toc.md
