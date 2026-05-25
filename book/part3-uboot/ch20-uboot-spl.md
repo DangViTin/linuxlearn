@@ -1,0 +1,324 @@
+---
+chapter: 20
+title: U-Boot SPL — the missing link
+part: III — U-Boot, deeply
+estimated_pages: 18
+status: draft
+---
+
+# Chapter 20 — U-Boot SPL: the missing link
+
+> **What:** the **SPL** (Secondary Program Loader) — the first stage of the two-stage U-Boot — explained in enough detail that you can read its source and modify it for a custom board.
+> **Why:** the i.MX6ULL Boot ROM can only load ~100 KB into OCRAM. Full U-Boot is ~600 KB. SPL exists to bridge that gap: it is a small first-stage program that initializes DRAM, then loads full U-Boot into DRAM and jumps to it. Mechanically it is your Chapter 11–14 work, productized.
+> **Focus:** the **size constraint** as a design pressure. SPL has at most ~64 KB of code budget. Every feature pays for itself in bytes. Understanding what SPL chooses to include and what it skips is how you understand what is and isn't expected to work in the first 100 ms of a board's life.
+
+## 20.1  Why two stages
+
+If you have read Chapters 7, 11, and 14, you already know the constraint: the Boot ROM reads a fixed amount of bytes into a fixed location in OCRAM, then transfers control. Full U-Boot does not fit.
+
+Three possible solutions:
+
+1. **DCD-driven big load.** Put DRAM init into the DCD; the ROM then loads U-Boot directly into DRAM, bypassing OCRAM size limits. This works and was the dominant pattern in the i.MX5 era. Mainline U-Boot for i.MX6 has moved away from it; the DCD becomes unwieldy at ~800 bytes and is hard to maintain when DRAM timings change.
+2. **Multi-stage boot with SPL.** ROM loads a small SPL into OCRAM; SPL initializes DRAM; SPL loads the full U-Boot from the boot medium into DRAM; SPL jumps to it. **This is the modern pattern.**
+3. **Static link to a small U-Boot.** Strip features until U-Boot fits in 100 KB. Has been done. Painful.
+
+Pattern 2 is what mainline does. Two stages, one for setup, one for the main job. The pattern repeats further up the stack: U-Boot then loads Linux, and Linux loads `/sbin/init`. Each stage knows more than the previous and runs from more resources.
+
+## 20.2  What SPL is responsible for
+
+The SPL's job, in order:
+
+1. **CPU init.** Mode-set to SVC, vectors, stack pointer in OCRAM. (Your Chapter 10.)
+2. **Clock init.** PLLs, AHB/IPG bus, CCGR gates for what SPL needs. (Your Chapter 13.)
+3. **DRAM init.** MMDC setup with timings for the specific DRAM part. (Your Chapter 14.)
+4. **Console init.** UART so we can see what's happening. (Your Chapter 12.)
+5. **Boot-medium init.** Driver for SD/eMMC/NAND/SPI-NOR — whichever the strap pins indicate.
+6. **Load full U-Boot.** Read the second-stage image from the boot medium into DRAM at a known address.
+7. **Jump to it.** Branch to the loaded image; full U-Boot takes over.
+
+That is it. SPL does not run the kernel. SPL does not handle networking. SPL does not have a command prompt. SPL is the smallest program that can do exactly the seven things above on this hardware.
+
+## 20.3  The size budget
+
+For i.MX6ULL, the Boot ROM's effective load window for SPL is **~100 KB** within OCRAM. The mainline `mx6ull_14x14_evk_defconfig` SPL builds at roughly **40 KB**. The headroom is real; the discipline is mandatory.
+
+Configuration items that respect the budget:
+
+```
+CONFIG_SPL=y
+CONFIG_SPL_LIBCOMMON_SUPPORT=y
+CONFIG_SPL_LIBDISK_SUPPORT=y
+CONFIG_SPL_MMC=y
+CONFIG_SPL_DM=y                    # driver model in SPL (minimal)
+CONFIG_SPL_OF_CONTROL=y            # SPL also uses device tree
+CONFIG_SPL_DM_MMC=y
+CONFIG_SPL_GPIO=y
+CONFIG_SPL_SERIAL=y
+# CONFIG_SPL_NET is NOT set        # SPL doesn't need network
+# CONFIG_SPL_USB_HOST is NOT set
+```
+
+For every feature, the build system has both `CONFIG_FOO` (for full U-Boot) and `CONFIG_SPL_FOO` (for SPL). Turning off `CONFIG_SPL_FOO` keeps `FOO` in full U-Boot but excludes it from SPL. This is how SPL stays small.
+
+The current size is reported at the end of build:
+
+```
+$ size spl/u-boot-spl
+   text	   data	    bss	    dec	    hex	filename
+  39204	   1872	   8112	  49188	   c024	spl/u-boot-spl
+```
+
+If `text + data + bss > ~100 KB`, the ROM will silently refuse the image. The build emits a warning when you exceed `CONFIG_SPL_MAX_SIZE`, but not always — verify with `size` after every change.
+
+## 20.4  Where SPL lives in the source
+
+```
+common/spl/                    # the SPL framework
+├── spl.c                      # generic entry, board_init_r/f, weak hooks
+├── spl_mmc.c                  # MMC boot-medium loader
+├── spl_nand.c                 # NAND boot-medium loader
+├── spl_spi.c                  # SPI-NOR boot-medium loader
+├── spl_fit.c                  # FIT image support inside SPL
+└── ...
+arch/arm/cpu/armv7/
+├── start.S                    # SPL/U-Boot shared startup asm
+├── lowlevel_init.S            # earliest C-callable code
+└── ...
+arch/arm/mach-imx/
+├── spl.c                      # i.MX-family SPL hooks
+└── mx6/
+    └── ddr.c                  # the MMDC driver SPL relies on
+board/freescale/mx6ull_14x14_evk/
+├── spl.c                      # board-specific SPL: which DDR, which pinmux
+└── mx6ull_14x14_evk.c         # full U-Boot's board code
+```
+
+The SPL is built as a separate binary from these files. The flow:
+
+```
+                       Boot ROM
+                          │ loads SPL (~40 KB) into OCRAM @ 0x00907400
+                          ▼
+                       start.S      (CPU init: stack, mode, vectors)
+                          │
+                          ▼
+                  lowlevel_init.S   (very-early C-callable hooks)
+                          │
+                          ▼
+                   board_init_f     (in common/spl/spl.c; "front-end")
+                          │
+                          ├──► arch_cpu_init        (CCM, clocks)
+                          ├──► spl_dram_init        (MMDC bring-up)
+                          ├──► preloader_console_init
+                          ▼
+                   board_init_r     (in common/spl/spl.c; "rear-end")
+                          │
+                          ├──► spl_mmc_load_image  (read u-boot.imx from SD)
+                          │            │
+                          │            └──► copy to DRAM @ 0x87800000
+                          ▼
+                   jump_to_image_no_args
+                          │ branches to the loaded U-Boot
+                          ▼
+                   (full U-Boot now running in DRAM)
+```
+
+You can read each of these files in under 10 minutes per file. Together they are the cleanest reference implementation of a bootloader's first stage available in open source.
+
+## 20.5  Reading `start.S`
+
+Open `arch/arm/cpu/armv7/start.S`:
+
+```asm
+ENTRY(reset)
+    /* Allow the board to save important registers */
+    b   save_boot_params
+
+    .globl  save_boot_params_ret
+save_boot_params_ret:
+    /*
+     * disable interrupts (FIQ and IRQ), also set the cpu to SVC32 mode,
+     * except if in HYP mode already
+     */
+    mrs r0, cpsr
+    and r1, r0, #0x1f       @ mask mode bits
+    teq r1, #0x1a           @ test for HYP mode
+    bicne   r0, r0, #0x1f   @ clear all mode bits
+    orrne   r0, r0, #0x13   @ set SVC mode
+    orr r0, r0, #0xc0       @ disable FIQ and IRQ
+    msr cpsr,r0
+
+    /* the mask ROM code should have PLL and others stable */
+    bl  cpu_init_cp15
+    bl  cpu_init_crit
+    bl  _main
+```
+
+You wrote almost every line of this in Chapter 10's `startup.S`. The differences:
+
+- `save_boot_params` is a hook the SoC family uses to capture boot-mode info the ROM leaves in registers. We never needed it in bare-metal.
+- The HYP-mode check is for Cortex-A15+ which can boot in hypervisor mode. The Cortex-A7 on i.MX6ULL does not have HYP, so the check is a no-op for us.
+- `cpu_init_cp15` configures cache and MMU registers to a known state.
+- `cpu_init_crit` does very-early board-critical init (memory remapping, system control register tweaks).
+- `_main` (defined in `arch/arm/lib/crt0.S`) is the C-runtime entry — sets up the stack, then calls `board_init_f`.
+
+The structural shape is identical to ours. Production U-Boot adds the safety nets and SoC-family abstractions that we skipped because we only had one SoC.
+
+## 20.6  `board_init_f` — the "before relocation" stage
+
+The "f" stands for "flash" (historical — back when U-Boot ran first from flash, before it relocated itself to RAM). In SPL, `board_init_f` runs from OCRAM and its job is "set up everything DRAM needs":
+
+```c
+void board_init_f(ulong dummy)
+{
+    arch_cpu_init();           /* clocks, etc. */
+    timer_init();              /* GPT-based timer */
+    preloader_console_init();  /* UART up; printf works */
+    spl_dram_init();           /* THE BIG ONE: DRAM up */
+    memset(__bss_start, 0, __bss_end - __bss_start);  /* zero .bss */
+    board_init_r(NULL, 0);     /* hand off to next stage */
+}
+```
+
+Five calls. Each is a chapter from Part II.
+
+After this function returns... no, it doesn't return. `board_init_r` is a tail-call: it never returns, the SPL keeps running, the SPL never exits. The `board_init_f` stack frame is reused by `board_init_r`.
+
+## 20.7  `board_init_r` — the "after relocation" stage
+
+The "r" originally meant "RAM" — after relocation to RAM. In SPL, there is no relocation (SPL stays in OCRAM throughout its life). The name is kept for symmetry with full U-Boot, where the distinction matters (Chapter 21).
+
+In SPL, `board_init_r` (defined in `common/spl/spl.c`):
+
+```c
+void board_init_r(gd_t *dummy1, ulong dummy2)
+{
+    /* ... */
+    struct spl_image_info spl_image;
+    int ret = spl_load_image(BOOT_DEVICE_MMC1, &spl_image);
+    if (ret)
+        hang();
+    jump_to_image_no_args(&spl_image);
+}
+```
+
+`spl_load_image` dispatches to the right loader based on the boot device:
+
+- `BOOT_DEVICE_MMC1` → `spl_mmc_load_image` → reads `u-boot.imx` from SD card LBA 138 (= `seek=69` in 1 KB blocks)
+- `BOOT_DEVICE_NAND` → `spl_nand_load_image`
+- `BOOT_DEVICE_SPI` → `spl_spi_load_image`
+- `BOOT_DEVICE_USB` → `spl_usb_load_image` (for USB SDP recovery)
+
+The loader copies bytes to `spl_image.load_addr` (typically `0x87800000`, near the top of DRAM). Then `jump_to_image_no_args`:
+
+```c
+typedef void __noreturn (*image_entry_noargs_t)(void);
+void jump_to_image_no_args(struct spl_image_info *spl_image)
+{
+    image_entry_noargs_t entry = (image_entry_noargs_t)spl_image->entry_point;
+    entry();
+}
+```
+
+That's the entire handoff: cast the load address to a function pointer and call it. The next instruction executed is full U-Boot's `_start`, but now running from DRAM. SPL's OCRAM stack and code are discarded.
+
+## 20.8  Comparing SPL to your Ch 11 image-builder
+
+Bring up your `mkimx.py` from Chapter 11. The output of that tool is an `.imx` file:
+
+- A 1 KB pre-pad
+- An IVT
+- Optional DCD (we didn't use one in Ch 11)
+- BootData
+- Padding to offset `0x1000`
+- The code
+
+When U-Boot builds `SPL`, it produces an `.imx` file with **exactly the same structure**. Run:
+
+```sh
+$ xxd -s 0x400 -l 32 SPL
+00000400: d100 2040 0000 7880 0000 0000 0000 0000  .. @..x.........
+00000410: 0090 0900 0000 7780 0000 0000 0000 0000  ......w.........
+```
+
+Decode:
+
+- Magic `D1 00 20 40` ✓
+- Entry `0x80780000` (DRAM... wait, SPL runs from OCRAM)
+
+Hmm. Let me re-check. The entry for an SPL is *inside OCRAM*, not DRAM. The address you see depends on the U-Boot version and board config. For SPL on i.MX6ULL, you'd expect entry near `0x00908000`. If you see something starting with `0x807...` that is **not** an SPL — that is full U-Boot's `.imx` which loads to DRAM (and which the SPL loaded from SD).
+
+Try with the actual SPL artifact:
+
+```sh
+$ xxd -s 0x400 -l 32 spl/u-boot-spl.imx     # different filename in some builds
+```
+
+If the file doesn't exist under that name, look for `MLO` or `u-boot-spl-dtb.imx` in the build root. The IVT-bearing SPL artifact has different names across U-Boot versions; `find . -name "*.imx" -ls` after a fresh build to enumerate them.
+
+When you find the correct file, its IVT will have:
+
+- `entry` = somewhere in OCRAM (`0x00908000`-ish)
+- `self` = same OCRAM region
+- `BootData.start` = OCRAM load address
+- `BootData.length` = SPL size + headers
+
+Identical structure to your Chapter 11 output. The DCD inside SPL's `.imx` is the DDR init that the ROM walks **before SPL even runs**. This is "Pattern 1 from §20.1" applied to SPL specifically — the ROM brings up DDR via DCD, then loads SPL into OCRAM, then SPL... wait no, that's not right either, because SPL is what initializes DDR.
+
+The answer is subtle and worth pinning: the SPL `.imx` may or may not have a DCD. If it does, the DCD does *some* setup (clocks, maybe pads), but **not DDR** — DDR init is done by SPL's C code after SPL is loaded. The DCD's job in this case is the minimum needed before SPL's code can run. Compare your specific SPL's DCD against the EVK board's `.cfg` file (`board/freescale/mx6ull_14x14_evk/mx6ull_14x14_evk.cfg`) to see exactly what's there.
+
+## 20.9  The SPL-to-U-Boot handshake
+
+When SPL loads full U-Boot, it passes information through a small structure called the **`spl_image_info`**:
+
+```c
+struct spl_image_info {
+    const char *name;
+    u8 os;                 /* IH_OS_U_BOOT, IH_OS_LINUX, ... */
+    uintptr_t load_addr;   /* where the image was loaded */
+    uintptr_t entry_point; /* where to jump */
+    u32 size;
+    u32 flags;
+    /* ... */
+};
+```
+
+Full U-Boot, on entry, *does not consult* `spl_image_info` directly (the structure is in SPL's OCRAM-resident memory, which U-Boot is about to overwrite). Instead, SPL has already arranged for the right things to be true:
+
+- Full U-Boot's code is at `entry_point` in DRAM.
+- DRAM is alive (SPL did it).
+- The cache is in a known state (SPL flushed/disabled before jumping).
+- The stack is wherever full U-Boot's `_main` decides.
+
+Full U-Boot's `_main` then proceeds with *its* `board_init_f` → relocation → `board_init_r` → main loop. We trace this in Chapter 21.
+
+## 20.10  Lab
+
+1. **Find your SPL.** After your Chapter 19 build, locate the SPL ELF and its `.imx` wrapper. Use `size` to see how big each section is.
+2. **Read `board/freescale/mx6ull_14x14_evk/spl.c` end-to-end.** Annotate which functions you wrote analogues of in Part II and which are new.
+3. **Trace one DDR register write.** Pick `MDCFG1` (Chapter 14's tRP/tRAS/tRC/tWR setting). Find where it's set in `arch/arm/mach-imx/mx6/ddr.c`. Compare to your Chapter 14 constant.
+4. **Shrink the SPL.** In `make menuconfig`, disable an unused SPL feature (e.g., `CONFIG_SPL_USB_GADGET`). Rebuild. Note the change in `size spl/u-boot-spl`.
+5. **Break the SPL deliberately.** Edit `board/freescale/mx6ull_14x14_evk/spl.c`'s `spl_dram_init` to write a bogus value (e.g., `MDCFG1 = 0;`). Rebuild, flash, boot. Observe the freeze. *Restore.*
+6. **Reset cause investigation.** Boot, then immediately reset (button or short PWR). Compare the "Reset cause: ..." line on the second boot vs. the first. (POR vs. WDOG-RESET, etc.)
+
+Commit findings to `code/ch20-uboot-spl/NOTES.md`.
+
+## 20.11  Pitfalls
+
+- **`spl/u-boot-spl-dtb.bin` vs `spl/u-boot-spl-dtb.imx`.** The first is the raw SPL; the second is wrapped with an IVT for the Boot ROM. Use the second for SD-boot.
+- **Mixing SPL and full-U-Boot defconfigs.** They share one `.config`. The same defconfig builds both stages; you can't have separate configs without significant work.
+- **Forgetting that SPL has its own device tree.** SPL uses a *cut-down* DT — `u-boot-spl.dts` if defined — that only describes peripherals SPL actually uses. Adding a DT node for full U-Boot does not automatically make it visible to SPL.
+- **Out-of-bounds OCRAM access.** SPL has ~100 KB of OCRAM. If you accidentally grow it (large global arrays, large stack frames), boot fails silently — the image is bigger than the ROM expects.
+- **Cache state at handoff.** If SPL leaves caches dirty, full U-Boot may not see what SPL wrote. The standard pattern is `cleanup_before_linux()`-equivalent before jumping — clean caches, disable MMU. Mainline does this; if you hand-edit you must too.
+- **Calling SPL functions from full U-Boot.** They don't exist there — different binary, different memory map. Build errors usually catch this; runtime errors when they don't.
+
+## 20.12  Going deeper
+
+- **`doc/README.SPL`** in the U-Boot source — the canonical SPL doc.
+- **`common/spl/spl.c`** — the generic SPL framework. ~600 lines. Read it.
+- **`arch/arm/mach-imx/spl.c`** — i.MX-family SPL. ~400 lines.
+- **`board/freescale/mx6ull_14x14_evk/spl.c`** — board-specific SPL. ~500 lines.
+- **`arch/arm/mach-imx/mx6/ddr.c`** — the production DDR3 driver for i.MX6. This is the file to read alongside our Chapter 14.
+- **AN5331** — *Programming NAND Flash with U-Boot on the i.MX 6/7 series* (for NAND-boot SPL flows).
+
+> Next chapter: **Chapter 21 — U-Boot internals.** Now that we have SPL loading full U-Boot, we follow full U-Boot through reset → relocation → `main_loop`, and trace the command dispatcher that runs when you type at the `=>` prompt.
