@@ -191,6 +191,15 @@ part7-cookbook/ch73-magnetometer
 part7-cookbook/ch74-hall-rotary
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Power & current)
+:maxdepth: 2
+
+part7-cookbook/ch75-current-monitoring
+part7-cookbook/ch76-battery
+```
+
 ---
 
 ## What this is
