@@ -104,7 +104,179 @@ For an SD slot on uSDHC1:
 
 `cd-gpios` declares the card-detect line (a switch in the SD socket).
 
-## 66.5  EXT_CSD — the eMMC's health report card
+## 66.5  The MMC protocol — what's actually on the wire
+
+Unlike QSPI and EEPROM (Ch 64/65) — where a from-scratch driver was tractable in ~200 lines — an MMC/SD **host controller** driver is genuinely a different scale. The SD spec is ~700 pages; the eMMC spec is ~400. There are ~60 commands, multi-stage state machines, signal-voltage switching, tuning windows, CRC validation, and physical-layer subtleties. **Writing one from scratch in a chapter is not honest pedagogy.**
+
+What we *can* do — and what's productive — is **trace a single `read()` through the layers** so you understand exactly what the kernel does, and you can read the existing host driver's source after.
+
+### The protocol vocabulary
+
+MMC/SD commands are 48-bit packets:
+
+```
+   bit:  47  46         45–40     39–8       7–1       0
+        ┌────┬────┬──────────┬───────────┬───────┬─────┐
+        │ 0  │ 1  │ index    │ argument  │ CRC7  │ 1   │
+        └────┴────┴──────────┴───────────┴───────┴─────┘
+              ▲
+              direction: 1 = host→card, 0 = card→host (response)
+```
+
+A handful of commands you'll see in dmesg or in driver code:
+
+| Cmd | Name | Purpose |
+|-----|------|---------|
+| CMD0 | GO_IDLE_STATE | Reset card to idle |
+| CMD8 | SEND_IF_COND | Check SD 2.0 voltage range (SD vs eMMC discrimination) |
+| ACMD41 | SD_SEND_OP_COND | SD initialization, voltage window |
+| CMD1 | SEND_OP_COND | eMMC initialization equivalent |
+| CMD2 | ALL_SEND_CID | Read card identification |
+| CMD3 | SET_RELATIVE_ADDR | Assign a relative address (RCA) |
+| CMD7 | SELECT_CARD | Select the addressed card for I/O |
+| CMD8 (eMMC) | SEND_EXT_CSD | Read 512-byte EXT_CSD block |
+| CMD17 | READ_SINGLE_BLOCK | Read one block (512 B) |
+| CMD18 | READ_MULTIPLE_BLOCK | Read consecutive blocks until CMD12 |
+| CMD23 | SET_BLOCK_COUNT | Pre-declare a multi-block count (skip CMD12) |
+| CMD24 | WRITE_BLOCK | Write one block |
+| CMD25 | WRITE_MULTIPLE_BLOCK | Write consecutive blocks |
+| CMD12 | STOP_TRANSMISSION | End a CMD18/CMD25 sequence |
+| CMD13 | SEND_STATUS | Read card status register |
+| CMD6 | SWITCH | Set EXT_CSD fields (mode change, partition switch) |
+| CMD21 (eMMC) | SEND_TUNING_BLOCK | HS200/HS400 tuning pattern |
+
+Data transfers happen on the data lines in parallel with commands on the CMD line. A successful read of 4 blocks is roughly:
+
+```
+   Host → Card:  CMD17 (READ_SINGLE_BLOCK) | start_block_addr
+   Card → Host:  R1 response (status, OK)
+   Card → Host:  DAT lines: 512 bytes of data + CRC16
+```
+
+For multi-block (CMD18), one command triggers a stream of consecutive blocks until the host issues CMD12 to stop — much more efficient than per-block CMD17s.
+
+### The state machine
+
+Cards live in one of these states: **Idle → Ready → Identification → Standby → Transfer → Sending-data / Receive-data / Programming / Disconnected**. Commands move the card between states; only certain commands are valid in each state. The host's job is to track this state and never issue an illegal command.
+
+This is why a from-scratch MMC driver isn't tractable in a chapter — it's not the wire protocol (relatively simple), it's the state-machine management plus the voltage switching plus the tuning plus the CRC plus the error recovery.
+
+## 66.6  The kernel's MMC subsystem — three layers
+
+```
+   user-space: cat /dev/mmcblk1p1
+        │ read() syscall
+        ▼
+   ┌──────────────────────────────────────────────────┐
+   │  block layer (Ch 55D)                             │
+   │  builds a struct bio → struct request             │
+   └──────────────────────────────────────────────────┘
+        │ mmc_blk_request_fn (queue_rq callback)
+        ▼
+   ┌──────────────────────────────────────────────────┐
+   │  MMC block driver (drivers/mmc/core/block.c)       │
+   │  - converts bio offsets → MMC block addresses     │
+   │  - builds struct mmc_request                       │
+   └──────────────────────────────────────────────────┘
+        │ mmc_wait_for_req(host, mrq)
+        ▼
+   ┌──────────────────────────────────────────────────┐
+   │  MMC core (drivers/mmc/core/core.c)                │
+   │  - state-machine tracking                          │
+   │  - CMD/data sequencing                              │
+   │  - retry / error recovery                          │
+   └──────────────────────────────────────────────────┘
+        │ host->ops->request(host, mrq)
+        ▼
+   ┌──────────────────────────────────────────────────┐
+   │  Host driver (drivers/mmc/host/sdhci-esdhc-imx.c) │
+   │  - programs hardware registers                     │
+   │  - configures DMA / PIO                            │
+   │  - waits for completion IRQ                        │
+   │  - reads response register, returns to core        │
+   └──────────────────────────────────────────────────┘
+        │ MMIO + IRQ
+        ▼
+   uSDHC peripheral → physical bus → card
+```
+
+### The `mmc_host_ops` contract
+
+A host driver provides this struct of callbacks:
+
+```c
+/* drivers/mmc/host/sdhci-esdhc-imx.c — simplified */
+static const struct mmc_host_ops sdhci_esdhc_ops = {
+    .request          = sdhci_request,         /* execute one command + opt. data */
+    .set_ios          = sdhci_set_ios,         /* change clock, bus width, voltage */
+    .get_cd           = sdhci_esdhc_get_cd,    /* card-present? */
+    .get_ro           = sdhci_esdhc_get_ro,    /* write-protect? */
+    .enable_sdio_irq  = sdhci_enable_sdio_irq, /* for SDIO devices */
+    .execute_tuning   = sdhci_esdhc_executing_tuning, /* HS200 tuning */
+    .start_signal_voltage_switch = sdhci_start_signal_voltage_switch, /* 3.3→1.8 V */
+    /* ... */
+};
+```
+
+**That's the abstraction**. The core asks the host driver to "execute this request" or "switch to bus width 8" without caring whether the controller is uSDHC, sdhci-pci, dw-mshc, or anything else. The host driver translates abstract requests into specific MMIO writes for its hardware.
+
+### Tracing a single 4-KB read
+
+You run `dd if=/dev/mmcblk1p1 bs=4096 count=1 of=/tmp/x`. Here's what happens:
+
+1. **VFS** sends `read(fd, buf, 4096)` to the block-device file's chardev.
+2. **Block layer** receives a 4 KB bio at logical-block-address (LBA) = wherever in p1. Splits into `struct request` (one or more, depending on splitting policy).
+3. **`mmc_blk_request_fn`** (in `block.c`) is called as the queue's `queue_rq`. It:
+   - Calculates the **MMC block address** (LBA / 512, since MMC blocks are 512 B even when the FS uses larger).
+   - Decides between **single-block (CMD17)** for 1 block or **multi-block (CMD18 / CMD23+CMD18)** for 2+ blocks. For 4 KB = 8 blocks: multi-block with CMD23 prefix.
+   - Builds a **`struct mmc_request`** containing the command, data-direction, sg-list for the DMA destination, and a completion callback.
+4. **`mmc_wait_for_req(host, mrq)`** in the core: sends to host_ops->request, waits on the completion.
+5. **`sdhci_request`** in the host driver:
+   - Programs the eSDHC's command register (CMD18 opcode), argument register (start block), block-count register (8).
+   - Sets up SDMA: scatter-gather list pointing into the user-space buffer's pinned pages.
+   - Enables IRQs for "command complete" and "transfer complete."
+   - Writes the "start" bit; hardware now drives the bus.
+6. **Hardware** drives CMD18 onto the CMD line; eMMC responds with R1; eMMC begins streaming 8 × 512 bytes on the 8-bit DAT bus at 200 MHz (HS200) into DDR via DMA.
+7. **IRQ "command complete"** fires after the CMD line transaction; host reads R1 response register, captures status.
+8. **IRQ "transfer complete"** fires after the data phase finishes. Host driver calls `mmc_request_done(host, mrq)`.
+9. **MMC core** wakes the waiter; `mmc_blk_request_fn` checks for errors, retries if needed, calls `blk_mq_end_request(req, status)`.
+10. **Block layer** returns to user-space.
+
+End-to-end at HS200, 4 KB takes about ~25 µs (10 µs of bus time, ~15 µs of kernel + IRQ overhead). For a properly-sized buffer (~64 KB or larger), the kernel overhead amortises and you approach raw bus bandwidth.
+
+### A host driver's skeleton
+
+If you ever did need to write one (say, porting to a new SoC):
+
+```c
+static int sdhci_xxx_probe(struct platform_device *pdev)
+{
+    struct sdhci_host *host;
+    struct resource *iomem;
+
+    /* SDHCI is the common framework — most SDHCI-compatible host drivers
+       reuse the SDHCI core and only set quirks + IOMEM */
+    host = sdhci_pltfm_init(pdev, &sdhci_xxx_pdata, sizeof(struct sdhci_xxx));
+    if (IS_ERR(host)) return PTR_ERR(host);
+
+    /* Get clocks, regulators, IOMEM */
+    sdhci_get_of_property(pdev);
+
+    /* Custom: i.MX has non-standard register layout for some bits */
+    host->ops = &sdhci_xxx_ops;        /* override SDHCI defaults */
+    host->quirks |= SDHCI_QUIRK_BROKEN_DMA;
+    host->quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
+    host->mmc->caps |= MMC_CAP_NONREMOVABLE | MMC_CAP_8_BIT_DATA;
+
+    return sdhci_add_host(host);
+}
+```
+
+The **SDHCI framework** (`drivers/mmc/host/sdhci.c`) handles the standard cases; vendor drivers like `sdhci-esdhc-imx.c` add quirks and override specific operations. That's why the i.MX driver is ~1500 lines (mostly quirks) rather than 5000+ — the heavy lifting is in `sdhci.c`.
+
+For a completely custom controller (not SDHCI-compatible), you'd implement `mmc_host_ops` from scratch — that's more work but the structure is the same.
+
+## 66.7  EXT_CSD — the eMMC's health report card
 
 eMMCs maintain a 512-byte **Extended Card-Specific Data** register full of metadata. Read it from userspace:
 
@@ -135,7 +307,7 @@ The three key fields:
 
 Production firmware should periodically read these, log via MQTT/syslog to a fleet management system. When you see PRE_EOL warning across many units of the same age, you've quantified your hardware lifetime — invaluable for warranty planning.
 
-## 66.6  eMMC boot partitions
+## 66.8  eMMC boot partitions
 
 eMMCs typically have:
 - **Boot partition 1** (typically 4 MB).
@@ -164,7 +336,7 @@ eMMCs typically have:
 
 Why? Two boot partitions enable atomic boot-loader updates: write to boot0 while booting from boot1; on success, swap. Crash mid-update = boot1 still works.
 
-## 66.7  RPMB — replay-protected secure storage
+## 66.9  RPMB — replay-protected secure storage
 
 RPMB is a small (~4 MB) partition that requires HMAC authentication for every write. The eMMC controller verifies that a key (programmed once at factory) matches before allowing writes. Reads are authenticated too — you know the data hasn't been tampered with.
 
@@ -175,7 +347,7 @@ Use cases:
 
 Programming the RPMB key is one-shot — once written, that's it forever. **Don't experiment with RPMB on production boards.**
 
-## 66.8  Performance test
+## 66.10  Performance test
 
 ```
 [root@pa-mini:~]# dd if=/dev/zero of=/data/big.bin bs=1M count=512 conv=fsync
@@ -190,18 +362,20 @@ Programming the RPMB key is one-shot — once written, that's it forever. **Don'
 
 HS200 eMMC: 100–150 MB/s sequential, ~2500 IOPS random 4k write. Compare to a budget SD card: 30 MB/s sequential, ~200 IOPS random.
 
-## 66.9  Lab
+## 66.11  Lab
 
-1. **Inspect EXT_CSD.** Run `mmc extcsd read /dev/mmcblk1`. Identify the eMMC's life-time estimation.
-2. **Benchmark.** dd + fio at sequential and random. Compare against an SD card.
-3. **Boot partition write.** `dd` U-Boot to `mmcblk1boot0`. Activate it. Boot.
-4. **Force HS mode change.** In DT, remove `mmc-hs200-1_8v`. Reboot. Benchmark — confirm slower.
-5. **Wear monitoring script.** Daily cron: read EXT_CSD, log to /var/log/wear.log. After running for weeks, plot.
-6. **Pull-the-plug test.** With dd writing a large file, yank power. Reboot. Observe whether `fsck` finds errors. Compare eMMC vs SD card resilience (eMMC much better).
+1. **Trace a read with ftrace.** `echo function > /sys/kernel/debug/tracing/current_tracer; echo 'mmc_*' > set_ftrace_filter; cat /dev/mmcblk1p1 > /dev/null; cat trace`. See `mmc_blk_request_fn`, `mmc_wait_for_req`, `sdhci_request` fire in order — exactly the layered call chain described in §66.6.
+2. **Inspect EXT_CSD.** Run `mmc extcsd read /dev/mmcblk1`. Identify the eMMC's life-time estimation.
+3. **Benchmark.** dd + fio at sequential and random. Compare against an SD card.
+4. **Boot partition write.** `dd` U-Boot to `mmcblk1boot0`. Activate it. Boot.
+5. **Force HS mode change.** In DT, remove `mmc-hs200-1_8v`. Reboot. Benchmark — confirm slower.
+6. **Wear monitoring script.** Daily cron: read EXT_CSD, log to /var/log/wear.log. After running for weeks, plot.
+7. **Pull-the-plug test.** With dd writing a large file, yank power. Reboot. Observe whether `fsck` finds errors. Compare eMMC vs SD card resilience (eMMC much better).
+8. **Read the host driver.** Skim `drivers/mmc/host/sdhci-esdhc-imx.c`. Find `sdhci_esdhc_ops`. Find the i.MX-specific quirks (HS400 absence on i.MX6ULL, the tuning callback). With the layer model in §66.6 you should be able to navigate it.
 
 Commit code to `code/ch66-sd-emmc/`.
 
-## 66.10  Pitfalls
+## 66.12  Pitfalls
 
 - **`bus-width = <4>`** on a chip with 8 data lines wired. You get DS or HS speeds at best; HS200 needs 8-bit. Check schematic ↔ DT.
 - **Missing `vqmmc-supply`** for HS200. Driver can't switch to 1.8 V signaling; falls back to HS50. Look for "fall back" messages in dmesg.
@@ -213,12 +387,16 @@ Commit code to `code/ch66-sd-emmc/`.
 - **`force_ro` on boot partitions**. Default is RO; you must clear it to write. Don't forget to re-arm.
 - **Power-fail mid-erase.** eMMC's internal erase block is invisible. A power loss can corrupt a *bigger area than you wrote*. Industrial eMMCs (Micron e.MMC, KIOXIA) have PFAIL protection; consumer ones don't.
 
-## 66.11  Going deeper
+## 66.13  Going deeper
 
 - **`Documentation/mmc/`** — MMC subsystem documentation.
-- **`drivers/mmc/host/sdhci-esdhc-imx.c`** — i.MX uSDHC driver.
+- **`drivers/mmc/core/core.c`** — MMC core. Look at `mmc_wait_for_req`, `mmc_attach_sd`, `mmc_attach_mmc` for the state-machine code.
+- **`drivers/mmc/core/block.c`** — the block-driver glue. `mmc_blk_mq_issue_rq` is the per-request entry point.
+- **`drivers/mmc/host/sdhci.c`** — SDHCI common framework.
+- **`drivers/mmc/host/sdhci-esdhc-imx.c`** — i.MX uSDHC driver. ~1500 lines, mostly quirks over `sdhci.c`.
 - **`Documentation/devicetree/bindings/mmc/`** — MMC bindings.
 - **JEDEC eMMC 5.1 standard (JESD84-B51)** — the eMMC specification.
+- **SD Physical Layer Specification** — at sdcard.org (free Simplified version, ~250 pages).
 - **`mmc-utils`** — `mmc`, `mmc extcsd`, RPMB tools.
 - **`fio`** — the storage benchmarking tool.
 
