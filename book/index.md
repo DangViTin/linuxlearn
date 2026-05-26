@@ -200,6 +200,16 @@ part7-cookbook/ch75-current-monitoring
 part7-cookbook/ch76-battery
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Specialty sensors)
+:maxdepth: 2
+
+part7-cookbook/ch77-one-wire
+part7-cookbook/ch78-mems-mics
+part7-cookbook/ch79-health-sensors
+```
+
 ---
 
 ## What this is
