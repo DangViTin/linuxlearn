@@ -126,6 +126,42 @@ part6-drivers/ch49-iio-subsystem
 part6-drivers/ch50-regmap
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VI — Driver development (advanced + insertions)
+:maxdepth: 2
+
+part6-drivers/ch51-dma
+part6-drivers/ch51A-watchdog
+part6-drivers/ch51B-power-management
+part6-drivers/ch52-network-fec
+part6-drivers/ch52A-preempt-rt
+part6-drivers/ch53-sound-alsa-asoc
+part6-drivers/ch54-lcd-drm
+part6-drivers/ch54A-mtd-ubi
+part6-drivers/ch54B-v4l2-gstreamer
+part6-drivers/ch55-usb-gadget
+part6-drivers/ch55A-kernel-timers
+part6-drivers/ch55B-async-sigio
+part6-drivers/ch55C-can-flexcan
+part6-drivers/ch55D-block-device
+part6-drivers/ch55E-wifi
+part6-drivers/ch55F-cellular
+part6-drivers/ch55G-multi-touch
+part6-drivers/ch55H-hdmi-bridge
+part6-drivers/ch55I-rust-for-linux
+```
+
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Storage)
+:maxdepth: 2
+
+part7-cookbook/ch64-qspi-flash
+part7-cookbook/ch65-eeprom
+part7-cookbook/ch66-sd-emmc
+```
+
 ---
 
 ## What this is
@@ -176,7 +212,7 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
   - ✅ Drafted
 * - Part VI — Driver development
   - 20 + 13 supplementary
-  - 🟡 Drafting (Ch 36–43 done; 44–55I + insertions in progress)
+  - ✅ Drafted (Ch 36–55I + all insertions)
 * - Part VII — Device cookbook *(v1.3, new)*
   - 54 chapters (Ch 64–117)
   - ⬜ Not yet drafted

@@ -84,7 +84,7 @@ git push                   # site rebuilds automatically; live in ~30 s
 | Part III — U-Boot | ✅ Drafted (Ch 19–24 + inserted 23A) | ~128 |
 | Part IV — Kernel | ✅ Drafted (Ch 25–30 + inserted 27A, 30A) | ~148 |
 | Part V — Rootfs | ✅ Drafted (Ch 31–35 + inserted 35A, 35B, 35C) | ~140 |
-| Part VI — Drivers | 🟡 Drafting (Ch 36–43 done; 44–55I + inserts pending) | ~644 |
+| Part VI — Drivers | ✅ Drafted (Ch 36–55I + all insertions) | ~644 |
 | Part VII — Device cookbook | ⬜ Not yet drafted (54 chapters, Ch 64–117) | ~735 |
 | Part VIII — Debug, production | ⬜ Not yet drafted (9 numbered + 5 inserts: 120A–125A) | ~290 |
-| **Total drafted: ~944 pp of ~2,473 pp planned (~38 %)** | | |
+| **Total drafted: ~1,448 pp of ~2,473 pp planned (~59 %)** | | |
