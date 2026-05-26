@@ -162,6 +162,16 @@ part7-cookbook/ch65-eeprom
 part7-cookbook/ch66-sd-emmc
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Environmental sensors)
+:maxdepth: 2
+
+part7-cookbook/ch67-temp-humid-pressure
+part7-cookbook/ch68-light-color
+part7-cookbook/ch69-air-quality
+```
+
 ---
 
 ## What this is
