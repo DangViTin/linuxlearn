@@ -210,6 +210,27 @@ part7-cookbook/ch78-mems-mics
 part7-cookbook/ch79-health-sensors
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (ADC / DAC / clocks)
+:maxdepth: 2
+
+part7-cookbook/ch80-external-adc
+part7-cookbook/ch81-dac-clockgen
+```
+
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Displays)
+:maxdepth: 2
+
+part7-cookbook/ch82-rgb-lcd
+part7-cookbook/ch83-spi-lcd
+part7-cookbook/ch84-qspi-lcd
+part7-cookbook/ch85-oled-epaper
+part7-cookbook/ch86-touch-input
+```
+
 ---
 
 ## What this is
