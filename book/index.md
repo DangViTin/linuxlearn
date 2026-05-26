@@ -260,6 +260,16 @@ part7-cookbook/ch93-hosted-wifi
 part7-cookbook/ch94-wifi-bt-combo
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Bluetooth)
+:maxdepth: 2
+
+part7-cookbook/ch95-hci-bluetooth
+part7-cookbook/ch96-at-ble
+part7-cookbook/ch97-ble-mesh
+```
+
 ---
 
 ## What this is
