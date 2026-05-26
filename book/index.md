@@ -231,6 +231,35 @@ part7-cookbook/ch85-oled-epaper
 part7-cookbook/ch86-touch-input
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Cameras)
+:maxdepth: 2
+
+part7-cookbook/ch87-csi-cameras
+part7-cookbook/ch88-usb-uvc
+```
+
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Audio)
+:maxdepth: 2
+
+part7-cookbook/ch89-audio-codecs
+part7-cookbook/ch90-class-d-amps
+```
+
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (WiFi)
+:maxdepth: 2
+
+part7-cookbook/ch91-sdio-wifi
+part7-cookbook/ch92-usb-wifi
+part7-cookbook/ch93-hosted-wifi
+part7-cookbook/ch94-wifi-bt-combo
+```
+
 ---
 
 ## What this is
