@@ -172,6 +172,15 @@ part7-cookbook/ch68-light-color
 part7-cookbook/ch69-air-quality
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Motion sensors)
+:maxdepth: 2
+
+part7-cookbook/ch70-i2c-imus
+part7-cookbook/ch71-spi-imus
+```
+
 ---
 
 ## What this is
