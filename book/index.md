@@ -181,6 +181,16 @@ part7-cookbook/ch70-i2c-imus
 part7-cookbook/ch71-spi-imus
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Position & distance)
+:maxdepth: 2
+
+part7-cookbook/ch72-distance
+part7-cookbook/ch73-magnetometer
+part7-cookbook/ch74-hall-rotary
+```
+
 ---
 
 ## What this is
