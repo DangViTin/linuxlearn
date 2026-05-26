@@ -78,12 +78,13 @@ git push                   # site rebuilds automatically; live in ~30 s
 
 | Part | Status | Pages |
 |------|--------|-------|
-| TOC | ✅ Complete — v1.2 (64 numbered + 23 inserted = 87 chapters) | — |
+| TOC | ✅ Complete — v1.3 (118 numbered + 23 inserted = 141 chapters) | — |
 | Part I — Foundations | ✅ Drafted (Ch 1–8, patched v1.1 + v1.2) | ~136 |
 | Part II — Bare-metal | ✅ Drafted (Ch 9–18 + inserted 18A / 18B / 18C) | ~252 |
 | Part III — U-Boot | ✅ Drafted (Ch 19–24 + inserted 23A) | ~128 |
 | Part IV — Kernel | ✅ Drafted (Ch 25–30 + inserted 27A, 30A) | ~148 |
 | Part V — Rootfs | ✅ Drafted (Ch 31–35 + inserted 35A, 35B, 35C) | ~140 |
 | Part VI — Drivers | 🟡 Drafting (Ch 36–43 done; 44–55I + inserts pending) | ~644 |
-| Part VII — Debug, production | ⬜ Not yet drafted (9 numbered + 5 inserts: 58A–63A) | ~290 |
-| **Total drafted: ~388 pp of ~1,738 pp planned (~22 %)** | | |
+| Part VII — Device cookbook | ⬜ Not yet drafted (54 chapters, Ch 64–117) | ~735 |
+| Part VIII — Debug, production | ⬜ Not yet drafted (9 numbered + 5 inserts: 120A–125A) | ~290 |
+| **Total drafted: ~944 pp of ~2,473 pp planned (~38 %)** | | |

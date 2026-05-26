@@ -10,7 +10,9 @@
 
 ## Scope
 
-**7 Parts, 87 chapters (64 numbered + 23 supplementary, "letter-suffix" convention), ~1700 pages.** The supplementary chapters expand specific topics where the numbered chapters' default depth is not enough for production work — they share a parent number (e.g., `18A` extends `Ch 18`) and can be read independently. The numbered chapters are the required path; the supplementary chapters are recommended.
+**8 Parts, 141 chapters (118 numbered + 23 supplementary, "letter-suffix" convention), ~2,470 pages.** The supplementary chapters expand specific topics where the numbered chapters' default depth is not enough for production work — they share a parent number (e.g., `18A` extends `Ch 18`) and can be read independently. The numbered chapters are the required path; the supplementary chapters are recommended.
+
+v1.3 inserted **Part VII — Device Cookbook** (54 chapters, Ch 64–117), one chapter per device class with 2–4 real chips compared side-by-side. The old "Debug, production, advanced" Part VII became Part VIII (Ch 118–126 + insertions).
 
 ## What the book covers
 
@@ -19,11 +21,13 @@
 - **Part III — U-Boot, deeply.** Build mainline U-Boot, recognize Part II inside its source, understand SPL, trace the boot flow line by line, port U-Boot to a custom board, master `bootcmd` / `bootargs` / FIT, build a multi-variant FIT image, set up the TFTP + NFS + USB-OTG development loop.
 - **Part IV — The Kernel.** Build mainline Linux for i.MX6ULL, boot it from U-Boot, deep-dive on the Device Tree, trace `start_kernel()` to PID 1, build an initramfs from scratch, master `make menuconfig`, learn the kernel-lifecycle decision framework (mainline / LTS / vendor BSP), validate DT bindings against YAML schemas.
 - **Part V — Root filesystem & user space.** A `busybox`-based hand-built rootfs; `/proc` `/sys` `devtmpfs`; init systems; libc and dynamic linking; Buildroot; Ubuntu-base as a fully-featured alternative; read-only root + overlayfs for industrial deployments; containers on embedded.
-- **Part VI — Driver development.** ~33 chapters covering every common subsystem from char devices and platform drivers through I²C/SPI/PWM/RTC/IIO/regmap/DMA/Net/Sound/DRM/USB, with deeper treatment of CAN, multi-touch, block devices, WIFI, cellular modems, HDMI bridges, kernel timers, async notification, watchdog, power management, PREEMPT_RT real-time, MTD/UBI, V4L2/GStreamer, and a Rust-for-Linux sidebar.
-- **Part VII — Debug, production, advanced.** JTAG/OpenOCD/GDB across layers; kernel debugging without JTAG (ftrace, eBPF, kgdb); user-space debugging; a capstone custom-board port; build your own toolchain with crosstool-NG; Yocto layer development; secure boot (HAB) and OP-TEE; field updates (RAUC, SWUpdate, Mender); the mainline patch-submission workflow; CI/CD for embedded; BSP → mainline migration playbook; VSCode + gdbserver remote debug.
+- **Part VI — Driver development.** ~33 chapters covering every common subsystem from char devices and platform drivers through I²C/SPI/PWM/RTC/IIO/regmap/DMA/Net/Sound/DRM/USB, with deeper treatment of CAN, multi-touch, block devices, WIFI, cellular modems, HDMI bridges, kernel timers, async notification, watchdog, power management, PREEMPT_RT real-time, MTD/UBI, V4L2/GStreamer, and a Rust-for-Linux sidebar. **One canonical example per subsystem** — depth on real chips lives in Part VII.
+- **Part VII — Device cookbook** *(new in v1.3)*. 54 chapters, one per common device class, with 2–4 real chips compared side-by-side: schematic + DT example + driver code (or existing-driver enablement) + user-space access + lab + chip-specific pitfalls. Storage, environmental & motion sensors, ADCs/DACs, displays, cameras, audio codecs, WiFi/BT modules, LoRa/UWB/ZigBee/cellular, industrial buses (RS-485, LIN, CAN), RFID/NFC, fingerprint, smart LEDs (WS2812), motor drivers, external RTC. *This is the go-to reference Part.*
+- **Part VIII — Debug, production, advanced.** JTAG/OpenOCD/GDB across layers; kernel debugging without JTAG (ftrace, eBPF, kgdb); user-space debugging; a capstone custom-board port; build your own toolchain with crosstool-NG; Yocto layer development; secure boot (HAB) and OP-TEE; field updates (RAUC, SWUpdate, Mender); the mainline patch-submission workflow; CI/CD for embedded; BSP → mainline migration playbook; VSCode + gdbserver remote debug.
 
 ## Revision history
 
+- **v1.3 (2026-05-26)** — Added **Part VII — Device Cookbook** (54 new chapters, Ch 64–117): one chapter per device class with 2–4 real chips deeply compared. Covers storage (QSPI flash, EEPROM, SD/eMMC), environment / motion / position / power sensors, external ADCs+DACs+clock-gen, all display types (RGB-parallel / SPI / QSPI / OLED / e-paper / touch), cameras (parallel CSI + USB UVC), audio codecs and class-D amps, WiFi (SDIO/USB/hosted/combo), BLE (HCI/AT/mesh), LoRa/sub-GHz/ZigBee/UWB, cellular (USB 4G/UART/NB-IoT), identification (RFID/NFC, fingerprint), GPS/PPS, industrial buses (RS-485/LIN/CAN), motors & encoders, smart LEDs, dual-FEC + hosted Ethernet, PMICs, external RTC. Old Part VII (debug/production) renumbered to Part VIII (Ch 118–126). Total → 141 chapters, ~2,470 pages.
 - **v1.2 (2026-05-25)** — Strengthened production-hardening coverage; added kernel-lifecycle, watchdog, power management, PREEMPT_RT, MTD/UBI, V4L2/GStreamer, Rust, mainline-submission workflow, CI/CD, BSP→mainline migration, Yocto layer development, multi-variant FIT, DT bindings YAML, container runtimes. Total → 87 chapters.
 - **v1.1 (2026-05-25)** — Added project-organization chapter for bare-metal, button/beep, bare-metal RTC; Ubuntu-base rootfs; driver chapters for CAN, block device, WIFI, cellular, multi-touch, kernel timers, async I/O, HDMI bridge; VSCode remote-debug workflow.
 - **v1.0 (2026-05-24)** — Initial TOC: 7 Parts, 64 chapters.
@@ -758,16 +762,558 @@ Since Linux 6.1, Rust is a supported language for kernel modules. As of 2026 the
 
 ---
 
-# PART VII — DEBUG, PRODUCTION, ADVANCED
+# PART VII — DEVICE COOKBOOK *(v1.3, new)*
 
-### Chapter 56 — JTAG, OpenOCD, GDB at every layer
+> *Part VI taught you the kernel's driver frameworks with one good example each. This Part is the reference: for each common device class, two or three real chips compared side-by-side, with schematics, DT bindings, driver code or kernel-driver enablement, user-space access, and the pitfalls specific to each chip.*
+>
+> *Each chapter follows a tighter template: **What it does → Compare alternatives → Wiring/schematic → DT example → Driver (existing or write) → User-space access → Lab → Pitfalls**. Most chapters are ~12–14 pages. Read sequentially or hop directly to the chapter for the chip in front of you — chapters in this Part are almost entirely independent of each other.*
+
+## Group A — Storage devices
+
+### Chapter 64 — QSPI NOR flash
+- **Chips:** Winbond W25Q128 / W25Q64; Macronix MX25L256; Micron MT25Q. Trade-offs (size, speed, erase granularity, security features).
+- The i.MX6ULL QSPI controller and its limits
+- DT bindings for `spi-nor`; `m25p80`; the `jedec,spi-nor` compatible
+- MTD partitions for u-boot env, kernel, dtb, rootfs slot A/B
+- Erasing and writing from user-space: `mtd-utils` (`flash_erase`, `nandwrite`, `flashcp`)
+- XIP from QSPI — when it makes sense, when it doesn't
+- **Lab:** partition a W25Q128, store the U-Boot env on it, boot kernel from it via FIT
+- **Pitfalls:** read-only mode after lockdown; quad-mode vs single-mode performance trap
+- **Pages:** ~16
+
+### Chapter 65 — I²C / SPI EEPROM
+- **Chips:** Microchip AT24C02/32/256/512 (I²C); AT25-series (SPI); 25LCxx (SPI).
+- The `at24` kernel driver and what its DT properties really do (`pagesize`, `read-only`, `wp-gpios`)
+- The `nvmem` framework: where EEPROM cells become typed kernel-side accessors
+- Writing the MAC address from EEPROM into the FEC at probe time
+- Wear: page-write counting, the "spread your writes" pattern
+- **Lab:** store board serial number + MAC in an EEPROM; verify FEC picks it up
+- **Pitfalls:** I²C addressing scheme variants; the 256-byte boundary "rollover" bug
+- **Pages:** ~12
+
+### Chapter 66 — SD card and eMMC deep dive
+- The MMC subsystem; SDIO is the same machinery (Ch 91 will reuse it)
+- Speed modes: DS, HS, HS200, HS400 — what your eMMC and your i.MX SDHC support
+- CMD23 vs CMD12 multi-block read terminators
+- eMMC partition table: boot partitions, RPMB, GP areas
+- Wear-levelling: what eMMC firmware does, what UBI does, what neither does
+- TRIM/discard for eMMC vs SD
+- **Lab:** read out an eMMC's "device life-time estimation" via the EXT_CSD register; measure HS200 throughput vs HS
+- **Pages:** ~16
+
+## Group B — Environmental sensors
+
+### Chapter 67 — Temperature / humidity / pressure
+- **Chips:** Bosch BME280 (T/H/P I²C+SPI); Sensirion SHT3x (T/H I²C, lab-grade); ASAir AHT20 (T/H I²C, cheap).
+- IIO drivers for each; how user-space reads via `/sys/bus/iio/devices/`
+- Calibration registers in BME280; why the raw reading isn't the temperature
+- Polling vs trigger-driven sampling
+- Time-averaging in user-space: simple moving average vs exponential
+- **Lab:** record T/H/P to CSV every 10 s for 24 h; plot drift
+- **Pitfalls:** self-heating in BME280 (the device's own current warms its sensor); the "after power-on wait 2 ms" SHT3x trap
+- **Pages:** ~14
+
+### Chapter 68 — Light & color sensors
+- **Chips:** Rohm BH1750 (ambient lux, I²C); AMS TSL2561 (broad-band + IR-channel, I²C); Vishay VEML7700 (low-power lux).
+- IIO drivers, `in_illuminance_input` interpretation
+- The "logarithmic eye" — what lux means and when it lies
+- **Bonus:** AMS TCS34725 (RGB color sensor) and Avago APDS-9960 (RGB + gesture); driver and DT included
+- **Lab:** an ambient-light-driven backlight regulator in user-space
+- **Pitfalls:** TSL2561's IR-saturation regime; lens / window choice on enclosure
+- **Pages:** ~14
+
+### Chapter 69 — Air quality, gas, particulate matter
+- **Chips:** Sensirion SCD30 (CO₂ NDIR, I²C); AMS CCS811 (eCO₂/TVOC, I²C); Plantower PMS5003 (PM1/2.5/10, UART); Nova SDS011 (PM2.5/10, UART); MQ-x analog series + ADC.
+- Why "eCO₂" is *not* CO₂ (CCS811 estimates from VOCs and resistance drift)
+- NDIR true-CO₂ measurement (SCD30); cost vs accuracy
+- Laser-scattering PM sensors; airflow control via fan PWM
+- The 24-hour warm-up problem with CCS811
+- **Lab:** a 5-channel home air-quality monitor → MQTT → Grafana
+- **Pitfalls:** MQ-x cross-sensitivity (most "MQ-2 = LPG" claims are wrong); PM-sensor fan failure detection
+- **Pages:** ~14
+
+## Group C — Motion sensors
+
+### Chapter 70 — I²C IMUs
+- **Chips:** InvenSense MPU6050 (6-axis, classic); MPU9250 (9-axis with mag); InvenSense ICM-20948 (newer 9-axis).
+- The IIO trigger/buffer mechanism for 6-/9-axis IMUs at 1000 Hz
+- DMP firmware blob in MPU6050 — what it gives you (quaternions), what it costs (closed-source, less control)
+- The magnetometer-as-slave-I²C-master quirk in MPU9250
+- Tilt-compensated heading; sensor fusion via Madgwick filter in user-space
+- **Lab:** a 100 Hz orientation tracker with a quaternion-output API
+- **Pitfalls:** stale I²C addresses (0x68/0x69); gyro bias drift after temp changes
+- **Pages:** ~16
+
+### Chapter 71 — SPI IMUs (high-rate / low-noise)
+- **Chips:** ST LSM6DSO (6-axis); InvenSense ICM-42688 (high-rate, low-noise); Analog Devices ADXL345 (3-axis accel only).
+- Why SPI for IMUs above ~400 Hz
+- ICM-42688's FIFO and watermark-IRQ — sampling thousands of points per second efficiently
+- ODR / range / filter settings
+- **Lab:** capture 1 kHz vibration data; FFT analysis for resonance detection
+- **Pitfalls:** SPI mode 3 vs mode 0 confusion; ODR vs filter-cutoff mismatch
+- **Pages:** ~14
+
+## Group D — Position & distance
+
+### Chapter 72 — Distance & proximity
+- **Chips:** STMicro VL53L0X (ToF laser, I²C); VL53L1X (longer range); HC-SR04 (ultrasonic GPIO); Sharp GP2Y0A (IR analog).
+- The VL53L0X firmware-loading dance
+- ToF lighting/glass surface failure modes
+- HC-SR04 vs GPIO timing — why this is hard on Linux without a high-precision timer or PRU
+- **Lab:** an "approach detector" with 3 different sensors compared side-by-side
+- **Pitfalls:** VL53L0X bus collisions (I²C address conflicts); HC-SR04 +5 V level-shifting
+- **Pages:** ~14
+
+### Chapter 73 — Magnetometer / compass
+- **Chips:** Honeywell HMC5883L (I²C, common but EOL); QST QMC5883L (cheap clone); Memsic MMC5983MA (newer, lower noise).
+- Hard-iron and soft-iron calibration; why your compass points 23° wrong from the start
+- IIO `magn_x/y/z` output and the `scale` attribute
+- **Lab:** a calibrated digital compass with tilt compensation
+- **Pitfalls:** mounting the magnetometer near a buck regulator destroys readings
+- **Pages:** ~12
+
+### Chapter 74 — Hall-effect & rotary position sensors
+- **Chips:** AMS AS5048A (magnetic rotary, SPI/I²C); Allegro A1324 (linear Hall analog); Infineon TLE5012 (high-rate angular sensor).
+- Off-axis vs on-axis sensor placement
+- The IIO `angl` channel and absolute-position rotary encoders
+- High-rate angular sampling for motor commutation
+- **Lab:** an absolute-angle joystick using AS5048A
+- **Pitfalls:** magnet-distance sensitivity (1 mm changes everything); diametric vs axial magnets
+- **Pages:** ~12
+
+## Group E — Power & current
+
+### Chapter 75 — Current and power monitoring
+- **Chips:** TI INA219 (low-side, I²C); INA226 (improved, calibration); INA3221 (3-channel); Allegro ACS712 (Hall analog).
+- Shunt selection: heat, accuracy, layout
+- INA226 calibration register — why "current_lsb = max_current / 32768"
+- 3-rail simultaneous monitoring via INA3221
+- **Lab:** a hot-plug power meter with 100 µA resolution
+- **Pitfalls:** shared-ground violations; the "ACS712 zero point isn't 2.5 V" calibration
+- **Pages:** ~12
+
+### Chapter 76 — Battery fuel gauge + charger
+- **Chips:** Maxim MAX17048 (1-cell fuel gauge, I²C); TI BQ27441-G1; TP4056 (cheap charger); MCP73833; TI BQ24074 (path-managed charger).
+- The battery-empty problem and SoC (state-of-charge) estimation
+- Charger thermal regulation and JEITA temperature profiles
+- The `power_supply_class` kernel framework; `/sys/class/power_supply/`
+- **Lab:** a Linux laptop-style battery indicator on a Li-ion-powered i.MX6ULL device
+- **Pitfalls:** TP4056 mass-production cells without temperature monitoring; SoC drift over months
+- **Pages:** ~14
+
+## Group F — Specialty sensors
+
+### Chapter 77 — 1-Wire sensors
+- **Chips:** Maxim DS18B20 (digital thermometer, 1-Wire); DHT11 / DHT22 (single-wire T/H, *not* true 1-Wire); DS2480B (1-Wire master).
+- The kernel `w1` subsystem and its slave drivers
+- Why DHT11/22 is a timing-critical mess on a non-RT Linux (and why dedicated MCU helper is sometimes the answer)
+- Parasitic-power mode for DS18B20
+- **Lab:** a 10-sensor temperature bus with one GPIO and a long cable
+- **Pitfalls:** the "USB-Serial DS9097 emulator does the parity tricks for you" pattern
+- **Pages:** ~14
+
+### Chapter 78 — MEMS microphones (I²S)
+- **Chips:** InvenSense INMP441 (I²S MEMS); ICS-43434 (lower noise); SPH0645 (similar).
+- ASoC DAI for I²S microphones; sampling via `arecord`
+- Stereo via two mono mics; beamforming basics
+- **Lab:** record 48 kHz stereo from two INMP441s; visualize FFT in real-time
+- **Pitfalls:** WS line ringing on long cables; PDM vs I²S confusion
+- **Pages:** ~12
+
+### Chapter 79 — Health sensors (HR / SpO2)
+- **Chips:** Maxim MAX30100 (basic); MAX30102 (improved, smaller); MAX30105 (with particle-sensing channel).
+- PPG (photoplethysmography) raw signal, IR vs red channel
+- Heart-rate extraction in user-space; SpO2 calibration constants
+- **Lab:** a finger-clip pulse oximeter with continuous HR/SpO2 over MQTT
+- **Pitfalls:** motion artifacts (this is why a Fitbit's HR is noisy when you walk); SpO2 accuracy claims
+- **Pages:** ~12
+
+## Group G — Analog conversion & clock generation
+
+### Chapter 80 — External ADCs
+- **Chips:** TI ADS1115 (16-bit I²C); ADS1256 (24-bit SPI low-noise); Microchip MCP3008 (10-bit 8-ch SPI cheap); Analog Devices AD7606 (16-bit 8-ch parallel sampling, true simultaneous).
+- IIO drivers; sample rate vs ENOB trade-offs
+- AD7606's true-simultaneous sampling for power-quality / vibration
+- Ratiometric measurements (load cell, RTD)
+- **Lab:** 8-channel strain-gauge logger with AD7606
+- **Pitfalls:** input filter loading; reference-voltage stability
+- **Pages:** ~14
+
+### Chapter 81 — External DACs + clock generators
+- **Chips:** Microchip MCP4725 (12-bit I²C DAC); Analog Devices AD5663 (16-bit SPI DAC); SiLabs Si5351 (programmable 3-output clock generator); CDCE9xx series.
+- IIO `out_voltage*` for DACs
+- Si5351 — generating arbitrary clocks for SDR or for chip evaluation
+- The kernel `clk` framework integration with external clock chips
+- **Lab:** signal generator + clock chain for an SDR front-end
+- **Pitfalls:** PLL closed-loop stability; Si5351's "frequency = output * 2^N / M" config nightmare
+- **Pages:** ~12
+
+## Group H — Displays
+
+### Chapter 82 — RGB parallel LCD on LCDIF
+- **Panels:** ATK4384 (4.3" 480×272); ATK7016 (7" 1024×600); ATK10261 (10.1" 1280×800).
+- The DPI / RGB-parallel timing model: pixel clock, hsync, vsync, porches
+- `panel-simple` and how to add a custom panel
+- DRM/KMS basics for our case; the `imx-lcdif` driver
+- Backlight via PWM + `pwm_bl`
+- **Lab:** add a custom 5" 800×480 panel; modetest at full refresh rate
+- **Pitfalls:** pixel-clock too fast → tearing; reversed RGB swap on the connector
+- **Pages:** ~18
+
+### Chapter 83 — SPI LCD
+- **Panels:** ST7789 (240×320, 16-bit/18-bit color); ILI9341 (320×240); ILI9488 (320×480).
+- mainline `panel-mipi-dbi` driver + DRM tiny architecture
+- fbtft legacy and why we don't use it for new designs
+- Tearing-effect output and synchronized updates
+- **Lab:** a 320×240 ST7789 from `cat /dev/fb0` in 30 lines of DT
+- **Pitfalls:** SPI clock ceiling vs panel refresh; backlight-PWM bleed
+- **Pages:** ~16
+
+### Chapter 84 — QSPI LCD
+- **Panels:** GC9D01, ST77916, Sitronix SF055A; round LCDs popular for smart watches
+- Quad-SPI mode in the i.MX6ULL QSPI controller
+- The high-bandwidth bytes-per-frame budget
+- mipi-dbi-spi quad-mode driver
+- **Lab:** drive a 240×240 round display at 60 fps with a system load of < 5 %
+- **Pitfalls:** quad mode timing margins; data-order swap
+- **Pages:** ~12
+
+### Chapter 85 — OLED & e-paper
+- **Panels:** SSD1306, SH1106 (small OLED I²C/SPI); SSD1322 (large yellow OLED); SSD1680 (2.9" e-paper); IT8951 (large e-paper controller).
+- `ssd1307fb` legacy framebuffer driver; `repaper` (e-paper DRM driver)
+- e-paper refresh modes: full vs partial; ghosting
+- **Lab:** a desk indicator + a weather e-paper status panel
+- **Pitfalls:** OLED burn-in; e-paper partial-refresh ghost mitigation
+- **Pages:** ~14
+
+### Chapter 86 — Touch input ICs
+- **Chips:** Vishay TTP223 (single-key cap, GPIO output); NXP MPR121 (12-key cap, I²C); XPT2046 (4-wire resistive touch, SPI).
+- Adding capacitive touch buttons to a Linux input device via `gpio-keys`
+- MPR121 IIR baseline tracking; setting touch/release thresholds
+- 4-wire resistive touch + ADS7846/XPT2046 kernel driver; calibration via `xinput_calibrator`
+- Compare with GT911 multi-touch (covered in Ch 55G — separate chip class)
+- **Lab:** retrofit a resistive panel to a 4.3" RGB LCD; calibrate in 60 s
+- **Pitfalls:** XPT2046's interrupt-pin pulldown; resistive panels' temperature drift
+- **Pages:** ~14
+
+## Group I — Cameras
+
+### Chapter 87 — Parallel CSI cameras
+- **Sensors:** OmniVision OV7725 (0.3 MP); OV5640 (5 MP, parallel mode); OV2640 (2 MP); GalaxyCore GC2145 (2 MP).
+- The i.MX6ULL parallel CSI (no MIPI-CSI on this SoC)
+- V4L2 sensor sub-device model
+- Sensor-side: PLL, clocks, exposure, gain, white balance, autofocus (OV5640)
+- IPU/CSI capture pipeline
+- **Lab:** a GStreamer pipeline grabbing 30 fps QVGA video from OV5640
+- **Pitfalls:** the 5 MP "still mode" of OV5640 vs streaming; FOV vs lens choice
+- **Pages:** ~18
+
+### Chapter 88 — USB UVC cameras
+- The `uvcvideo` driver; what works mainstream, what doesn't
+- Bandwidth budgeting on USB 2.0 (480 Mbps theoretical; ~30 MB/s practical) — implications for resolution × frame rate
+- MJPEG vs YUYV vs H.264 modes
+- **Lab:** capture from a standard webcam; record 1080p30 to disk
+- **Pitfalls:** bandwidth contention with USB WiFi or USB Ethernet; non-UVC "drivers needed" cameras
+- **Pages:** ~10
+
+## Group J — Audio devices
+
+### Chapter 89 — I²S audio codecs
+- **Chips:** Cirrus WM8960 (used on many i.MX boards); SGTL5000 (NXP); Everest ES8388 (cheap, ESP32 favourite); TI TLV320AIC3104; Realtek ALC5640.
+- ASoC machine + codec + cpu-DAI triplet (referenced in Ch 53)
+- Differences: built-in DAC quality, PGA capability, mic-preamp
+- Headphone-jack detection
+- **Lab:** a stereo MP3 + line-in voice-loopback program
+- **Pitfalls:** master/slave clock-mode mismatch with i.MX SSI; sample-rate clock-derivation
+- **Pages:** ~16
+
+### Chapter 90 — Digital class-D amplifiers
+- **Chips:** TI TAS5805M (I²C-controlled DSP amp); Maxim MAX98357A (pure I²S, no I²C); TI PCM5102A (audio DAC + headphone).
+- The "amp without a codec" pattern: send raw I²S, amp does the rest
+- TAS5805M's DSP coefficients (EQ, compression, dynamic-range control)
+- The Bluetooth-speaker product pattern: A2DP source → I²S → MAX98357A
+- **Lab:** add a tunable EQ to a Bluetooth speaker
+- **Pitfalls:** ground-loop hum in class-D speakers; TAS5805M's I²C dance during startup
+- **Pages:** ~12
+
+## Group K — WiFi modules
+
+### Chapter 91 — SDIO WiFi
+- **Modules:** AP6212 (Broadcom-based, used on Point Atom boards); Realtek RTL8189FTV; Marvell SD8801.
+- The `brcmfmac` driver for Broadcom; `rtl8xxxu` and out-of-tree `rtl8189es`
+- Firmware loading and per-board NVRAM file
+- SDIO-WiFi clock and pin signal-integrity issues
+- **Lab:** boot Linux with WiFi-only networking; iperf3 over WiFi at 30+ Mbps
+- **Pitfalls:** AP6212 + Realtek firmware blob version mismatch; NVRAM regulatory-domain
+- **Pages:** ~18
+
+### Chapter 92 — USB WiFi
+- **Modules:** Realtek RTL8188EUS (cheap dongles); MediaTek MT7601; Ralink RT5370.
+- `rtl8xxxu` (mainline) vs out-of-tree `rtl8188eus` (better)
+- Driver kernel-version compatibility hell
+- Bandwidth contention vs USB Camera
+- **Lab:** swap WiFi between three USB dongles; compare throughput and latency
+- **Pitfalls:** out-of-tree DKMS pain; ralink stale signal
+- **Pages:** ~14
+
+### Chapter 93 — Hosted WiFi via ESP32 / ESP8266
+- **Modules:** ESP32 (esp-hosted firmware); ESP8266 (AT-command firmware).
+- The `esp-hosted` driver: SPI/UART transport, Linux sees a normal `wlan0`
+- AT-command mode: ESP as a TCP/IP offload engine
+- When this beats SDIO: legacy SoCs without SDIO, MCU+Linux co-existence
+- **Lab:** Linux WiFi via ESP32 over a single UART; iperf3 measurements
+- **Pitfalls:** AT-command flow control; esp-hosted firmware version pinning
+- **Pages:** ~14
+
+### Chapter 94 — WiFi+BT combo modules
+- **Modules:** AP6212 (BCM43438 — combined); Realtek RTL8723BS (SDIO combo).
+- The shared-antenna problem and PTA (packet-traffic arbitration)
+- Bringing up both Wi-Fi and BT simultaneously on a shared module
+- BT-over-UART + Wi-Fi-over-SDIO on the same chip
+- **Lab:** Wi-Fi tethering + BLE peripheral on the same module
+- **Pitfalls:** BT/Wi-Fi co-channel coexistence (2.4 GHz crowded)
+- **Pages:** ~12
+
+## Group L — Bluetooth & mesh
+
+### Chapter 95 — HCI BLE over UART/USB
+- **Modules:** Nordic nRF52 with Zephyr HCI firmware; Broadcom BCM4343 BT; CSR8510 USB.
+- The Bluetooth HCI specification; how Linux's `bluez` talks HCI over UART or USB
+- `hciattach`, `btmgmt`, `bluetoothctl`
+- BLE central vs peripheral; GATT services
+- **Lab:** a BLE peripheral that exposes a custom GATT service for temperature/humidity
+- **Pitfalls:** UART flow-control; HCI command/event timing
+- **Pages:** ~16
+
+### Chapter 96 — AT-command BLE modules
+- **Modules:** HM-10 (CC2540 with AT-command firmware); HC-08; JDY-08.
+- The "easy" path: BLE without a kernel stack — UART AT commands
+- Limitations: max throughput, no real GATT control, vendor-specific quirks
+- When this is the right choice (legacy, simplicity, BOM cost)
+- **Lab:** a UART-based "BLE serial port" data link in user-space
+- **Pitfalls:** firmware variant differences (HM-10 cloned five ways)
+- **Pages:** ~10
+
+### Chapter 97 — BLE Mesh
+- BLE Mesh protocol layers; provisioning, addressing, models
+- `bluez-mesh` daemon and the `meshctl` tool
+- Sample mesh networks: 20-node room lighting controller
+- **Lab:** provision and control 5 mesh nodes from a Linux gateway
+- **Pitfalls:** provisioning friction; mesh-traffic flood prevention
+- **Pages:** ~16
+
+## Group M — Long-range & specialty wireless
+
+### Chapter 98 — LoRa
+- **Chips:** Semtech SX1278 (legacy, 433/868/915 MHz); SX1262 (current); LLCC68 (cheap SX1262 alternative); EByte E22 modules.
+- The kernel `sx127x` driver and user-space LoRa stacks
+- LoRaWAN vs LoRa-P2P; ChirpStack vs The Things Network
+- Spreading factor, bandwidth, coding rate trade-offs
+- **Lab:** a 1 km point-to-point LoRa link with retries and acknowledgement
+- **Pitfalls:** frequency-band regulation per region; antenna SWR
+- **Pages:** ~16
+
+### Chapter 99 — Sub-GHz proprietary
+- **Chips:** Nordic nRF24L01 (2.4 GHz proprietary, 250 kbps – 2 Mbps); TI CC1101 (sub-GHz multi-band); CC1200.
+- When nRF24L01 beats BLE (raw throughput, latency, multi-PRX one-PTX hub)
+- CC1101 for sub-GHz remote controls and "smart" home devices
+- **Lab:** a 50-node star-topology nRF24L01 sensor network
+- **Pitfalls:** crystal-frequency mismatch tank-circuit issues; ack-timing in nRF24
+- **Pages:** ~12
+
+### Chapter 100 — ZigBee / Thread / 802.15.4
+- **Chips:** TI CC2530 (legacy ZigBee, Z-Stack); Nordic nRF52840 (modern, OpenThread); Silicon Labs EFR32MG.
+- ZigBee / Thread / 802.15.4 mesh tech compared
+- The CC2530 as ZNP (ZigBee Network Processor) → Linux runs zigbee2mqtt
+- nRF52840 OpenThread Border Router for the Matter ecosystem
+- **Lab:** a 10-node ZigBee mesh in zigbee2mqtt + Home Assistant
+- **Pitfalls:** Thread certification and credential setup; ZigBee profile compatibility
+- **Pages:** ~16
+
+### Chapter 101 — UWB ranging
+- **Chips:** Qorvo (Decawave) DWM1000; DWM3000 (newer, AirTag-compatible UWB IC); NXP NCJ29D5.
+- Time-of-flight ranging principle; centimeter-accuracy indoor positioning
+- Two-way ranging vs TDoA
+- iPhone / AirTag UWB ecosystem and FiRa standard
+- **Lab:** 3-anchor 2D position estimation with sub-10-cm RMSE
+- **Pitfalls:** antenna delay calibration; multipath in real environments
+- **Pages:** ~14
+
+## Group N — Cellular
+
+### Chapter 102 — USB 4G LTE modems
+- **Modules:** Quectel EC20, EC25; SimCom SIM7600; Telit LM940.
+- QMI vs MBIM vs RNDIS modes (how the modem appears to Linux)
+- ModemManager + nm-connection
+- Multi-band, LTE Cat-4 vs Cat-6 vs CA
+- **Lab:** auto-failover from WiFi to LTE when WiFi drops
+- **Pitfalls:** USB power draw of LTE modems (>2A on TX); APN-vs-SIM mismatch
+- **Pages:** ~16
+
+### Chapter 103 — UART AT-command modems
+- **Modules:** SIMCom A7670C, SIM7600 (UART variants); Air724UG; ML302.
+- The PPP+chat approach for legacy modems
+- AT-command discovery and capabilities probing
+- The 2G/3G legacy chains
+- **Lab:** SMS + GPRS data on a UART-only A7670C
+- **Pitfalls:** chat script timing; carrier-specific AT command quirks
+- **Pages:** ~12
+
+### Chapter 104 — NB-IoT / Cat-M1
+- **Modules:** Quectel BC95, BC26; SimCom SIM7080G.
+- Low-power cellular IoT — when it makes sense vs LoRa vs WiFi
+- AT command flows for ~30 mA RX, sub-mA PSM/eDRX sleep
+- MQTT and CoAP profiles for NB-IoT
+- **Lab:** a battery-powered NB-IoT sensor that runs 1+ year on a 19 Ah Li-SOCl2 cell
+- **Pitfalls:** carrier band availability (NB-IoT not universal); PSM wake-up latency
+- **Pages:** ~14
+
+## Group O — Identification
+
+### Chapter 105 — RFID / NFC
+- **Chips:** NXP MFRC522 (SPI 13.56 MHz, ubiquitous Arduino-clone); PN532 (I²C/SPI/UART, NFC-A/B/F); NCV6 series (HF-only).
+- The MFRC522 register-level dance
+- libnfc + neard for high-level NFC
+- Mifare Classic vs DESFire — security tier comparison
+- **Lab:** an access-control reader with logging; clone-tag warning detection
+- **Pitfalls:** Mifare Classic broken-by-default cryptanalysis; NFC reading-range limits
+- **Pages:** ~14
+
+### Chapter 106 — Fingerprint sensors
+- **Modules:** Grow R503 (capacitive, UART); FPM10A (optical, UART); GT-521F (capacitive); AS608.
+- UART command protocols; template enrollment and matching
+- libfprint for direct USB fingerprint scanners
+- Privacy implications: template storage and revocation
+- **Lab:** a 2-factor login flow combining password + fingerprint
+- **Pitfalls:** sensor warm-up on first scan; template-format incompatibility across vendors
+- **Pages:** ~12
+
+## Group P — Positioning
+
+### Chapter 107 — GPS / GNSS + PPS time synchronization
+- **Modules:** u-blox NEO-6M / 8M / 9M (multi-GNSS); ATGM336H (cheap Chinese alternative); SiRFStar V; Quectel L86.
+- NMEA-0183 parsing; UBX binary protocol for u-blox
+- gpsd + chrony for sub-microsecond PPS time sync
+- A stratum-1 NTP server from a Pi-class device + GPS
+- **Lab:** a GPS-disciplined NTP server hitting < 1 µs offset
+- **Pitfalls:** cold/warm start times; multipath in urban canyons; PPS pulse polarity
+- **Pages:** ~14
+
+## Group Q — Industrial buses
+
+### Chapter 108 — RS-485 + Modbus RTU
+- **Transceivers:** Maxim MAX485, SP3485; Analog Devices ADM2483 (isolated); MAX13487 (auto-direction).
+- RS-485 physical layer: differential pair, biasing, termination, fail-safe
+- DE/RE direction control via GPIO or auto-direction transceivers
+- Linux RS-485 mode in the UART driver (`SER_RS485_ENABLED`)
+- Modbus RTU framing and libmodbus
+- **Lab:** a 5-slave Modbus RTU network with PV inverters
+- **Pitfalls:** termination resistor placement; ground reference between segments
+- **Pages:** ~14
+
+### Chapter 109 — LIN bus
+- **Transceivers:** NXP TJA1020, TJA1027; Microchip MCP2003B.
+- LIN as a "UART with break and checksum" sub-CAN bus
+- Master/slave roles; PID, response, classic checksum vs enhanced
+- Linux's lack of native LIN — userspace SLIP-style or custom driver
+- **Lab:** an HVAC blower-control LIN slave talking to a real automotive ECU
+- **Pitfalls:** LIN frame timing tolerance; cable-length-vs-baud trade-offs
+- **Pages:** ~12
+
+### Chapter 110 — CAN deep dive
+- (Extension of Ch 55C) **Transceivers:** TJA1051 (5 V), TJA1463 (CAN-FD), MCP2562; SPI-CAN bridge MCP2515 (when SoC has no FlexCAN free).
+- CAN-FD vs classic CAN; bit-stuffing and frame-rate trade-offs
+- ISO-TP for ISO-15765 diagnostics
+- SocketCAN advanced: BCM (broadcast manager), CAN-J1939
+- **Lab:** an OBD-II diagnostic tool reading PIDs from a real car
+- **Pitfalls:** termination 60 Ω vs 120 Ω; differential signal-integrity at 1 Mbit/s
+- **Pages:** ~16
+
+## Group R — Motors & encoders
+
+### Chapter 111 — Quadrature encoders & rotary
+- **Devices:** incremental optical encoders; magnetic encoders; the `rotary_encoder` driver and `gpio-keys` for low-res.
+- Hardware quadrature decode on i.MX6ULL's eXtended quadrature decoder (XBAR + ENC)
+- A 2-pin GPIO quadrature decode in software (and why it doesn't work at high speed)
+- IIO `angl` channel
+- **Lab:** a velocity-controlled motor closed-loop with a 1024-line encoder
+- **Pitfalls:** Z-index pulse handling; debouncing mechanical encoders
+- **Pages:** ~12
+
+### Chapter 112 — Stepper & DC motor drivers
+- **Drivers:** TI DRV8825 (stepper, micro-stepping); Allegro A4988; Trinamic TMC2209 (silent stepper with UART config); BTS7960 (43 A H-bridge DC); DRV8302 (BLDC).
+- Step-Dir control via PWM/GPIO with a kernel `pwm` driver
+- TMC2209 UART config of microstep, RMS current, stallGuard
+- BLDC commutation: trapezoidal vs sinusoidal vs FOC
+- **Lab:** a 3-axis CNC with TMC2209 silent steppers
+- **Pitfalls:** missed steps from EMI; back-EMF damage to drivers
+- **Pages:** ~16
+
+## Group S — Indicators & smart LEDs
+
+### Chapter 113 — WS2812 / SK6812 / APA102 addressable LEDs
+- **Chips:** WS2812B (timing-strict 1-wire); SK6812 (similar, RGBW variant); APA102 (SPI-based, no timing issues).
+- Three implementation approaches:
+  1. **GPIO bit-bang** with PREEMPT_RT — only viable for short strips
+  2. **PWM + DMA** — repurpose PWM for serial bitstream
+  3. **SPI + DMA** — encode WS2812 timing in SPI bytes; cheap and robust
+- APA102's SPI native protocol; per-pixel global brightness
+- **Lab:** a 100-pixel WS2812 ring at 30 fps via SPI+DMA
+- **Pitfalls:** 5 V level shifting from 3.3 V GPIOs; long-strip data-line integrity
+- **Pages:** ~14
+
+### Chapter 114 — Beepers, relays, SSRs
+- Passive beepers via PWM; active beepers via GPIO
+- Mechanical relays vs MOSFETs vs SSRs — when to use which
+- AC SSR safety: opto-isolation, zero-cross switching, snubber circuits
+- **Lab:** a 4-channel home automation relay board with software-debounced switching
+- **Pitfalls:** relay-coil flyback; SSR sub-cycle leakage
+- **Pages:** ~10
+
+## Group T — Network & system power
+
+### Chapter 115 — Dual FEC + hosted Ethernet
+- Both i.MX6ULL FEC1 + FEC2 simultaneously: pin-mux, PHY-per-MAC, sep subnets
+- IP forwarding, bridging, and bonding between the two
+- **Chips:** WIZnet W5500 (SPI Ethernet with hardware TCP/IP); Microchip ENC28J60 (cheaper but slower).
+- Adding a 3rd Ethernet via SPI when you need 3+ network interfaces
+- **Lab:** a router with two Ethernet ports + one SPI Ethernet port; iperf3 throughput
+- **Pitfalls:** clock skew between PHYs; W5500 socket exhaustion
+- **Pages:** ~16
+
+### Chapter 116 — PMICs and regulator framework
+- **Chips:** NXP PCA9450 (i.MX-recommended PMIC); PF8200; Rohm BD71850MWV.
+- The `regulator` framework: consumer/provider model
+- Voltage sequencing for SoC + DDR + I/O rails
+- Dynamic voltage scaling integration with DVFS (Ch 51B)
+- **Lab:** add a PMIC to a board that previously used discrete LDOs; measure power savings
+- **Pitfalls:** boot-sequence races (kernel boots before PMIC's voltage settles); thermal throttling
+- **Pages:** ~16
+
+### Chapter 117 — External RTC
+- **Chips:** Maxim DS3231 (TCXO, ±2 ppm); NXP PCF8563 (common cheap); Microchip MCP79410 (with EEPROM).
+- Why crystal RTCs drift (and why TCXO is worth the money for fleets)
+- Battery-backed time keeping; the "RTC dead but device works" failure mode
+- `hwclock`, `rtc-i2c` family of drivers
+- Alarm interrupts for wake-from-suspend (Ch 51B integration)
+- **Lab:** sub-second RTC tracking across power cycles; calibrate DS3231 over a week
+- **Pitfalls:** the i.MX6ULL internal RTC is part of SNVS and loses time without backup battery; DS3231 alarm-pin polarity
+- **Pages:** ~12
+
+---
+
+# PART VIII — DEBUG, PRODUCTION, ADVANCED
+
+> *(Originally Part VII in v1.2; renumbered to Part VIII when Part VII / Device Cookbook was inserted in v1.3.)*
+
+### Chapter 118 — JTAG, OpenOCD, GDB at every layer
 - Connecting a JTAG adapter (FT2232H / J-Link) to the Point Atom JTAG header
 - OpenOCD config for i.MX6ULL
 - GDB scripts for bare-metal, U-Boot (`gdb-multiarch u-boot`), and the kernel (`vmlinux` symbols)
 - Hardware breakpoints, watchpoints
 - **Pages:** ~20
 
-### Chapter 57 — Kernel debugging without JTAG
+### Chapter 119 — Kernel debugging without JTAG
 - `printk` and log levels
 - `pr_debug` and `CONFIG_DYNAMIC_DEBUG`
 - ftrace: `function`, `function_graph`, events
@@ -777,14 +1323,14 @@ Since Linux 6.1, Rust is a supported language for kernel modules. As of 2026 the
 - Decoding an oops: `addr2line`, `scripts/decode_stacktrace.sh`, `CONFIG_DEBUG_INFO`
 - **Pages:** ~26
 
-### Chapter 58 — User-space debugging
+### Chapter 120 — User-space debugging
 - `gdbserver` on target, `gdb-multiarch` on host
 - `strace`, `ltrace`
 - `perf` (sampling, counters, flamegraphs)
 - Core dumps and `coredumpctl`
 - **Pages:** ~20
 
-### Chapter 58A — Inserted (v1.2): Mainline patch submission workflow
+### Chapter 120A — Inserted (v1.2): Mainline patch submission workflow
 If you write a driver in this book and it's good, it can go upstream. We walk the entire process end-to-end on a real candidate patch (e.g., a tweak to the FEC driver, or a YAML binding for a new sensor).
 - `git format-patch` and the one-patch-per-fix discipline
 - `scripts/checkpatch.pl --strict`; the warnings that matter, the ones that don't
@@ -797,13 +1343,13 @@ If you write a driver in this book and it's good, it can go upstream. We walk th
 - **Lab:** prepare a real, sendable patch series for one of your earlier driver chapters (do NOT actually send it without a real bug to fix)
 - **Pages:** ~18
 
-### Chapter 59 — Capstone: custom board port
+### Chapter 121 — Capstone: custom board port
 - Take your *own* PCB (or rework the Point Atom into a non-trivial variant)
 - Port U-Boot, port kernel DT, write at least one peripheral driver for something the original board didn't have
 - Reproducible build script: clean checkout → bootable SD in one command
 - **Pages:** ~30
 
-### Chapter 59A — Inserted (v1.2): CI/CD for embedded Linux
+### Chapter 121A — Inserted (v1.2): CI/CD for embedded Linux
 Modern teams build U-Boot, kernel, rootfs, and run a smoke test on the actual hardware on every commit. We set this up using GitHub Actions (or GitLab CI), a self-hosted runner with USB-OTG to a board, and a small Labgrid-style harness.
 - Cross-builds in CI: caching, deterministic builds, `bitbake-no-network` patterns
 - Image artifact storage (size budget: ~150 MB per build × 20 commits/day)
@@ -814,13 +1360,13 @@ Modern teams build U-Boot, kernel, rootfs, and run a smoke test on the actual ha
 - **Lab:** a GitHub Actions workflow that builds U-Boot+kernel and `uuu`-flashes a real board on every push to `main`
 - **Pages:** ~18
 
-### Chapter 60 — Build your own cross-toolchain
+### Chapter 122 — Build your own cross-toolchain
 - Bootstrap problem: gcc needs libc, libc needs gcc, gcc needs binutils
 - crosstool-NG step-by-step: kernel headers → binutils → gcc stage 1 → glibc/musl → gcc stage 2
 - Comparing your toolchain against a pre-built Linaro one (size, behavior, sysroot)
 - **Pages:** ~24
 
-### Chapter 60A — Inserted (v1.2): BSP → mainline migration playbook
+### Chapter 122A — Inserted (v1.2): BSP → mainline migration playbook
 You inherited a Linux 4.1.15 vendor BSP from a previous project or a customer. The product needs to ship updates for the next eight years. You must move to a supportable mainline kernel. Here is the playbook.
 - Inventory: list every patch the vendor applied; classify (vendor-feature / vendor-bugfix / mainline-merged / dead-code)
 - The pinned-driver problem and how to break each pin
@@ -831,14 +1377,14 @@ You inherited a Linux 4.1.15 vendor BSP from a previous project or a customer. T
 - A concrete worked example: NXP i.MX6ULL 4.1.15 → 6.x mainline
 - **Pages:** ~22
 
-### Chapter 61 — Yocto vs Buildroot, an honest comparison
+### Chapter 123 — Yocto vs Buildroot, an honest comparison
 - The mental model: package metadata vs configuration system
 - Layers, recipes, BBLAYERS
 - When Buildroot is better; when Yocto is better; when *neither* is right
 - A single recipe written for Yocto and for Buildroot, side by side
 - **Pages:** ~22
 
-### Chapter 61A — Inserted (v1.2): Yocto layer development in depth
+### Chapter 123A — Inserted (v1.2): Yocto layer development in depth
 For shipping at scale, Yocto is industry standard, and the meat of using it is *writing layers*. We build a vendor layer (`meta-mybsp`), a board layer (`meta-mybsp-mini`), and an application layer (`meta-mybsp-myapp`), with the right bbappend pattern between them.
 - Layer anatomy: `conf/`, `recipes-*/`, `classes/`, `wic/`
 - `bbappend` and the layer-priority dance
@@ -851,20 +1397,20 @@ For shipping at scale, Yocto is industry standard, and the meat of using it is *
 - **Lab:** `meta-mybsp/` produces a flashable image with our Chapter 41 LED driver baked in, in < 30 minutes from `bitbake core-image-minimal`
 - **Pages:** ~26
 
-### Chapter 62 — Secure boot (HAB) and OP-TEE
+### Chapter 124 — Secure boot (HAB) and OP-TEE
 - The chain of trust: ROM → SRK fuses → CSF → signed U-Boot → signed kernel → dm-verity rootfs
 - HAB CST (Code Signing Tool), `csf` files, key ceremony
 - TrustZone primer, `monitor` mode, SMC calls
 - OP-TEE basics: TA (Trusted Application) lifecycle
 - **Pages:** ~26
 
-### Chapter 63 — Field updates
+### Chapter 125 — Field updates
 - A/B partition scheme with U-Boot
 - RAUC, SWUpdate, Mender — comparison
 - Atomic updates, rollback, fail-safe boot
 - **Pages:** ~20
 
-### Chapter 63A — Inserted (v1.1): VSCode + gdbserver remote-debug workflow
+### Chapter 125A — Inserted (v1.1): VSCode + gdbserver remote-debug workflow
 Many readers came here from VSCode and would rather debug there than learn `tui` mode. We set up `gdbserver` on the target, `gdb-multiarch` on the host, the VSCode `launch.json` that joins them, and the `.vscode/c_cpp_properties.json` that resolves headers from the cross-sysroot — so `Go to Definition` works on kernel sources too.
 - Source Insight as a faster alternative for kernel-source navigation only (read-only, but very fast)
 - The minimum target setup: a statically-linked `gdbserver` binary in `/usr/bin/`
@@ -872,7 +1418,7 @@ Many readers came here from VSCode and would rather debug there than learn `tui`
 - **Lab:** set a breakpoint in your Chapter 41 LED driver's `probe()`, hit it from `insmod`, inspect `dev`
 - **Pages:** ~12
 
-### Chapter 64 — Closing: what to read next
+### Chapter 126 — Closing: what to read next
 - LDD3 (still relevant where it isn't outdated)
 - Bootlin training material
 - `kernelnewbies.org`
@@ -882,26 +1428,32 @@ Many readers came here from VSCode and would rather debug there than learn `tui`
 
 ---
 
-## Total page estimate (v1.2)
+## Total page estimate (v1.3)
 
-| Part | Numbered | v1.1 inserts | v1.2 inserts | Pages |
-|------|----------|--------------|--------------|-------|
-| I — Foundations | 8 | — | — | 136 |
-| II — Bare-metal i.MX6ULL | 10 | +3 (18A–C) | — | 252 |
-| III — U-Boot | 6 | — | +1 (23A) | 128 |
-| IV — Kernel | 6 | — | +2 (27A, 30A) | 148 |
-| V — Rootfs & user space | 5 | +1 (35A) | +2 (35B, 35C) | 140 |
-| VI — Driver development | 20 | +8 (55A–H) | +5 (51A,B; 52A; 54A,B; 55I) | 644 |
-| VII — Debug & advanced | 9 | +1 (63A) | +4 (58A; 59A; 60A; 61A) | 290 |
-| **Total** | **64** | **+13** | **+14** | **~1738 pages** |
+| Part | Numbered | v1.1 inserts | v1.2 inserts | v1.3 inserts | Pages |
+|------|----------|--------------|--------------|--------------|-------|
+| I — Foundations | 8 | — | — | — | 136 |
+| II — Bare-metal i.MX6ULL | 10 | +3 (18A–C) | — | — | 252 |
+| III — U-Boot | 6 | — | +1 (23A) | — | 128 |
+| IV — Kernel | 6 | — | +2 (27A, 30A) | — | 148 |
+| V — Rootfs & user space | 5 | +1 (35A) | +2 (35B, 35C) | — | 140 |
+| VI — Driver development | 20 | +8 (55A–H) | +5 (51A,B; 52A; 54A,B; 55I) | — | 644 |
+| **VII — Device cookbook** *(new)* | **54** | — | — | — | **~735** |
+| VIII — Debug & advanced | 9 | +1 (125A) | +4 (120A; 121A; 122A; 123A) | — | 290 |
+| **Total** | **118** | **+13** | **+14** | **(none)** | **~2,473 pages** |
 
-### What v1.2 changed at a glance
+### What v1.3 changed at a glance
+
+- **New Part VII — Device Cookbook (54 chapters).** Comprehensive chip-by-chip reference for storage, sensors of all kinds, ADCs/DACs/clock-gen, all display types, cameras, audio, every wireless module class, industrial buses, identification (RFID/NFC, fingerprint), motors/encoders, smart LEDs, network expansion, system power, external RTC. Each chapter covers 2–4 real chips side-by-side with schematic / DT / driver / lab / pitfalls.
+- **Renumbering.** Old Part VII (debug, production, advanced) became Part VIII. Old chapter numbers Ch 56–64 are now Ch 118–126; old letter-suffixed insertions (58A, 59A, 60A, 61A, 63A) are now (120A, 121A, 122A, 123A, 125A). The chapter numbers in already-drafted Parts I–VI stay unchanged.
+
+### What v1.2 had changed at a glance
 
 - **Part III**: +Multi-variant FIT images + DT overlays (23A)
 - **Part IV**: +DT bindings YAML validation (27A); +Kernel-lifecycle decision framework (30A)
 - **Part V**: +Read-only rootfs with overlayfs (35B); +Containers on embedded (35C)
 - **Part VI**: +Watchdog (51A); +Power management — runtime PM, DVFS, suspend (51B); +PREEMPT_RT real-time (52A); +MTD/UBI for raw NAND (54A); +V4L2/GStreamer for CSI camera (54B); +Rust-for-Linux (55I)
-- **Part VII**: +Mainline patch submission workflow (58A); +CI/CD for embedded (59A); +BSP→mainline migration playbook (60A); +Yocto layer dev in depth (61A)
+- **Part VII (old → now VIII)**: +Mainline patch submission workflow (now 120A); +CI/CD for embedded (now 121A); +BSP→mainline migration playbook (now 122A); +Yocto layer dev in depth (now 123A)
 
 ---
 
@@ -932,7 +1484,11 @@ Ch1 → Ch2 → Ch3 ─┐
                                                                                   │
                                                           ┌───────────────────────┘
                                                           ▼
-                                            Ch56..Ch64 (cross-cutting; read alongside earlier parts)
+                                            Ch64..Ch117 (Device Cookbook — independent chapters; pick the chip you need)
+                                                                                  │
+                                                          ┌───────────────────────┘
+                                                          ▼
+                                            Ch118..Ch126 (cross-cutting; read alongside earlier parts)
 ```
 
 Bare-metal Part II is the *only* part that can be safely skipped by a reader who only wants kernel/drivers. For *your* learning, do not skip it — it's the chapter set that will set this book apart.
@@ -946,7 +1502,8 @@ Ch16 ──► Ch18B (button+beep)  ──► Ch17 MMU
 Ch18 ──► Ch18C (bare-metal RTC)
 Ch35 ──► Ch35A (Ubuntu-base, optional alternative to Ch31/35)
 Ch43 ──► any of Ch55A..Ch55H (siblings, independent)
-Ch58 ──► Ch63A (VSCode workflow; can be read after any driver chapter)
+Ch44..Ch55I ──► any chapter of Part VII Device Cookbook (Ch 64..Ch 117) — pick the chip class you need
+Ch120 ──► Ch125A (VSCode workflow; can be read after any driver chapter)
 ```
 
 ---

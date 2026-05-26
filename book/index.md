@@ -112,6 +112,20 @@ part6-drivers/ch42-sleeping-waiting-polling
 part6-drivers/ch43-interrupts
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VI — Driver development (common subsystems)
+:maxdepth: 2
+
+part6-drivers/ch44-gpio-subsystem
+part6-drivers/ch45-input-subsystem
+part6-drivers/ch46-i2c-drivers
+part6-drivers/ch47-spi-drivers
+part6-drivers/ch48-pwm-rtc
+part6-drivers/ch49-iio-subsystem
+part6-drivers/ch50-regmap
+```
+
 ---
 
 ## What this is
@@ -163,12 +177,15 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
 * - Part VI — Driver development
   - 20 + 13 supplementary
   - 🟡 Drafting (Ch 36–43 done; 44–55I + insertions in progress)
-* - Part VII — Debug, production, advanced
+* - Part VII — Device cookbook *(v1.3, new)*
+  - 54 chapters (Ch 64–117)
+  - ⬜ Not yet drafted
+* - Part VIII — Debug, production, advanced
   - 9 + 5 supplementary
   - ⬜ Not yet drafted
 * - **Total**
-  - **64 numbered + 23 supplementary = 87**
-  - **~32 % drafted**
+  - **118 numbered + 23 supplementary = 141**
+  - **~38 % drafted**
 ```
 
 ## Hardware
