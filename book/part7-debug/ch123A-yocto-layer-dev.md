@@ -347,8 +347,6 @@ Place `sshd_config` in `recipes-connectivity/openssh/openssh/sshd_config`. Yocto
 9. **SRC_URI mirror.** Run `bitbake --runall=fetch`; archive downloads; rebuild on an offline VM.
 10. **Reproducibility.** Build the same image twice; `diff` the `.wic` files — should be byte-identical with `BB_HASHSERVE` set up.
 
-Commit your layer tree + image recipes + lab scripts to `code/ch123A-yocto-layers/`.
-
 ## 123A.13  Pitfalls
 
 - **Recipe in wrong layer.** Recipe for an upstream package living in your BSP layer = drifts from upstream. Use bbappend instead.

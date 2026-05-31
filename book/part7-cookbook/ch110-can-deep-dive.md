@@ -309,8 +309,6 @@ You can build a complete car-diagnostics dashboard in 200 lines of C + a fast Li
 9. **Gateway with cangw.** `cangw -A -s can0 -d can1 -e -m SET:CI:7E8:0x12345678` — forward all received frames from can0 to can1 with a different ID. Useful for bridging two networks.
 10. **Bus-off recovery.** Short the CAN_H and CAN_L (carefully — your transceiver should survive). The controller goes bus-off. Configure `restart-ms 100` so it auto-recovers when the short clears.
 
-Commit OBD-II reader, CAN-FD performance script, MCP2515 DT snippet to `code/ch110-can/`.
-
 ## 110.12  Pitfalls
 
 - **Wrong sample point.** A 75 % sample on a 50 m bus may sample inside the prop-delay; bumping to 87.5 % cures "random errors." Always set explicit sample-point on long buses.

@@ -439,8 +439,6 @@ In product UI, do *time-averaged* SoC display — instantaneous readings can wob
 7. **Switch to mainline MAX17048 driver.** `compatible = "maxim,max17048";`. Verify same data; gain access to extra properties (alerts, capacity-level).
 8. **Capacity-level logic.** Write a user-space daemon that reads capacity every 30 s; logs to syslog when crossing thresholds (low 20 %, critical 5 %); triggers `poweroff` at critical-3 %.
 
-Commit code to `code/ch76-battery/`.
-
 ## 76.10  Pitfalls
 
 - **Quick-start without justification.** Writing 0x4000 to MODE clears the chip's internal model and forces a fresh estimate. Useful on fresh-pack-insertion; harmful if done routinely (degrades SoC accuracy).

@@ -317,8 +317,6 @@ This is the **raw research path**. RPL (the IPv6 routing protocol for 802.15.4 m
 9. **Matter commissioning (stretch).** Install `chip-tool`; commission a Matter device (Eve Door & Window sensor is cheap and Matter-native); read its attributes via `chip-tool`.
 10. **Home Assistant integration.** Install HA; auto-discover the MQTT-bridged ZigBee devices and the Matter devices. Build a dashboard that shows them and reacts to one.
 
-Commit configs, scripts, otbr launch units to `code/ch100-zigbee-thread/`.
-
 ## 100.11  Pitfalls
 
 - **Channel collision with WiFi.** 80 % of "ZigBee unreliable" reports are this. Pick channel 15/20/25/26; verify with `iwlist scan` on a phone.

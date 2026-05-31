@@ -174,8 +174,6 @@ network={
 5. **Roam test.** Move between APs of the same SSID; observe BSSID change.
 6. **Switch to softAP.** Run hostapd to make `wlan0` an access point.
 
-Commit code to `code/ch55E-wifi/`.
-
 ## 55E.8  Pitfalls
 
 - **Missing firmware.** Symptom: "Direct firmware load failed -2." Copy the right blob to `/lib/firmware/brcm/`.

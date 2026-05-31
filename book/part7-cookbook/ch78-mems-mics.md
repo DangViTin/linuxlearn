@@ -232,8 +232,6 @@ Plays back in stereo on the host.
 7. **Sample-rate variation.** Try 16 kHz, 32 kHz, 48 kHz. Verify the chip + SAI cooperate.
 8. **FFT in user-space.** Pipe `arecord` into a small program that does FFT over 8192-sample windows; plot spectrum live with gnuplot. Watch frequencies appear as you whistle.
 
-Commit code to `code/ch78-mems-mic/`.
-
 ## 78.9  Pitfalls
 
 - **Wrong format.** INMP441 outputs 24-bit MSB-first I²S. Configure for S32_LE in ALSA; the 24 bits go in the upper bits of the 32-bit container. S24_LE *may* work depending on ASoC version.

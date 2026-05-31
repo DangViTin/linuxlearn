@@ -224,8 +224,6 @@ c.loop_forever()
 7. **Inrush measurement.** Switch an incandescent bulb (or motor) with a non-zero-cross SSR; capture the inrush on a current probe. Switch with a zero-cross SSR; compare.
 8. **Relay endurance.** Cycle a relay at 1 Hz with rated AC load; count failures over 100,000 cycles (will take 28 hours). Make notes about contact wear.
 
-Commit code + MQTT YAML config for Home Assistant to `code/ch114-beepers-relays/`.
-
 ## 114.8  Pitfalls
 
 - **No flyback diode on relay coil.** BJT and SoC are slowly killed by repeated back-EMF spikes.

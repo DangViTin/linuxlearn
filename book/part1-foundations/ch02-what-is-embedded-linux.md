@@ -264,9 +264,7 @@ This chapter has no lab — it is conceptual. The "lab" is that you should now b
 4. What is the smallest possible Linux system that can print "hello" on the UART and exit? Sketch its components.
 5. If you `insmod my_driver.ko` and the module dereferences a NULL pointer, does the whole system crash, the calling process crash, or neither?
 
-Answers are in the companion notes for this chapter in `code/ch02-notes.md`.
-
-## 2.11  Pitfalls
+Compare your answers against the chapter text and the references below.## 2.11  Pitfalls
 
 - **Confusing "embedded Linux" with "Linux on small hardware."** The kernel is the same. The kernel does not have an embedded mode. What differs is *user space* — leaner libc, fewer daemons, less storage, perhaps a read-only root. The kernel does not know your target is "embedded."
 - **Assuming the bootloader and the kernel cooperate after handoff.** They do not. The bootloader vanishes at `bootz`. The kernel does not call back into U-Boot, except as a curiosity (`bdinfo` data lives on, but that is all).

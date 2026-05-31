@@ -368,8 +368,6 @@ The kernel notes the deferred device and retries it after every other probe atte
 5. **Multiple instances.** Add a second DT node, `demo@2000`, also with `compatible = "linuxlearn,demo"`. Verify `probe` is called twice, once per node. Each gets its own `platform_device`.
 6. **Inspect modalias and depmod.** Run `depmod -a` on the build host, then check `/lib/modules/.../modules.alias` for an entry pointing your DT compatible to `demo.ko`. Verify `modprobe demo` does the right thing on the target.
 
-Commit code to `code/ch39-platform-driver/`.
-
 ## 39.9  Pitfalls
 
 - **DT node has wrong `status`.** A node with `status = "disabled"` is skipped by the platform bus. Many vendor DTs ship peripherals as `disabled`; you must overlay `status = "okay";` to activate.

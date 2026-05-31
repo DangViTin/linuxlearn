@@ -186,7 +186,7 @@ This is the textbook embedded-cellular pattern. The kernel side (n_gsm) is small
 
 Real products need PPP to come up at boot, retry on failure, and bring up an LED or report status. Here's a minimal supervisor:
 
-`code/ch103-uart-modem/celld.sh`:
+`celld.sh`:
 
 ```bash
 #!/bin/sh
@@ -248,8 +248,6 @@ dhclient usb0
 8. **Cat-1bis with USB-ECM.** If you have an ML302 or EC200N, switch it to ECM mode; bring up `usb0` via DHCP. Compare bring-up complexity vs PPP.
 9. **Throughput measurement.** `iperf3 -c <server>` over PPP at 115200 (~80 kbps), 921600 (~600 kbps), and ECM (~5 Mbps). The UART speed dominates PPP throughput; ECM is limited by Cat-1 cell capacity.
 10. **SMS send/receive.** While PPP is up (via CMUX), `AT+CMGF=1`, `AT+CMGS="+1234..."`, type message, Ctrl-Z. Confirm receipt on the destination phone.
-
-Commit `chat-cellular`, `peers/cellular`, `celld.sh`, systemd unit to `code/ch103-uart-modem/`.
 
 ## 103.10  Pitfalls
 

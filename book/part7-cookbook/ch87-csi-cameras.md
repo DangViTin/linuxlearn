@@ -520,8 +520,6 @@ i.MX6ULL has no GPU/VPU, so JPEG/H.264 encoding is software — slow. Practical:
 7. **Exposure control.** `v4l2-ctl --set-ctrl=exposure_auto=1` then manual exposure; observe brightness changes.
 8. **GStreamer display.** Pipe the camera to the LCD via fbdevsink; live preview.
 
-Commit code to `code/ch87-csi-cameras/`.
-
 ## 87.9  Pitfalls
 
 - **MCLK not running before I²C.** The sensor's logic is clocked by MCLK; no MCLK = no I²C ACK. Enable the xclk in power-on *before* the chip-id read.

@@ -391,8 +391,6 @@ What WM8960 adds (the other ~1300 lines): ADC + capture path, mic preamp + boost
 6. **Speaker (WM8960).** Route to the built-in class-D speaker amp; drive a small speaker directly (no external amp).
 7. **Anti-pop.** Play/stop repeatedly; listen for clicks. A correct DAPM power-sequence + soft-mute eliminates them; comment out the mute_stream op and hear the difference.
 
-Commit code to `code/ch89-audio-codecs/`.
-
 ## 89.8  Pitfalls
 
 - **Write-only registers without a cache.** WM8960 (and many codecs) can't be read back. Without `cache_type` + `reg_defaults`, the driver loses track of state. Always cache.

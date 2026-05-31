@@ -170,8 +170,6 @@ int main(void) {
 5. **Compare with standard kernel.** Build same kernel with `CONFIG_PREEMPT_NONE`; run cyclictest under same load. Note the 30–100× worse worst case.
 6. **Real workload.** Run a 1 kHz GPIO toggle from a SCHED_FIFO thread; scope the period jitter. Tune until jitter is < 50 µs.
 
-Commit results and config diffs to `code/ch52A-preempt-rt/`.
-
 ## 52A.8  Going deeper
 
 - **`Documentation/locking/`** — preemptible locks under PREEMPT_RT.

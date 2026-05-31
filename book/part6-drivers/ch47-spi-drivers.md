@@ -282,8 +282,6 @@ Wrap with IIO (Ch 49) and you have an 8-channel ADC exposed via `/sys/bus/iio/de
 5. **Speed sweep.** Vary `spi-max-frequency` from 100 kHz to 25 MHz in DT; observe where signal integrity breaks (your scope or analyzer is your friend). Linux honors `spi-max-frequency` literally; the controller picks the highest divisor below it.
 6. **Multiple chip-selects.** Configure two devices on the same bus (CS0 and CS1) and access both. Verify each gets its own SPI mode/speed.
 
-Commit code to `code/ch47-spi/`.
-
 ## 47.9  Pitfalls
 
 - **Wrong CS polarity.** If a chip wants active-high CS, the controller's default (active-low) won't drive it correctly. Use `spi-cs-high` in DT.

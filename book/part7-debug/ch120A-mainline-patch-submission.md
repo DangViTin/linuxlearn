@@ -396,8 +396,6 @@ DT bindings are one of the easiest categories to get merged — they're additive
 8. **v2 cycle.** Take a maintainer's feedback; produce v2 with a clear changelog. Carry forward Reviewed-by tags.
 9. **Watch a merge.** Find an `Applied to` reply from a maintainer; check `git log` in the maintainer's tree for your patch's commit hash; trace it from there to Linus's mainline.
 
-Commit your patches + emails sent + maintainer responses to `code/ch120A-patches/` (private; don't push if confidential).
-
 ## 120A.14  Pitfalls
 
 - **HTML email.** Gmail's web UI sends HTML by default; mailing lists silently drop HTML patches. Use `git send-email` or plain-text mode.

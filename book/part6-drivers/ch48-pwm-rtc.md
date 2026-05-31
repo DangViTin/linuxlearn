@@ -288,8 +288,6 @@ This is the foundation of low-power data-logger products: sleep deeply, wake on 
 5. **Wake from suspend.** Set a 30-second alarm via `wakealarm`, suspend, watch the system come back up.
 6. **Compare RTC accuracy.** Run `chronyd` for an hour, check `/sys/class/rtc/rtc0/since_epoch` against `date +%s` — drift should be under 100 ms for DS3231, under a second for raw SoC RTC.
 
-Commit code to `code/ch48-pwm-rtc/`.
-
 ## 48.4  Pitfalls
 
 - **PWM period too short.** The provider's hardware has a max-period and a frequency resolution. Asking for 1 ns period or 1 Hz frequency may snap to the nearest achievable value silently. Always read back the actual state with `pwm_get_state`.

@@ -401,8 +401,6 @@ For now, `mknod` is fine. Just know it's a stopgap.
    - The VFS layer rejects it before reaching your driver. You can verify by `strace cat /dev/hello`: no `write()` syscall on a read-only fd would reach you anyway, but understanding *where* the rejection happens is useful.
 6. **Inspect with `lsof`.** `lsof /dev/hello` lists all processes holding it open. Stop one such process; observe the open count drop.
 
-Commit your final code to `code/ch37-character-driver/`.
-
 ## 37.9  Pitfalls
 
 - **Forgetting `THIS_MODULE` in `cdev.owner` or `file_operations.owner`.** The kernel won't increment your module's refcount on open. `rmmod` while a process has the device open → kernel crashes when it tries to call into freed code. Always set both.

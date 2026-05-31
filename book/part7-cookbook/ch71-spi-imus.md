@@ -546,8 +546,6 @@ Mainline drivers expose richer attributes than our from-scratch:
 7. **Tap detection.** Configure ADXL345's tap interrupt (different from watermark); verify a tap on the table triggers an event in user-space.
 8. **LSM6DSO MLC** (if available). Use ST's online tool to compile a "walking detector" from sample data; flash to chip; verify the chip emits walking-detected events with zero CPU.
 
-Commit code to `code/ch71-spi-imus/`.
-
 ## 71.10  Pitfalls
 
 - **SPI mode wrong.** ADXL345 is mode 3 (CPOL=1, CPHA=1). LSM6DSO is mode 0 or 3. ICM-42688 is mode 0. Each datasheet's "SPI timing" diagram tells you. Wrong mode → garbage reads.

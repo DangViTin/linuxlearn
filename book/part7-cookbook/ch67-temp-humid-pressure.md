@@ -708,8 +708,6 @@ Pipe to MQTT, Grafana, SQLite — whatever the product needs.
 6. **Mainline `read_raw` source dive.** Read `bme280_compensate_temp` in `drivers/iio/pressure/bmp280-core.c`. Verify it's the same formula you copied from the datasheet.
 7. **Power consumption.** With mainline driver, measure idle current. Compare against periodic-mode + sleep with `oversampling_ratio = 0` (chip skips a measurement type entirely).
 
-Commit code to `code/ch67-env-sensors/`.
-
 ## 67.11  Pitfalls
 
 - **CSB strap floating on BME280**. Chip oscillates between I²C and SPI modes. Tie CSB high explicitly (10 kΩ to VCC).

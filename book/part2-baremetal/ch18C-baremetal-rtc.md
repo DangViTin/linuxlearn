@@ -219,8 +219,6 @@ The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, 
 4. **Lose VBAT.** If your coin cell is removable, pop it out, power-cycle the main rail, observe the SNVS reset (boot_count back to 0, scratch RAM at `0xDEADBEEF` lost).
 5. **Wall-clock UNIX time.** Have the user enter `t=1716595200\n` over UART; call `rtc_set_seconds`. Then print the date in a real human-readable form (`gmtime`-style). This is a small but pleasant integration exercise.
 
-Commit to `code/ch18C-rtc/`.
-
 ## 18C.8  Pitfalls
 
 - **Reading the counter without rollover protection.** Without the `do { hi1 = ...; lo = ...; hi2 = ...; } while (hi1 != hi2);` pattern, you can occasionally read a stale `hi` paired with an already-incremented `lo`. The error is rare (~once per 2^15 reads) but real.

@@ -192,8 +192,6 @@ Common mistake: getting WiFi working, declaring victory, shipping — then disco
 7. **Power management.** Suspend; verify both WiFi and BT survive resume (with the wake GPIOs configured).
 8. **BD address.** Note the BT controller's BD_ADDR. For production, program a unique one (from your EEPROM, Ch 65) — many modules ship with a default/duplicate address.
 
-Commit DT + configs to `code/ch94-wifi-bt-combo/`.
-
 ## 94.8  Pitfalls
 
 - **WiFi works, BT forgotten.** The two halves are independent. Test both. A working `wlan0` says nothing about `hci0`.

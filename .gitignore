@@ -31,10 +31,16 @@ book/toc.md
 *.tar.xz
 *.tar.gz
 
-# The reference PDF (already in the dir, not part of the book)
+# Reference documents (vendor copyrighted: NXP RM, datasheet, errata; Point Atom guide).
+# Kept locally as research inputs; NOT redistributed with the published site.
+reference_docs/
 【Point_Atom】*.pdf
 PA_P*.pdf
 PA_P*.txt
+
+# Removed companion folders (no longer used; listings are inline in chapters)
+code/
+figures/
 
 # Editor cruft
 .vscode/

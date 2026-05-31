@@ -261,8 +261,6 @@ Now your i.MX6ULL is slave 5 on the bus; any master can poll it for sensor data.
 9. **MQTT gateway.** Bridge the inverter data through MQTT (use the worked example). Plumb to Grafana for a 24-hour solar production chart.
 10. **Long-cable test.** Run 100 m of CAT5 between two boards; baud test at 9600/19200/38400/115200; note where errors start.
 
-Commit modbus configs, register maps for one real device, gateway script to `code/ch108-rs485-modbus/`.
-
 ## 108.10  Pitfalls
 
 - **No bias resistors → idle floats.** Bus reads garbage; slaves think the master is constantly framing data. Fail-safe biasing (typically built into MAX13487 and similar) is mandatory.

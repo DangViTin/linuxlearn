@@ -342,8 +342,6 @@ These parents define standard properties common to the *class* (e.g., `current-s
 5. **Break a passing DTS on purpose.** Edit `imx6ull-14x14-evk.dts` to misspell a property (`clock-name` instead of `clock-names`). Run `make dtbs_check`. Observe the precise error message that pinpoints the typo. Restore.
 6. **Read `dtschema`'s source.** It's a small Python package; the dispatch from YAML schemas to JSON-Schema validation is in `dtschema/schemas/`.
 
-Commit your binding YAMLs and DTS overlays to `code/ch27A-dt-bindings/`.
-
 ## 27A.8  Pitfalls
 
 - **Schema-validation passes but DT still doesn't work at runtime.** The schema only catches *syntactic* errors — wrong types, wrong arity, missing required props. Semantic errors (a `reg` value pointing at the wrong physical address) pass schema but fail at boot. Schema is necessary, not sufficient.

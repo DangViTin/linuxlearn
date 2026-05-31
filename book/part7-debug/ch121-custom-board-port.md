@@ -357,8 +357,6 @@ Run: `./build.sh /dev/sdb`. 30 minutes later (mostly compile time), bootable car
 9. **Document it.** Write a 1-page README: "what hardware is needed, what software prerequisites, how to build, how to flash, how to verify." A new engineer should be able to follow it.
 10. **(Stretch) Upstream the DT.** Format-patch + send your board DT to linux-arm-kernel + linux-imx (per Ch 120A). Even if rejected, the experience is valuable.
 
-Commit `build.sh`, DT files, peripheral test scripts, README to `code/ch121-capstone/`.
-
 ## 121.10  Reflection
 
 After 4 weeks of bring-up, write a 500-word retrospective:

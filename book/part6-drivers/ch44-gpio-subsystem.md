@@ -358,8 +358,6 @@ The driver code is *unchanged* — `devm_gpiod_get(&pdev->dev, "reset", ...)` wo
 5. **Wire a fake GPIO expander.** Add an `mcp23017` node to your DT (even if you don't have the chip — just to verify the binding parses). With the chip absent, the driver will fail to probe; observe `dev_err_probe` deferring and the eventual timeout.
 6. **Read pin state without a driver.** Cold-boot, then `gpioinfo` — see which pins are claimed by which drivers. Useful for debugging "is the kernel using this pin I want?"
 
-Commit code to `code/ch44-gpio-pinctrl/`.
-
 ## 44.9  Pitfalls
 
 - **Forgetting the pinctrl group.** Pin is still in its default mux (e.g., UART). `gpiod_get` succeeds (the GPIO controller doesn't know the pin is muxed elsewhere) but the GPIO seems "stuck" — because reads/writes hit the GPIO register, but the IOMUX routes the pin to UART. Always declare a pinctrl group that muxes the pin as GPIO, and reference it from `pinctrl-0`.

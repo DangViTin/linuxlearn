@@ -214,8 +214,6 @@ VSCode's IntelliSense on the kernel source works but is slower (~5 minutes to in
 9. **Debug a real driver in your app** that wraps Ch 105 (RFID) or Ch 117 (RTC). Set breakpoint on init; trace through.
 10. **Source Insight evaluation (stretch).** Try the 30-day trial; index your kernel; compare navigation speed to VSCode.
 
-Commit `.vscode/launch.json`, `c_cpp_properties.json`, `tasks.json` to `code/ch125A-vscode/`.
-
 ## 125A.9  Pitfalls
 
 - **Wrong gdb binary.** `/usr/bin/gdb` (host) won't debug ARM; needs `gdb-multiarch` or the cross-toolchain gdb.

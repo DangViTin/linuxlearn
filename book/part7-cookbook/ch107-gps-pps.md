@@ -216,7 +216,7 @@ You just built a stratum-1 NTP server with $20 of parts.
 Use NMEA for debugging, UBX for production. The skeleton parser:
 
 ```c
-/* code/ch107-gps/ubx_parse.c — fragment */
+/* ubx_parse.c — fragment */
 struct ubx_nav_pvt {
     uint32_t iTOW;
     uint16_t year;
@@ -290,8 +290,6 @@ Run this; you'll see each fix printed with the exact GPS-derived UTC time it was
 8. **PPS jitter measurement.** Capture 1000 PPS edges; histogram the timestamp delta from 1.000000000 s. Should show ±20–50 ns.
 9. **Geofencing.** Write a script that alerts when the lat/lon leaves a circle (haversine distance > 100 m). Useful for asset-theft alerts.
 10. **TPS6594 + GPS for outage survival.** If your product is a stratum-1 server, hooking a UPS so the clock survives mains outages buys you 24+ hours of holdover (the OCXO inside drifts, but GPS resyncs as soon as power is back).
-
-Commit chrony config, gpsd config, UBX parser to `code/ch107-gps/`.
 
 ## 107.9  Pitfalls
 

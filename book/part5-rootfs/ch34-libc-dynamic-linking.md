@@ -281,8 +281,6 @@ The decision is per-binary, not per-system. Mix as needed.
 5. **Build the same program against musl.** If you have a musl-targeting cross toolchain, build `hello.c` against musl and against glibc. Compare sizes statically: `arm-linux-musleabihf-gcc -static -o hello-musl hello.c` versus `arm-linux-gnueabihf-gcc -static -o hello-glibc hello.c`.
 6. **Set up `$ORIGIN` rpath.** Build a binary with `-Wl,-rpath,'$ORIGIN/../lib'`, place it under `/opt/myapp/bin/`, place a custom `.so` under `/opt/myapp/lib/`, verify the binary finds it without `LD_LIBRARY_PATH`.
 
-Commit findings to `code/ch34-libc/`.
-
 ## 34.9  Pitfalls
 
 - **`libfoo.so.X: cannot open shared object file`** — the dynamic linker can't find a NEEDED library. Diagnose with `LD_DEBUG=libs`. Fix by copying the library into `/lib` or adding to `LD_LIBRARY_PATH` / `RPATH`.

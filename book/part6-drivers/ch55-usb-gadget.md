@@ -173,8 +173,6 @@ For specialised use cases (e.g., a custom protocol over USB), you can write a ke
 5. **Hot re-bind.** Write to `UDC` with empty string to disconnect; then re-bind. Useful for changing config without reboot.
 6. **Composite gadget.** Stack ACM + ECM + mass storage in one configuration; verify all three function on the host.
 
-Commit code to `code/ch55-usb-gadget/`.
-
 ## 55.7  Pitfalls
 
 - **Forgetting `vbus-supply`.** USB device mode still needs VBUS sensing. Without it, the controller never detects a "plugged" event.

@@ -321,8 +321,6 @@ For interactive driver debugging during bring-up, this is invaluable.
 4. **Inspect with debugfs.** `cat /sys/kernel/debug/regmap/<name>/registers`. Flip cache modes and observe behavior.
 5. **regcache_sync after suspend.** In an `.suspend` callback, `regcache_mark_dirty(regmap)`; in `.resume`, `regcache_sync(regmap)`. Confirm the chip's registers are restored after a `echo mem > /sys/power/state` cycle.
 
-Commit code to `code/ch50-regmap/`.
-
 ## 50.8  Pitfalls
 
 - **Wrong `reg_bits` or `val_bits`.** Symptom: writes appear to "work" but reads come back wrong, or two-register chips return garbage. Check the chip's datasheet bus-protocol section carefully.

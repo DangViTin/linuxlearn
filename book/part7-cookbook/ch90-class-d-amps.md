@@ -259,8 +259,6 @@ The i.MX6ULL does the Bluetooth + decode; the TAS5805M does the analog + acousti
 6. **EQ tuning.** Use TI PPC3 (on a PC) to design a bass boost; export the blob; load it; A/B the sound with/without.
 7. **Bluetooth speaker.** Combine BlueZ A2DP (Ch 95) + TAS5805M; pair a phone; play music; tune the EQ for your enclosure.
 
-Commit code to `code/ch90-class-d-amps/`.
-
 ## 90.8  Pitfalls
 
 - **MAX98357A SD_MODE resistor wrong.** The resistor value encodes channel select; wrong value = wrong channel or shutdown. Use the datasheet's resistor table exactly.

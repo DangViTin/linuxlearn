@@ -350,8 +350,6 @@ You'll see timestamps for every entry/exit of your handler, in microseconds. Ch 
 5. **Convert from threaded to workqueue.** Rewrite #1 using `schedule_work` from a non-threaded `request_irq`. Compare code complexity; observe equivalent behavior.
 6. **Shared-IRQ experiment.** On a real shared IRQ (or fake one), register two handlers and verify the kernel calls both. Confirm `IRQ_NONE` is the right return when *your* device didn't fire.
 
-Commit code to `code/ch43-interrupts/`.
-
 ## 43.9  Pitfalls
 
 - **Sleeping in a top-half.** `kmalloc(GFP_KERNEL)`, `mutex_lock`, `copy_to_user` — all forbidden. `CONFIG_DEBUG_ATOMIC_SLEEP=y` catches at the call site. Use `GFP_ATOMIC` if you really must allocate from IRQ context; otherwise pre-allocate.

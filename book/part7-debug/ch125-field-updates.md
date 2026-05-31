@@ -284,8 +284,6 @@ If conditions not met: watchdog fires; reboot; U-Boot reverts; you're back on th
 9. **Delta update.** Enable casync in your bundle build. Compare bundle sizes before/after; reach 5–10× smaller delta.
 10. **Mender stretch.** Self-host the Mender server (Docker compose); register a device; push a deployment from the UI.
 
-Commit RAUC system.conf, bundle recipe, U-Boot env script to `code/ch125-ota/`.
-
 ## 125.10  Pitfalls
 
 - **No watchdog → no rollback enforcement.** If your "mark good" check doesn't run, U-Boot still boots the new slot forever. Watchdog (Ch 51A) is mandatory for safe OTA.

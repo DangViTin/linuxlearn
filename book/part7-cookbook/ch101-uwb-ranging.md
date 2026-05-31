@@ -173,7 +173,7 @@ The trick: scheduling TX at a *future* exact DWT time (the chip has its own 40-b
 
 ## 101.5  From scratch — DS-TWR initiator in user space
 
-`code/ch101-uwb/twr_init.c` (abbreviated; full ~400 lines):
+twr_init.c (abbreviated; full ~400 lines):
 
 ```c
 /* DS-TWR initiator. Reads DEV_ID, configures channel/PRF/preamble,
@@ -374,8 +374,6 @@ Apple's UWB chip (U1 / U2) is a black-box DW3000 derivative; reverse-engineering
 6. **3-anchor 2-D position.** Place 3 responder anchors in a triangle. The initiator's app does 3 TWR cycles and computes trilateration. Print (x, y) every second. Walk around; verify position tracks within ±20 cm.
 7. **Kalman smoothing.** Add a 2-D constant-velocity Kalman filter; visualize raw vs. filtered trajectory in matplotlib.
 8. **Throughput-vs-rate test.** Try 110 kbps, 850 kbps, 6.8 Mbps data rates. Higher rate = shorter air time = more TWR cycles/second but slightly worse range. Measure cycles/sec at each.
-
-Commit all to `code/ch101-uwb/` including calibration values per board.
 
 ## 101.10  Pitfalls
 

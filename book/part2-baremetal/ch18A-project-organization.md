@@ -342,8 +342,6 @@ If you ship products with NXP parts, use the SDK headers in production. They are
 3. **Stress-test header layering.** Try moving `imx6ull.h` into `bsp/include/`. What needs to change in the Makefile? In each `bsp_*.c`?
 4. **Try the SDK style.** Take just `bsp_clk.c` and rewrite it using `MCIMX6Y2.h` (download from NXP). Same output? Compare disassembly with `arm-none-eabi-objdump -d app.elf` between the two builds and confirm identical machine code.
 
-Commit to `code/ch18A-project-organization/`.
-
 ## 18A.9  Pitfalls
 
 - **Naming the BSP folder `lib/` or `drv/`.** Both names collide with conventions used by other projects' build systems. `bsp/` is unambiguous.

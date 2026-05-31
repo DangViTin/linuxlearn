@@ -130,8 +130,6 @@ For a real product with a custom phone app, the BlueZ GATT path (Ch 95) is bette
 6. **Compare effort.** Reflect on the ~10 lines here vs the ~250-line GATT server of Ch 95. Note what you gave up (standard GATT, throughput, multiple characteristics).
 7. **Range test.** Walk away with the phone; note where the connection drops (~20–30 m).
 
-Commit code to `code/ch96-at-ble/`.
-
 ## 96.7  Pitfalls
 
 - **Clone command-set differences.** "HM-10" clones use different AT syntax (`AT+NAME=x` vs `AT+NAMEx`, with/without `\r\n`). Always `AT+VERS?` first and match your module's dialect.

@@ -208,8 +208,6 @@ For the rest of this book — and for most readers' real products — **BusyBox 
 4. **Read a systemd unit.** If you have a Debian/Ubuntu host nearby, `cat /lib/systemd/system/ssh.service`. Note the syntax differences vs BusyBox.
 5. **Estimate the boot-time difference.** Boot your BusyBox rootfs and note the time from `kernel_init` to login prompt (the kernel timestamps in `dmesg` are your clock). Compare with the same hardware running Ubuntu-base (Ch 35A); typical: 2-second BusyBox vs 8-second Ubuntu-base, almost all the difference being systemd.
 
-Commit observations to `code/ch33-init/`.
-
 ## 33.9  Pitfalls
 
 - **Zombies accumulating.** If your `respawn` lines aren't actually being reaped, you may have processes that double-fork and detach. The grandchildren get reparented to PID 1; if PID 1's `wait()` loop is correct, they're reaped automatically. BusyBox init handles this correctly out of the box. Custom PID-1 binaries often *don't*; symptom: `ps` shows growing list of `<defunct>` processes.

@@ -433,8 +433,6 @@ That table is the deliverable of this chapter. After Chapter 28 you can grep the
 4. **Boot with `loglevel=8`** to see *all* `printk` levels. You'll see kilobytes more output than the default; among it are the debug-level prints that document things like the page allocator's initial population, slab cache creation, and so on.
 5. **Trace a panic.** Pass `init=/nonexistent` in bootargs. Boot. The kernel reaches `kernel_init`, the four `try_to_run_init_process()` calls fail in turn, and `panic("No working init found.")` fires. Compare the panic message to the source in `kernel_init()`.
 
-Commit annotated source walks to `code/ch28-kernel-startup/`.
-
 ## 28.9  Pitfalls
 
 - **Confusing `vmlinux` with `zImage`.** When debugging a panic, you want symbols. The symbols are in `vmlinux`, not `zImage`. Always have `vmlinux` from the *same build* alongside your `zImage`.

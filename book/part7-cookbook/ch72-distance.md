@@ -509,8 +509,6 @@ For multi-chip setups (3 VL53L0X looking forward/left/right), the chips share IÂ
 6. **GP2Y0A on ADC.** Wire to i.MX6ULL ADC1 channel; verify IIO ADC reading; write a polynomial-fit converter in user-space.
 7. **Multi-VL53L0X.** Wire three on the same bus with separate XSHUT GPIOs. Use mainline driver; configure in DT; verify three `iio:device0/1/2` appear with separate addresses.
 
-Commit code to `code/ch72-distance/`.
-
 ## 72.10  Pitfalls
 
 - **VL53L0X under sunlight.** Range collapses to ~60 cm. If outdoor use is required, pick ultrasonic.

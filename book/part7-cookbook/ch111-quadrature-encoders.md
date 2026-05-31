@@ -85,7 +85,7 @@ Both channels' rising + falling edges call this; it handles all 12 valid transit
 For low-rate encoders (≤10 kHz pulses, which covers most UI and slow-servo uses):
 
 ```c
-/* code/ch111-encoder/qdec_userspace.c */
+/* qdec_userspace.c */
 #include <gpiod.h>
 #include <stdio.h>
 #include <poll.h>
@@ -265,8 +265,6 @@ for (;;) {
 6. **Velocity closed loop.** Combine the velocity loop with the DC motor driver from Ch 112 (BTS7960). Tune Kp, Ki for stable 1000 RPM.
 7. **Position closed loop.** Same loop, but track a target angle. Test for steady-state error; add an integrator if needed.
 8. **Direction-detection robustness.** Spin the encoder back-and-forth rapidly; verify the count is consistent and direction is right. Software bug? Look at the QDEC_TABLE.
-
-Commit code + a CSV of count-vs-RPM measurements to `code/ch111-encoder/`.
 
 ## 111.10  Pitfalls
 

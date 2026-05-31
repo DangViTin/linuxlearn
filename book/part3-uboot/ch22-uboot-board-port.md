@@ -422,8 +422,6 @@ Even if you never plan to submit upstream, this file documents who owns the port
 5. **Add one MINI-specific touch.** Pick something the EVK doesn't have — for instance, the BEEP GPIO toggling once on boot from `board_late_init`. Or a custom logo string in the boot banner.
 6. **Generate a single patch series.** `git format-patch -7 origin/master` (assuming your branch has 7 new-board commits on top of upstream `master`). Inspect the patch files; ensure each is self-contained.
 
-Commit the port to a topic branch in `code/ch22-uboot-pa-mini/`.
-
 ## 22.12  Pitfalls
 
 - **DDR values copied from another board.** Will sometimes work. Will sometimes fail in subtle ways (occasional bit flips under thermal load). *Always* validate with the stress tool on your specific board.

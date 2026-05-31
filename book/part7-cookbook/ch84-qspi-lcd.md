@@ -113,8 +113,6 @@ For the i.MX6ULL reader: **prefer parallel RGB (Ch 82) for big/fast displays, pl
 4. **Round-display geometry.** A round display still has a square framebuffer; the corners are simply not visible. Verify your UI accounts for the circular visible area (draw within the inscribed circle).
 5. **Comparison writeup.** Document, for your specific board, whether QSPI display is feasible. If not, justify the fallback (plain SPI / parallel RGB).
 
-Commit findings to `code/ch84-qspi-lcd/`.
-
 ## 84.7  Pitfalls
 
 - **Assuming i.MX6ULL QSPI does displays well.** It doesn't — it's flash-centric. Verify `spi_mem` quad-out support before committing to a QSPI display on this SoC.

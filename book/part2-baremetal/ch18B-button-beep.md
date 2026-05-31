@@ -200,8 +200,6 @@ Press the button. The LED toggles, the UART prints `press` / `release`, and the 
 4. **Beep tones.** Play a 5-note sequence (C-D-E-F-G, 200 ms each). Hum the result; you should recognize the scale.
 5. **Power measurement.** Compare current draw with and without `wfi` in `main`. The difference is the CPU's idle savings, which on Cortex-A7 is real.
 
-Commit to `code/ch18B-button-beep/`.
-
 ## 18B.6  Pitfalls
 
 - **GPIO5 vs GPIO1 clock gates.** GPIO5 is in the SNVS domain and has its own gate bit (CCGR1[31:30]). Easy to miss.

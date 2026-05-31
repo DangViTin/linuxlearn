@@ -301,8 +301,6 @@ Full U-Boot's `_main` then proceeds with *its* `board_init_f` → relocation →
 5. **Break the SPL deliberately.** Edit `board/freescale/mx6ull_14x14_evk/spl.c`'s `spl_dram_init` to write a bogus value (e.g., `MDCFG1 = 0;`). Rebuild, flash, boot. Observe the freeze. *Restore.*
 6. **Reset cause investigation.** Boot, then immediately reset (button or short PWR). Compare the "Reset cause: ..." line on the second boot vs. the first. (POR vs. WDOG-RESET, etc.)
 
-Commit findings to `code/ch20-uboot-spl/NOTES.md`.
-
 ## 20.11  Pitfalls
 
 - **`spl/u-boot-spl-dtb.bin` vs `spl/u-boot-spl-dtb.imx`.** The first is the raw SPL; the second is wrapped with an IVT for the Boot ROM. Use the second for SD-boot.

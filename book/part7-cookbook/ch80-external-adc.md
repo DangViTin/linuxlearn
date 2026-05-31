@@ -384,8 +384,6 @@ To do this: wire the ADC's REF+ / REF− to the same rail that excites the bridg
 6. **Switch to mainline.** Use `compatible = "ti,ads1115"`. Verify `in_voltage_scale_available` shows the PGA ranges; write one to change range.
 7. **AD7606 simultaneity** (if available). Sample two phase-shifted sine waves; verify the captured samples preserve the phase relationship (multiplexed ADC would smear it).
 
-Commit code to `code/ch80-external-adc/`.
-
 ## 80.11  Pitfalls
 
 - **ADS1115 OS-bit polarity confusion.** In single-shot: writing OS=1 *starts* a conversion; reading OS=1 means *idle/done*, OS=0 means *converting*. Easy to get backwards. Check the datasheet's "Operational Status" description carefully (it's counterintuitive).

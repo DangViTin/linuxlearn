@@ -347,8 +347,6 @@ We will write an interrupt-driven echo as a lab in Chapter 15.
 4. **Print system info.** Read OCOTP_CFG0 and OCOTP_CFG1 (RM Chapter 37) and print the chip's unique ID.
 5. **Stress test.** Connect picocom and a script on the host that types 10 KB of text. Confirm none is lost. (We don't have flow control; at 115200 with a polled receiver, 10 KB should still be safe.)
 
-Commit to `code/ch12-uart/`.
-
 ## 12.9  Pitfalls
 
 - **Wrong RFDIV in UFCR.** Setting `RFDIV = 0` divides by 6, not 1. Symptom: baud rate is six times too slow. The encoding is: 000=/6, 001=/5, 010=/4, 011=/3, 100=/2, 101=/1. Always `0b101`.

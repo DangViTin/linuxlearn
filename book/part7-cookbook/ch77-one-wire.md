@@ -386,8 +386,6 @@ DS2401 is interesting for embedded products: it's a unique serial number you can
 7. **Try DHT22.** Wire one up. Read with the mainline `dht11` driver (which also handles DHT22). Note the retry rate — count successes vs failures over 100 reads. Compare to a properly-wired SHT3x: 100/100 success.
 8. **Read DS2401 ROM ID** as a board serial number. Add to your factory-test script: log each board's unique 48-bit ID.
 
-Commit code to `code/ch77-1wire/`.
-
 ## 77.9  Pitfalls
 
 - **Missing pull-up.** No pull-up = bus floats = no devices enumerate. 4.7 kΩ is standard; longer cables may need 2.2 kΩ.

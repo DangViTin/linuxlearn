@@ -159,7 +159,6 @@ Power on with the SD card inserted and the boot switch on SD. Within 2 seconds p
 U-Boot SPL 2025.01 (Jan 12 2026 - 17:42:31 +0700)
 Trying to boot from MMC1
 
-
 U-Boot 2025.01 (Jan 12 2026 - 17:42:31 +0700)
 
 CPU:   i.MX6ULL rev1.1 at 396 MHz
@@ -332,8 +331,6 @@ Read it. It is the cleanest production-grade DDR3 init code in any open-source p
 3. **Run `mtest 0x80000000 0x90000000 0xa5a5a5a5 1`** — a 256 MB memtest. Should report 0 errors.
 4. **Open `board/freescale/mx6ull_14x14_evk/spl.c`** and find the DDR struct definitions. Cross-reference each field against your Chapter 14 register values. Annotate.
 5. **Open `arch/arm/mach-imx/mx6/ddr.c`** and find the DDR3 init flow. Match it section-by-section to your Chapter 14 code. Note where it does more (e.g., periodic recalibration) and where it does less (e.g., it does not run the stress tool inline; values are precomputed).
-
-Commit your annotations to `code/ch19-uboot-first-boot/NOTES.md`.
 
 ## 19.9  Pitfalls
 

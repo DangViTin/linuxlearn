@@ -348,8 +348,6 @@ You have already done the lab if the LED blinked. To deepen:
 3. **Add a second LED** that blinks at half the rate. Now you have a counter.
 4. **Measure image size growth.** Run `wc -c led.bin` before and after; observe the marginal cost.
 
-Commit the result to `code/ch09-asm-led/` in your companion repo.
-
 ## 9.9  Pitfalls
 
 - **Forgetting the CCGR write.** Symptoms: register reads return 0, writes have no effect. *Always* enable the clock before touching a peripheral. Always.

@@ -259,8 +259,6 @@ To debug ROM execution: from `reset halt` state, set a breakpoint on the first D
 8. **Watch a corruption.** Set a watchpoint on a kernel structure (e.g., `init_task.comm`); write to it from user-space via `/proc/self/comm`; see watchpoint trigger.
 9. **Production fuse.** Look up the i.MX6ULL "JTAG disable" fuse. Read it via OpenOCD. Verify it's *not* blown (or you've bricked debug access). In production: blow this fuse to prevent attacker debug, but accept the support cost.
 
-Commit `openocd.cfg` files + GDB session transcripts to `code/ch118-jtag/`.
-
 ## 118.12  Pitfalls
 
 - **VTREF wrong.** Adapter at 5 V into 3.3 V SoC fries the JTAG pins. Always confirm VTREF before connecting.

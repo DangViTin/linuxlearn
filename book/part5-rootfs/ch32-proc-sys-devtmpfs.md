@@ -315,8 +315,6 @@ The `@` prefix runs the command *after* the node is created (`$` runs *before*; 
 5. **Find the device tree.** Walk `/sys/firmware/devicetree/base/` and find the I²C controller's `compatible` string. Verify it matches what's in `imx6ull.dtsi`.
 6. **Make mdev set audio permissions.** Add `snd/[!c].*` to `/etc/mdev.conf` (with a group that exists). Reboot. `ls -l /dev/snd/*` should show the new permissions.
 
-Commit your sysfs/proc exploration notes to `code/ch32-virtual-fs/`.
-
 ## 32.6  Pitfalls
 
 - **`/proc/` writes that don't take effect.** Some `/proc/sys/` entries are read-only on certain configurations. Symptom: `echo 1 > /proc/sys/...` succeeds, but `cat` still shows the old value. Use `sysctl -w` and check the return code.

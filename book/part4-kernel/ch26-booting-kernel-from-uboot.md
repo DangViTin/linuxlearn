@@ -205,8 +205,6 @@ With earlycon active, you'll see ~5 extra lines printed *before* the normal "Boo
 4. **Bad cmdline.** Set `bootargs` to omit `console=`. Boot; observe silence. Add `earlycon`; observe partial output. Restore.
 5. **Bad DTB address.** Forget the `-` in `bootz <kernel> - <dtb>` and use `bootz <kernel> <dtb>`. Observe silence (kernel believes `<dtb>` is an initrd; there is no DTB at `r2`).
 
-Commit annotated logs to `code/ch26-first-boot/`.
-
 ## 26.8  Pitfalls
 
 - **DT load address conflicts with kernel decompression area.** If the kernel decompresses to a region that overlaps where you loaded the DTB, the DT gets corrupted partway through boot and the kernel hangs at a random point. The address `0x83000000` for DTB is safe because the kernel decompresses from `0x82000000` upward but stops well before 16 MiB (the kernel is < 16 MiB). For *very* large kernels (CONFIG_DEBUG_INFO, huge configs), use `0x88000000` for DTB instead.

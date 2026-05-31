@@ -176,8 +176,6 @@ Still: 10 years on one D-cell with no maintenance. The technology is real; the e
 9. **OTA firmware update over Cat-M1.** Most LTE-M modules support FOTA via AT commands. Time a 1 MB firmware update — should take ~10–30 min over Cat-M1 vs hours on NB-IoT.
 10. **Carrier coverage map.** Take the device to a basement / underground / rural location where Cat-1 (Ch 102) failed. NB-IoT should still register at –135 dBm RSRP.
 
-Commit AT scripts + a battery-budget spreadsheet to `code/ch104-nbiot/`.
-
 ## 104.7  Pitfalls
 
 - **PSM not granted by carrier.** Your `AT+CPSMS?` after registration shows `T3412 = default`. Some carriers (US Verizon) restrict PSM to certain plans. Without it, your "10 year battery" sensor is a "3 week" sensor.

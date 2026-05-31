@@ -507,7 +507,7 @@ In your journal, answer:
 3. What is the address of `_start`?
 4. What is the address `nm` reports for `_stack_top`? Does it match `ORIGIN(OCRAM) + LENGTH(OCRAM)`?
 
-The companion repo has reference answers in `code/ch06-skeleton/ANSWERS.md`.
+Compare your work against the listings above; experimenting with `readelf -a` is the answer.
 
 ## 6.11  Pitfalls
 
@@ -516,7 +516,7 @@ The companion repo has reference answers in `code/ch06-skeleton/ANSWERS.md`.
 - **Linker script orders matter.** `*(.text*)` after `*(.text.startup)` makes the startup come first. Get this wrong and the wrong code runs first. We will be deliberate about this in Ch 9.
 - **`.bss` zeroing.** If your startup forgets to zero `.bss`, every uninitialized global is whatever was in memory at boot — which on i.MX6ULL OCRAM is often a useful-looking pattern, leading to bugs that "work fine" except when ROM cleans differently next boot.
 - **Wrong `-march`/`-mcpu`.** `arm-linux-gnueabihf-gcc` defaults to `armv7-a` but the exact flags vary by distribution. Always specify `-mcpu=cortex-a7` explicitly for Cortex-A7 code; the compiler then schedules instructions for that pipeline.
-- **`strip` on the binary you wanted to debug.** Keep an unstripped copy. The companion repo's Makefiles do this by convention (`$(NAME).elf` is unstripped, `$(NAME).stripped.elf` is the deliverable).
+- **`strip` on the binary you wanted to debug.** Keep an unstripped copy. A useful convention in your Makefile: `$(NAME).elf` is unstripped (for `gdb`/`objdump`); `$(NAME).stripped.elf` is the smaller deliverable.
 
 ## 6.12  Going deeper
 

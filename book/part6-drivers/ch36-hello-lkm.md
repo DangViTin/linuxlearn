@@ -289,8 +289,6 @@ Now everything prints to console. Useful for debugging; spammy in production.
 5. **Crash the kernel intentionally** (don't do this on a production system). Add `*(int *)0 = 0;` to `hello_init`. Build, load, observe the `Oops`. Note: this is recoverable on i.MX6ULL — the module fails to load, kernel reports the BUG, but the system continues. (On other archs and with `CONFIG_PANIC_ON_OOPS=y`, the kernel will panic.)
 6. **Decode the Oops trace.** Look at the PC register and the symbol-section addresses in `/sys/module/hello/sections/`. Confirm the crash address falls inside your module.
 
-Commit your final code to `code/ch36-hello-lkm/`.
-
 ## 36.8  Pitfalls
 
 - **`vermagic` mismatch.** "Module hello: version magic '...' should be '...'" The two strings are right there — diff them. Usually you built against the wrong kernel tree, or the running kernel was updated and you haven't rebuilt.

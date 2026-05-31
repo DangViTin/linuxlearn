@@ -241,8 +241,6 @@ Each step is small (~mA). Together they go from "1 Ah lasts 4 hours" to "1 Ah la
 5. **`powertop` baseline.** Get powertop output at idle. Tune until wake-ups are < 5/s.
 6. **Measure absolute current.** With a USB meter or INA219, record current at: 696 MHz busy, 396 MHz idle, suspended. Compare.
 
-Commit code to `code/ch51B-power-management/`.
-
 ## 51B.7  Pitfalls
 
 - **`pm_runtime_get_sync` from atomic context.** It may sleep waiting for resume. Use `pm_runtime_get` (async; check status) instead.

@@ -303,8 +303,6 @@ Image swap is atomic at the container level: either the new image is running or 
 6. **Pre-bake an image.** `podman save` on the host, copy to the target, `podman load` on first boot. Verify no network calls happen.
 7. **Systemd integration.** Generate a unit file via `podman generate systemd`; enable it; reboot; verify the container starts.
 
-Commit Dockerfiles and unit files to `code/ch35C-containers/`.
-
 ## 35C.11  Pitfalls
 
 - **`USER_NS` disabled.** Symptom: Podman rootless mode fails with "no subuid map". Fix: rebuild kernel with `CONFIG_USER_NS=y`.

@@ -300,8 +300,6 @@ $ make O=~/imx6ull/build/kernel INSTALL_MOD_PATH=~/imx6ull/rootfs modules_instal
 4. **Quantify the compression.** Compare sizes: `ls -l arch/arm/boot/{Image,zImage}` and `vmlinux`. The ratios tell you something about kernel content (lots of string tables, dictionaries, …).
 5. **Make distclean and reconfigure.** `make distclean` wipes `.config` and everything else. Re-run `make imx_v6_v7_defconfig && make -j$(nproc) zImage` and observe that the second build is essentially as fast as the first incremental build — `ccache` is the reason if you have it installed; otherwise the same speed.
 
-Commit your annotated build log to `code/ch25-kernel-build/`.
-
 ## 25.9  Pitfalls
 
 - **Forgetting `ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf-`.** The `make` will try to build a host x86-64 kernel and fail with cryptic errors deep in the architecture-specific code. Always export both before invoking `make`.

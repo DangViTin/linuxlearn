@@ -504,8 +504,6 @@ Now you can also predict, with high confidence, where to look in the source if a
    ```
    Read the output. Match every entry to a DT node in `imx6ull-14x14-evk.dts`.
 
-Commit to `code/ch21-uboot-internals/`.
-
 ## 21.10  Pitfalls
 
 - **Forgetting `saveenv`.** Most "my env change didn't stick" bug reports are this.

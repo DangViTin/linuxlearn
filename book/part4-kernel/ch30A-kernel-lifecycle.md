@@ -208,8 +208,6 @@ The pattern across all three: **the field-life of the product, multiplied by the
 4. **Set up a CI matrix.** Imagine you need to build the same `defconfig` against three kernels: mainline tip, LTS 6.6, LTS 6.1. Sketch a GitHub Actions / GitLab CI job matrix. Estimate build-time and disk usage.
 5. **Subscribe to two mailing lists.** `linux-kernel-announce@vger.kernel.org` (release announcements only) and `linux-stable@vger.kernel.org` (stable-tree releases). Build the habit of seeing what's happening before it affects you.
 
-Commit your migration-burden analysis to `code/ch30A-kernel-lifecycle/`.
-
 ## 30A.10  Pitfalls
 
 - **"Just stay on 5.4 forever."** 5.4 ends in Dec 2025. Forever is shorter than you think.

@@ -415,8 +415,6 @@ That registers a clk that consumers can `clk_get`. The hard part — the actual 
 6. **Si5351 clock gen.** Configure in DT for 100 MHz on CLK0. Scope the output. Verify `cat /sys/kernel/debug/clk/clk_summary` shows the clock.
 7. **Si5351 consumer.** Wire CLK0 to an external chip (e.g., an ADC's master clock). In the consuming driver, `clk_get` + `clk_set_rate`; verify the Si5351 retunes.
 
-Commit code to `code/ch81-dac-clockgen/`.
-
 ## 81.8  Pitfalls
 
 - **MCP4725 bit-packing.** Fast-write packs 12 bits as 4+8; EEPROM-write packs as 8+4. Mixing them up produces a value 16× off. Datasheet figures 6-1 / 6-2.

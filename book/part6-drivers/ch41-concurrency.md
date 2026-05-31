@@ -377,8 +377,6 @@ This pattern — copy outside, lock around the structure mutation only — is fu
 4. **Convert `packets` to per-CPU.** Compare overhead vs an `atomic64_t`. (Spoiler: per-CPU is faster on multi-core but the test is harder to write on a single-core i.MX6ULL.)
 5. **RCU experiment.** Implement a simple read-mostly config lookup with RCU. Use `ftrace` (Ch 60) to measure the read-side overhead. Confirm it's zero in `CONFIG_PREEMPT_NONE`.
 
-Commit code to `code/ch41-concurrency/`.
-
 ## 41.12  Pitfalls
 
 - **Sleeping inside a spinlock.** The kernel may not crash immediately; it may deadlock minutes or hours later when the *other* CPU tries to take the same lock. `CONFIG_DEBUG_ATOMIC_SLEEP=y` catches this immediately at the offending call site.

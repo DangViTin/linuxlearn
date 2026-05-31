@@ -792,8 +792,6 @@ For A/B updates, define `boot_qspi_a` and `boot_qspi_b` with different `<flash_o
 5. **Switch to the mainline driver.** Unload `myflash`; bind the same chip with `winbond,w25q128`; verify MTD partitions appear. Run `flashcp`.
 6. **Read out the entire chip (mainline).** `nanddump -f all-flash.bin /dev/mtdblock0`. Compare expected size.
 
-Commit code to `code/ch64-qspi-flash/`.
-
 ## 64.12  Pitfalls
 
 - **Forgetting `write-enable`.** Every write/erase silently no-ops. Status register's WEL bit (bit 1) tells you if write-enable is currently set; check there if writes mysteriously don't take.

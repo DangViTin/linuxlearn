@@ -280,8 +280,6 @@ For CI:
 9. **Update one package.** Increment a package version in both. Buildroot: edit `foo.mk`, rebuild. Yocto: write a new `foo_1.1.bb`, rebuild.
 10. **Verdict.** Write a 200-word "we should choose X" for your team's situation. Defend.
 
-Commit your Buildroot defconfig + Yocto layer + comparison spreadsheet to `code/ch123-buildroot-yocto/`.
-
 ## 123.12  Pitfalls
 
 - **Yocto initial build crushing your laptop.** Needs 50+ GB disk, 4+ GB RAM, 4+ cores; a Raspberry Pi can't do it. Use a beefy build server.

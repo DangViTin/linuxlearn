@@ -127,8 +127,6 @@ GT911 boots from internal ROM but accepts firmware updates via I²C. Some boards
 5. **Long-press detection.** In user-space, time how long ABS_MT_TRACKING_ID stays non-(-1); after 500 ms, emit a "long-press" event.
 6. **Gestures.** Write a libinput-based program that detects swipes.
 
-Commit code to `code/ch55G-multitouch/`.
-
 ## 55G.8  Pitfalls
 
 - **Wrong I²C address.** RST/INT timing at reset selects 0x5d vs 0x14. If the driver's expected address doesn't match, no probe.

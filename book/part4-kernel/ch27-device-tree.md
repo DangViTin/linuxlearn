@@ -534,8 +534,6 @@ This is the Linux model. Internalise it and Part VI is dramatically easier.
 5. **Write your first overlay.** Add a virtual I²C device — pick something innocuous like a non-existent ID at an unused address (`0x57`). Compile with `dtc -@ -O dtb tmp.dts -o tmp.dtbo`. Apply at U-Boot. Boot and `dmesg | grep tmp` to confirm the kernel *tried* to probe it (and failed because there's no actual device — that's fine; we wanted to confirm the overlay-apply path).
 6. **Find the `chosen.bootargs`** in your booted kernel by running `cat /proc/cmdline` on the target — that's exactly what U-Boot wrote into the DT.
 
-Commit annotated DT walks to `code/ch27-device-tree/`.
-
 ## 27.13  Pitfalls
 
 - **`compatible` typo.** Off-by-one-character compatible strings are the most common DT bug. Kernel parses the DT, sees no driver match, the device silently doesn't probe. Symptom: device file missing in `/dev/`; nothing in `dmesg` about that device. Fix: `dtc -I dtb -O dts your.dtb | grep compatible` and verify every string is exact.

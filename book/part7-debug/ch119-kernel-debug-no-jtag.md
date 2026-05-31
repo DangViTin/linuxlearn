@@ -274,8 +274,6 @@ Embedded systems often lack the disk space for vmcore (200+ MB); skip kdump and 
 9. **Permanent ftrace.** Configure ftrace to run from boot, recording sched + IRQ events; on next oops, save the ftrace buffer with the oops. (Use `ftrace_dump_on_oops=1` kernel cmdline.)
 10. **dynamic_debug at boot.** Add `dyndbg="file drivers/usb/* +p"` to cmdline; see all USB debug prints during enumeration.
 
-Commit example ftrace configs, bpftrace scripts, oops-decoder workflow scripts to `code/ch119-kernel-debug/`.
-
 ## 119.8  Pitfalls
 
 - **dmesg buffer wraps.** Default 128 KB; verbose drivers eat it in seconds. Bump to 1 MB with `CONFIG_LOG_BUF_SHIFT=20`.

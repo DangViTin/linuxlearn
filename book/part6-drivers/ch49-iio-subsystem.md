@@ -275,8 +275,6 @@ static const struct iio_chan_spec mcp3008_channels[] = {
 5. **Inspect with iio-utils.** Install `libiio-utils`. `iio_info -a` shows every IIO device on the system; `iio_readdev` streams samples.
 6. **Compare cooked vs raw.** Some drivers provide `in_temp_input` (pre-cooked) alongside `in_temp_raw`. Diff the two on the same physical reading.
 
-Commit code to `code/ch49-iio/`.
-
 ## 49.9  Pitfalls
 
 - **Wrong `realbits` / `storagebits` in `scan_type`.** Buffered reads return junk; user-space can't decode. For a 10-bit signed value stored in 16 bits, `sign='s', realbits=10, storagebits=16, shift=0`.

@@ -310,8 +310,6 @@ We will look at DCD contents in detail in Chapter 14.
 4. **Find another mistake.** Make `mkimx.py` emit `IVT_LENGTH` little-endian instead of big-endian. Build, SDP-push. The ROM rejects it silently. Restore.
 5. **Dissect a vendor image.** Pick any `u-boot*.imx` you have on hand. Decode every IVT/BootData field. Identify whether a DCD is present and roughly how large it is.
 
-Commit your work to `code/ch11-mkimx/`.
-
 ## 11.8  Pitfalls
 
 - **Endianness of IVT header length.** Big-endian. The rest of the IVT is little-endian. Easy to miss.

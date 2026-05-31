@@ -480,8 +480,6 @@ User-space reads all of them via IIO + serdev, feeds an MQTT topic, plots in Gra
 5. **Cross-correlate.** Run all three sensors for an hour; log to CSV. After cooking, see CO₂ rise (people present), TVOC rise (cooking emissions), PM2.5 rise (smoke). Three signals from three physics.
 6. **Mainline SCD30**. Switch from manual i2c-tools to the mainline driver via `compatible = "sensirion,scd30"`. Verify same numbers.
 
-Commit code to `code/ch69-air-quality/`.
-
 ## 69.8  Pitfalls
 
 - **Calling eCO₂ "CO₂".** It isn't. CCS811's eCO₂ is calibrated to track human-occupancy *if and only if* there are no other VOC sources. Cooking, paint, cleaning products, smoking — all corrupt it. If your product advertises "CO₂ sensor," use SCD30, not CCS811.

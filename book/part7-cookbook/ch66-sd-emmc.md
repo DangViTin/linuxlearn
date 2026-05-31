@@ -373,8 +373,6 @@ HS200 eMMC: 100–150 MB/s sequential, ~2500 IOPS random 4k write. Compare to a 
 7. **Pull-the-plug test.** With dd writing a large file, yank power. Reboot. Observe whether `fsck` finds errors. Compare eMMC vs SD card resilience (eMMC much better).
 8. **Read the host driver.** Skim `drivers/mmc/host/sdhci-esdhc-imx.c`. Find `sdhci_esdhc_ops`. Find the i.MX-specific quirks (HS400 absence on i.MX6ULL, the tuning callback). With the layer model in §66.6 you should be able to navigate it.
 
-Commit code to `code/ch66-sd-emmc/`.
-
 ## 66.12  Pitfalls
 
 - **`bus-width = <4>`** on a chip with 8 data lines wired. You get DS or HS speeds at best; HS200 needs 8-bit. Check schematic ↔ DT.

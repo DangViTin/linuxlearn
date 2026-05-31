@@ -158,8 +158,6 @@ PPP is slow (~10 Mbit/s max) and adds latency. Use only for old modems without U
 5. **Failover to WiFi.** Write a script that periodically pings the gateway; switch routes if cellular fails.
 6. **Power consumption.** Measure idle vs RX vs TX-burst current. Plan your battery accordingly.
 
-Commit code to `code/ch55F-cellular/`.
-
 ## 55F.7  Pitfalls
 
 - **USB power.** EC25 spikes to >1.5 A on TX bursts. 5V/2A is the minimum; less = USB resets at the worst moments.

@@ -402,8 +402,6 @@ Plus buffered capture via trigger (Ch 70) for high-rate logging.
 6. **Move near a steel object.** Watch the heading change abruptly. Calibration done on the bench doesn't help if the in-product environment has different ferromagnetics — recalibrate in-place.
 7. **Switch to mainline driver.** Verify same data flows; verify sampling_frequency_available works.
 
-Commit code to `code/ch73-magnetometer/`.
-
 ## 73.10  Pitfalls
 
 - **Mistaking QMC5883L for HMC5883L.** #1 hobbyist trap. If it doesn't respond at 0x1E, try 0x0D.

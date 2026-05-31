@@ -294,8 +294,6 @@ For our continuing work in this book, **Buildroot** is the default. **Ubuntu-bas
 5. **Disable a heavyweight service.** Pick one (e.g., `snapd` if present, `unattended-upgrades`). `sudo systemctl disable <name>`. Reboot; compare boot times.
 6. **Build a packaged image.** Tar the rootfs, write to a real partition, change `bootargs` to mount from disk, verify the system boots without the host. This is what you'd ship.
 
-Commit scripts and notes to `code/ch35A-ubuntu-base/`.
-
 ## 35A.10  Pitfalls
 
 - **`qemu-arm-static` not copied into the rootfs.** Symptom: `chroot` fails with `Exec format error` because the kernel doesn't know how to run an ARM binary. Fix: copy `/usr/bin/qemu-arm-static` into `ubuntu-rootfs/usr/bin/`.

@@ -319,8 +319,6 @@ For chardev `read`/`write`, always use interruptible.
 5. **Replace `wait_event_interruptible` with `wait_event` (the uninterruptible variant).** Confirm Ctrl-C *doesn't* kill the reader. Use Ctrl-Z, then `kill -9 %1`. The process is unkillable. (This is the bug pattern; restore interruptible afterwards.)
 6. **Add a writeable path.** Implement `.poll`'s `EPOLLOUT` for a fictional state ("buffer empty enough to accept more writes"). Test with `select` watching for writability.
 
-Commit code to `code/ch42-sleeping/`.
-
 ## 42.8  Pitfalls
 
 - **Race: condition check vs schedule.** If you write the pattern by hand instead of using `wait_event_interruptible`, you may have a window where the producer sets the condition, calls wake, and you fall asleep *after* the wake — sleeping forever. **Always use the `wait_event_*` macros.** They handle this race correctly.

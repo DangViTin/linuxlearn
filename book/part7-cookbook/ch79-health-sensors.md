@@ -457,8 +457,6 @@ Maxim's reference code includes the algorithm; Apple Watch's algorithm is patent
 7. **LED current sweep.** Vary `LED1_PA` and `LED2_PA` from 0x10 to 0x60. Observe DC level scaling linearly. Higher currents = stronger signal but higher noise from photodiode saturation.
 8. **Compare against a MAX30100** (if available). Same code; different chip-id. ~14-bit vs 18-bit visible in signal SNR.
 
-Commit code to `code/ch79-health/`.
-
 ## 79.8  Pitfalls
 
 - **Sensor in direct sun.** Photodiode saturated by ambient IR. DC level pinned at max; no pulsatile signal. Use indoor or covered.

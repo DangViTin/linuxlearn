@@ -330,8 +330,6 @@ When you receive a unit, you don't ask "which rev is this?" The unit answers its
 4. **Make a deliberately broken overlay** (reference a label that doesn't exist in the base). Observe the `fdt apply` failure and the fallback to the base DT.
 5. **Read U-Boot's `fdt apply` source.** `cmd/fdt.c` and `common/fdt_support.c`. Trace what happens when an overlay references a symbol that doesn't exist.
 
-Commit to `code/ch23A-multi-variant-fit/`.
-
 ## 23A.8  Pitfalls
 
 - **Hash mismatch in FIT.** If you forget `hash-1 { algo = "sha256"; };` on an image, `bootm` may print a warning and proceed (depending on config). For production, *always* hash; for signed FIT (Ch 62), hashes are mandatory.

@@ -281,8 +281,6 @@ A common production button-combination is "hold the recovery button at boot for 
 4. **Factory reset.** Trigger from inside a running shell (`rm -rf /overlay/upper-*; reboot`). Verify pristine state on next boot.
 5. **Quantify the cost.** What's the boot-time overhead of the overlay setup? (Time the initramfs's overlay mounts.) What's the RAM cost?
 
-Commit your initramfs and partition setup scripts to `code/ch35B-readonly-rootfs/`.
-
 ## 35B.8  Pitfalls
 
 - **`/etc/resolv.conf` and `/etc/adjtime`.** Both written at runtime in default Ubuntu/Debian setups. Either symlink them to `/run/` (tmpfs) or use overlay. If they end up trying to write to a RO mount, things like DHCP and NTP silently misbehave.

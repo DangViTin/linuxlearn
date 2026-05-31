@@ -256,8 +256,6 @@ A 4 MB write + 4 MB read on DDR3 at 396 MHz takes ~30 ms (≈ 250 MB/s). At 696 
 4. **Nested-IRQ test.** Inside `epit_isr`, `printf("tick\n")`. `uart_putc` polls TX, so this is okay even though we're in ISR. Confirm output every 1 ms (you won't see individual ticks at 115200 baud — but the *rate* should be steady).
 5. **Use GPT to validate Chapter 13's clocks.** Make a fixed-cycle-count loop (200 nops, exactly). Measure with PMU; confirm 200 cycles. Measure with GPT; confirm 200/696 ≈ 287 ns.
 
-Commit to `code/ch16-timers/`.
-
 ## 16.7  Pitfalls
 
 - **Wrong CCGR bit.** GPT1 is CG10; EPIT1 is CG6; both in CCGR1. Easy to confuse.

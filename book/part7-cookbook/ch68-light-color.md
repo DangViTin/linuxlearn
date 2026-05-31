@@ -445,8 +445,6 @@ tcs34725@29 { compatible = "amstaos,tcs34725"; reg = <0x29>; };
 6. **TSL2561 (if available).** Configure the chip; read both channels; implement the piecewise formula in user-space; cross-check against BH1750 under fluorescent light (where TSL2561's IR rejection should give a tighter lux number).
 7. **TCS34725 color match.** With the bonus chip, hold a red object, a green object, a blue object in front; verify the R/G/B counts respond correspondingly.
 
-Commit code to `code/ch68-light-color/`.
-
 ## 68.11  Pitfalls
 
 - **BH1750 reading times wrong.** Datasheet says 120 ms typical, 180 ms max for high-res. Use 180 ms to be safe; or check the busy-flag (chip will NACK reads during measurement).

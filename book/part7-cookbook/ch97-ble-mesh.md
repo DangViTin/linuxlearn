@@ -182,8 +182,6 @@ This is analogous to the GATT server of Ch 95 but for mesh models — more invol
 7. **Relay test.** Place a node out of direct range of the i.MX6ULL but within range of another node. Verify the message relays (the far node still responds). This is the mesh magic.
 8. **MQTT gateway.** Bridge a mesh group to MQTT; control the lights from an MQTT client (mosquitto_pub).
 
-Commit code + configs to `code/ch97-ble-mesh/`.
-
 ## 97.8  Pitfalls
 
 - **bluetooth-meshd vs bluetoothd.** They're separate daemons and can conflict over the HCI controller. Run mesh on a dedicated controller, or ensure only one daemon claims `hci0`.

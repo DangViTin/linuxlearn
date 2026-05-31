@@ -240,8 +240,6 @@ For i.MX6ULL specifically: mainline support is *excellent* as of 6.6 — most BS
 8. **CVE diff.** Use `cve-checker` (or NIST CVE search) to count CVEs against 4.1.15 vs 6.6 LTS. The number will shock.
 9. **Plan a migration.** Imagine you're the engineer-in-charge. Write a 1-page proposal: subsystem-by-subsystem timeline, person-weeks estimate, risk register, fallback plan.
 
-Commit your inventory spreadsheet, port plan, mainline build results to `code/ch122A-migration/`.
-
 ## 122A.11  Pitfalls
 
 - **Underestimating scope.** "It's just a kernel upgrade." A 7000-patch migration is **6 person-months minimum**. Plan accordingly.

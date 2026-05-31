@@ -340,8 +340,6 @@ In practice they're all similar (all build from the same upstream). Differences:
 9. **Cross-debug.** Build your gdb cross (part of crosstool-NG). Use it to debug a target program via gdbserver.
 10. **Yocto SDK comparison.** If you've done a Yocto build (Ch 123A): export an SDK; compare against your hand-built toolchain.
 
-Commit your crosstool-NG `.config`, manual-build scripts, comparison notes to `code/ch122-toolchain/`.
-
 ## 122.11  Pitfalls
 
 - **Build out of order.** Build glibc before stage 1 gcc → fails. Always sequence binutils → headers → gcc1 → glibc → gcc2.

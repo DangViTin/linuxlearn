@@ -226,7 +226,7 @@ Without PMIC: each rail must be enabled by a separate GPIO with separate timing;
 If you're prototyping with a discrete-LDO board, but want to demonstrate the principles, here's how you'd talk to a hypothetical PMIC's BUCK1 register directly:
 
 ```c
-/* code/ch116-pmic/pmic_test.c */
+/* pmic_test.c */
 #include <linux/i2c-dev.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -291,8 +291,6 @@ This is for understanding; in real Linux code you go through the regulator frame
 8. **OPP tuning.** Add a custom OPP (e.g., 528 MHz at 1.1 V — slightly under the safe-spec to see what fails). Run stress tests; record where the SoC starts to glitch (you may corrupt files; use a scratch SD).
 9. **From-scratch I²C peek.** Use `pmic_test.c` to read every register; dump them; identify which rail is which by toggling each and observing what dies.
 10. **Cold start sequencing trace.** With a scope on each rail's output, capture the power-on sequence. Verify timing matches the i.MX6ULL datasheet's required order.
-
-Commit code, DT overlays, power measurements to `code/ch116-pmic/`.
 
 ## 116.9  Pitfalls
 

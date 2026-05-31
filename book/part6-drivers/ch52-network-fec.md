@@ -258,8 +258,6 @@ We'll go deeper on dual FEC in Part VII Ch 115 (Device Cookbook: Dual FEC + W550
 5. **Throughput test.** `iperf3 -s` on the host, `iperf3 -c <host>` on the target. Expect ~94 Mbps (line-rate 100). Below 50 Mbps → debug.
 6. **Recover from cable unplug.** Pull and replug; watch dmesg for the link-state transition. Confirm `eth0` recovers cleanly.
 
-Commit code to `code/ch52-network/`.
-
 ## 52.11  Pitfalls
 
 - **RMII clock direction reversed.** No link. The most common, most painful. Confirm against schematic and PHY chip ordering code.

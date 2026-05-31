@@ -556,8 +556,6 @@ Result: `/sys/class/hwmon/hwmon0/in*_label`, `in*_input`, `curr*_input` × 3 cha
 7. **Switch to the mainline driver.** Use `compatible = "ti,ina219"`, set `shunt-resistor`, reboot. Confirm same values.
 8. **`sensors` output.** Install lm-sensors; run `sensors`; verify your INA appears with all channels.
 
-Commit code to `code/ch75-current-monitoring/`.
-
 ## 75.10  Pitfalls
 
 - **Calibration register left at zero.** Current and Power read zero forever. The #1 INA gotcha; you'll lose an hour to it.

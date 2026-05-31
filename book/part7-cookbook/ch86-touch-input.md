@@ -387,8 +387,6 @@ For a cleaner kernel-side approach, the mainline `ads7846` driver + the `touchsc
 6. **Pressure.** Read ABS_PRESSURE; verify harder presses give higher values. Use it to reject light/ghost touches.
 7. **Compare to GT911.** If you have a capacitive panel (Ch 55G), compare the experience: cap is smoother and multi-touch; resistive works with gloves but is single-point and needs calibration.
 
-Commit code to `code/ch86-touch-input/`.
-
 ## 86.8  Pitfalls
 
 - **TTP223 strap config.** Momentary vs toggle, active-high vs low — set by PCB straps (TOG, AHLB pads), not software. Get them right at layout.

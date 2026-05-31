@@ -189,8 +189,6 @@ The core handles `/dev/watchdog`, ioctls, and sysfs. You just implement the four
 5. **systemd integration.** Convert the feeder to a systemd unit with `WatchdogSec=`. Use `sd_notify(0, "WATCHDOG=1")` from your code.
 6. **External watchdog IC.** Optional — wire up a TPS3823 with a GPIO output as the reset trigger; feed it from your driver. Compare against the on-chip watchdog.
 
-Commit code to `code/ch51A-watchdog/`.
-
 ## 51A.8  Pitfalls
 
 - **`CONFIG_WATCHDOG_NOWAYOUT=n` in production.** A buggy daemon `close()`s the device → watchdog disabled → product hangs forever. Always `=y` in shipped kernels.

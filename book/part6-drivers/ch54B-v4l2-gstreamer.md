@@ -188,8 +188,6 @@ The sensor driver (ov5640) exposes a stack of controls; user-space tunes them. A
 5. **Auto-exposure off.** Set manual exposure; sweep values; observe brightness changes.
 6. **Network stream + viewer.** Stream H.264 (software-encoded; slow) over UDP to a desktop running `vlc udp://@:5000`.
 
-Commit code to `code/ch54B-v4l2/`.
-
 ## 54B.7  Pitfalls
 
 - **Sensor reset/powerdown GPIO polarity.** Wrong polarity → I²C-detect fails for the sensor.

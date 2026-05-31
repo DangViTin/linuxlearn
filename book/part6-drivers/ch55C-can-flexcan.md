@@ -168,8 +168,6 @@ Or do it manually with `ip link set can0 down; ip link set can0 up;` after sorti
 5. **ISO-TP echo.** Write a small ISO-TP server that replies with what it received; client sends 50-byte payloads.
 6. **Bus-off recovery.** Disconnect transceiver during transmission; observe bus-off error frame; verify `restart-ms` auto-recovers.
 
-Commit code to `code/ch55C-can/`.
-
 ## 55C.8  Pitfalls
 
 - **Missing/wrong terminations.** Without 60 Ω at each end, signal integrity collapses. Single-node bench setups: just stick a single 120 Ω resistor across CAN_H/CAN_L and live with reduced robustness.

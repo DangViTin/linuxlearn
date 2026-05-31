@@ -317,8 +317,6 @@ You start from a known baseline and apply targeted changes. Easier to maintain t
 4. **Enable a kernel module.** Find a driver currently `=y` (e.g., `CONFIG_USB_F_MASS_STORAGE`). Change it to `=m`. Rebuild. Confirm a corresponding `.ko` appears under `drivers/usb/gadget/function/`.
 5. **Read `Documentation/admin-guide/kernel-parameters.txt`** for any 10 cmdline tokens. Cross-reference with the `.config` options that produce them.
 
-Commit your `myboard_defconfig` to `code/ch30-kernel-config/`.
-
 ## 30.9  Pitfalls
 
 - **Editing `.config` directly and not running `make oldconfig`.** Your edits may be silently reverted on next build because of dependency rules. Always go through Kconfig.

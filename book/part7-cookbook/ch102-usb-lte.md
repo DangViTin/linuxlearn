@@ -251,7 +251,7 @@ PPP is universal (works on every modem ever made) but slow (max ~1–2 Mbps due 
 
 The most important debugging tool: a script that opens the AT interface and exchanges commands. This is what tells you *why* the modem isn't connecting.
 
-`code/ch102-lte/at_client.py`:
+`at_client.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -350,8 +350,6 @@ The 5 V supply must source ~2.5 A during TX bursts; weak USB power = brownout = 
 8. **GPS data.** While data is up, `cat /dev/ttyUSB1` shows NMEA. Pipe to `gpsd` (Ch 107) to use as a time source.
 9. **Signal degradation.** Watch `mmcli -m 0` while moving the antenna. Note RSSI/RSRP changes.
 10. **Auto-failover.** Pair WiFi (Ch 91) + LTE; configure metric so WiFi wins when up; disconnect WiFi and watch LTE take over within 5 s (NetworkManager handles this with right metric config).
-
-Commit scripts + a one-page bring-up cheatsheet to `code/ch102-lte/`.
 
 ## 102.10  Pitfalls
 

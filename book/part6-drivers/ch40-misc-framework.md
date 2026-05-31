@@ -151,8 +151,6 @@ Read any of them: you'll see `misc_register` used exactly as we used it, surroun
 3. **Combine misc + platform driver.** In your Ch 39 demo platform driver, register a misc device from inside `probe()` and `misc_deregister` from `remove()`. Now you have a DT-described platform driver that exposes a `/dev/` interface — the canonical pattern for embedded chardev drivers.
 4. **Read `drivers/char/hw_random/core.c`.** Specifically the calls to `misc_register`. Note how the hwrng subsystem manages multiple RNG backends with one shared misc device.
 
-Commit code to `code/ch40-misc/`.
-
 ## 40.7  Pitfalls
 
 - **`miscdevice` struct must outlive the registration.** Don't put it on the stack of `init()`. Make it `static` (as in the example) or allocate it from `kmalloc`. The misc layer holds a pointer to your struct.

@@ -205,8 +205,6 @@ For higher-level audio (Bluetooth, network), you'd stack PulseAudio or PipeWire 
 5. **Listen at different rates.** `aplay -f S24_LE -r 44100 ...` — verify codec accepts non-48k rates.
 6. **Read the WM8960 driver.** `sound/soc/codecs/wm8960.c` — find the regmap config, the DAPM (Dynamic Audio Power Management) routing, the bias-level callbacks.
 
-Commit code to `code/ch53-sound/`.
-
 ## 53.7  Pitfalls
 
 - **Wrong I²S format.** Codec expects "left-justified," driver sends "I²S": you hear silence or noise. Fix `.dai_fmt = SND_SOC_DAIFMT_LEFT_J` etc.

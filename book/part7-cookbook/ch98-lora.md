@@ -227,7 +227,7 @@ For this book, we follow the dominant pattern: **`spidev` + user-space driver + 
 
 We build the smallest possible LoRa driver: open `spidev`, reset the chip, configure modem, transmit a packet, receive a packet. ~200 lines, no LoRaWAN, no MAC. Pure PHY. Two boards running this can ping each other at 5 km.
 
-`code/ch98-lora/sx1276_min.c`:
+sx1276_min.c:
 
 ```c
 /* Minimal user-space SX1276 LoRa driver — PHY only, no LoRaWAN.
@@ -557,8 +557,6 @@ A private LoRaWAN network running on one i.MX6ULL is genuinely possible. The ker
 8. **Two boards ping-pong with sequence numbers + CRC.** Add a 4-byte header (`magic, seq_lo, seq_hi, crc8`); each side increments its `seq` on RX-success; lost packets are visible as gaps. This is a real point-to-point protocol.
 9. **Switch to SX1262 (stretch).** Port `sx1276_min.c` to SX1262's command-based interface using Semtech's open driver as reference. Same physical sequence, different SPI shape.
 10. **LoRaWAN gateway (capstone).** Acquire an SX1303 concentrator module (RAK2287 or similar). Bring up `sx1302_hal` + `chirpstack-gateway-bridge` + `chirpstack` on the i.MX6ULL. Provision an OTAA device. Watch the JoinRequest → JoinAccept handshake in ChirpStack's logs. Send 5 uplinks; receive them on MQTT.
-
-Commit all code + configs + DT overlay to `code/ch98-lora/`.
 
 ## 98.10  Pitfalls
 

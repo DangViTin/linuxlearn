@@ -405,8 +405,6 @@ So this chapter and Chapter 14 are coupled: get clocks right here, and DDR init 
 4. **Try to set ARM to 792 MHz.** This is the upper bin; some chips can take it. (Many MINIs can. Yours may or may not.) Set DIV_SELECT = 66. Observe — does it lock, does it crash? **Restore 696 MHz** before next chapter.
 5. **Read CCM_CBCMR after init and decode every field by hand.** Cross-check with what your code wrote.
 
-Commit to `code/ch13-clocks/`.
-
 ## 13.9  Pitfalls
 
 - **Reprogramming PLL1 while running on it.** The CPU stalls. Always BYPASS first or switch ARM clock to the step source. We chose bypass.

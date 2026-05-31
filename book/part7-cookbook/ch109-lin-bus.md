@@ -111,7 +111,7 @@ The i.MX UART has a `SENDBRK` bit in UCR1 that asserts continuous TX while set. 
 
 ## 109.5  From scratch — LIN master in C
 
-`code/ch109-lin/lin_master.c`:
+lin_master.c:
 
 ```c
 /* Minimal LIN 2.x master. Sends headers; reads slave responses.
@@ -277,8 +277,6 @@ You've now controlled an automotive comfort actuator from Linux. The same patter
 7. **Real-car interface.** Wire to an actual automotive LIN slave (junkyard module); reverse-engineer the protocol by sending common IDs and watching for responses. Many slaves respond to ID 0x3D (slave-info request) with their NAD (Network Address) + supplier ID.
 8. **Logging.** Capture all bus traffic to a file with timestamps; build a simple LIN-trace viewer in Python.
 9. **Compare with LIN-USB analyser.** Hook up a commercial analyser (PEAK PLIN-USB, Microchip MCP2003-EVB-LIN); confirm your master generates identical frames.
-
-Commit `lin_master.c`, schedule scripts, a sample VW HVAC controller register map to `code/ch109-lin/`.
 
 ## 109.10  Pitfalls
 

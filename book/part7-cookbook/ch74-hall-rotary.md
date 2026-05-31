@@ -367,8 +367,6 @@ After load: `/sys/bus/iio/devices/iio:device0/in_angl_raw` plus `_scale` for con
 7. **A1324 with ADC.** Wire A1324 output to i.MX6ULL ADC1 channel; verify IIO ADC reading changes when bringing a magnet near.
 8. **Servo controller demo.** Hook the AS5048's angle to a PID loop driving a motor; verify the system closes to a setpoint within 1°.
 
-Commit code to `code/ch74-hall-rotary/`.
-
 ## 74.9  Pitfalls
 
 - **Wrong magnet.** Axial magnetisation = chip sees constant field, no rotation signal. Diametric is mandatory.

@@ -275,8 +275,6 @@ BlueZ's `LEAdvertisingManager1` D-Bus interface controls advertising; you regist
 7. **Provisioning use case.** Add a writable "WiFi credentials" characteristic; a phone app writes SSID+password; the i.MX6ULL then joins WiFi (Ch 91). This is the canonical "configure my headless device from a phone" flow.
 8. **Range + RSSI.** Move the phone away; observe RSSI drop in `bluetoothctl`. Note BLE's ~10–30 m practical range.
 
-Commit code to `code/ch95-hci-bluetooth/`.
-
 ## 95.9  Pitfalls
 
 - **No hardware flow control on UART BT.** At 1–3 Mbps, BT HCI needs RTS/CTS. Without it, HCI packets corrupt → `hci0` flaky or dead. `uart-has-rtscts` + wire the lines.

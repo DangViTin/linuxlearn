@@ -251,8 +251,6 @@ Out-of-tree WiFi drivers are a recurring maintenance nightmare:
 7. **Power management.** Suspend the system (`echo mem`); verify WiFi reconnects on resume (with `keep-power-in-suspend`).
 8. **SDIO debugging.** `cat /sys/kernel/debug/mmc1/...` for SDIO bus state. Enable `brcmfmac` debug: `modprobe brcmfmac debug=0x1404`.
 
-Commit findings + DT to `code/ch91-sdio-wifi/`.
-
 ## 91.10  Pitfalls
 
 - **No "new SDIO card" in dmesg.** The transport failed. 90% of bring-up problems are here, not in WiFi. Check: WL_REG_ON pulsing (mmc-pwrseq), 32 kHz clock present, rails up, SDIO pinmux correct.

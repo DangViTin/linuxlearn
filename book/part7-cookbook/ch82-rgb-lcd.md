@@ -446,8 +446,6 @@ For a Qt app: `./app -platform linuxfb`. For backlight: `echo 4 > /sys/class/bac
 7. **Qt app.** Run a simple Qt `-platform linuxfb` app; verify it renders.
 8. **Pixel-clock limit.** Try the ATK10261 (71 MHz pclk). Note if it works or glitches; if it glitches, reduce to a 50 Hz refresh timing (lower pclk) and retest.
 
-Commit code to `code/ch82-rgb-lcd/`.
-
 ## 82.9  Pitfalls
 
 - **One porch wrong = rolling/torn image.** The classic symptom. Re-check every porch value against the datasheet.

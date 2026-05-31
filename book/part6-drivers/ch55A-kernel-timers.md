@@ -164,8 +164,6 @@ cancel_delayed_work_sync(&my_dwork);
 4. **Periodic GPIO toggle.** Use hrtimer + GPIO output to generate a 1 kHz square wave; scope it; observe jitter.
 5. **Combine timer + workqueue.** A timer that schedules work; the work does `msleep(50)`; verify the system stays responsive.
 
-Commit code to `code/ch55A-timers/`.
-
 ## 55A.6  Pitfalls
 
 - **Sleeping in a timer callback.** Softirq context — `kmalloc(GFP_KERNEL)`, `mutex_lock` are forbidden. Use workqueue if you need to sleep.

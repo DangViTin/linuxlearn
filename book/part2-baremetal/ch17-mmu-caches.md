@@ -344,8 +344,6 @@ The 10× factor is real and is the reason Linux insists on having caches before 
 4. **Cache-line aliasing experiment.** Write to a buffer, then read it from a *different virtual address* that maps to the same physical address. (Construct this by adding a second mapping in your page table.) Confirm the read sees the right value despite VIPT cache being involved — Linux handles this for you in the page allocator; here you can see the issue raw.
 5. **Implement `dcache_clean_range`** and verify with a flush-then-DMA-style pattern.
 
-Commit to `code/ch17-mmu/`.
-
 ## 17.10  Pitfalls
 
 - **Page table not 16 KiB aligned.** Symptom: enabling MMU traps to data abort. Cause: TTBR's low 14 bits are reserved zero; if your table address has any of them set, the actual base is silently truncated.

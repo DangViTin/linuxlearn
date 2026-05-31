@@ -178,8 +178,6 @@ When *not* to use:
 5. **Wear test.** Write a script that writes a 1 MB file in a loop, deleting and recreating. Run for an hour; check max erase counter via `ubinfo`. Verify wear levelling spreads writes.
 6. **Recover from bad block.** Use `nandtest` to mark a block bad; reformat UBI; observe it being remapped.
 
-Commit code to `code/ch54A-mtd-ubi/`.
-
 ## 54A.9  Pitfalls
 
 - **Wrong page/OOB size.** `ubiformat` defaults may not match your chip. Specify `-O 2048 -e 131072` explicitly to match `cat /proc/mtd` output.

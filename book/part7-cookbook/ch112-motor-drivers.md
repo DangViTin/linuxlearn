@@ -209,8 +209,6 @@ This runs on hall-IRQ → at 1000 RPM × 14 poles = 234 IRQ/s. Linux can handle 
 9. **BLDC FOC offload (stretch).** Buy an ODrive or BL-MGN board. Linux sends UART commands; the dedicated MCU does FOC. Compare torque smoothness.
 10. **Safety stop.** Add an emergency-stop GPIO that asserts all driver ENABLE pins low → motor freewheels. Wire to a physical button.
 
-Commit code + PID tuning notes to `code/ch112-motors/`.
-
 ## 112.8  Pitfalls
 
 - **Stepper current too high.** DRV8825 / A4988 overheat and thermally shut down. Set Vref carefully; add heat sink + airflow.

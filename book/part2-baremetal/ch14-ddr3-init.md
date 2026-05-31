@@ -205,7 +205,7 @@ int  ddr_selftest(void);   /* returns 0 on success */
 #endif
 ```
 
-`ddr.c` (abbreviated to the structural skeleton; the full version is in `code/ch14-ddr/`):
+`ddr.c` (abbreviated to the structural skeleton):
 
 ```c
 #include "ddr.h"
@@ -238,7 +238,7 @@ int  ddr_selftest(void);   /* returns 0 on success */
 static void ddr_iomux(void)
 {
     /* ---- Address / control pads: strong drive, no pull ---- */
-    /* (For brevity, only key pads shown.  Full list in code/ch14-ddr/.) */
+    /* (For brevity, only key pads shown.) */
     REG(0x020E0500) = 0x000000F0;   /* DRAM_ADDR00 .. */
     /* ... (all DRAM pads) ... */
 }
@@ -548,8 +548,6 @@ This is the central lab of Part II.
 5. **Relocate to DRAM.** Implement §14.10. Confirm `main` reports an address in `0x80100000` range.
 6. **Vary DRAM clock.** In `clocks_init()`, reduce MMDC clock to 198 MHz (PFD2 / 2 instead of PFD2). Re-run DDR init with adjusted timing values (compute from datasheet ns). Re-test. Compare error rate.
 7. **Heat the chip.** Run a long memtest while gently heating the DRAM with a hot-air station or a hairdryer (be careful). Observe whether calibration holds.
-
-Commit to `code/ch14-ddr/`.
 
 ## 14.15  Pitfalls
 

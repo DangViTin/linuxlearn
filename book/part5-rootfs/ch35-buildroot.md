@@ -363,8 +363,6 @@ The hand-built path was for *understanding*. Buildroot is for *production work*.
 6. **Read `output/build/busybox-*/`.** That's the extracted busybox source. Compare against a fresh tarball; identify any patches Buildroot applied (look in `package/busybox/`).
 7. **Use the Buildroot manual.** `docs/manual/manual.html` — load it in a browser. The section on writing custom packages is the canonical reference; bookmark it.
 
-Commit your defconfig + overlay to `code/ch35-buildroot/`.
-
 ## 35.11  Pitfalls
 
 - **`make clean` is not enough.** Buildroot has many levels of "clean":

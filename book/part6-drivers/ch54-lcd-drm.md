@@ -194,8 +194,6 @@ When a new panel doesn't display:
 5. **A Qt app.** Compile a simple Qt app with `-platform linuxfb`; run; verify it draws.
 6. **DRM client.** Write a small libdrm program that creates a dumb buffer, fills it red, and presents it. Useful for understanding DRM bring-up.
 
-Commit code to `code/ch54-lcd-drm/`.
-
 ## 54.9  Pitfalls
 
 - **Pixel clock too high.** PCLK > ~80 MHz on i.MX6ULL LCDIF → silent failure. Use lower pixel clock or smaller resolution.

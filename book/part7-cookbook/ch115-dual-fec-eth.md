@@ -264,8 +264,6 @@ This is canonical NAPI: process up to `budget` packets per call; if fewer, compl
 9. **PTP timestamping.** Enable `ethtool -T eth0` PTP HW timestamping. Run `ptp4l` to discipline the clock via PTP. Measure offset over time.
 10. **Mixed routing.** Three interfaces; routing rules send VLAN 1 → eth0, VLAN 2 → eth1, mgmt → eth2.
 
-Commit DT overlays, iptables/nftables rules, dnsmasq config to `code/ch115-eth/`.
-
 ## 115.10  Pitfalls
 
 - **MDIO address conflict.** Both PHYs configured to address 0 → only one responds; the other looks like "not present." Verify PHY strap pins.

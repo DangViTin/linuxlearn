@@ -425,8 +425,6 @@ For e-paper, you design the UI around the refresh model: update once per minute 
 6. **SH1106 offset.** If you have an SH1106, run the SSD1306 driver; observe the 2-pixel shift; fix with the column offset.
 7. **E-paper (if available).** Bring up an SSD1680 module. Display an image; measure refresh time (~2 s). Cut power; verify the image persists. Do 10 partial refreshes; observe ghosting accumulate; do a full refresh; observe it clear.
 
-Commit code to `code/ch85-oled-epaper/`.
-
 ## 85.8  Pitfalls
 
 - **Charge pump not enabled.** `0x8D 0x14` is mandatory for the internal boost; without it, the OLED is black. The #1 SSD1306 gotcha.

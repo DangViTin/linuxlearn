@@ -425,8 +425,6 @@ Eleven steps. Every Linux IRQ in user space follows the same pattern.
 5. **Trigger a data abort.** From `main`, do `*(volatile uint32_t *)0x1 = 0;`. Confirm `data_handler` (currently `b .`) is hit. Add a `printf` to `data_handler` (it must run in ABT mode — easy way: just hang and let JTAG inspect; or copy the `cpsid` dance to switch to SVC).
 6. **Add an SVC instruction** (`asm volatile ("svc #0")`) and observe the SVC handler is hit. This is the foundation of syscalls.
 
-Commit to `code/ch15-gic/`.
-
 ## 15.10  Pitfalls
 
 - **Forgetting `isb` after VBAR write.** The CPU may keep using stale vectors. Always `isb`.

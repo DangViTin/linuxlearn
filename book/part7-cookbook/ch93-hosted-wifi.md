@@ -227,8 +227,6 @@ For a kernel-integrated AT-mode (making it look like a network interface), `driv
 6. **Throughput vs SPI clock.** Vary the esp-hosted SPI clock (5/10/20 MHz); measure throughput scaling.
 7. **Co-existence role.** Use the ESP32 *also* for a real-time GPIO task (it has its own CPU); demonstrate WiFi + a real-time job on the co-processor while Linux does the heavy lifting.
 
-Commit code + configs to `code/ch93-hosted-wifi/`.
-
 ## 93.8  Pitfalls
 
 - **Firmware version mismatch.** The esp-hosted Linux driver and the ESP firmware must be compatible versions. A mismatch → the driver loads but no interface, or garbled transport. Pin both versions.

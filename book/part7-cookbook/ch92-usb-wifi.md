@@ -159,8 +159,6 @@ This turns your i.MX6ULL into a WiFi hotspot — useful for "configure-the-devic
 6. **AP mode.** With RT5370, run hostapd + dnsmasq; connect a phone to your i.MX6ULL hotspot.
 7. **Power.** Measure idle current with the USB dongle vs an SDIO module. USB dongles (especially RTL out-of-tree) often run hotter / draw more.
 
-Commit findings + configs to `code/ch92-usb-wifi/`.
-
 ## 92.8  Pitfalls
 
 - **Buying RTL8188EUS expecting it to "just work."** The most common dongle, the most painful driver. For a product, prefer RT5370/MT7601.

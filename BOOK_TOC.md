@@ -1508,10 +1508,10 @@ Ch120 ──► Ch125A (VSCode workflow; can be read after any driver chapter)
 
 ---
 
-## Open questions to nail down before Chapter 1
+## Project decisions (resolved)
 
-1. Exact Point Atom model number (ALPHA vs MINI vs NANO). They have different DDR sizes (256 MB / 512 MB) and different peripherals (LCD interface, audio codec, Wi-Fi).
-2. Will the book be bilingual (Vietnamese/English)? In which order? This affects naming conventions inside code listings.
-3. Code-listing license: MIT/Apache-2.0 (recommended) or GPL?
-4. Tooling for the book itself: AsciiDoc + asciidoctor-pdf, LaTeX, Markdown + Pandoc, or mdBook? This decides the source tree layout for figures, code samples, and cross-references.
-5. Will every chapter have a *companion git repository* with reproducible code, or will listings be inline only?
+1. **Target board.** Point Atom MINI (i.MX6ULL @ 696 MHz, 512 MiB DDR3L) is the primary reference. The guide deliberately stays general where it can — most chapters work on any i.MX6ULL board, and Parts IV–VIII (kernel, rootfs, drivers, debug, production) transfer to any Linux-capable ARM SoC. Board-specific divergences are called out inline.
+2. **Language.** English only. No bilingual edition planned.
+3. **Code-listing license.** MIT. Snippets in chapters are copy-paste-into-your-project friendly; no attribution required.
+4. **Tooling.** Markdown sources + **Sphinx + sphinx-rtd-theme + myst-parser** rendered to a Read-the-Docs-style site. Hosted on GitHub Pages, auto-rebuilt on push. See [PUBLISH.md](PUBLISH.md).
+5. **Code delivery.** **Inline in the chapters.** There is no companion `code/` repository. The drivers, scripts, and configurations shown are complete enough to read, type, and adapt; the lab sections describe what to build but do not ship a reference solution.

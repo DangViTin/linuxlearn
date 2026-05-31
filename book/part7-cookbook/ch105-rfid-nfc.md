@@ -191,7 +191,7 @@ This is the "proper" Linux path. Most projects skip it for simplicity and use li
 
 ## 105.6  From scratch — user-space MFRC522 driver
 
-`code/ch105-rfid/mfrc522_min.c` (compressed; full ~400 lines):
+mfrc522_min.c (compressed; full ~400 lines):
 
 ```c
 /* Minimal MFRC522 driver: detect tag, read UID, dump Mifare Classic block 0.
@@ -408,8 +408,6 @@ neardctl record-uri https://example.com
 7. **PN532 mainline path.** If you have a PN532, attach via I²C; `modprobe pn533_i2c`; `neardctl tags`; verify the kernel sees the same tag the user-space driver sees.
 8. **Access control flow.** Build a 50-line door-controller: read UID, check against allow-list, fire a GPIO to a relay if allowed. Log all attempts.
 9. **Antenna range test.** Measure read distance with a stock card. Then add a 5 mm spacer (PCB sleeve) between reader and card; range should drop ~20 %. Reposition card axially vs perpendicular; field is directional.
-
-Commit code + a CSV of authorized UIDs to `code/ch105-rfid/`.
 
 ## 105.10  Pitfalls
 

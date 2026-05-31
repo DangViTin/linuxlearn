@@ -340,8 +340,6 @@ When the board farm is offline or builds fail repeatedly:
 9. **Labgrid (stretch).** Install Labgrid; expose 2 boards via the framework; have CI acquire one at random.
 10. **Slack notification.** On test failure, post a message to a Slack channel.
 
-Commit `.github/workflows/*.yml`, `smoke_test.py`, runner setup notes to `code/ch121A-cicd/`.
-
 ## 121A.11  Pitfalls
 
 - **Self-hosted runner security.** A runner with checkout permissions can run arbitrary PR code. Don't allow forks to trigger your hardware runner without manual approval (`pull_request_target` is dangerous).

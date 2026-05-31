@@ -118,8 +118,6 @@ For modern code, `poll()` / `epoll` are preferred for everything. SIGIO is a "go
 2. **Compare against poll().** Write two equivalent programs — one with SIGIO, one with `poll()`. Profile CPU and latency.
 3. **F_SETSIG for SI_FD.** Use a realtime signal (`SIGRTMIN+1`) with `F_SETSIG`; receive `siginfo->si_fd` to know which fd fired.
 
-Commit code to `code/ch55B-sigio/`.
-
 ## 55B.5  Pitfalls
 
 - **Signal handler doing too much.** Signal handlers run in arbitrary context; only async-signal-safe functions allowed. Set a flag; do real work in the main loop.

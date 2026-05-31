@@ -389,8 +389,6 @@ For a Qt or LVGL app, the toolkit reports dirty regions to DRM; the helper sends
 7. **panel-mipi-dbi.** Switch to the generic driver with a firmware init blob. Compile the blob with `mipi-dbi-cmd`. Verify same result, no custom C.
 8. **LVGL or Qt.** Run a GUI toolkit on `/dev/fb0`; verify a real UI renders and updates smoothly.
 
-Commit code to `code/ch83-spi-lcd/`.
-
 ## 83.8  Pitfalls
 
 - **Missing DC GPIO toggle.** Commands and data get confused; controller does nothing or garbage. The `mipi_dbi` helper handles DC; a hand-rolled driver must toggle it correctly (low for command byte, high for parameters/pixels).

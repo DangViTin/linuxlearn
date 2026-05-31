@@ -602,8 +602,6 @@ After factory: WP held high, field firmware can read but not write. Reboot → k
 5. **Switch to mainline `at24`.** Unload `myeeprom`; bind the same chip with `compatible = "atmel,24c02"`. Verify `/sys/bus/i2c/devices/1-0050/eeprom` appears. Same chip, more features.
 6. **nvmem MAC.** Configure DT as in §65.7. Boot; `ip link show eth0`; verify the MAC matches the bytes you wrote at offset 0. This is the production pattern — own it.
 
-Commit code to `code/ch65-eeprom/`.
-
 ## 65.10  Pitfalls
 
 - **Wrong pagesize.** Writes across page boundaries wrap silently. Always set `pagesize = <N>` in DT (mainline) or hardcode correctly (from-scratch); the AT24C512's 128-byte pages are not the same as AT24C02's 8-byte pages.

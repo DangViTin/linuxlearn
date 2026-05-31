@@ -120,8 +120,6 @@ SiI902x also carries audio. With `#sound-dai-cells = <0>;`, the chip exposes an 
 5. **HPD detection.** Unplug cable; observe disconnected event in dmesg / `modetest -c`.
 6. **Try 1080p.** Confirm it fails (LCDIF pixel clock limit). Read drm.debug=15 dmesg for the rejection.
 
-Commit code to `code/ch55H-hdmi/`.
-
 ## 55H.6  Pitfalls
 
 - **No HPD wiring.** Bridge thinks nothing connected; mode list is empty.

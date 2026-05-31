@@ -332,8 +332,6 @@ The kernel doesn't care; it accepts whichever DTB it's handed. Trade-off: two DT
 5. **Add `earlycon=ec_imx6q,0x02020000`** to bootargs. Compare boot logs with and without it; you should see ~10 more lines of early `printk` output.
 6. **Break it on purpose.** Pass `root=/dev/nonsense` and watch the panic. Then add `init=/bin/sh` and recover.
 
-Commit to `code/ch23-bootcmd/`.
-
 ## 23.9  Pitfalls
 
 - **`console=` typos.** `ttymxc0` not `ttymx0` not `ttyMXC0`. Case- and digit-sensitive. Wrong console = silent kernel.

@@ -226,8 +226,6 @@ For mood lighting, cap brightness at 64/255 (~25 %) — visually plenty, current
 8. **Status indicator.** A 24-LED ring on top of an i.MX6ULL device acting as: blue = booting, green = healthy, yellow = warning, red = error. Tie to systemd state.
 9. **Fade-to-color helper.** Implement smooth color transitions (HSV interpolation) for state changes.
 
-Commit code + a CSV of pixel-vs-power measurements to `code/ch113-leds/`.
-
 ## 113.10  Pitfalls
 
 - **3.3 V → 5 V level shifting.** WS2812 datasheet says VIH = 0.7 × VDD = 3.5 V. A 3.3 V GPIO is *below* this; most strips work anyway but some batches don't. Always use a 74AHCT125 buffer for reliability.

@@ -220,8 +220,6 @@ The kernel handles this for you *if you use the APIs correctly*. If you cast a p
 5. **Provoke a cache bug.** Skip the dma_map_single call (cast directly). Observe corruption. Add the map call back; observe correctness.
 6. **Cyclic transfer prototype.** Sketch a fake audio capture: a kernel thread fills a ring buffer; a cyclic DMA copies it to a pretend FIFO; each callback prints a count. Verify smoothness.
 
-Commit code to `code/ch51-dma/`.
-
 ## 51.9  Pitfalls
 
 - **Forgetting to call `dma_async_issue_pending`.** Descriptor sits queued; callback never fires; driver hangs. The split between submit and issue is intentional (for chaining) but easy to get wrong.

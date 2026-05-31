@@ -167,8 +167,6 @@ The inverse: making the i.MX6ULL *appear* as a webcam to a host PC (Ch 55's USB 
 7. **Contention.** Add a USB WiFi dongle on the same bus; stream the camera + run iperf3; observe degradation. Move the camera to the second USB controller; observe improvement.
 8. **Network stream.** GStreamer: camera MJPEG → RTP → UDP to a desktop running VLC. No decode on the i.MX6ULL (forward the JPEG directly).
 
-Commit code to `code/ch88-usb-uvc/`.
-
 ## 88.9  Pitfalls
 
 - **Uncompressed above VGA on USB-2.0.** Won't fit. Use MJPEG. The bandwidth table is the design constraint.

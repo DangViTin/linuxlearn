@@ -291,8 +291,6 @@ sdboot=load mmc 0:1 ${loadaddr} zImage; \
 4. **Set up the full `devel_bootargs` / `devel_boot` / `bootcmd` chain** from §24.6. Confirm a fresh power-on goes through the full loop without manual commands.
 5. **Practice the `uuu` recovery.** Deliberately wipe the SD card's first MB (`sudo dd if=/dev/zero of=/dev/sdX bs=1M count=1`). Boot the board into SDP (boot switch). Run a `uuu` script that re-flashes SPL + U-Boot. Confirm the board is back.
 
-Commit to `code/ch24-workflows/`.
-
 ## 24.8  Pitfalls
 
 - **Firewall on the host blocking UDP/69 (TFTP) or TCP/2049 (NFS).** `sudo ufw status`; `sudo ufw allow tftp`; `sudo ufw allow nfs`. Or disable UFW on the dev host.

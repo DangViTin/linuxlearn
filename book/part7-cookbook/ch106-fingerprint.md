@@ -140,7 +140,7 @@ Score is 0..2000 (higher = better match); the chip's threshold is typically 50 â
 
 ## 106.6  From scratch â€” R503 driver in C
 
-`code/ch106-fingerprint/r503.c` (compressed):
+r503.c (compressed):
 
 ```c
 /* Minimal R503 fingerprint driver.
@@ -324,8 +324,6 @@ This is a different ecosystem from the embedded UART modules. Choose based on fo
 7. **Template export/import.** Use `UpChar` and `DownChar` commands to upload a template to the host and back. Stores templates per-user in `/var/lib/myapp/`.
 8. **PAM 2FA (stretch).** Write `pam_r503.so`; configure `sshd` to require fingerprint after password. Test SSH login from another machine.
 9. **Hostile re-enroll detection.** What happens if an attacker tries to enroll their finger over your slot 0? The chip will replace it silently. Add a server-side flag that requires admin re-confirmation for any enroll/delete operation.
-
-Commit code + a per-user UID-to-slot mapping JSON to `code/ch106-fingerprint/`.
 
 ## 106.10  Pitfalls
 

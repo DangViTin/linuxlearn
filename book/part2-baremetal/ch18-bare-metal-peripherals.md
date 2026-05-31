@@ -245,9 +245,7 @@ void lcd_init_color_bars(void)
 }
 ```
 
-The full set of timing values runs to ~30 register writes for a typical 800×480 RGB panel. We do not include them inline; they are panel-specific. See `code/ch18-lcd/` for a working set for the Point Atom MINI's optional LCD carrier.
-
-> **Cache caveat.** Because we enabled the D-cache in Chapter 17, our writes to `framebuffer` are cached. The eLCDIF DMA-reads from physical DRAM — it does **not** snoop the L1 cache. Result: the panel shows stale or partial data. Fix: either map the framebuffer as Device memory (slower writes) or `dcache_clean_range(framebuffer, sizeof(framebuffer))` after each frame update. The same issue under Linux is solved by allocating the framebuffer with `dma_alloc_coherent`, which gives you a non-cached mapping.
+The full set of timing values runs to ~30 register writes for a typical 800×480 RGB panel. We do not include them inline; they are panel-specific. (Omitted here; panel-specific.)> **Cache caveat.** Because we enabled the D-cache in Chapter 17, our writes to `framebuffer` are cached. The eLCDIF DMA-reads from physical DRAM — it does **not** snoop the L1 cache. Result: the panel shows stale or partial data. Fix: either map the framebuffer as Device memory (slower writes) or `dcache_clean_range(framebuffer, sizeof(framebuffer))` after each frame update. The same issue under Linux is solved by allocating the framebuffer with `dma_alloc_coherent`, which gives you a non-cached mapping.
 
 This is the kind of thing you only discover when you do it bare-metal.
 
@@ -301,8 +299,6 @@ Pick at least one:
 2. **SPI flash dump.** Read the first 256 bytes of the SPI flash. Print as a hex dump. Identify any U-Boot environment or magic numbers at the start.
 3. **LCD color bars.** If you have the LCD carrier, draw the color bars. Then add a moving pixel (XOR a single pixel position each frame; `mdelay(16)` between frames). Note the cache-flush requirement.
 4. **All three together.** A bare-metal program that, on startup: reads EEPROM byte 0; treats it as a color index; draws that color across the whole LCD. Three peripherals, one program.
-
-Commit to `code/ch18-peripherals/`.
 
 ## 18.8  Pitfalls
 

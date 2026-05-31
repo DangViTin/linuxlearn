@@ -706,8 +706,6 @@ This is *user-space* math, not driver math. The driver's job is to deliver clean
 6. **Self-test.** Write 0xE0 to GYRO_CONFIG (enable self-test); verify gyro outputs increase by datasheet's expected amount; check pass criteria.
 7. **MPU9250 mag bypass.** If you have an MPU9250, enable bypass mode; access AK8963 directly at 0x0C via i2c-tools.
 
-Commit code to `code/ch70-i2c-imus/`.
-
 ## 70.12  Pitfalls
 
 - **Wrong I²C address.** AD0 strap pin: low = 0x68, high = 0x69. Check schematic.

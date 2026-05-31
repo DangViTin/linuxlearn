@@ -305,8 +305,6 @@ $ sudo cat /dev/input/event2 | hexdump -C
 5. **Touchscreen simulator.** Adapt your driver to emit `ABS_X` / `ABS_Y` / `BTN_TOUCH` events with random values once per second. Verify `evtest` shows touch events. This is the foundation for a real touchscreen driver (Ch 55G).
 6. **Power-button integration.** Reconfigure your button to emit `KEY_POWER`. With systemd, a long press should trigger a graceful shutdown.
 
-Commit code to `code/ch45-input/`.
-
 ## 45.10  Pitfalls
 
 - **Forgetting `input_sync`.** Events are buffered until `SYN_REPORT`; without it, user-space never sees them. After any group of `input_report_*` calls, call `input_sync`.

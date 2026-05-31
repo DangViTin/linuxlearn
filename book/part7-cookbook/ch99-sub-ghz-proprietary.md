@@ -222,7 +222,7 @@ That's a lot of machinery to handle six addresses on one chip. The from-scratch 
 
 ## 99.5  From scratch — a user-space nRF24 driver in C
 
-`code/ch99-nrf24/nrf24_min.c`:
+nrf24_min.c:
 
 ```c
 /* Minimal user-space nRF24L01+ driver. PTX or PRX role at startup.
@@ -508,8 +508,6 @@ nrf24@0 {
 6. **CC1101 with SmartRF Studio.** Download SmartRF Studio (free, Windows/Linux); generate a register table for 868 MHz / 4-FSK / 38.4 kbps; flash that table to a CC1101 module. Confirm a packet exchange between two boards.
 7. **CC1101 build-your-own-ACK.** CC1101 has no auto-ACK; add a 2-byte sequence + 1-byte ACK frame in user space. Measure round-trip vs nRF24's hardware ACK at similar conditions.
 8. **Bridge test.** Two networks: nRF24 satellites + an i.MX6ULL hub bridging them to MQTT. Sensor data via nRF24 → JSON → mosquitto → Grafana.
-
-Commit code + SmartRF Studio register tables to `code/ch99-sub-ghz/`.
 
 ## 99.10  Pitfalls
 

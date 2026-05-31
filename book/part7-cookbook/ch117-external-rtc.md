@@ -213,7 +213,7 @@ refclock PPS /dev/pps0 refid PPS lock GPS prefer trust
 For when you want to debug RTC behavior without the kernel driver:
 
 ```c
-/* code/ch117-rtc/ds3231_min.c */
+/* ds3231_min.c */
 #include <fcntl.h>
 #include <linux/i2c-dev.h>
 #include <stdio.h>
@@ -273,8 +273,6 @@ The DS3231's built-in thermometer is a neat freebie — drives the TCXO temperat
 8. **Drift measurement.** Power up; sync to NTP; wait 7 days; compare RTC time vs NTP. DS3231 should be within ±5 s; PCF8563 within ±100 s.
 9. **Multi-RTC.** If your board has both SNVS RTC and DS3231, configure DS3231 as primary in `/etc/adjtime`; verify `hwclock --show` reads from DS3231.
 10. **Temperature monitor.** Read DS3231's internal temp register every 10 s; log to a CSV; plot a day's worth — see room temperature variation.
-
-Commit code + chrony config + a daily-schedule script to `code/ch117-rtc/`.
 
 ## 117.10  Pitfalls
 

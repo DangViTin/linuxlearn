@@ -162,8 +162,6 @@ For comparison, an eMMC HS200 hits ~120 MB/s sequential, ~10k IOPS random. NAND 
 4. **Inspect with `iostat -x 1`.** While running fio, watch await, %util, IOPS.
 5. **Add a sysfs attribute.** Expose stats: total reads, total writes, bytes transferred.
 
-Commit code to `code/ch55D-block/`.
-
 ## 55D.6  Pitfalls
 
 - **Forgetting to `blk_mq_start_request`.** Driver does work, calls `end_request`, but the request was never marked started — corrupted statistics, possible deadlock.

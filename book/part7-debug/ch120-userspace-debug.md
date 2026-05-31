@@ -292,8 +292,6 @@ Now you know: line 127 calls poll() on a socket that's hung. Fix: add a timeout,
 9. **Attach to systemd service.** Find a running daemon's PID; attach gdbserver; bt; identify what it's doing.
 10. **End-to-end customer-bug workflow.** Pick a "stuck" daemon (httpd, sshd); use cat /proc/<pid>/wchan + strace -p + gdb-attach; produce a one-page bug report.
 
-Commit a "debug-quick-reference" script + sysroot-setup helper to `code/ch120-userspace-debug/`.
-
 ## 120.11  Pitfalls
 
 - **gdbserver and gdb-multiarch ABI mismatch.** Cross-compiler ARM ABI must match target's libc ABI (gnueabihf vs gnueabi). Different ABI = unable to set breakpoints in shared libraries.

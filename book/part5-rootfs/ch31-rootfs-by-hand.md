@@ -441,8 +441,6 @@ All five check out: kernel running, CPU detected, devices enumerated, mounts act
 5. **Add `ntpd` from BusyBox.** Edit `/etc/init.d/rcS` to start `/usr/sbin/ntpd -p pool.ntp.org` in the background. Verify time syncs after boot.
 6. **Compare with a dynamic BusyBox.** Rebuild BusyBox without "Build static binary". Confirm DNS lookups (`nslookup`, `ping example.com`) work — they wouldn't with the static build.
 
-Commit the rootfs skeleton scripts to `code/ch31-rootfs/`.
-
 ## 31.15  Pitfalls
 
 - **Forgetting `chmod +x` on `rcS`.** Silent failure; nothing in `/proc` or `/sys`.

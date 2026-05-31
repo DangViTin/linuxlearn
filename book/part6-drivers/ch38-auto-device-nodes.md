@@ -342,8 +342,6 @@ For multiple attributes, group them and use `device_create_file` per attribute, 
 5. **Inspect the uevent.** Open two terminals on the target. In one, run `udevadm monitor` (or `mdev -d` if using mdev). In the other, `insmod` and `rmmod`. Watch the events fire.
 6. **Use the `devnode` callback** to set 0660 mode in the driver itself. Verify `/dev/hello` comes up with the right mode even without a udev rule.
 
-Commit final code to `code/ch38-auto-device-nodes/`.
-
 ## 38.8  Pitfalls
 
 - **Calling `device_create` before `cdev_add`.** Device node appears but `open` on it returns `-ENXIO` because no cdev is registered for that major. Always `cdev_add` first, then `device_create`. Cleanup in reverse order.

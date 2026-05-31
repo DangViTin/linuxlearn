@@ -405,8 +405,6 @@ Caveat: if a kernel driver has *bound* to a device, i2c-tools won't let you talk
 5. **Stress-test page alignment.** Write 256 bytes starting at offset 3. Verify the driver correctly handles the page boundaries at 8, 16, 24, …
 6. **Inspect with strace.** `strace -e read,write,ioctl i2cget -y 1 0x76 0xD0` — see the `I2C_RDWR` ioctl in action; that's how i2c-tools talk to the i2c-dev chardev.
 
-Commit code to `code/ch46-i2c/`.
-
 ## 46.9  Pitfalls
 
 - **Wrong unit-name vs `reg`.** `bme280@76` with `reg = <0x77>` doesn't match — kernel warns, but the device may still probe at 0x77 (the `reg` wins). DT lint catches it; check your DT compilation log.

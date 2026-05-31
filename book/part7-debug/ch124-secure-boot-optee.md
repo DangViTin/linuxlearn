@@ -395,8 +395,6 @@ Real TAs: key storage (the secret stays in Secure World; only operations like si
 9. **Secure storage TA.** Use OP-TEE's secure-storage API to save a value; reboot; recover it. Demonstrate that even a hostile kernel can't read it.
 10. **Attestation TA (stretch).** Implement a TA that signs a server challenge with a key held in Secure World. Server verifies; can't be forged from Normal World.
 
-Commit your CST configs (no keys!), signed images, OP-TEE TA + host, dm-verity scripts to `code/ch124-secure-boot/`.
-
 ## 124.12  Pitfalls
 
 - **Lost SRK keys.** Cannot sign new firmware ever. Cannot OTA. The fleet is permanently bricked at whatever was last signed. Use HSMs; backup; document.

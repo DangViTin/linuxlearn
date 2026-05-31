@@ -52,7 +52,6 @@ This discipline is the entire point of the book. Skip it at your own risk.
 - **Container runtimes, Docker on embedded, Kubernetes at the edge.** Out of scope.
 - **Application programming on Linux.** You will use a shell and write a few C test programs, but we are not teaching POSIX threads or `select`/`epoll` as such.
 
-
 ## 1.5  How each chapter is organized
 
 Every chapter follows the same seven-section template. We will not deviate from it. The point is that once you have read three chapters you know exactly where to look for what you need.
@@ -74,15 +73,14 @@ If you read the prose of Chapter 14 (DDR3 initialization) without ever bringing 
 To get the most out of the book:
 
 - Keep a **lab journal**. A plain-text or Markdown file is fine. Write what you did, what worked, what did not, what you suspect. The journal is more valuable than the book.
-- Run every command yourself. **Do not** paste it from the companion repo without first reading what it does.
+- Run every command yourself. **Do not** paste a snippet from a chapter without first reading what it does.
 - When something does not work — and many things will not — debug it for at least an hour before looking up the answer. The book includes "expected output" blocks specifically so you can tell when you are stuck.
-- Commit your code per chapter. The companion repo's `code/chXX/` layout is a hint; mirror it.
 
-## 1.7  The companion repository
+## 1.7  Code listings
 
-Source code for every chapter lives in `code/chXX-<short-name>/`. It is dual-licensed MIT OR Apache-2.0, with one exception: kernel module chapters that link against GPL'd kernel symbols inherit GPL-2.0-only as required.
+All code in this guide is **inline in the chapters** — there is no companion repository. Snippets are short enough to read end-to-end and copy directly into your own workspace. They are licensed **MIT**; kernel-module excerpts that quote GPL kernel sources inherit GPL-2.0-only per the kernel's license.
 
-The repository is structured so that a reader who has lost their way can `git checkout` the snapshot at the end of any chapter and resume. Treat it as a safety net, not the main path.
+Keep your own per-chapter folder (`~/imx6ull-lab/chXX/` is one convention) for the work you build as you go. The guide does not ship a reference solution.
 
 ## 1.8  Conventions
 
@@ -175,7 +173,7 @@ Stack Overflow is the worst place to ask about Linux internals. The kernel chang
 
 ## 1.13  Errata and corrections
 
-The companion repository's `ERRATA.md` is the canonical list. Pull requests welcome.
+The book's GitHub repository is the canonical place for errata. Open an issue or a pull request against the chapter file you found the error in.
 
 ---
 

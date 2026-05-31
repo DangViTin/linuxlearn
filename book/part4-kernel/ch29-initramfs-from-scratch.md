@@ -262,8 +262,6 @@ For embedded, **BusyBox init** is the default. We use it in this book through Ch
 4. **Embed the initramfs.** Add `CONFIG_INITRAMFS_SOURCE` to your kernel's `.config`, rebuild, boot with `bootz <kernel> - <dtb>` (no separate initrd address). Verify the kernel boots to the same shell.
 5. **Mount sysfs.** From the BusyBox shell, `ls /sys/class/gpio/`. Confirm devtmpfs and sysfs are populated. Echo a value to `/sys/class/leds/<your-led>/brightness` and observe the LED change.
 
-Commit your initramfs build scripts to `code/ch29-initramfs/`.
-
 ## 29.8  Pitfalls
 
 - **`/init` must exist at the root and be executable.** Forget either and the kernel panics with "No filesystem could mount root, tried: ramfs". Cpio archives don't error on missing init.

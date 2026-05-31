@@ -371,8 +371,6 @@ Rule: **every memory-mapped register access uses `volatile`. Every one.** Macroi
 4. **Break the zero-loop on purpose.** Comment out the `.bss` zero loop in startup. Re-add the counter. Now `counter`'s initial value is whatever was in OCRAM. Observe non-deterministic behavior across power cycles. Restore.
 5. **Break the data-copy loop on purpose.** Initialize `static uint32_t led_mask = (1u << 3);` again, and comment out the copy loop. Without the copy, `led_mask` reads whatever was in OCRAM at boot. Observe failure; restore.
 
-Commit the working result to `code/ch10-c-startup/`.
-
 ## 10.11  Pitfalls
 
 - **`bss` not zeroed.** Symptom: nondeterministic startup behavior across resets. Cause: forgot the loop, or got the `_sbss`/`_ebss` symbols wrong in the linker script.

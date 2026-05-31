@@ -204,8 +204,6 @@ The list grows monthly; check `rust/kernel/` in mainline.
 4. **Convert a small chardev to Rust**. Use `kernel::miscdev::Registration`.
 5. **Provoke a compile error**. Pass a moved value somewhere. Note the borrow-check diagnostic.
 
-Commit code to `code/ch55I-rust/`.
-
 ## 55I.8  Pitfalls
 
 - **Toolchain version mismatch.** Each kernel pins specific rustc/bindgen versions. Use exactly what `Documentation/rust/quick-start.rst` says.
