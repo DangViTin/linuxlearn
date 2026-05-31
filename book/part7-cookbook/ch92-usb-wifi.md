@@ -11,6 +11,10 @@ status: draft
 > **What:** USB WiFi dongles — the plug-in alternative to soldered SDIO WiFi (Ch 91). Three chips compared: **Realtek RTL8188EUS** (the ubiquitous cheap dongle), **MediaTek MT7601** (common in $3 dongles), **Ralink RT5370** (older, very mainline-friendly). The defining theme: the **in-tree vs out-of-tree driver saga** — which dongles "just work" and which require a DKMS nightmare. Plus bandwidth contention with other USB devices on the i.MX6ULL's USB-2.0 bus.
 > **Why:** USB WiFi is the *fastest* way to add WiFi to a board that has a spare USB port — no SDIO bring-up, no NVRAM, no 32 kHz clock. The catch is driver support: some chips have excellent in-tree drivers, others need out-of-tree modules that break on every kernel upgrade. Choosing the right chip is the entire game.
 > **Focus:** **the chip you buy determines whether WiFi is a 5-minute job or a 5-day ordeal**. A `rtw88`- or `rt2800usb`-supported chip is plug-and-play. An RTL8188EUS needs the out-of-tree `rtl8188eus` driver, which you must rebuild for every kernel. This chapter is a buyer's guide as much as a driver guide.
+> **Tooling.** This chapter uses `wpa_supplicant`, `iw`, chip firmware blob (Realtek/MediaTek/Ralink).
+> - **Ubuntu-base (target):** `apt install wpasupplicant iw firmware-realtek firmware-misc-nonfree`
+> - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 92.1  Chip comparison & driver status
 

@@ -1,18 +1,17 @@
 # Embedded Linux on i.MX6ULL — From First Boot to First Driver
 ### The Raw Approach: Build It Yourself, Understand It Forever
 
-**Target board:** Point Atom (正点原子) ALPHA / MINI — i.MX6ULL (Cortex-A7, 528–696 MHz, 512 MB DDR3)
-**Target reader:** Embedded engineer fluent in MCU / bare-metal / RTOS, new to Linux
-**Host environment:** Native Linux (Ubuntu 22.04 LTS or Debian stable)
-**Philosophy:** No Yocto. No vendor BSP magic. No `defconfig && make` until you've already done it the long way. The only black box we allow ourselves is the C compiler — and even *that* we open up in Part VII.
+**Target board:** Point Atom (正点原子) MINI — i.MX6ULL (Cortex-A7, 696 MHz, 512 MB DDR3L). ALPHA and many other i.MX6ULL boards work with minor DT/IOMUX adjustments.
+**Target reader:** Embedded engineer fluent in MCU / bare-metal / RTOS, new to Linux.
+**Host environment:** Native Linux (Ubuntu 22.04 LTS or Debian stable).
+**Linux kernel target:** v6.6 LTS. Driver-API signatures (`class_create`, `i2c_driver.probe`, `i2c_driver.remove`) and DTS paths (`arch/arm/boot/dts/nxp/imx/`) in this book follow v6.6 conventions.
+**Philosophy:** No Yocto. No vendor BSP magic. No `defconfig && make` until you've already done it the long way. The only black box we allow ourselves is the C compiler — and even *that* we open up in Part VIII (Ch 122).
 
 ---
 
 ## Scope
 
-**8 Parts, 141 chapters (118 numbered + 23 supplementary, "letter-suffix" convention), ~2,470 pages.** The supplementary chapters expand specific topics where the numbered chapters' default depth is not enough for production work — they share a parent number (e.g., `18A` extends `Ch 18`) and can be read independently. The numbered chapters are the required path; the supplementary chapters are recommended.
-
-v1.3 inserted **Part VII — Device Cookbook** (54 chapters, Ch 64–117), one chapter per device class with 2–4 real chips compared side-by-side. The old "Debug, production, advanced" Part VII became Part VIII (Ch 118–126 + insertions).
+**8 Parts, 141 chapters (118 numbered + 23 supplementary, "letter-suffix" convention), ~2,470 pages.** The supplementary chapters (letter-suffixed: `18A`, `18B`, `35A`, `52A`, etc.) expand specific topics where the numbered chapter's default depth isn't enough for production work — they share a parent number and can be read independently. The numbered chapters are the required path; the supplementary chapters are recommended.
 
 ## What the book covers
 
@@ -22,15 +21,8 @@ v1.3 inserted **Part VII — Device Cookbook** (54 chapters, Ch 64–117), one c
 - **Part IV — The Kernel.** Build mainline Linux for i.MX6ULL, boot it from U-Boot, deep-dive on the Device Tree, trace `start_kernel()` to PID 1, build an initramfs from scratch, master `make menuconfig`, learn the kernel-lifecycle decision framework (mainline / LTS / vendor BSP), validate DT bindings against YAML schemas.
 - **Part V — Root filesystem & user space.** A `busybox`-based hand-built rootfs; `/proc` `/sys` `devtmpfs`; init systems; libc and dynamic linking; Buildroot; Ubuntu-base as a fully-featured alternative; read-only root + overlayfs for industrial deployments; containers on embedded.
 - **Part VI — Driver development.** ~33 chapters covering every common subsystem from char devices and platform drivers through I²C/SPI/PWM/RTC/IIO/regmap/DMA/Net/Sound/DRM/USB, with deeper treatment of CAN, multi-touch, block devices, WIFI, cellular modems, HDMI bridges, kernel timers, async notification, watchdog, power management, PREEMPT_RT real-time, MTD/UBI, V4L2/GStreamer, and a Rust-for-Linux sidebar. **One canonical example per subsystem** — depth on real chips lives in Part VII.
-- **Part VII — Device cookbook** *(new in v1.3)*. 54 chapters, one per common device class, with 2–4 real chips compared side-by-side: schematic + DT example + driver code (or existing-driver enablement) + user-space access + lab + chip-specific pitfalls. Storage, environmental & motion sensors, ADCs/DACs, displays, cameras, audio codecs, WiFi/BT modules, LoRa/UWB/ZigBee/cellular, industrial buses (RS-485, LIN, CAN), RFID/NFC, fingerprint, smart LEDs (WS2812), motor drivers, external RTC. *This is the go-to reference Part.*
+- **Part VII — Device cookbook.** 54 chapters, one per common device class, with 2–4 real chips compared side-by-side: schematic + DT example + driver code (or existing-driver enablement) + user-space access + lab + chip-specific pitfalls. Storage, environmental & motion sensors, ADCs/DACs, displays, cameras, audio codecs, WiFi/BT modules, LoRa/UWB/ZigBee/cellular, industrial buses (RS-485, LIN, CAN), RFID/NFC, fingerprint, smart LEDs (WS2812), motor drivers, external RTC. *This is the go-to reference Part.*
 - **Part VIII — Debug, production, advanced.** JTAG/OpenOCD/GDB across layers; kernel debugging without JTAG (ftrace, eBPF, kgdb); user-space debugging; a capstone custom-board port; build your own toolchain with crosstool-NG; Yocto layer development; secure boot (HAB) and OP-TEE; field updates (RAUC, SWUpdate, Mender); the mainline patch-submission workflow; CI/CD for embedded; BSP → mainline migration playbook; VSCode + gdbserver remote debug.
-
-## Revision history
-
-- **v1.3 (2026-05-26)** — Added **Part VII — Device Cookbook** (54 new chapters, Ch 64–117): one chapter per device class with 2–4 real chips deeply compared. Covers storage (QSPI flash, EEPROM, SD/eMMC), environment / motion / position / power sensors, external ADCs+DACs+clock-gen, all display types (RGB-parallel / SPI / QSPI / OLED / e-paper / touch), cameras (parallel CSI + USB UVC), audio codecs and class-D amps, WiFi (SDIO/USB/hosted/combo), BLE (HCI/AT/mesh), LoRa/sub-GHz/ZigBee/UWB, cellular (USB 4G/UART/NB-IoT), identification (RFID/NFC, fingerprint), GPS/PPS, industrial buses (RS-485/LIN/CAN), motors & encoders, smart LEDs, dual-FEC + hosted Ethernet, PMICs, external RTC. Old Part VII (debug/production) renumbered to Part VIII (Ch 118–126). Total → 141 chapters, ~2,470 pages.
-- **v1.2 (2026-05-25)** — Strengthened production-hardening coverage; added kernel-lifecycle, watchdog, power management, PREEMPT_RT, MTD/UBI, V4L2/GStreamer, Rust, mainline-submission workflow, CI/CD, BSP→mainline migration, Yocto layer development, multi-variant FIT, DT bindings YAML, container runtimes. Total → 87 chapters.
-- **v1.1 (2026-05-25)** — Added project-organization chapter for bare-metal, button/beep, bare-metal RTC; Ubuntu-base rootfs; driver chapters for CAN, block device, WIFI, cellular, multi-touch, kernel timers, async I/O, HDMI bridge; VSCode remote-debug workflow.
-- **v1.0 (2026-05-24)** — Initial TOC: 7 Parts, 64 chapters.
 
 ---
 
@@ -72,7 +64,7 @@ Each chapter is structured the same way, so the reader always knows where to loo
 ### Chapter 3 — Host environment setup
 - Choosing a host OS (Ubuntu 22.04 LTS); why native Linux beats WSL/VM for this work
 - Required host packages: `build-essential`, `bison`, `flex`, `libssl-dev`, `bc`, `device-tree-compiler`, `u-boot-tools`, `nfs-kernel-server`, `tftpd-hpa`, `minicom`, `picocom`, `qemu-user-static`
-- Installing the cross toolchain (`arm-linux-gnueabihf-gcc`) — pre-built for now, hand-built in Ch. 60
+- Installing the cross toolchain (`arm-linux-gnueabihf-gcc`) — pre-built for now, hand-built in Ch. 122
 - Setting up TFTP, NFS, and a serial console on the host
 - USB-OTG flashing tools: `imx_usb_loader`, NXP `uuu` (Universal Update Utility)
 - A reproducible workspace layout for the rest of the book
@@ -84,7 +76,7 @@ Each chapter is structured the same way, so the reader always knows where to loo
 - Exception model: USR / SYS / SVC / IRQ / FIQ / ABT / UND (and how this maps to Linux's user/kernel split)
 - Banked registers, the program status register, mode switching
 - The generic timer and how it differs from SysTick
-- Cache hierarchy: L1 I/D, L2 (none on iMX6ULL), inner/outer shareable, MOESI
+- Cache hierarchy: L1 I/D, integrated L2 inside the Cortex-A7 MPCore (128 KB on i.MX6ULL — no external PL310), inner/outer shareable, MESI
 - MMU concepts: virtual address, page table walk, TLB, ASIDs, domains
 - NEON / VFP overview
 - **Focus:** MMU + privilege levels. Linux *cannot exist* without them.
@@ -236,18 +228,18 @@ Each chapter is structured the same way, so the reader always knows where to loo
 - Why we stop here and move to U-Boot
 - **Pages:** ~22
 
-### Chapter 18A — Inserted (v1.1): Project organization the "STM32-style"
+### Chapter 18A — Supplementary: Project organization the "STM32-style"
 Once a bare-metal program crosses ~500 lines, the single-file layout we used through Ch 14 stops scaling. This chapter refactors our work-so-far into proper header/source separation, register-definition macros in a single `imx6ull.h`, BSP folder layout (`bsp/clk/`, `bsp/gpio/`, `bsp/uart/`, ...), and a top-level `Makefile` that builds the BSP and links it against `main.c`. Also discusses the NXP SDK's `MCIMX6Y2.h` struct-based register approach as an alternative — when to adopt it, when to stay hand-rolled.
 - **Focus:** the moment you have ≥2 peripherals, organization saves more time than it costs
 - **Lab:** refactor Chapters 9–17 into a `bsp/` tree; rebuild and confirm bit-identical binaries
 - **Pages:** ~14
 
-### Chapter 18B — Inserted (v1.1): Button input and beep (passive buzzer)
+### Chapter 18B — Supplementary: Button input and beep (passive buzzer)
 A polled GPIO input driver with hardware debounce (Schmitt trigger on KEY0), then a software debounce as a fallback exercise. Then a passive-buzzer "beep" driver, which is morally a GPIO output but with a duty-cycle question — the natural lead-in to Chapter 48 (Linux PWM) much later.
 - **Lab:** button-pressed-while-held lights an LED; double-tap triggers a 200 ms beep
 - **Pages:** ~12
 
-### Chapter 18C — Inserted (v1.1): Bare-metal RTC (SNVS)
+### Chapter 18C — Supplementary: Bare-metal RTC (SNVS)
 The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip; its 32-bit second counter survives main-power-off. We initialize it, set the time, sleep the rest of the SoC, wake it, read it back. Then a small sidebar on how this maps to Linux's `struct rtc_class_ops` in Chapter 48.
 - **Lab:** print the wall clock every second across a deliberate brown-out
 - **Pages:** ~10
@@ -305,7 +297,7 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 - **Lab:** boot kernel with three different `bootargs` (NFS root, ramdisk root, SD root) without recompiling anything
 - **Pages:** ~18
 
-### Chapter 23A — Inserted (v1.2): Multi-variant FIT images and DT overlays at runtime
+### Chapter 23A — Supplementary: Multi-variant FIT images and DT overlays at runtime
 In modern shipping products one binary often serves several board variants (different displays, different I/O headers, different sensors). The mainline pattern is one FIT image carrying multiple DTBs, plus optional DT overlays applied at boot time based on a strap pin or an EEPROM-read variant ID.
 - Building a FIT with `images { kernel { ... } fdt-1 { ... } fdt-2 { ... } } configurations { conf-rev-a { ... } conf-rev-b { ... } }`
 - U-Boot `bootm` selecting `#conf-rev-a` from the cmdline
@@ -356,7 +348,7 @@ In modern shipping products one binary often serves several board variants (diff
 - **Focus:** for an MCU engineer this is the largest mental shift. Spend extra time here.
 - **Pages:** ~30
 
-### Chapter 27A — Inserted (v1.2): DT bindings YAML + `dt_binding_check`
+### Chapter 27A — Supplementary: DT bindings YAML + `dt_binding_check`
 A 2018+ mainline-hygiene requirement. Since kernel v4.18 every new device-tree binding must ship a YAML schema and pass `make dt_binding_check`. Without it, your patch will not be accepted upstream. Without it, your binding can drift silently between board variants and you will not know.
 - Why JSON-Schema for DT bindings (vs the old `.txt` files)
 - A binding for a custom node, written from scratch, validated
@@ -390,7 +382,7 @@ A 2018+ mainline-hygiene requirement. Since kernel v4.18 every new device-tree b
 - Generating your own custom `defconfig` and saving it under `arch/arm/configs/`
 - **Pages:** ~18
 
-### Chapter 30A — Inserted (v1.2): Kernel lifecycle — mainline, stable, LTS, vendor BSPs
+### Chapter 30A — Supplementary: Kernel lifecycle — mainline, stable, LTS, vendor BSPs
 The decision framework most readers never see laid out explicitly. Six release tracks, each with different stability/feature/security guarantees:
 - **Mainline** (Linus's tree, ~weekly rc, 9-week cycle)
 - **Stable** (Greg KH's tree, fixes only, ~1 month lifetime per minor)
@@ -450,7 +442,7 @@ The decision framework most readers never see laid out explicitly. Six release t
 - Comparing the generated rootfs against your hand-built one
 - **Pages:** ~20
 
-### Chapter 35B — Inserted (v1.2): Read-only rootfs + overlayfs (the industrial pattern)
+### Chapter 35B — Supplementary: Read-only rootfs + overlayfs (the industrial pattern)
 Every shipping industrial product does this. A read-only rootfs means: power-cycle anywhere, corrupt nothing. The overlayfs trick lets `/var/log/`, `/etc/`, and other writable subtrees live in tmpfs (lost on reboot, by design) or on a separate persistent partition.
 - Mounting `ext4` with `ro`; what fails (`/etc/resolv.conf`, `/var/run/utmp`, `/tmp`)
 - `overlayfs` mount syntax: `lowerdir`, `upperdir`, `workdir`
@@ -460,7 +452,7 @@ Every shipping industrial product does this. A read-only rootfs means: power-cyc
 - **Lab:** convert a Buildroot rootfs to RO-with-overlays; survive 100 randomly-timed power yanks
 - **Pages:** ~16
 
-### Chapter 35C — Inserted (v1.2): Container runtimes on embedded (Podman + OCI)
+### Chapter 35C — Supplementary: Container runtimes on embedded (Podman + OCI)
 Increasingly, shipping products use containers to isolate the application from the base system — so the same vendor BSP can host many app updates without rebuilding the rootfs. We bring up rootless Podman on the i.MX6ULL, run a tiny Alpine container, talk to a host GPIO from inside it.
 - Why containers on embedded: app/OS split for OTA, sandboxing, reproducibility
 - Podman vs Docker on small devices (footprint, rootless)
@@ -470,13 +462,20 @@ Increasingly, shipping products use containers to isolate the application from t
 - **Lab:** boot an Alpine container on the board; from inside, blink a host LED via sysfs
 - **Pages:** ~16
 
-### Chapter 35A — Inserted (v1.1): Ubuntu-base rootfs as a peer to BusyBox/Buildroot
+### Chapter 35A — Supplementary: Ubuntu-base rootfs as a peer to BusyBox/Buildroot
 For projects where binary size is not the constraint but **familiarity is** (engineers used to `apt-get install` on their dev machines), an Ubuntu-base rootfs gives you a fully-fledged Debian-family userland on the target — `apt`, `bash`, full `coreutils`, glibc. We unpack `ubuntu-base-22.04-arm.tar.gz`, `chroot` into it under `qemu-user-static` to install packages on the host, then NFS-mount it from the target.
 - When to choose this vs BusyBox (size, cold-start) or Buildroot (reproducibility)
 - The `chroot` + `qemu-user-static` trick for installing target packages from the host
 - DHCP and `apt` on the target
 - **Lab:** boot a target with a 600 MB Ubuntu-base rootfs and `apt install htop` from the board itself
 - **Pages:** ~16
+
+### Appendix — Userspace tooling reference
+- One table per tool family (networking, audio, BT, cellular, sensors, debug, …) with both **Ubuntu-base `apt install`** and **Buildroot `BR2_PACKAGE_*`** lines
+- "Install everything" cheat sheets (Ubuntu-base one-liner, Buildroot Kconfig fragment)
+- Per-Part subsets so a reader doing only Part VI/VII/VIII can install just what they need
+- Pitfalls (libgpiod v1↔v2 CLI, missing WiFi firmware, mesh-vs-classic BlueZ, etc.)
+- **Pages:** ~10
 
 ---
 
@@ -598,7 +597,7 @@ For projects where binary size is not the constraint but **familiarity is** (eng
 - A DMA-driven UART example (or audio DMA preview)
 - **Pages:** ~22
 
-### Chapter 51A — Inserted (v1.2): Watchdog driver and brown-out resilience
+### Chapter 51A — Supplementary: Watchdog driver and brown-out resilience
 No product ships without one. The i.MX6ULL `WDOG1/WDOG2` modules generate a system reset if not "kicked" within a programmable window. We write the kernel driver, plumb the user-space daemon (`systemd-watchdog` or `busybox watchdog`), and design the application-level kick policy.
 - The kernel `watchdog` framework, `struct watchdog_device`, `wdog_ops`
 - `/dev/watchdog` and the `ioctl` interface
@@ -608,7 +607,7 @@ No product ships without one. The i.MX6ULL `WDOG1/WDOG2` modules generate a syst
 - **Lab:** application crashes → watchdog fires → board reboots into known-good state, with a counter in SNVS RAM recording the reset cause
 - **Pages:** ~16
 
-### Chapter 51B — Inserted (v1.2): Power management — runtime PM, suspend/resume, DVFS
+### Chapter 51B — Supplementary: Power management — runtime PM, suspend/resume, DVFS
 Battery-powered or thermal-constrained products demand real PM. The Linux PM core supports four orthogonal mechanisms: runtime PM (per-device idle), system suspend (whole-board sleep), DVFS (frequency/voltage scaling), and CPU idle (low-power C-states).
 - The PM-runtime callbacks: `runtime_suspend`, `runtime_resume`, `runtime_idle`
 - `pm_runtime_get_sync` / `pm_runtime_put` discipline in drivers
@@ -627,7 +626,7 @@ Battery-powered or thermal-constrained products demand real PM. The Linux PM cor
 - Bringing the interface up, running `ping`, `iperf`, `tcpdump`
 - **Pages:** ~26
 
-### Chapter 52A — Inserted (v1.2): PREEMPT_RT — real-time Linux as a full chapter
+### Chapter 52A — Supplementary: PREEMPT_RT — real-time Linux as a full chapter
 For motion control, audio, robotics, industrial protocols, mainline Linux's PREEMPT_RT patchset turns the kernel into a deterministic real-time kernel without giving up the Linux API. Since v6.12 most of PREEMPT_RT has been merged into mainline; the rest is in flight.
 - What "real-time" means precisely (worst-case latency, not "fast")
 - The PREEMPT_RT design: threaded IRQs, sleeping spinlocks, rt_mutex with priority inheritance, ftrace-anchored measurement
@@ -653,7 +652,7 @@ For motion control, audio, robotics, industrial protocols, mainline Linux's PREE
 - Touchscreen integration (GT9147 typical Point Atom)
 - **Pages:** ~22
 
-### Chapter 54A — Inserted (v1.2): MTD / UBI / UBIFS for raw NAND
+### Chapter 54A — Supplementary: MTD / UBI / UBIFS for raw NAND
 If your product flashes raw NAND (not eMMC), you need the MTD subsystem under the kernel and UBI/UBIFS on top for wear-leveling and bad-block management.
 - MTD model: `struct mtd_info`, `mtd_read/write/erase`
 - The NAND subsystem (`nand_chip`) on top of MTD
@@ -664,7 +663,7 @@ If your product flashes raw NAND (not eMMC), you need the MTD subsystem under th
 - **Lab:** flash an entire layout (SPL → U-Boot → kernel → UBI rootfs) to NAND; power-cycle 1000 times; confirm zero bit errors after wear-leveling
 - **Pages:** ~22
 
-### Chapter 54B — Inserted (v1.2): V4L2 + GStreamer for camera input (CSI)
+### Chapter 54B — Supplementary: V4L2 + GStreamer for camera input (CSI)
 The i.MX6ULL CSI is paired with an OV5640 (typical) or OV2640 sensor. V4L2 (Video4Linux 2) is the kernel framework; GStreamer is the user-space pipeline glue.
 - V4L2 model: `struct v4l2_device`, `struct video_device`, `v4l2_ioctl_ops`
 - The i.MX6ULL `imx-pxp` and `imx-csi` drivers
@@ -681,7 +680,7 @@ The i.MX6ULL CSI is paired with an OV5640 (typical) or OV2640 sensor. V4L2 (Vide
 - A "USB serial" and a "USB mass storage" gadget walkthrough
 - **Pages:** ~18
 
-### Chapter 55A — Inserted (v1.1): Kernel timers and high-resolution timers (hrtimers)
+### Chapter 55A — Supplementary: Kernel timers and high-resolution timers (hrtimers)
 Three timer APIs in the kernel: legacy `timer_list` (jiffies-based, ms resolution), `delayed_work` (workqueue-driven), and `hrtimer` (sub-µs, the modern default for new code). When to use which; how each is implemented under the hood; how the tick subsystem multiplexes many timers on one hardware event.
 - `mod_timer`, `del_timer_sync`, the `timer_list.function` callback
 - `hrtimer_init`, `hrtimer_start`, `HRTIMER_MODE_REL` vs `_ABS`, `_PINNED`
@@ -689,14 +688,14 @@ Three timer APIs in the kernel: legacy `timer_list` (jiffies-based, ms resolutio
 - **Lab:** an `hrtimer`-driven 1 kHz square wave on a GPIO, measured with a scope; compare jitter vs `mdelay` in a kthread
 - **Pages:** ~18
 
-### Chapter 55B — Inserted (v1.1): Asynchronous notification (SIGIO / fasync)
+### Chapter 55B — Supplementary: Asynchronous notification (SIGIO / fasync)
 The fourth I/O model after blocking/non-blocking/poll: the driver delivers a `SIGIO` to a registered user-space process when data is ready, so the process is "informed" without ever calling `read()`. `fasync_helper`, `kill_fasync`, the `F_SETOWN`/`F_SETFL O_ASYNC` user-space dance.
 - When SIGIO matters: legacy code, signal-driven simple loops, low-latency without busy-poll
 - Why epoll/io_uring have mostly replaced it for new code, and why drivers still ship it
 - **Lab:** the Chapter 45 button driver gains SIGIO; a user-space program receives signals on press
 - **Pages:** ~12
 
-### Chapter 55C — Inserted (v1.1): CAN bus and FlexCAN
+### Chapter 55C — Supplementary: CAN bus and FlexCAN
 Industrial automation runs on CAN. The i.MX6ULL has two **FlexCAN** controllers. The Linux SocketCAN subsystem treats CAN like a network interface: `ip link set can0 up type can bitrate 500000`. Then `cansend`, `candump`, `can-utils`.
 - The FlexCAN controller register map and message-buffer model
 - SocketCAN: `PF_CAN`, `SOCK_RAW`, `struct can_frame`
@@ -705,7 +704,7 @@ Industrial automation runs on CAN. The i.MX6ULL has two **FlexCAN** controllers.
 - **Lab:** loopback two FlexCANs on the same board; then bridge to an external CAN node and exchange frames
 - **Pages:** ~22
 
-### Chapter 55D — Inserted (v1.1): Block device drivers
+### Chapter 55D — Supplementary: Block device drivers
 Char devices are sequential; block devices are random-access in fixed-size sectors. The block-I/O layer multiplexes requests from many filesystems onto one device with elevator/scheduling policies.
 - `struct block_device`, `struct gendisk`, `struct block_device_operations`
 - The `request_queue`, `make_request_fn`, modern `blk_mq` multi-queue
@@ -714,7 +713,7 @@ Char devices are sequential; block devices are random-access in fixed-size secto
 - **Lab:** the RAM-disk works as `mkfs.ext4` target and is mountable
 - **Pages:** ~24
 
-### Chapter 55E — Inserted (v1.1): WIFI — wpa_supplicant, USB and SDIO dongles
+### Chapter 55E — Supplementary: WIFI — wpa_supplicant, USB and SDIO dongles
 Connecting an i.MX6ULL to Wi-Fi in 2026 is rarely an in-house driver job — you pick a chip with mainline support and stand up `wpa_supplicant`. We walk an RTL8188EUS USB Wi-Fi dongle (cfg80211) and an RTL8189FS SDIO module (vendor staging tree) end-to-end.
 - Kernel: `CONFIG_CFG80211`, `CONFIG_WIRELESS_EXT`, `CONFIG_RTL8XXXU`
 - Firmware blobs in `/lib/firmware/`
@@ -724,7 +723,7 @@ Connecting an i.MX6ULL to Wi-Fi in 2026 is rarely an in-house driver job — you
 - **Lab:** the board joins your Wi-Fi from `/etc/init.d/`, gets a DHCP lease, pings the gateway
 - **Pages:** ~24
 
-### Chapter 55F — Inserted (v1.1): Cellular modems (PPP, ECM/NCM, GNSS)
+### Chapter 55F — Supplementary: Cellular modems (PPP, ECM/NCM, GNSS)
 Quectel EC20-style modems present themselves as USB composite devices: PPP serial, RNDIS/ECM data, NMEA GNSS. We cover all three modes, plus `quectel-CM` and `qmi_wwan` for the QMI-based path.
 - USB option driver, vendor/product IDs, the `option_ids[]` table in `drivers/usb/serial/option.c`
 - PPP path: `pppd` chat script, APN, MTU
@@ -733,7 +732,7 @@ Quectel EC20-style modems present themselves as USB composite devices: PPP seria
 - **Lab:** boot, modem dials, board has internet via cellular; concurrent GPS fix logged
 - **Pages:** ~22
 
-### Chapter 55G — Inserted (v1.1): Multi-touch — MT-A, MT-B protocols, GT911
+### Chapter 55G — Supplementary: Multi-touch — MT-A, MT-B protocols, GT911
 The Linux input subsystem evolved two multi-touch protocols: **Type A** (per-frame, packed) and **Type B** (per-slot, persistent). Most modern panels use Type B. We bring up a Goodix **GT911** capacitive touch controller (5-point), the typical pairing for the Point Atom MINI's optional LCD.
 - I²C wiring + interrupt + reset of GT911
 - `input_mt_init_slots`, `input_mt_slot`, `input_report_abs(ABS_MT_POSITION_X/Y)`
@@ -742,7 +741,7 @@ The Linux input subsystem evolved two multi-touch protocols: **Type A** (per-fra
 - **Lab:** five fingers tracked simultaneously, printed by `evtest`
 - **Pages:** ~18
 
-### Chapter 55H — Inserted (v1.1): RGB-to-HDMI via sii902x
+### Chapter 55H — Supplementary: RGB-to-HDMI via sii902x
 The i.MX6ULL has no native HDMI; a parallel-RGB-to-HDMI bridge chip (Silicon Image SiI902x) is the standard solution. The kernel has a mainline driver; the lab is wiring + DT bindings + EDID-based mode negotiation.
 - The bridge chip's I²C control path vs. its parallel-RGB data path
 - `drm/bridge` model in the kernel; `drm_bridge_add`
@@ -750,7 +749,7 @@ The i.MX6ULL has no native HDMI; a parallel-RGB-to-HDMI bridge chip (Silicon Ima
 - **Lab:** boot to a 1080p HDMI monitor with `weston` showing color bars
 - **Pages:** ~16
 
-### Chapter 55I — Inserted (v1.2): Rust-for-Linux — first kernel module
+### Chapter 55I — Supplementary: Rust-for-Linux — first kernel module
 Since Linux 6.1, Rust is a supported language for kernel modules. As of 2026 the support is still gated to a small set of subsystems but is growing fast. We write our Chapter 36 hello-LKM in Rust, as a sidebar / supplemental experiment — not because we recommend Rust for production embedded yet, but because the reader will see it land in their next kernel update.
 - Why Rust in the kernel (memory safety, type-state)
 - `rust/` directory tour; how the build picks up Rust source
@@ -762,7 +761,7 @@ Since Linux 6.1, Rust is a supported language for kernel modules. As of 2026 the
 
 ---
 
-# PART VII — DEVICE COOKBOOK *(v1.3, new)*
+# PART VII — DEVICE COOKBOOK
 
 > *Part VI taught you the kernel's driver frameworks with one good example each. This Part is the reference: for each common device class, two or three real chips compared side-by-side, with schematics, DT bindings, driver code or kernel-driver enablement, user-space access, and the pitfalls specific to each chip.*
 >
@@ -1304,8 +1303,6 @@ Since Linux 6.1, Rust is a supported language for kernel modules. As of 2026 the
 
 # PART VIII — DEBUG, PRODUCTION, ADVANCED
 
-> *(Originally Part VII in v1.2; renumbered to Part VIII when Part VII / Device Cookbook was inserted in v1.3.)*
-
 ### Chapter 118 — JTAG, OpenOCD, GDB at every layer
 - Connecting a JTAG adapter (FT2232H / J-Link) to the Point Atom JTAG header
 - OpenOCD config for i.MX6ULL
@@ -1330,7 +1327,7 @@ Since Linux 6.1, Rust is a supported language for kernel modules. As of 2026 the
 - Core dumps and `coredumpctl`
 - **Pages:** ~20
 
-### Chapter 120A — Inserted (v1.2): Mainline patch submission workflow
+### Chapter 120A — Supplementary: Mainline patch submission workflow
 If you write a driver in this book and it's good, it can go upstream. We walk the entire process end-to-end on a real candidate patch (e.g., a tweak to the FEC driver, or a YAML binding for a new sensor).
 - `git format-patch` and the one-patch-per-fix discipline
 - `scripts/checkpatch.pl --strict`; the warnings that matter, the ones that don't
@@ -1349,7 +1346,7 @@ If you write a driver in this book and it's good, it can go upstream. We walk th
 - Reproducible build script: clean checkout → bootable SD in one command
 - **Pages:** ~30
 
-### Chapter 121A — Inserted (v1.2): CI/CD for embedded Linux
+### Chapter 121A — Supplementary: CI/CD for embedded Linux
 Modern teams build U-Boot, kernel, rootfs, and run a smoke test on the actual hardware on every commit. We set this up using GitHub Actions (or GitLab CI), a self-hosted runner with USB-OTG to a board, and a small Labgrid-style harness.
 - Cross-builds in CI: caching, deterministic builds, `bitbake-no-network` patterns
 - Image artifact storage (size budget: ~150 MB per build × 20 commits/day)
@@ -1366,7 +1363,7 @@ Modern teams build U-Boot, kernel, rootfs, and run a smoke test on the actual ha
 - Comparing your toolchain against a pre-built Linaro one (size, behavior, sysroot)
 - **Pages:** ~24
 
-### Chapter 122A — Inserted (v1.2): BSP → mainline migration playbook
+### Chapter 122A — Supplementary: BSP → mainline migration playbook
 You inherited a Linux 4.1.15 vendor BSP from a previous project or a customer. The product needs to ship updates for the next eight years. You must move to a supportable mainline kernel. Here is the playbook.
 - Inventory: list every patch the vendor applied; classify (vendor-feature / vendor-bugfix / mainline-merged / dead-code)
 - The pinned-driver problem and how to break each pin
@@ -1384,7 +1381,7 @@ You inherited a Linux 4.1.15 vendor BSP from a previous project or a customer. T
 - A single recipe written for Yocto and for Buildroot, side by side
 - **Pages:** ~22
 
-### Chapter 123A — Inserted (v1.2): Yocto layer development in depth
+### Chapter 123A — Supplementary: Yocto layer development in depth
 For shipping at scale, Yocto is industry standard, and the meat of using it is *writing layers*. We build a vendor layer (`meta-mybsp`), a board layer (`meta-mybsp-mini`), and an application layer (`meta-mybsp-myapp`), with the right bbappend pattern between them.
 - Layer anatomy: `conf/`, `recipes-*/`, `classes/`, `wic/`
 - `bbappend` and the layer-priority dance
@@ -1410,7 +1407,7 @@ For shipping at scale, Yocto is industry standard, and the meat of using it is *
 - Atomic updates, rollback, fail-safe boot
 - **Pages:** ~20
 
-### Chapter 125A — Inserted (v1.1): VSCode + gdbserver remote-debug workflow
+### Chapter 125A — Supplementary: VSCode + gdbserver remote-debug workflow
 Many readers came here from VSCode and would rather debug there than learn `tui` mode. We set up `gdbserver` on the target, `gdb-multiarch` on the host, the VSCode `launch.json` that joins them, and the `.vscode/c_cpp_properties.json` that resolves headers from the cross-sysroot — so `Go to Definition` works on kernel sources too.
 - Source Insight as a faster alternative for kernel-source navigation only (read-only, but very fast)
 - The minimum target setup: a statically-linked `gdbserver` binary in `/usr/bin/`
@@ -1428,32 +1425,19 @@ Many readers came here from VSCode and would rather debug there than learn `tui`
 
 ---
 
-## Total page estimate (v1.3)
+## Total page estimate
 
-| Part | Numbered | v1.1 inserts | v1.2 inserts | v1.3 inserts | Pages |
-|------|----------|--------------|--------------|--------------|-------|
-| I — Foundations | 8 | — | — | — | 136 |
-| II — Bare-metal i.MX6ULL | 10 | +3 (18A–C) | — | — | 252 |
-| III — U-Boot | 6 | — | +1 (23A) | — | 128 |
-| IV — Kernel | 6 | — | +2 (27A, 30A) | — | 148 |
-| V — Rootfs & user space | 5 | +1 (35A) | +2 (35B, 35C) | — | 140 |
-| VI — Driver development | 20 | +8 (55A–H) | +5 (51A,B; 52A; 54A,B; 55I) | — | 644 |
-| **VII — Device cookbook** *(new)* | **54** | — | — | — | **~735** |
-| VIII — Debug & advanced | 9 | +1 (125A) | +4 (120A; 121A; 122A; 123A) | — | 290 |
-| **Total** | **118** | **+13** | **+14** | **(none)** | **~2,473 pages** |
-
-### What v1.3 changed at a glance
-
-- **New Part VII — Device Cookbook (54 chapters).** Comprehensive chip-by-chip reference for storage, sensors of all kinds, ADCs/DACs/clock-gen, all display types, cameras, audio, every wireless module class, industrial buses, identification (RFID/NFC, fingerprint), motors/encoders, smart LEDs, network expansion, system power, external RTC. Each chapter covers 2–4 real chips side-by-side with schematic / DT / driver / lab / pitfalls.
-- **Renumbering.** Old Part VII (debug, production, advanced) became Part VIII. Old chapter numbers Ch 56–64 are now Ch 118–126; old letter-suffixed insertions (58A, 59A, 60A, 61A, 63A) are now (120A, 121A, 122A, 123A, 125A). The chapter numbers in already-drafted Parts I–VI stay unchanged.
-
-### What v1.2 had changed at a glance
-
-- **Part III**: +Multi-variant FIT images + DT overlays (23A)
-- **Part IV**: +DT bindings YAML validation (27A); +Kernel-lifecycle decision framework (30A)
-- **Part V**: +Read-only rootfs with overlayfs (35B); +Containers on embedded (35C)
-- **Part VI**: +Watchdog (51A); +Power management — runtime PM, DVFS, suspend (51B); +PREEMPT_RT real-time (52A); +MTD/UBI for raw NAND (54A); +V4L2/GStreamer for CSI camera (54B); +Rust-for-Linux (55I)
-- **Part VII (old → now VIII)**: +Mainline patch submission workflow (now 120A); +CI/CD for embedded (now 121A); +BSP→mainline migration playbook (now 122A); +Yocto layer dev in depth (now 123A)
+| Part | Numbered | Supplementary | Pages |
+|------|---------:|--------------:|------:|
+| I — Foundations                | 8   | —                                  | 136 |
+| II — Bare-metal i.MX6ULL       | 10  | +3 (18A–C)                         | 252 |
+| III — U-Boot                   | 6   | +1 (23A)                           | 128 |
+| IV — Kernel                    | 6   | +2 (27A, 30A)                      | 148 |
+| V — Rootfs & user space        | 5   | +3 (35A, 35B, 35C)                 | 140 |
+| VI — Driver development        | 20  | +13 (51A/B, 52A, 54A/B, 55A–I)     | 644 |
+| **VII — Device cookbook**      | **54** | —                               | **~735** |
+| VIII — Debug & advanced        | 9   | +5 (120A, 121A, 122A, 123A, 125A)  | 290 |
+| **Total**                      | **118** | **+27**                        | **~2,473 pages** |
 
 ---
 
@@ -1493,7 +1477,7 @@ Ch1 → Ch2 → Ch3 ─┐
 
 Bare-metal Part II is the *only* part that can be safely skipped by a reader who only wants kernel/drivers. For *your* learning, do not skip it — it's the chapter set that will set this book apart.
 
-### Where the inserted chapters fit in the dependency graph
+### Where the supplementary chapters fit
 
 ```
 Ch10 ──┬──► Ch18A (project organization)  ──► informs every subsequent bare-metal Ch
@@ -1508,10 +1492,11 @@ Ch120 ──► Ch125A (VSCode workflow; can be read after any driver chapter)
 
 ---
 
-## Project decisions (resolved)
+## Project decisions
 
 1. **Target board.** Point Atom MINI (i.MX6ULL @ 696 MHz, 512 MiB DDR3L) is the primary reference. The guide deliberately stays general where it can — most chapters work on any i.MX6ULL board, and Parts IV–VIII (kernel, rootfs, drivers, debug, production) transfer to any Linux-capable ARM SoC. Board-specific divergences are called out inline.
 2. **Language.** English only. No bilingual edition planned.
-3. **Code-listing license.** MIT. Snippets in chapters are copy-paste-into-your-project friendly; no attribution required.
-4. **Tooling.** Markdown sources + **Sphinx + sphinx-rtd-theme + myst-parser** rendered to a Read-the-Docs-style site. Hosted on GitHub Pages, auto-rebuilt on push. See [PUBLISH.md](PUBLISH.md).
-5. **Code delivery.** **Inline in the chapters.** There is no companion `code/` repository. The drivers, scripts, and configurations shown are complete enough to read, type, and adapt; the lab sections describe what to build but do not ship a reference solution.
+3. **Versions targeted throughout.** Linux kernel **v6.6 LTS**; U-Boot **v2026.04** (or latest stable at read-time); GCC **13.x** for the cross-toolchain; Buildroot **2026.02**; Yocto **scarthgap (5.0)** / **kirkstone (4.0)** on the Buildroot/Yocto side. Driver-API signatures and DTS paths follow v6.6 conventions; pre-v6.5 kernels use different DTS layout (no `nxp/imx/` prefix) and earlier driver-API forms.
+4. **Code-listing license.** MIT. Snippets in chapters are copy-paste-into-your-project friendly; no attribution required.
+5. **Tooling.** Markdown sources + **Sphinx + sphinx-rtd-theme + myst-parser** rendered to a Read-the-Docs-style site. Hosted on GitHub Pages, auto-rebuilt on push. See [PUBLISH.md](PUBLISH.md).
+6. **Code delivery.** **Inline in the chapters.** There is no companion `code/` repository. The drivers, scripts, and configurations shown are complete enough to read, type, and adapt; the lab sections describe what to build but do not ship a reference solution.

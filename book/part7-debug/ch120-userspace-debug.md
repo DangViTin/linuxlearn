@@ -11,6 +11,7 @@ status: draft
 > **What:** the toolkit for debugging your **user-space applications** on the i.MX6ULL target from a host workstation. **gdbserver** + **gdb-multiarch** for breakpoint-and-step debugging across the network; **strace** for "what syscalls is this program making"; **ltrace** for shared-library calls; **perf** for sampling profilers + hardware-counter-based analysis + flamegraphs; **core dumps** with `coredumpctl` for post-mortem analysis of crashed processes.
 > **Why:** kernel debugging (Ch 118, 119) is the rare case; you'll debug applications 10× more often. The pattern: target runs `gdbserver`; host runs `gdb-multiarch` with the unstripped binary; you set breakpoints by source line, inspect variables, step through code — exactly as if developing locally. `strace` reveals "the open() is returning EACCES" before you've even opened gdb. `perf` answers "why is my video pipeline using 80 % CPU" with a flamegraph. Master these and you debug embedded apps as productively as desktop ones.
 > **Focus:** **gdbserver is the network agent (no debugger UI; just exposes the process's debug API over TCP); gdb-multiarch on the host knows ARM and connects; the unstripped ELF + sysroot give it symbols and headers**. For performance: `perf` is the universal sampling tool; understand the difference between sampling (CPU%-style overview, low overhead) and tracing (every event, high overhead). For crashed programs: configure `coredumpctl` to save dumps to a known location, retrieve from the target, analyze on the host.
+> **Tooling.** **Target:** `gdbserver`, `strace`, `ltrace`, `perf` (from `linux-tools`), optional `valgrind`. **Host:** `gdb-multiarch` (or your cross gdb), Brendan Gregg's `FlameGraph` scripts (`git clone https://github.com/brendangregg/FlameGraph`). Ubuntu install (target): `apt install gdbserver strace ltrace linux-tools-generic valgrind`. Buildroot: `BR2_PACKAGE_GDB=y` + `BR2_PACKAGE_GDB_SERVER=y`, `BR2_PACKAGE_STRACE=y`, `BR2_PACKAGE_LTRACE=y`, `BR2_PACKAGE_LINUX_TOOLS_PERF=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 120.1  Target side — install gdbserver
 
@@ -169,7 +170,7 @@ perf report
 # ...
 ```
 
-99 Hz sampling = ~1 sample per 10 ms; gives a statistical CPU profile with minimal overhead (~1 %). Perfect for "what is this thing actually doing."
+99 Hz sampling (not a round 100 Hz — that's deliberate, to avoid harmonic with periodic kernel timers that often run at 100/250/1000 Hz) gives ~1 sample per 10 ms with minimal overhead (~0.1–0.5 %). Perfect for "what is this thing actually doing."
 
 ### Flamegraphs
 

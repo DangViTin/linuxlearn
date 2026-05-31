@@ -11,6 +11,10 @@ status: draft
 > **What:** three touch technologies at increasing complexity. **TTP223** (single capacitive button, GPIO output — `gpio-keys`), **MPR121** (12-channel capacitive, I²C, with IRQ), **XPT2046/ADS7846** (4-wire resistive touchscreen controller, SPI, ADC-based, needs calibration). For each: physics, protocol, the input subsystem integration, and a from-scratch XPT2046 input driver — the most interesting, since resistive touch requires reading X/Y ADC channels and software calibration.
 > **Why:** a display without touch is a monitor; with touch it's an interface. Capacitive buttons replace mechanical ones (no wear, sealed enclosures). Capacitive matrices give you piano keys, sliders, proximity. Resistive touch is the cheap way to make any LCD interactive (works with gloves and stylus, unlike capacitive). Each is a different input-subsystem pattern — this chapter completes the input picture started in Ch 45 and the multi-touch GT911 of Ch 55G.
 > **Focus:** **capacitive = threshold detection, resistive = ADC + calibration**. A cap button outputs a clean digital "touched"; you wire it to `gpio-keys` and you're done. Resistive touch gives you two ADC readings (X, Y position) that map non-linearly to screen pixels — calibration (the `tslib` / `xinput_calibrator` step) turns raw ADC counts into pixel coordinates.
+> **Tooling.** This chapter uses `evtest`, `libinput-tools`, `xinput_calibrator` (resistive), `i2c-tools`.
+> - **Ubuntu-base (target):** `apt install evtest libinput-tools xinput-calibrator i2c-tools`
+> - **Buildroot:** `BR2_PACKAGE_EVTEST=y BR2_PACKAGE_LIBINPUT=y BR2_PACKAGE_TSLIB=y BR2_PACKAGE_I2C_TOOLS=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 86.1  Technology comparison
 

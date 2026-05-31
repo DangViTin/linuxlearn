@@ -11,6 +11,10 @@ status: draft
 > **What:** BLE modules that hide the entire Bluetooth stack behind a simple UART AT-command interface. **HM-10** (CC2540/CC2541-based), **HC-08**, **JDY-08** — you send `AT+...` strings over a UART, and the module handles advertising, connection, and a transparent serial data pipe to a connected phone. No BlueZ, no kernel BT stack, no GATT programming.
 > **Why:** for products that need "send a few bytes to/from a phone app" and nothing more, the AT-BLE module is dramatically simpler than the full HCI + BlueZ stack of Ch 95. The module *is* the Bluetooth stack; Linux just talks to a UART. The trade-off: you're limited to the module's fixed GATT profile (usually a single "transparent UART" characteristic), max ~few hundred bytes/sec, and a non-standard, vendor-specific command set.
 > **Focus:** **the module is a "BLE-to-serial cable"**. After configuration, anything you write to the UART appears in the phone app (via a notify characteristic), and anything the phone sends appears on the UART RX. It's a wireless serial port. Linux needs *zero* Bluetooth code — just open `/dev/ttymxc2` and read/write.
+> **Tooling.** This chapter uses Just a UART terminal: `picocom` or `minicom`.
+> - **Ubuntu-base (target):** `apt install picocom minicom`
+> - **Buildroot:** `BR2_PACKAGE_PICOCOM=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 96.1  Module comparison
 

@@ -213,6 +213,10 @@ A tasklet runs in **softirq context** (atomic, can't sleep, but with all IRQs en
 ```c
 #include <linux/interrupt.h>
 
+/* Modern form (since v5.9): DECLARE_TASKLET(name, fn) where fn takes (struct tasklet_struct *).
+ * DECLARE_TASKLET_OLD is the backward-compat macro for the legacy (unsigned long) callback shown
+ * here. New drivers should prefer DECLARE_TASKLET — but better still, prefer workqueues
+ * (tasklets are being phased out across the tree). */
 static DECLARE_TASKLET_OLD(my_tasklet, my_tasklet_fn);
 
 static void my_tasklet_fn(unsigned long data)

@@ -11,6 +11,10 @@ status: draft
 > **What:** **over-the-air (OTA) firmware update** systems for shipped embedded Linux products. Three options compared: **RAUC** (Robust Auto-Update Client — German rail-grade, simple, well-fit Yocto), **SWUpdate** (Toradex-originated, flexible, complex), **Mender** (commercial-style with hosted backend; also self-host). Each implements **A/B partitioning** + atomic update + rollback. We design a complete OTA flow: build → sign → host → device pulls + verifies + installs → reboots into new partition → marks "good" if boot completes → fall-back to other partition if not.
 > **Why:** no shipping product survives without updates. Bug fixes, security patches, new features — all delivered after the box leaves your hand. The risk: a botched update bricks 10,000 devices. The mitigation: atomic A/B updates + rollback on boot failure. Get the OTA architecture right and you ship one update per week, customers love you. Get it wrong and one bad update wipes out a quarter's revenue.
 > **Focus:** **A/B is the universal pattern: two rootfs partitions; the running kernel mounts one; an update writes to the other; bootloader switches to the new one on next reboot; if the new one fails to boot to a "we're good" marker within a deadline, bootloader reverts to the old one**. The complexity is everywhere else: who hosts the update bundle? how is it signed (Ch 124's keys)? how does the device know an update is available? what if the user's WiFi drops mid-download? how do you stage rollouts (10 % → 50 % → 100 %)? these systems handle all of that.
+> **Tooling.** This chapter uses `rauc` *or* `swupdate` *or* `mender-client` (pick one), plus `casync` for delta-update chunking.
+> - **Ubuntu-base (target):** `apt install rauc casync  # or: swupdate, or mender-client`
+> - **Buildroot:** `BR2_PACKAGE_RAUC=y BR2_PACKAGE_CASYNC=y  # or BR2_PACKAGE_SWUPDATE=y / BR2_PACKAGE_MENDER=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 125.1  Comparison
 

@@ -11,6 +11,10 @@ status: draft
 > **What:** integrating a 4G/LTE modem with embedded Linux. The two big paths: **USB modems** with QMI/MBIM/RNDIS data interfaces (Quectel EC20/EC25, SimCom SIM7600), and **UART AT-command modems** with PPP (older parts and NB-IoT chips). The user-space orchestrator is **ModemManager**, supplemented by `qmicli` / `mbimcli` or, for AT modems, raw chat scripts.
 > **Why:** every IoT device that ships without WiFi+wired backhaul has a cellular modem. Bringing one up correctly the first time saves weeks of customer-side debugging.
 > **Focus:** **picking the data mode**. EC25 alone exposes 4 USB modes (RNDIS, ECM, QMI, MBIM) — pick wrong and nothing works. QMI is the modern industry-standard for Linux; default to that unless you have a specific reason.
+> **Tooling.** This chapter uses `ppp` (`pppd`, `chat`), `ModemManager` (`mmcli`), `libqmi-utils` (`qmicli`).
+> - **Ubuntu-base (target):** `apt install ppp modemmanager libqmi-utils`
+> - **Buildroot:** `BR2_PACKAGE_PPP=y BR2_PACKAGE_MODEM_MANAGER=y BR2_PACKAGE_LIBQMI=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 55F.1  Hardware connection
 

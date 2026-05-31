@@ -11,6 +11,10 @@ status: draft
 > **What:** the **IEEE 802.15.4** family — the certified mesh networking stack used by Philips Hue, Aqara, Eve, IKEA Trådfri, Google Nest. We compare **TI CC2530** (legacy ZigBee 3.0), **Nordic nRF52840** (modern, OpenThread + ZigBee + BLE in one chip), and **Silicon Labs EFR32MG** (commercial-grade ZigBee/Thread). On Linux, the i.MX6ULL is the **gateway** (running zigbee2mqtt, Thread Border Router, or Home Assistant), not a node. The radio is on a coprocessor module; Linux talks to it over UART/USB as a **ZNP** (ZigBee Network Processor) or **NCP** (Network Coprocessor).
 > **Why:** 802.15.4 is the only mesh radio with serious certification, vendor cross-compat, and consumer-product penetration. If you're building a *gateway* (smart-home hub, factory data collector, gateway-as-a-service), you're integrating with 802.15.4 modules. Nodes you don't write — you buy them. The Linux skill is **gateway integration**: pairing the radio coprocessor, serial framing of the host-controller protocol, MQTT bridging, OTA upgrade management.
 > **Focus:** **the radio firmware is a black box; you talk to it over a serial protocol (EZSP, Thread Spinel, ZNP) that mirrors the network layer**. Just like BLE HCI (Ch 95), the host-controller boundary is what you debug. Once the gateway daemon (zigbee2mqtt, OpenThread Border Router) is up, MQTT/MDNS handles the rest. No kernel driver to write — `ttyUSB`/`spidev` is the chip-side interface and a user-space daemon is the brain.
+> **Tooling.** This chapter uses Node.js 18+, `zigbee2mqtt` (via npm), Mosquitto broker; for Thread, build `openthread/ot-br-posix` from source.
+> - **Ubuntu-base (target):** `apt install nodejs npm mosquitto mosquitto-clients`
+> - **Buildroot:** `BR2_PACKAGE_NODEJS=y BR2_PACKAGE_MOSQUITTO=y  # otbr typically self-built`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 100.1  The three protocols at a glance
 

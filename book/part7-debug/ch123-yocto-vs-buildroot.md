@@ -162,7 +162,7 @@ The `${...}` are BitBake variables filled in by the layer config + base classes 
 - **Small team.** 1–5 engineers can master Buildroot in a week.
 - **Predictable build time matters.** Buildroot builds are fast (30 min) and deterministic.
 - **Debugging build failures.** Stepping through a `make` is easier than a BitBake task graph.
-- **Small rootfs.** Buildroot's curated packages are lean; the default core-image is ~30 MB vs Yocto's ~60 MB.
+- **Small rootfs.** Buildroot's curated packages are lean; the default core-image is ~30 MB. Yocto's `core-image-minimal` is closer to **~10 MB** (depending on init/packagegroups); only `core-image-base` or `core-image-full-cmdline` climbs into the 60 MB+ range.
 
 Example: a hobbyist product, a one-off consumer gadget, a small-fleet IoT device. Buildroot for these is right.
 

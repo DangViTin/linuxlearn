@@ -105,6 +105,7 @@ part5-rootfs/ch35-buildroot
 part5-rootfs/ch35A-ubuntu-base
 part5-rootfs/ch35B-readonly-rootfs-overlayfs
 part5-rootfs/ch35C-containers-on-embedded
+part5-rootfs/appendix-tooling
 ```
 
 ```{toctree}

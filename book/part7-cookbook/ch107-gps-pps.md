@@ -15,6 +15,10 @@ status: draft
 >
 > The technique generalizes — *any* time-domain measurement on Linux (audio sync between two boards, distributed scientific instruments, oscilloscope-on-IP) gets much easier with a real PPS time source.
 > **Focus:** **NMEA gives you the wall-clock seconds but is laggy and jittery (~50–500 ms after the second); PPS is the actual nanosecond-accurate edge**. A naïve "set the clock from `$GPRMC`" gets you to ±100 ms. PPS-disciplined (kernel timestamps the GPIO edge with hardware-clock precision; chrony combines the slow-but-labelled NMEA with the fast-but-unlabelled PPS edge) gets you to ±100 ns. Understanding the PPS plumbing — pin → kernel `pps_gpio` driver → /dev/pps0 → chrony's refclock — is what separates "GPS time sync" from "real GPS time sync."
+> **Tooling.** This chapter uses `gpsd` + `gpsd-clients` (`gpspipe`, `cgps`, `gpsmon`), `chrony`, `pps-tools` (`ppstest`).
+> - **Ubuntu-base (target):** `apt install gpsd gpsd-clients chrony pps-tools`
+> - **Buildroot:** `BR2_PACKAGE_GPSD=y BR2_PACKAGE_CHRONY=y BR2_PACKAGE_PPS_TOOLS=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 107.1  GNSS module comparison
 

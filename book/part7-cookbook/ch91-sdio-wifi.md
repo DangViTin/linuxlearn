@@ -11,6 +11,10 @@ status: draft
 > **What:** WiFi modules attached over the **SDIO** bus (the same physical interface as an SD card, repurposed for I/O). Three modules compared: **AP6212** (Broadcom BCM43438, on many i.MX boards), **RTL8189FTV** (Realtek), **SD8801** (Marvell/NXP). Builds on Ch 55E (the WiFi stack). For each: the SDIO bring-up sequence, firmware + NVRAM loading, and — since full-MAC WiFi drivers are 30k+ lines you won't write from scratch — a *trace of how a packet flows through the stack* and how to bring up the SDIO transport (the part that actually trips up every new board).
 > **Why:** SDIO WiFi is the standard embedded WiFi: soldered-down, low-cost, no USB port consumed. But it's also the hardest peripheral to bring up on a new board — the SDIO transport, the power sequence, the 32 kHz clock, the per-board NVRAM, and the firmware blob all have to be exactly right, and the failure mode is usually "nothing in dmesg." This chapter is mostly about the bring-up sequence and debugging.
 > **Focus:** **the WiFi chip is a full-MAC co-processor; the driver is a firmware-loader + a SDIO-packet shuttle**. The chip runs the entire 802.11 stack in its own firmware. The Linux driver (brcmfmac, etc.) loads that firmware over SDIO at boot, then ferries data packets and control commands back and forth. Bring-up = getting the SDIO bus working + getting the right firmware + NVRAM. After that, the chip does the WiFi.
+> **Tooling.** This chapter uses `wpa_supplicant`, `iw`, chip firmware blob (Cypress/Realtek/Marvell).
+> - **Ubuntu-base (target):** `apt install wpasupplicant iw firmware-brcm80211 firmware-realtek`
+> - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 91.1  Module comparison
 

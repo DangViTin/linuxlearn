@@ -22,13 +22,13 @@ A typical 2017-era NXP BSP:
 - ~1,500 are NXP-internal-only (vendor APIs, downstream UI hacks, broken HW workarounds)
 
 Plus:
-- Old toolchain (gcc 6.x) won't compile mainline (needs gcc 8+).
+- Old toolchain (gcc 6.x) won't compile mainline kernel 6.6 cleanly. The kernel's hard minimum is gcc 5.1 (Documentation/process/changes.rst), but newer features and warnings require gcc 11+; most distros ship gcc 12+ for embedded cross-builds.
 - Old U-Boot 2017.04 doesn't speak modern FIT.
 - Old Buildroot/Yocto recipes pinned to old library versions.
 - Old GStreamer 1.10; mainline drivers use new V4L2 APIs.
 
 The "easy" path — stay on 4.1.15 forever — leaves accumulated CVEs unfixed:
-- CVE-2017-1000405 (Dirty COW2): patched in 4.1.51, missed in your 4.1.15.
+- CVE-2017-1000405 (the "Huge Dirty COW" / Dirty COW THP race): patched in 4.1.51, missed in your 4.1.15.
 - CVE-2018-3639 (Spectre v4): no fix backported to your fork.
 - CVE-2021-4034 (Polkit pwnkit): irrelevant to kernel but kernel-related stack.
 - 2024+ CVEs: countless.

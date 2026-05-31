@@ -11,6 +11,10 @@ status: draft
 > **What:** digital MEMS microphones — the chips that replaced analog electret mics in everything from phones to wearables. We focus on **I²S** mics (TDK InvenSense **INMP441**, TDK **ICS-43434**) and contrast with **PDM** mics. Plus the ASoC machine-driver pattern needed to wire one to the i.MX6ULL SAI, since this is one case where you really do write a small "machine driver" but not a chip driver.
 > **Why:** every smart speaker, voice-assistant, voice-controlled IoT device, dashcam, drone for FAA-broadcast — they all have one or more digital microphones. The mic outputs already-digitized PCM (or PDM); no separate ADC or codec required. The driver structure is unusual: there's no codec chip with registers, just a simple I²S DAI. The ASoC `simple-card` machine driver handles this exact pattern.
 > **Focus:** **a digital MEMS mic is "an I²S DAI with no control interface"**. It samples audio internally, outputs PCM on SD when WS/LR-clock + BCLK are running. From Linux's perspective it's just a slave of the SAI. Once you can wire SAI → mic in DT via `simple-audio-card` and capture with `arecord`, you have a working audio-input pipeline.
+> **Tooling.** This chapter uses `alsa-utils` (`arecord`, `aplay`), `i2c-tools`.
+> - **Ubuntu-base (target):** `apt install alsa-utils i2c-tools`
+> - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_I2C_TOOLS=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 78.1  Sensor comparison
 

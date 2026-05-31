@@ -284,7 +284,7 @@ static int mi_init(struct myina *m)
     err = mi_write16(m, REG_CALIBRATION, cal);
     if (err) return err;
 
-    dev_info(&m->client->client_dev,
+    dev_info(&m->client->dev,
              "INA219 config: shunt=%u µΩ, current_lsb=%d µA, cal=%u\n",
              m->shunt_uohms, m->current_lsb_uA, cal);
     return 0;

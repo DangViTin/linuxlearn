@@ -11,6 +11,7 @@ status: draft
 > **What:** the **software-only kernel debugging toolkit** that works on a deployed device with no hardware debug access. **printk**'s deeper toolbox (`pr_debug`, `dynamic_debug`, ring-buffer levels), **ftrace** (function tracer + `function_graph` + tracepoint events), **trace-cmd** + **KernelShark** (record + GUI), **bpftrace** and **bcc** (eBPF for live kernel introspection), **kgdb** over serial (when you do want a debugger but only have UART), and the **oops decoder** workflow (`addr2line`, `scripts/decode_stacktrace.sh`).
 > **Why:** JTAG (Ch 118) is the surgeon's tool; this chapter is the medical kit you actually carry. You can't ship a fleet with a JTAG cable attached; you can ship a fleet with ftrace enabled. On a customer's device hanging once every 3 days, you need *post-hoc forensics* — what was the kernel doing in the second before the freeze? ftrace's persistent buffer + an oops decoder gives you that. eBPF lets you attach a probe to `tcp_retransmit_skb` on a production server and count retransmits per remote — without recompiling the kernel.
 > **Focus:** **the right tool for the right symptom**. Spam in `dmesg` → `dynamic_debug` to filter. "It worked once, now hangs" → ftrace `function_graph` of the suspect subsystem. "What system calls is this app making?" → bpftrace one-liner. "Kernel oops on customer device" → save dmesg, decode_stacktrace.sh against your matching vmlinux. "I want to actually breakpoint and step a remote production kernel" → kgdb over serial (rare, but the right tool sometimes).
+> **Tooling.** **Target:** `trace-cmd` (for ftrace), optional `bpfcc-tools` / `bpftrace` (eBPF — better on aarch64 / newer kernels). **Host:** `kernelshark` to visualise ftrace dumps; `crash(8)` for vmcore analysis. Ubuntu install: `apt install trace-cmd kernelshark bpfcc-tools bpftrace`. Buildroot: `BR2_PACKAGE_TRACE_CMD=y`, `BR2_PACKAGE_BCC=y`, `BR2_PACKAGE_BPFTRACE=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 119.1  printk — the survivor
 
@@ -278,7 +279,7 @@ Embedded systems often lack the disk space for vmcore (200+ MB); skip kdump and 
 
 - **dmesg buffer wraps.** Default 128 KB; verbose drivers eat it in seconds. Bump to 1 MB with `CONFIG_LOG_BUF_SHIFT=20`.
 - **printk during fast path.** A printk in an IRQ context with `loglevel >= 4` blocks for 1+ ms (UART transmission). Don't `pr_info` in hot paths.
-- **ftrace overhead.** Function tracer adds ~50 ns per call; on a Cortex-A7 with 100 M function calls/sec, that's 5 % CPU. Use filters to limit scope.
+- **ftrace overhead.** Function tracer adds ~50 ns per traced kernel call. Realistic kernel function rates under load on a Cortex-A7 are 1–10 M/s, so unfiltered tracing typically costs 5–10 % CPU. Always use `set_ftrace_filter` to scope.
 - **ftrace buffer fills in seconds.** Default 1 KB per CPU; bump to `echo 8192 > buffer_size_kb` for usable durations.
 - **lost trace events.** When the buffer fills, oldest events drop. Check `cat /sys/kernel/tracing/per_cpu/cpu0/stats` for lost_events.
 - **dynamic_debug requires CONFIG_DYNAMIC_DEBUG=y.** Most distros have it; verify.

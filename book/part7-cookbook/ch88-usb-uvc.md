@@ -11,6 +11,10 @@ status: draft
 > **What:** USB webcams — the standardized **UVC** (USB Video Class) devices that the kernel's `uvcvideo` driver supports out of the box. Unlike the parallel-CSI sensors of Ch 87 (which need a custom driver per sensor), a UVC camera is class-compliant: plug it in, `/dev/video0` appears, no driver work. We cover the UVC protocol model, why it "just works," USB-2.0 bandwidth budgeting (the real constraint on i.MX6ULL), MJPEG vs YUYV vs H.264 modes, and the practical gotchas.
 > **Why:** for many products, a USB webcam is the *easiest* camera — no sensor bring-up, no register tables, no CSI timing. The trade-off is USB bandwidth and the fact that the camera's quality is whatever the webcam vendor shipped. Knowing the bandwidth math tells you what resolution/frame-rate is achievable on the i.MX6ULL's USB-2.0 host.
 > **Focus:** **UVC is a class driver — the protocol is standardized, so one driver handles all cameras**. The complexity isn't in a per-device driver (there isn't one); it's in *bandwidth budgeting* and *format selection*. A USB-2.0 bus is ~480 Mbps theoretical, ~320 Mbps practical. Uncompressed 1080p30 needs ~750 Mbps — impossible. MJPEG-compressed 1080p30 fits. Understanding this is the whole game.
+> **Tooling.** This chapter uses `v4l-utils`, `gstreamer1.0-tools` + plugins, `ffmpeg`.
+> - **Ubuntu-base (target):** `apt install v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad ffmpeg`
+> - **Buildroot:** `BR2_PACKAGE_V4L_UTILS=y BR2_PACKAGE_GSTREAMER1=y BR2_PACKAGE_FFMPEG=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 88.1  Why UVC is different from CSI
 

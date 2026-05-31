@@ -333,20 +333,17 @@ Notice these are all subsystem APIs (`of_*`, `gpiod_*`, `clk_*`), not raw DT-par
 
 ### Pattern: `probe_defer` for ordering
 
-A driver's `probe()` may depend on something that isn't ready yet — e.g., the PMIC regulator the driver wants hasn't probed itself. The driver returns `-EPROBE_DEFER`:
+A driver's `probe()` may depend on something that isn't ready yet — e.g., the regulator the driver wants hasn't been registered yet because its own driver hasn't probed. The driver returns `-EPROBE_DEFER`:
 
 ```c
 priv->vcc = devm_regulator_get(&pdev->dev, "vcc");
-if (IS_ERR(priv->vcc)) {
-    if (PTR_ERR(priv->vcc) == -EPROBE_DEFER)
-        return -EPROBE_DEFER;
+if (IS_ERR(priv->vcc))
     return dev_err_probe(&pdev->dev, PTR_ERR(priv->vcc), "no vcc regulator\n");
-}
 ```
 
-The kernel notes the deferred device and retries it after every other probe attempt, until all probes have stabilised. This means you don't have to manage init order manually across drivers; the kernel does it for you.
+That's the whole pattern. `dev_err_probe` already handles `-EPROBE_DEFER` quietly (debug-level log instead of error-level), so the manual `if (PTR_ERR(...) == -EPROBE_DEFER) return -EPROBE_DEFER;` check that older drivers carry is redundant — drop it.
 
-`dev_err_probe` handles this for you: if the errno is `-EPROBE_DEFER`, it logs quietly. So a one-line `return dev_err_probe(&pdev->dev, PTR_ERR(priv->vcc), "no vcc\n");` is fine — `EPROBE_DEFER` and real errors both flow through it.
+The kernel notes the deferred device and retries it after every other probe attempt, until all probes have stabilised. This means you don't have to manage init order manually across drivers; the kernel does it for you.
 
 ### Pattern: shutdown vs remove
 

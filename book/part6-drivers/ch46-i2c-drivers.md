@@ -11,6 +11,10 @@ status: draft
 > **What:** the Linux **I²C subsystem** — `i2c_adapter` (the controller, which we don't write), `i2c_client` (one chip on the bus), `i2c_driver` (the per-chip driver), `i2c_msg` (one transaction). By the end you'll have a driver that probes when a DT node says `compatible = "your,chip"`, talks to it with `i2c_transfer`, and exposes it via chardev or sysfs.
 > **Why:** I²C is the workhorse bus of embedded: temp sensors, EEPROMs, GPIO expanders, RTCs, audio codecs, touch controllers, PMICs, battery gauges — half of Part VII's cookbook chapters are I²C devices. The Linux I²C model is a *clean* example of the bus/driver/device split first introduced in Ch 39 — and every I²C driver looks the same once you know the shape.
 > **Focus:** **i2c_msg is the universal transaction**. `i2c_transfer(adapter, msgs, count)` sends a sequence of `i2c_msg` structs; each is one read or write, and adjacent ones share the bus without a STOP between them. Master this primitive and you can drive *any* I²C chip — write-then-read, repeated-start, 10-bit addressing, SMBus quirks.
+> **Tooling.** This chapter uses `i2c-tools` (`i2cdetect`, `i2cdump`, `i2cset`, `i2cget`).
+> - **Ubuntu-base (target):** `apt install i2c-tools`
+> - **Buildroot:** `BR2_PACKAGE_I2C_TOOLS=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 46.1  The split: adapter vs client vs driver
 

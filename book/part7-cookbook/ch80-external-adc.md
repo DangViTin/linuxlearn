@@ -9,7 +9,7 @@ status: draft
 # Chapter 80 — External ADCs
 
 > **What:** four external analog-to-digital converters spanning the price/precision spectrum: **TI ADS1115** (16-bit, I²C, programmable-gain, 4-channel), **TI ADS1256** (24-bit, SPI, ultra-low-noise, 8-channel), **Microchip MCP3008** (10-bit, SPI, cheap, 8-channel), **Analog Devices AD7606** (16-bit, 8-channel *simultaneous-sampling*). For each: protocol, the IIO ADC channel model, and a from-scratch ADS1115 IIO driver. Plus ratiometric measurement (load cells, RTDs) — the trick that cancels reference-voltage error.
-> **Why:** the i.MX6ULL's internal ADC is 12-bit, ~1 MS/s, 2 channels, ±a few LSB noisy, and shares the SoC's noisy power rails. For precision measurement — a load-cell scale, a 4-20 mA industrial loop, a thermocouple, simultaneous 3-phase power sampling — you need an external ADC with a clean reference, more bits, or simultaneous channels. Knowing which external ADC fits saves you from chasing noise in a design that was doomed at the silicon level.
+> **Why:** the i.MX6ULL's internal ADCs (two 12-bit SAR blocks, each multiplexing up to 10 pins, ~1 MS/s aggregate) are ±a few LSB noisy and share the SoC's noisy power rails. For precision measurement — a load-cell scale, a 4-20 mA industrial loop, a thermocouple, simultaneous 3-phase power sampling — you need an external ADC with a clean reference, more bits, or true simultaneity. Knowing which external ADC fits saves you from chasing noise in a design that was doomed at the silicon level.
 > **Focus:** **bits, speed, channels, and simultaneity are independent axes**. ADS1115 = high-bit, slow, multiplexed. MCP3008 = low-bit, medium-speed, cheap. ADS1256 = very-high-bit, low-noise, slow. AD7606 = high-bit, fast, *simultaneous* (all channels sampled at the same instant — critical for phase measurement). Pick by which axis your application stresses.
 
 ## 80.1  Chip comparison
@@ -35,13 +35,13 @@ status: draft
 
 ## 80.2  Why not use the SoC's internal ADC?
 
-The i.MX6ULL has 2× 12-bit SAR ADCs. They're fine for "read a battery voltage divider" but limited:
+The i.MX6ULL has **2 ADC blocks** (ADC1, ADC2), each a 12-bit SAR with up to 10 external input pins muxed in. They're fine for "read a battery voltage divider" but limited:
 
 - **12-bit / ~10 ENOB**: ~3 mV resolution on a 3.3 V range. A load cell's signal might be 1 mV full-scale — invisible.
 - **Shared noisy rails**: the ADC reference is the SoC's analog supply, polluted by digital switching. The bottom 2 bits are noise.
-- **2 channels**: not enough for a multi-sensor product.
+- **Only two simultaneous conversions**: even though each ADC block has many input pins, only one channel per block samples at a time, so a multi-sensor product is bottlenecked at the *block* count, not the channel count.
 - **No PGA**: can't amplify a small signal before conversion.
-- **No simultaneity**: SAR ADCs mux; channels sampled at different instants.
+- **No simultaneity within a block**: SAR ADCs mux; channels on the same ADC are sampled at different instants.
 
 An external ADC with a clean reference, a PGA, and more bits transforms what's measurable. The cost is a chip + an I²C/SPI transaction per sample.
 

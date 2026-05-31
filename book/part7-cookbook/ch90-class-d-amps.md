@@ -11,6 +11,10 @@ status: draft
 > **What:** "audio output without a codec" — chips that take I²S directly and drive a speaker (class-D amp) or headphones (DAC), with no ADC, no mic, no analog input mixing. Three chips: **TI MAX98357A** (pure I²S → 3.2 W speaker, *no control interface at all*), **TI TAS5805M** (I²C-controlled DSP class-D amp), **TI PCM5102A** (I²S → headphone DAC, no control). For each: the ASoC component model for a control-less or simply-controlled device, and from-scratch drivers (the MAX98357A is almost comically simple; the TAS5805M shows DSP-coefficient loading).
 > **Why:** for *playback-only* products — a Bluetooth speaker, a voice-announcement system, a doorbell chime, a kiosk that plays sounds — you don't need a full codec (Ch 89). You need to turn I²S into sound. These chips do exactly that, cheaper and simpler. The MAX98357A in particular needs *zero* configuration — wire I²S, pick L/R/mono via a resistor, done.
 > **Focus:** **an amp-without-control is the simplest ASoC component possible**. The MAX98357A driver is ~100 lines and has no registers — it's a DAPM widget (the amp) + a DAI (the I²S sink) + maybe an enable GPIO. The TAS5805M adds I²C control + a DSP that needs a coefficient blob loaded. The spectrum from "dumb amp" to "smart DSP amp" maps cleanly to driver complexity.
+> **Tooling.** This chapter uses `alsa-utils`, `i2c-tools`.
+> - **Ubuntu-base (target):** `apt install alsa-utils i2c-tools`
+> - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_I2C_TOOLS=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 90.1  Chip comparison
 

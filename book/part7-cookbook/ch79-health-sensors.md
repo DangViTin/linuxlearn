@@ -102,7 +102,7 @@ The chip increments its write pointer; you increment your read pointer (write to
 
 ## 79.4  How a mainline driver would work
 
-There is no IIO mainline driver for MAX30100/30102 as of this writing (early 2026) — multiple out-of-tree implementations exist, mostly Arduino-style ports. A *good* mainline driver would:
+As of v6.6, mainline does include IIO drivers — `drivers/iio/health/max30100.c` and `drivers/iio/health/max30102.c` — that handle the basics (FIFO drain via IRQ, raw red/IR/green samples to a triggered buffer). Most ecosystems still ship Arduino-style ports with the HR/SpO₂ math built in; the mainline drivers deliberately leave the DSP for user space. A complete in-kernel driver would:
 
 1. Read part-id at probe (verify 0x15 for MAX30102).
 2. Configure via DT properties (sample rate, LED current).

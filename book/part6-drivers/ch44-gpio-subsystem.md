@@ -112,7 +112,7 @@ my_device {
 
 Each entry is three cells:
 
-1. **The bank phandle** (`&gpio5`) — names which GPIO controller bank the pin lives on. i.MX6ULL has 5 banks (`gpio1`–`gpio5`), each up to 32 pins.
+1. **The bank phandle** (`&gpio5`) — names which GPIO controller bank the pin lives on. i.MX6ULL has 5 banks (`gpio1`–`gpio5`). Most are 32-pin; **`gpio5` exposes only 12 pins (0–11)** because of package pin-count, and `gpio4` is partial on some packages too. Check the IOMUX table before assuming a pin number is wired out.
 2. **The pin number** within the bank (0–31).
 3. **Flags** — usually `GPIO_ACTIVE_HIGH` or `GPIO_ACTIVE_LOW`. The polarity is **part of the abstraction**. Code below operates on logical "asserted" / "deasserted"; physical level is hidden.
 

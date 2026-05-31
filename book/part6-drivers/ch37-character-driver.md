@@ -381,7 +381,7 @@ Notice we manually `mknod /dev/hello c 240 0` to create the device file. That's 
 
 - The major number is dynamic — pick by `alloc_chrdev_region` — but `mknod` requires you to know it.
 - Reboots may renumber.
-- The device file disappears if `/dev/` is tmpfs (almost always true; remember Ch 32).
+- On a tmpfs `/dev` (almost always true now; see Ch 32), the manually-`mknod`'d node disappears at reboot — you'd have to recreate it each boot.
 
 Chapter 38 fixes this entirely: with `class_create` + `device_create`, the kernel **broadcasts a hot-plug event** when your driver loads, and udev (or mdev) creates the right file in `/dev/` automatically. Same when you unload: the file disappears.
 
@@ -405,7 +405,7 @@ For now, `mknod` is fine. Just know it's a stopgap.
 
 - **Forgetting `THIS_MODULE` in `cdev.owner` or `file_operations.owner`.** The kernel won't increment your module's refcount on open. `rmmod` while a process has the device open → kernel crashes when it tries to call into freed code. Always set both.
 - **Calling user-space functions inside the kernel.** Kernel code does not have access to glibc. No `printf`, no `malloc`, no `memcpy_s`. Use `printk`/`pr_*`, `kmalloc`/`kfree`, `memcpy` (which exists in the kernel, slightly different optimisation profile).
-- **Stack overflow.** Kernel stacks are **16 KB** on i.MX6ULL (sometimes 8 KB). Don't put large arrays on the stack. If you need a 4 KB scratch buffer, use `kmalloc(4096, GFP_KERNEL)` and free it at the end of the function.
+- **Stack overflow.** Kernel stacks are **8 KB on ARM32 i.MX6ULL** (16 KB on x86_64 / arm64). Don't put large arrays on the stack. If you need a 4 KB scratch buffer, use `kmalloc(4096, GFP_KERNEL)` and free it at the end of the function.
 - **Allocating with the wrong flag.** `kmalloc(..., GFP_KERNEL)` may sleep — fine in syscall context, not fine in interrupt context. In an IRQ handler, use `GFP_ATOMIC`. We'll cover this in Ch 43.
 - **Returning the wrong type.** `read` and `write` return `ssize_t`. Don't return `int` (compile warning), don't return `size_t` (may hide negative values), and don't return success when you mean count.
 - **Holding a mutex across `copy_to_user`.** `copy_to_user` can sleep (it may need to page in user memory). Sleeping while holding a mutex is fine in principle, but if you hold the mutex too long, every other reader/writer is blocked. For most chardevs this is acceptable.

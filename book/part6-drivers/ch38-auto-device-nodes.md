@@ -297,7 +297,7 @@ Add a `state` attribute:
 static ssize_t state_show(struct device *dev, struct device_attribute *attr,
                           char *buf)
 {
-    return sprintf(buf, "loaded\n");
+    return sysfs_emit(buf, "loaded\n");   /* bounds-checked since 5.10; prefer over sprintf */
 }
 
 static ssize_t state_store(struct device *dev, struct device_attribute *attr,

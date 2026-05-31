@@ -11,6 +11,10 @@ status: draft
 > **What:** the **UART-only cellular modem** — older or BOM-constrained designs where the modem has no USB, just a TTL UART. Modules: **SIMCom A7670C** (LTE Cat-1 UART, cheap), **SIMCom SIM7600 UART variant**, **Air724UG** (Chinese-domestic, LTE Cat-4 UART), **Quectel ML302** (Cat-1, UART + ECM). On Linux, you talk to it via `/dev/ttymxc*`, use **chat + pppd** for data, and AT commands for everything else (SMS, signal, OTA firmware update). No fancy QMI, no high speeds — just the AT command set + PPP framing + good UART discipline.
 > **Why:** USB host is expensive. A USB modem requires USB-OTG/host hardware on your SoC, a 5 V supply that can deliver 2.5 A peaks, ESD protection on D+/D-, and a USB connector or board-to-board. A UART modem is 4 wires (TX/RX/RTS/CTS) + a small 3.3/4 V buck. On a price-sensitive IoT product (alarm panel, vending machine, agricultural sensor), the UART path saves $5–10 BOM + a USB-host integration headache. The trade: max ~5 Mbps (versus 150 Mbps over USB-QMI), and you live with PPP overhead.
 > **Focus:** **PPP is a circa-1989 link protocol with HDLC framing, LCP negotiation, IPCP for IPv4 address, and pap/chap auth — and it still works on every modem ever made**. The kernel's `ppp_generic.ko` provides the netdev; `pppd` is the user-space brain that runs the LCP/IPCP state machines and a chat script that converses with the modem to bring up the channel. Master `pppd` + chat + an init.d script and you have a robust auto-reconnecting cellular link with no QMI/MBIM/RNDIS complexity.
+> **Tooling.** This chapter uses `ppp` (`pppd`, `chat`); optional GSM mux via `ldattach` (`util-linux`).
+> - **Ubuntu-base (target):** `apt install ppp util-linux`
+> - **Buildroot:** `BR2_PACKAGE_PPP=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 103.1  When UART beats USB
 

@@ -11,6 +11,10 @@ status: draft
 > **What:** the analog-front-end chips that give the i.MX6ULL real audio — DAC for playback, ADC for capture, headphone/speaker drivers, mic preamps. Four codecs compared: **Cirrus WM8960** (the i.MX favourite), **NXP SGTL5000** (on many i.MX EVKs), **Everest ES8388** (cheap, ESP32-popular), **TI TLV320AIC3104** (industrial). Builds on Ch 53 (ALSA/ASoC framework). For each: the codec's role, the register/DAPM model, and a from-scratch ASoC codec driver.
 > **Why:** the i.MX6ULL's SAI is just a digital I²S serializer — it has no analog audio. A codec adds the DAC/ADC/amp/mic. Ch 53 showed the three-driver ASoC split (CPU-DAI + codec + machine) with WM8960; this chapter goes *deep on the codec side* — how a codec driver is structured, what DAPM (Dynamic Audio Power Management) actually does, and how to write one from scratch.
 > **Focus:** **a codec driver is regmap + DAPM widgets + DAI ops**. The regmap (Ch 50) handles register access. The DAPM graph models the analog signal paths (DAC → mixer → headphone-amp → jack) and powers each block only when it's in an active route — saving power and clicks. The DAI ops handle the I²S format negotiation. Master these three and any codec driver reads the same.
+> **Tooling.** This chapter uses `alsa-utils`, `i2c-tools`.
+> - **Ubuntu-base (target):** `apt install alsa-utils i2c-tools`
+> - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_I2C_TOOLS=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 89.1  Codec comparison
 

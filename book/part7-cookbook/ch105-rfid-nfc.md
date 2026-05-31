@@ -11,6 +11,10 @@ status: draft
 > **What:** **13.56 MHz HF RFID and NFC** — the technology behind contactless access cards, transit passes, phone Wallet, and "tap-to-pair." Three chips compared: **NXP MFRC522** (the ubiquitous Arduino-clone SPI/I²C/UART, ISO 14443A only), **NXP PN532** (more capable: 14443A/B + FeliCa, NFC initiator and target), **ST25R3911** (longer read range, high-end). On the i.MX6ULL we read tag UIDs over SPI, authenticate a Mifare Classic 1K block, walk the kernel `pn533` driver as the canonical mainline NFC stack reference, write a 200-line user-space MFRC522 driver from scratch, then bring up `libnfc` + `neard` for high-level NFC.
 > **Why:** Access control is one of the most common embedded Linux applications — door readers, time-and-attendance kiosks, equipment-rental lockers, EV-charger user identification. NFC tagging extends to smart-home pairing (Tap to Wi-Fi), industrial asset tracking, and consumer-product authenticity verification. The chips are cheap (MFRC522 modules are $1), the standards are real, the security is half-broken (Mifare Classic was cracked in 2008), and the kernel actually has an NFC subsystem (`net/nfc/`) most engineers don't know about.
 > **Focus:** **RFID/NFC at 13.56 MHz is inductive coupling — the reader's antenna creates a magnetic field at 13.56 MHz, which powers the tag's IC AND carries data via load modulation**. The "register dance" with the reader chip is mostly: configure carrier ON, set framing (Miller-encoded for tag→reader, Manchester for reader→tag), issue protocol-level commands (REQA, ATQA, ANTICOLL, SELECT, AUTH, READ_BLOCK), parse responses. Antenna matching is critical — a 5 mm misalignment between the reference design's antenna loop and yours = 30 % less read range.
+> **Tooling.** This chapter uses `libnfc-bin` (`nfc-list`, `nfc-mfultralight`), `neard`; offensive-research only: `mfoc`, `mfcuk`.
+> - **Ubuntu-base (target):** `apt install libnfc-bin libnfc-dev neard`
+> - **Buildroot:** `BR2_PACKAGE_LIBNFC=y BR2_PACKAGE_NEARD=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 105.1  Chip comparison
 

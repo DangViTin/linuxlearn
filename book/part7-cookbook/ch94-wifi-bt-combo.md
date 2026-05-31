@@ -11,6 +11,10 @@ status: draft
 > **What:** modules that pack WiFi *and* Bluetooth into one chip sharing one 2.4 GHz antenna: **AP6212** (Broadcom BCM43438 — WiFi over SDIO + BT over UART), **RTL8723BS** (Realtek — WiFi over SDIO + BT over UART). The defining challenges: bringing up *two* radios on *one* chip over *two* different buses, and the **coexistence** problem — both radios fighting over the same 2.4 GHz band and the same antenna.
 > **Why:** most embedded products that want WiFi *also* want Bluetooth (BLE for phone-app provisioning, classic BT for audio). A combo module is cheaper and smaller than two separate chips, and it solves the coexistence problem in hardware (the chip arbitrates between its own radios). But bringing up both halves — WiFi on SDIO (Ch 91) *and* BT on UART — and getting them to coexist is more than twice the work of either alone.
 > **Focus:** **one chip, two buses, two subsystems, one antenna**. The WiFi half is SDIO + brcmfmac (Ch 91). The BT half is UART + the Bluetooth HCI subsystem + `btattach`/`hciattach`. They're independent driver stacks that happen to share silicon. The coexistence (PTA — Packet Traffic Arbitration) is internal to the chip but you must enable it and wire the BT_WAKE/WL_WAKE signals.
+> **Tooling.** This chapter uses `wpa_supplicant`, `iw`, `bluez` (`bluetoothctl`, `hciattach`), combo firmware.
+> - **Ubuntu-base (target):** `apt install wpasupplicant iw bluez bluez-tools`
+> - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y BR2_PACKAGE_BLUEZ5_UTILS=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 94.1  Module comparison
 

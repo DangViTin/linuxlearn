@@ -11,6 +11,10 @@ status: draft
 > **What:** dedicated Bluetooth controllers and the Linux Bluetooth stack (**BlueZ**). Three controllers compared: **Nordic nRF52** (with Zephyr HCI firmware, UART), **Broadcom BCM4343** (UART), **CSR8510/Realtek RTL8761** (USB dongle). We cover the **HCI protocol** in depth, the BlueZ architecture, and — since you don't write the HCI controller (it's the chip's firmware) — building a **BLE GATT peripheral** in user-space via BlueZ's D-Bus API (the meaningful "build it yourself" part).
 > **Why:** Bluetooth is how embedded products talk to phones — BLE for "configure-my-device-from-an-app" provisioning, GATT for sensor data, classic BT for audio. Ch 94 brought up the combo-module BT half; this chapter goes deep on the protocol and on *building a GATT service* — the part you actually write. Understanding HCI demystifies the whole stack; building a GATT peripheral is the practical skill.
 > **Focus:** **the controller runs the BT link layer; you build the GATT application**. The chip's firmware is the "controller" (radio, link layer, encryption). BlueZ is the "host" (L2CAP, GATT, SMP). Your code is the "application" — a GATT server exposing characteristics. You don't touch HCI directly; you define services and BlueZ handles the rest. The from-scratch deliverable is a GATT peripheral, written against BlueZ's D-Bus API.
+> **Tooling.** This chapter uses `bluez` (`bluetoothctl`, `btmon`, `btmgmt`, `hciattach`), Python `dbus` for the GATT-server example.
+> - **Ubuntu-base (target):** `apt install bluez bluez-tools python3-dbus`
+> - **Buildroot:** `BR2_PACKAGE_BLUEZ5_UTILS=y BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y BR2_PACKAGE_PYTHON3_DBUS=y`
+> - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 95.1  Controller comparison
 

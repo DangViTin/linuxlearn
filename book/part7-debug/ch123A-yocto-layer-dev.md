@@ -55,7 +55,7 @@ BBFILES += "${LAYERDIR}/recipes-*/*/*.bb \
 
 # Layer-version compat
 LAYERVERSION_mybsp = "1"
-LAYERSERIES_COMPAT_mybsp = "kirkstone scarthgap"
+LAYERSERIES_COMPAT_mybsp = "kirkstone langdale mickledore nanbield scarthgap"
 LAYERDEPENDS_mybsp = "core meta-freescale"
 ```
 
@@ -145,8 +145,8 @@ LICENSE = "Proprietary"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=abc..."
 
 SRC_URI = "git://gitlab.internal/myorg/myapp.git;protocol=ssh;branch=main"
-SRCREV = "abc123def456"
-PV = "1.0+git${SRCPV}"
+SRCREV = "abc123def4567890abc123def4567890abc123de"   # use the full 40-char SHA1
+PV = "1.0+git${SRCREV}"                               # ${SRCPV} was removed in Scarthgap
 S = "${WORKDIR}/git"
 
 DEPENDS = "libcurl mosquitto qtbase"
