@@ -1,6 +1,6 @@
 # Publishing this book online
 
-We use **Sphinx + sphinx-rtd-theme + MyST-Parser** to render the Markdown into a clean Read-the-Docs-style site, then **GitHub Pages** hosts it. Free, no server, auto-rebuilds on every push.
+We use **Sphinx + Furo + MyST-Parser** to render the Markdown into a modern, dark-mode-aware documentation site (auto-toggles between light/dark with the OS preference; manual override; hideable sidebar via Ctrl+B; VS-Code-style code highlighting), then **GitHub Pages** hosts it. Free, no server, auto-rebuilds on every push.
 
 Site URL after the GitHub Action runs:
 

@@ -21,7 +21,10 @@
       "PowerShell(\\(Get-Content \"C:\\\\Users\\\\ViTin\\\\OneDrive\\\\Project\\\\LinuxLearn\\\\Review.md\" | Measure-Object -Line\\).Lines)",
       "Bash(grep -n \"v1\\\\.0\\\\|v1\\\\.1\\\\|v1\\\\.2\\\\|v1\\\\.3\\\\|Inserted\\\\|new in v\\\\|Revision history\\\\|v1\\\\\\\\.x\" \"C:\\\\Users\\\\ViTin\\\\OneDrive\\\\Project\\\\LinuxLearn\\\\BOOK_TOC.md\")",
       "Bash(grep *)",
-      "Bash(python3 _rewrite_tooling.py)"
+      "Bash(python3 _rewrite_tooling.py)",
+      "Bash(pip install *)",
+      "Bash(cp BOOK_TOC.md book/toc.md)",
+      "Bash(python -m sphinx -b html -W --keep-going . _build/test)"
     ]
   }
 }

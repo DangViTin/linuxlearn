@@ -1498,5 +1498,5 @@ Ch120 ──► Ch125A (VSCode workflow; can be read after any driver chapter)
 2. **Language.** English only. No bilingual edition planned.
 3. **Versions targeted throughout.** Linux kernel **v6.6 LTS**; U-Boot **v2026.04** (or latest stable at read-time); GCC **13.x** for the cross-toolchain; Buildroot **2026.02**; Yocto **scarthgap (5.0)** / **kirkstone (4.0)** on the Buildroot/Yocto side. Driver-API signatures and DTS paths follow v6.6 conventions; pre-v6.5 kernels use different DTS layout (no `nxp/imx/` prefix) and earlier driver-API forms.
 4. **Code-listing license.** MIT. Snippets in chapters are copy-paste-into-your-project friendly; no attribution required.
-5. **Tooling.** Markdown sources + **Sphinx + sphinx-rtd-theme + myst-parser** rendered to a Read-the-Docs-style site. Hosted on GitHub Pages, auto-rebuilt on push. See [PUBLISH.md](PUBLISH.md).
+5. **Tooling.** Markdown sources + **Sphinx + Furo + MyST-Parser** rendered to a modern, dark-mode-aware site with hideable sidebar and VS-Code-style code highlighting. Hosted on GitHub Pages, auto-rebuilt on push. See [PUBLISH.md](PUBLISH.md).
 6. **Code delivery.** **Inline in the chapters.** There is no companion `code/` repository. The drivers, scripts, and configurations shown are complete enough to read, type, and adapt; the lab sections describe what to build but do not ship a reference solution.

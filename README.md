@@ -71,7 +71,7 @@ Native **Ubuntu 22.04 LTS** or Debian 12. WSL2 will mostly work but is not the p
 
 ## Publishing the book online
 
-See **[PUBLISH.md](PUBLISH.md)** — ≈10 minutes one-time setup. Zero cost. Auto-rebuild on every push. Free GitHub Pages hosting via Sphinx + `sphinx-rtd-theme` + `myst-parser`.
+See **[PUBLISH.md](PUBLISH.md)** — ≈10 minutes one-time setup. Zero cost. Auto-rebuild on every push. Free GitHub Pages hosting via Sphinx + `furo` + `myst-parser` (dark-mode-aware, VS-Code-style code highlighting, hideable sidebar with `Ctrl+B`).
 
 After setup, the day-to-day workflow is:
 
