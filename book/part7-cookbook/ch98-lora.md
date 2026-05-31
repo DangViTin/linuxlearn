@@ -458,6 +458,8 @@ For the user-space approach, all you need is `spidev` on the right CS:
 };
 ```
 
+
+> *Production note: `rohm,dh2228fv` is a development-time spidev placeholder; modern kernels print a warning when it appears in DT. See Ch 47 §47.x for the proper DT overlay path or a real-chip compatible swap.*
 `/dev/spidev3.0` appears; `libgpiod` lines manage RESET and DIO0.
 
 If you instead use the out-of-tree `sx127x-driver`:

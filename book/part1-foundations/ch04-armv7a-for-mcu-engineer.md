@@ -19,7 +19,7 @@ ARM names its cores along two axes:
 - **Profile letter.** `A` for "Application" (smartphones, set-top boxes, embedded Linux), `R` for "Real-time" (storage controllers, automotive), `M` for "Microcontroller" (the Cortex-M0/M3/M4/M7/M33 you have worked with).
 - **Architecture version.** v6, v7, v8, v9. The version determines the instruction set and which features are present; the core implementation determines pipeline depth, cache topology, and clock ceiling.
 
-The i.MX6ULL contains a single **Cortex-A7** core, which implements **ARMv7-A** with the **VFPv4** floating-point unit and **NEON** SIMD. There is also a small **Cortex-M4** companion on i.MX6 *SoloX* and bigger family members — there is **no Cortex-M4** on i.MX6ULL. The single A7 is alone, running at up to **528 MHz** (commercial) or **696 MHz** (industrial). The Point Atom MINI runs the industrial bin.
+The i.MX6ULL contains a single **Cortex-A7** core, which implements **ARMv7-A** with the **VFPv4** floating-point unit and **NEON** SIMD. There is also a small **Cortex-M4** companion on i.MX6 *SoloX* and bigger family members — there is **no Cortex-M4** on i.MX6ULL. The single A7 is alone. The silicon's **architectural maximum** is **800 MHz** (industrial bin) or **900 MHz** (consumer/commercial bin) per the i.MX6ULL reference manual; most BSPs — including the Point Atom factory image — clock the part at **528 MHz** or **696 MHz** to stay in a more comfortable voltage / power / thermal envelope. We run at the BSP-default **696 MHz** throughout this book.
 
 Cortex-A7 is, by the standards of 2026, a slow core. It is in-order, dual-issue, with a short pipeline (8 stages). Its strength is power efficiency, silicon area, and *price*. It is also, for our purposes, **simpler to reason about** than its big-core siblings (A53/A72/A76), which is why we picked it.
 
@@ -31,16 +31,16 @@ Stand a Cortex-M7 datasheet next to a Cortex-A7 TRM and the list of "things only
 |---------|---------------------|-----------|
 | Address space | Single, flat, physical | Virtual, per-context, via MMU |
 | MMU | No (some have MPU) | Yes, 2-level page tables |
-| Privilege levels | 2 (Privileged / Unprivileged) | 2 *practical* (PL0 / PL1) but seven modes |
+| Privilege levels | 2 (Privileged / Unprivileged) | 2 *practical* (PL0 / PL1 — "Privilege Level 0/1") but seven modes |
 | Banked registers | A few (MSP, PSP) | Yes — most registers banked per mode |
-| Caches | L1 I/D on M7+, sometimes none | L1 I/D mandatory; L2 optional (no L2 on i.MX6ULL) |
-| TLB | No | Yes |
+| Caches | L1 I/D on M7+, sometimes none | L1 I/D mandatory; L2 is integrated inside the Cortex-A7 MPCore platform (128 KB on i.MX6ULL); no separate PL310 controller |
+| TLB (Translation Lookaside Buffer — MMU's address-translation cache) | No | Yes |
 | Generic timer | No (SysTick) | Yes, architected |
-| Interrupt controller | NVIC (in-core, vectored) | GIC (external, prioritized, not auto-vectored) |
+| Interrupt controller | NVIC (in-core, vectored) | **GIC** (Generic Interrupt Controller — external block, prioritized, not auto-vectored) |
 | Exception model | Tail-chained, automatic stacking | Modal, software-saved context |
 | FPU | Optional VFP variant | VFPv4 (mandatory in i.MX6ULL) |
 | SIMD | DSP extensions (limited) | NEON (64-/128-bit) |
-| Atomic ops | LDREX/STREX | LDREX/STREX (same family) |
+| Atomic ops | LDREX/STREX (M7 onwards; M0/M0+ have none) | LDREX/STREX (same family) |
 | Instruction set | Thumb-2 only | ARM + Thumb-2, sometimes ThumbEE |
 
 Every row above explains *something* about Linux. The MMU exists so multiple processes can have private address spaces. Banked registers exist so taking an exception does not corrupt user-space state. The generic timer exists so the kernel does not have to argue with the bootloader over who programs the tick source. NEON exists so glibc's `memcpy` is fast. And so on.
@@ -208,12 +208,12 @@ The split is why a 32-bit Linux user process can address at most ~3 GB.
 
 ## 4.6  Caches
 
-Cortex-A7 has separate **L1 instruction** and **L1 data** caches (32 KB each, 4-way, 64-byte lines on i.MX6ULL). There is no L2 on this part (no PL310 controller is integrated).
+Cortex-A7 has separate **L1 instruction** and **L1 data** caches (32 KB each, 4-way, 64-byte lines on i.MX6ULL). The Cortex-A7 MPCore platform also contains an **integrated 128 KB unified L2** cache (i.MX6ULL Reference Manual, §11, "L2 cache"). What the i.MX6ULL does *not* have is an external L2 controller — earlier i.MX6 family members (e.g., i.MX6Q) integrate ARM's separate **PL310** controller; here L2 is built into the MPCore block instead.
 
 Two things about A-profile caches that bite Cortex-M-trained engineers:
 
 1. **Caches are off at reset.** Just like Cortex-M, but unlike Cortex-M, you cannot easily run usefully fast without them. Enabling caches is one of the first things any A-profile bootloader does after MMU setup.
-2. **Caches are VIPT for L1-D** (Virtually Indexed, Physically Tagged) on Cortex-A7. The implication is that two virtual addresses mapping to the same physical address can cause aliasing if cache lines are managed by VA. The kernel knows about this and inserts flushes; you only care if you write your own DMA-coherent code (Chapter 51).
+2. **L1 caches are PIPT on Cortex-A7** (Physically Indexed, Physically Tagged — per the Cortex-A7 MPCore TRM, ARM DDI 0464). PIPT means no virtual-address aliasing for normal cache lines, so the painful VIPT-aliasing class of bugs that the earlier ARM cores (and Cortex-A9) had does not apply here. You still care about cache maintenance for DMA-coherent code (Chapter 51), but for ordinary access there is no aliasing to worry about. *(Some surface-level docs say Cortex-A7 L1-D is VIPT; the TRM is authoritative.)*
 
 Cache maintenance is done via **CP15** coprocessor instructions:
 
@@ -298,7 +298,7 @@ For completeness, since some of you may have read about Cortex-A53 or A72 elsewh
 |---------|-----------|------------|------------|
 | ISA | ARMv7-A (32-bit only) | ARMv8-A (32+64-bit) | ARMv8-A |
 | Pipeline | In-order, 8 stages | In-order, 8 stages | Out-of-order, 15 stages |
-| L1 D-cache | 32 KB VIPT | 32 KB PIPT | 32 KB PIPT |
+| L1 D-cache | 32 KB PIPT | 32 KB PIPT | 32 KB PIPT |
 | Generic timer | Yes (CP15) | Yes (system reg) | Yes (system reg) |
 | GIC version | GICv2 | GICv2/v3 | GICv2/v3 |
 

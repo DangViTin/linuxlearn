@@ -93,7 +93,7 @@ jobs:
           path: |
             u-boot/u-boot-dtb.imx
             linux/arch/arm/boot/zImage
-            linux/arch/arm/boot/dts/imx6ull-myboard.dtb
+            linux/arch/arm/boot/dts/nxp/imx/imx6ull-myboard.dtb
 ```
 
 Now every PR gets a clean build. Failure = compile error caught.

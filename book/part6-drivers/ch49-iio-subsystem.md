@@ -151,8 +151,7 @@ Return values:
 ## 49.4  Probing and registering
 
 ```c
-static int my_probe(struct i2c_client *client,
-                    const struct i2c_device_id *id)
+static int my_probe(struct i2c_client *client)
 {
     struct iio_dev *idev;
     struct my_priv *p;

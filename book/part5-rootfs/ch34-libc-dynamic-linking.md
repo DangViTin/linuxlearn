@@ -285,7 +285,7 @@ The decision is per-binary, not per-system. Mix as needed.
 
 - **`libfoo.so.X: cannot open shared object file`** — the dynamic linker can't find a NEEDED library. Diagnose with `LD_DEBUG=libs`. Fix by copying the library into `/lib` or adding to `LD_LIBRARY_PATH` / `RPATH`.
 - **`relocation error: undefined symbol`** — the library was found but doesn't have a symbol the binary needs. Usually means library *version* mismatch. The binary was built against newer libc; the runtime has older.
-- **Mixed glibc and musl on one rootfs.** Don't. They share the `libc.so.6` SONAME and conflict.
+- **Mixed glibc and musl on one rootfs.** glibc's SONAME is `libc.so.6` with loader `/lib/ld-linux-armhf.so.3`; musl's loader is `/lib/ld-musl-armhf.so.1` with its own libc — they have different SONAMEs and can technically coexist in separate prefixes. The real failure mode is when both expect to *own* the same `/lib/libc.so.6` symlink. Either pick one libc per rootfs, or place musl binaries under their own prefix with their own loader path baked in via `RPATH`.
 - **Static glibc + getaddrinfo.** Returns "Temporary failure in name resolution" with no obvious cause. NSS modules are dlopen'd at runtime even for "static" binaries; if the .so files aren't on disk you lose DNS. Either ship the NSS .so files alongside your "static" binary or switch to musl.
 - **`LD_LIBRARY_PATH` and setuid binaries.** Ignored for setuid binaries (security). Don't rely on it for system binaries.
 - **`ldconfig` not run after copying libraries.** Some glibc setups won't find a library until you `ldconfig`. Symptom: works after `ldconfig`, breaks on fresh boot. Fix: run `ldconfig` from `rcS` or include the library path in `/etc/ld.so.conf.d/`.

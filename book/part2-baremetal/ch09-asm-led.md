@@ -52,12 +52,23 @@ These addresses, for our case (GPIO1_IO03), from the i.MX6ULL Reference Manual:
 | `CCM_CCGR1` | `0x020C406C` | Bits 26:27 (CG13) = GPIO1 clock gate |
 | `IOMUXC_SW_MUX_CTL_PAD_GPIO1_IO03` | `0x020E0068` | MUX select for pin GPIO1_IO03 |
 | `IOMUXC_SW_PAD_CTL_PAD_GPIO1_IO03` | `0x020E02F4` | Pad properties for pin GPIO1_IO03 |
-| `GPIO1_DR` | `0x0209C000` | GPIO1 data register (bit 4 = our pin) |
-| `GPIO1_GDIR` | `0x0209C004` | GPIO1 direction register (bit 4 = output) |
+| `GPIO1_DR` | `0x0209C000` | GPIO1 data register (bit 3 = our pin, i.e. `1 << 3` for GPIO1_IO03) |
+| `GPIO1_GDIR` | `0x0209C004` | GPIO1 direction register (bit 3 = direction for GPIO1_IO03; 1 = output) |
 
 The value to write into `MUX_CTL` for GPIO function is **5**. The IOMUX table in RM Chapter 32 says, for the pad `GPIO1_IO03`, ALT5 is `GPIO1_IO03`. (The naming is circular: the *pad* is named for the GPIO function it has at ALT5.)
 
-The CCGR encoding for "always on" is **`0b11`**. CG13 is bits 26-27, so the OR-mask is `0b11 << 26 = 0x0C000000`. We can either OR-in that mask or just write `0xFFFFFFFF` to CCGR1 (turning every gate in CCGR1 on); for a learning exercise the OR-in form is cleaner.
+### CCM_CCGR encoding (2 bits per gate)
+
+Every CCM_CCGRx register holds **16 clock gates × 2 bits each** = 32 bits. The 2-bit field per gate is:
+
+| Bits | Meaning |
+|------|---------|
+| `00` | **Clock off** in all CPU run modes — peripheral cannot be accessed |
+| `01` | Clock on in RUN mode, **off** in WAIT and STOP — low-power-friendly |
+| `10` | *Reserved* — do not program this value |
+| `11` | Clock on in all CPU run modes (RUN/WAIT/STOP) — "always on" |
+
+So "enable GPIO1 always" is `0b11` written into CG13's bit-pair. CG13 occupies bits 26–27 of CCGR1 (CG0 is bits 0–1, CG1 bits 2–3, …, CG15 bits 30–31). The OR-mask is `0b11 << 26 = 0x0C000000`. We can either OR-in that mask or just write `0xFFFFFFFF` to CCGR1 (turning every gate in CCGR1 on); for a learning exercise the OR-in form is cleaner. **This 2-bit encoding applies to every CCGR write throughout the book** — Chapters 13, 14, 18 reuse it.
 
 ## 9.3  The assembly source
 
@@ -112,7 +123,7 @@ _start:
     str     r1, [r0]
 
     /* --------------------------------------------------------------
-     *  6. Blink loop.  Toggle bit 4 in GPIO1_DR, delay, repeat.
+     *  6. Blink loop.  Toggle bit 3 in GPIO1_DR, delay, repeat.
      *     A delay loop of ~1.5M iterations at 396 MHz is about 8 ms.
      *     Doesn't have to be precise; we just want a visible blink.
      * -------------------------------------------------------------- */
@@ -121,7 +132,7 @@ _start:
     mov     r6, #(1 << 3)           @ bit mask for pin 3
 
 blink:
-    eor     r5, r5, r6              @ toggle bit 4 in cached value
+    eor     r5, r5, r6              @ toggle bit 3 in cached value
     str     r5, [r4]                @ write back
 
     ldr     r7, =1500000            @ delay counter

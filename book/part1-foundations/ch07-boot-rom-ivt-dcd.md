@@ -8,6 +8,15 @@ status: draft
 
 # Chapter 7 — The Boot ROM, IVT, DCD, and BootData
 
+> **Acronyms used in this chapter** *(introduced here once; referenced through Parts II and III)*:
+> - **POR_B** — Power-On Reset (active low). The pin that, when low, holds the SoC in reset.
+> - **IVT** — Image Vector Table. The header structure at the start of a bootable image that tells the ROM where everything else is.
+> - **DCD** — Device Configuration Data. A list of address/value pairs the ROM writes before loading your code (used to bring up DDR and PLLs).
+> - **BootData** — a small struct holding the image's load address and total length.
+> - **SDP** — Serial Download Protocol. The USB-OTG fallback the ROM enters when boot fuses say so.
+> - **HAB** — High Assurance Boot. The cryptographic chain-of-trust feature (signed images). Detail in Ch 124.
+> - **CSF** — Command Sequence File. The signature blob HAB consumes.
+>
 > **What:** what the i.MX6ULL does between the rising edge on POR_B and the moment it jumps to your code.
 > **Why:** the Boot ROM is the first program that runs and you cannot change it. You can only obey it. The price of misunderstanding it is "the board does nothing" — the worst kind of bug, because there is no log to read.
 > **Focus:** the **IVT** (where the ROM finds your image's metadata), the **DCD** (a tiny scripting language the ROM runs to prepare hardware before your code), and the **BootData** struct (load address and image length). These three structures, all under 100 bytes, are the contract.
@@ -37,11 +46,13 @@ From POR_B rising to your `_start` executing, the i.MX6ULL Boot ROM performs rou
    - `BOOT_MODE` = 0b10 → **Internal boot** — read from the device selected by `BOOT_CFG`.
    - `BOOT_MODE` = 0b11 → Reserved.
 4. *(Internal boot only)* **Probe the selected device.** SD card, eMMC, NAND, SPI-NOR, QSPI-NOR, or parallel NOR — each has a different probing path.
-5. **Read the IVT at the fixed offset** for that device:
-   - SD/eMMC: IVT lives at offset **`0x400`** (1 KB into the boot device).
-   - NAND: IVT at offset 0 of the first valid block.
-   - SPI-NOR / QSPI: IVT at offset `0x400`.
-   - Parallel NOR: IVT at offset 0.
+5. **Read the IVT at the fixed offset** for that device (per i.MX6ULL RM §8, Table 8-25 "First image / IVT offset per boot device"):
+   - **SD / eMMC / eSD / SDXC**: IVT at offset **`0x400`** (1 KB into the boot device).
+   - **SPI EEPROM (SPI-NOR)**: IVT at offset **`0x400`**.
+   - **QSPI NOR**: IVT at offset **`0x1000`** (4 KB) on typical i.MX6ULL configurations — verify against your specific BSP / mkimage settings.
+   - **Parallel NOR / EIM**: IVT at offset **`0x1000`** (4 KB).
+   - **OneNAND**: IVT at offset **`0x100`** (256 B).
+   - **Raw NAND** (non-OneNAND): handled via the **FCB (Firmware Configuration Block)** — the IVT does *not* live at a fixed offset; it is reached after the ROM parses the FCB. We do not cover raw-NAND boot in detail in this book.
 6. **Validate the IVT.** Check its tag byte (`0xD1`), version, and self-pointer.
 7. **Walk the DCD** (if pointed-to by the IVT). The DCD is a list of register writes the ROM will perform before loading your image. Typical use: configure DDR controller and PLLs so the image can be loaded into DRAM.
 8. **Load the image.** Read `BootData.length` bytes from the boot device into `BootData.start` (the destination address).
@@ -56,7 +67,7 @@ The IVT is **32 bytes**, eight 32-bit words. Lay it out explicitly:
 
 | Offset | Field | Description |
 |--------|-------|-------------|
-| `+0x00` | `header` | 4 bytes: `0xD1` (tag), `0x00 0x20` (length = 32, big-endian), `0x40` (version) |
+| `+0x00` | `header` | 4 bytes: `0xD1` (tag), `0x00 0x20` (length = 32, big-endian), `0x40` or `0x41` (version — both are accepted; U-Boot's `mkimage` emits one or the other depending on options) |
 | `+0x04` | `entry` | Absolute address the ROM jumps to after image is loaded. |
 | `+0x08` | `reserved1` | Must be `0x00000000`. |
 | `+0x0C` | `dcd` | Absolute address of the DCD, or 0 if none. |

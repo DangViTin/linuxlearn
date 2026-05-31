@@ -384,7 +384,7 @@ static const struct file_operations me_fops = {
 
 /* === Probe / Remove === */
 
-static int me_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int me_probe(struct i2c_client *client)
 {
     struct myeeprom *e;
     u8 probe_byte;
@@ -408,7 +408,7 @@ static int me_probe(struct i2c_client *client, const struct i2c_device_id *id)
     err = cdev_add(&e->cdev, e->devid, 1);
     if (err) goto unreg;
 
-    e->class = class_create(THIS_MODULE, "myeeprom");
+    e->class = class_create("myeeprom");
     if (IS_ERR(e->class)) { err = PTR_ERR(e->class); goto del_cdev; }
     device_create(e->class, NULL, e->devid, NULL, "myeeprom");
 
@@ -422,14 +422,13 @@ unreg:
     return err;
 }
 
-static int me_remove(struct i2c_client *client)
+static void me_remove(struct i2c_client *client)
 {
     struct myeeprom *e = i2c_get_clientdata(client);
     device_destroy(e->class, e->devid);
     class_destroy(e->class);
     cdev_del(&e->cdev);
     unregister_chrdev_region(e->devid, 1);
-    return 0;
 }
 
 static const struct of_device_id me_of_match[] = {

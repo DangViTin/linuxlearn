@@ -25,7 +25,7 @@ The kernel expects three things at the moment U-Boot transfers control:
 
 The first instruction the kernel executes is `stext` (in `arch/arm/kernel/head.S`); it begins by reading `r2` to find the DTB. If `r2` is wrong, the kernel cannot parse its hardware description and dies silently (no UART, no output, no diagnostic — because UART has not been initialised yet).
 
-This is the *one* hardware contract every ARM Linux boot relies on. Get `r2` right and a 95% chance the kernel boots; get it wrong and you stare at silence wondering what's happening.
+This is the *one* hardware contract every ARM Linux boot relies on. Get `r2` right and the kernel boots ~95 % of the time. Get it wrong and you stare at silence.
 
 ## 26.2  The three-command boot
 
@@ -138,7 +138,7 @@ Read every line. Each tells you something concrete:
 |------|-------------------|
 | `Booting Linux on physical CPU 0x0` | CPU0 has booted (SMP would say `0x0–0xN`). On i.MX6ULL there's only one core. |
 | `Linux version 6.6.0 ...` | The kernel version + the toolchain that built it. Cross-check this against your build. |
-| `CPU: ARMv7 Processor [410fc075]` | The MIDR (Main ID Register) of the core. `0x410FC075` decodes to ARM-implemented Cortex-A7. |
+| `CPU: ARMv7 Processor [410fc075]` | The MIDR (Main ID Register) of the core. `0x410FC075` decodes as: implementer `0x41` (ARM), variant `0xF`, architecture `0xC`, primary part `0xC07` (Cortex-A7), revision `r0p5`. |
 | `CPU: div instructions available` | The CPU has hardware integer division. Some Cortex-A profiles don't. |
 | `CPU: PIPT / VIPT nonaliasing data cache, VIPT aliasing instruction cache` | The cache aliasing properties. Matters for DMA correctness. |
 | `OF: fdt: Machine model: Freescale i.MX6 ULL 14x14 EVK Board` | **The model string from the DT root node.** Confirms the right DTB loaded. |
@@ -209,7 +209,7 @@ With earlycon active, you'll see ~5 extra lines printed *before* the normal "Boo
 
 - **DT load address conflicts with kernel decompression area.** If the kernel decompresses to a region that overlaps where you loaded the DTB, the DT gets corrupted partway through boot and the kernel hangs at a random point. The address `0x83000000` for DTB is safe because the kernel decompresses from `0x82000000` upward but stops well before 16 MiB (the kernel is < 16 MiB). For *very* large kernels (CONFIG_DEBUG_INFO, huge configs), use `0x88000000` for DTB instead.
 - **Forgetting `cleanup_before_linux()`.** U-Boot's `bootz` does this automatically; if you wrote your own jump-to-kernel code (don't), you need to flush caches and disable MMU before transferring.
-- **Kernel built for a different ARM revision.** A `zImage` built with `CONFIG_ARCH_MULTI_V6_V7` runs on Cortex-A7 (v7); one built with `CONFIG_ARCH_MULTI_V7_ONLY` is the same; but one built ARMv8-only (`CONFIG_ARM64`) is a 64-bit kernel that won't run on Cortex-A7 at all. Symptom: undefined instruction at `stext`.
+- **Kernel built for a different ARM revision.** A `zImage` built with `CONFIG_ARCH_MULTI_V6_V7` or `CONFIG_ARCH_MULTI_V7` runs on Cortex-A7. (`CONFIG_ARCH_MULTI_V7_ONLY` is *not* a mainline symbol — earlier drafts of this chapter listed it; ignore.) A 64-bit kernel (`CONFIG_ARM64`) will not run on Cortex-A7. Symptom: undefined instruction at `stext`. A Thumb-2-only kernel (`CONFIG_THUMB2_KERNEL=y`) requires the bootloader to enter in Thumb state; if your bootloader hands off in ARM state to a Thumb kernel, you fault on the very first instruction.
 - **Wrong board's DTB.** Loading the i.MX8MP EVK DTB on an i.MX6ULL board: the kernel reads the DT's `compatible` root property, looks for `fsl,imx6ull` (or the matching SoC), doesn't find it, and panics in `setup_machine_fdt()`. Sometimes silently.
 - **`root=` pointing at something not ready by the time VFS mounts root.** USB-stick root devices need `rootwait` because USB enumeration is slow. SD cards are usually fast enough that you can skip `rootwait` — but always safe to add.
 

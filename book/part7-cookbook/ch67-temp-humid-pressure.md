@@ -454,7 +454,7 @@ static const struct iio_info mb_iio_info = {
 
 /* ------ Probe / Remove ------ */
 
-static int mb_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int mb_probe(struct i2c_client *client)
 {
     struct iio_dev *idev;
     struct mybme *m;

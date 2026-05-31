@@ -185,7 +185,7 @@ static const struct iio_info mc_iio_info = {
     .write_raw = mc_write_raw,
 };
 
-static int mc_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int mc_probe(struct i2c_client *client)
 {
     struct iio_dev *idev;
     struct mymcp *m;

@@ -81,7 +81,10 @@ static void i2c_wait_iif(void)
 void i2c_init(void)
 {
     /* Clock + IOMUX assumed configured elsewhere (see lab). */
-    REG(I2C_IFDR) = 0x15;     /* ~100 kHz from 66 MHz; refer to IFDR table */
+    REG(I2C_IFDR) = 0x1E;     /* IFDR=0x1E → divider 640 → 66 MHz / 640 ≈ 103 kHz.
+                                 (IFDR=0x15 would be divider 320 → ~206 kHz — wrong
+                                 for standard-mode I²C; the RM Table 31-3 maps the
+                                 6-bit IFDR code to a non-monotonic divider list.) */
     REG(I2C_I2CR) = I2CR_IEN; /* enable, master not yet asserted */
 }
 

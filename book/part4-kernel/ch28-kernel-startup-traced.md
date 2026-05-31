@@ -417,7 +417,7 @@ For every memorable boot-log line, you can now name the source location. Spot-ch
 | `Linux version 6.6.0 (you@host) ...` | `init/version.c` | `start_kernel` printing `linux_banner` |
 | `OF: fdt: Machine model: ...` | `drivers/of/fdt.c` | `early_init_dt_scan` |
 | `Kernel command line: ...` | `init/main.c` | `start_kernel` printing `saved_command_line` |
-| `Memory: 444184K/524288K available ...` | `mm/page_alloc.c` | `mem_init_print_info` |
+| `Memory: 444184K/524288K available ...` | `mm/mm_init.c` | `mem_init_print_info` (moved out of `mm/page_alloc.c` in v6.2+) |
 | `clocksource: arm_global_timer: ...` | `drivers/clocksource/arm_global_timer.c` | clocksource registration |
 | `imx-uart 2020000.serial: ...` | `drivers/tty/serial/imx.c` | `imx_uart_probe` |
 | `Freeing unused kernel image (initmem) memory: 1024K` | `mm/page_alloc.c` | `free_initmem` |

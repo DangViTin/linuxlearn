@@ -96,8 +96,7 @@ struct mychip_priv {
     /* device state */
 };
 
-static int mychip_probe(struct i2c_client *client,
-                        const struct i2c_device_id *id)
+static int mychip_probe(struct i2c_client *client)
 {
     struct mychip_priv *priv;
     int chip_id;
@@ -120,10 +119,9 @@ static int mychip_probe(struct i2c_client *client,
     return 0;
 }
 
-static int mychip_remove(struct i2c_client *client)
+static void mychip_remove(struct i2c_client *client)
 {
     /* devm_* cleans up; nothing to do */
-    return 0;
 }
 
 static const struct i2c_device_id mychip_id[] = {
@@ -293,8 +291,7 @@ static ssize_t at24_write(struct file *filp, struct kobject *kobj,
     return count;
 }
 
-static int at24_probe(struct i2c_client *client,
-                      const struct i2c_device_id *id)
+static int at24_probe(struct i2c_client *client)
 {
     struct at24_priv *p;
     int err;
@@ -322,11 +319,10 @@ static int at24_probe(struct i2c_client *client,
     return 0;
 }
 
-static int at24_remove(struct i2c_client *client)
+static void at24_remove(struct i2c_client *client)
 {
     struct at24_priv *p = dev_get_drvdata(&client->dev);
     sysfs_remove_bin_file(&client->dev.kobj, &p->attr);
-    return 0;
 }
 
 static const struct of_device_id at24_of_match[] = {

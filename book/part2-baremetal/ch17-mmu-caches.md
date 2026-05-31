@@ -35,12 +35,14 @@ After this, our code runs out of DRAM with virtual = physical, but accessing cac
 Each L1 entry is 32 bits:
 
 ```
- 31         20  19  18  17  16  15  14  12  11 10  9  8 7 6 5 4 3 2 1 0
-┌─────────────┬────┬────┬────┬────┬────┬───┬────┬───┬───┬─┬─┬─┬─┬─┬─┬─┬─┐
-│ Section base│ NS │ 0  │ nG │ S  │ AP2│ TX │ AP │ I │ Domain│ XN│CB│ID │
-│  bits 31:20 │    │    │    │    │    │ EX │  1 │ M │       │   │  │   │
-└─────────────┴────┴────┴────┴────┴────┴───┴────┴───┴───────┴───┴──┴───┘
+ 31      20  19   18   17   16  15  14:12   11:10   9    8:5   4   3 2  1:0
+┌──────────┬────┬────┬────┬────┬────┬──────┬───────┬───┬──────┬───┬───┬─────┐
+│ Sect base│ NS │  0 │ nG │ S  │ AP2│ TEX  │ AP    │IMP│Domain│ XN│ C B│ 1 0 │
+│ [31:20]  │    │    │    │    │    │[2:0] │ [1:0] │   │      │   │    │type │
+└──────────┴────┴────┴────┴────┴────┴──────┴───────┴───┴──────┴───┴───┴─────┘
 ```
+
+(`type = 0b10` selects "section"; `type = 0b01` selects "page-table pointer" — not used here.)
 
 (There are also other entry types: page-table pointer, supersection. We use only "section" — type bits = `0b10`.)
 
@@ -152,10 +154,12 @@ static inline void invalidate_tlb_all(void)
 
 static inline void invalidate_dcache_all(void)
 {
-    /* Set/way invalidate of L1 D-cache.  Cortex-A7 has 256 sets × 4 ways.
-       In practice we iterate.  See Cortex-A Series Programmer's Guide §11.3. */
+    /* Set/way invalidate of L1 D-cache.  Cortex-A7 L1-D is 32 KB,
+       4-way set-associative, 64-byte lines → 32768 / (4 × 64) = 128 sets.
+       (Confirm at runtime by reading CCSIDR; we hardcode here for clarity.)
+       set bits go in [12:6]; way bits in [31:30].  See ARM ARM B4.2.2. */
     for (uint32_t way = 0; way < 4; way++) {
-        for (uint32_t set = 0; set < 256; set++) {
+        for (uint32_t set = 0; set < 128; set++) {
             uint32_t setway = (way << 30) | (set << 6);
             asm volatile ("mcr p15, 0, %0, c7, c6, 2" :: "r"(setway));
         }
@@ -195,7 +199,7 @@ A few notes:
 - **`__attribute__((aligned(16384)))`** ensures the table starts at a 16 KiB boundary, which TTBR requires. If you skip this, the high bits of the table base address get truncated and your MMU points at garbage.
 - **`DACR = 0x55555555`** sets every domain to "client," which means accesses respect AP bits. The other valid value is "manager" (`0xFFFFFFFF`), which ignores AP entirely. Linux uses client; we follow.
 - **Order matters at enable time.** Invalidate caches *before* enabling them, otherwise stale lines from before-MMU contaminate the cache.
-- **The set/way D-cache invalidate** in `invalidate_dcache_all` uses the i.MX6ULL-specific cache geometry (256 sets, 4 ways, 64-byte lines). On a different CPU, look up the geometry from `CCSIDR`.
+- **The set/way D-cache invalidate** in `invalidate_dcache_all` uses the Cortex-A7 cache geometry: 32 KB L1-D, 4-way set-associative, 64-byte lines → **128 sets**, 4 ways. On a different CPU, look up the geometry from `CCSIDR`.
 
 ## 17.4  Calling `mmu_enable()`
 
@@ -350,7 +354,7 @@ The 10× factor is real and is the reason Linux insists on having caches before 
 - **Forgetting `dsb; isb` around MMU/cache changes.** Required by the architecture. Symptom: works most of the time; fails intermittently.
 - **Cache enabled with stale lines.** Invalidate before enable. Always.
 - **Peripheral mapped Normal Cacheable.** Diagnosed above; pernicious. Bare-metal habit: peripheral writes always followed by a `dsb` if the next access depends on the write actually reaching the device.
-- **Wrong cache geometry.** Cortex-A7 has 256 sets × 4 ways × 64-byte lines. The exact geometry is in CCSIDR; portable code reads CCSIDR rather than hardcoding.
+- **Wrong cache geometry.** Cortex-A7 L1-D is **128 sets × 4 ways × 64-byte lines** (32 KB total). The exact geometry is in `CCSIDR`; portable code reads `CCSIDR` rather than hardcoding.
 - **TTBCR misconfigured.** Setting `N != 0` splits the address space between TTBR0 and TTBR1. We use `N = 0` to put everything under TTBR0.
 - **DACR with manager domain.** Manager-domain entries ignore AP. Useful for kernel; dangerous for user-facing code. Use "client" (0b01 per domain).
 

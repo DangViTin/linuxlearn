@@ -230,7 +230,7 @@ static const struct iio_info mq_iio_info = {
     .read_raw = mq_read_raw,
 };
 
-static int mq_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int mq_probe(struct i2c_client *client)
 {
     struct iio_dev *idev;
     struct myqmc *m;

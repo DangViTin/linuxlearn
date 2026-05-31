@@ -148,7 +148,7 @@ Worth pointing out:
 
 - **The length field in the IVT header is big-endian.** Everything else in the IVT is little-endian. NXP did this; we don't. The `struct.pack('>BHB', ...)` line handles it. This is the single most common "I wrote my own mkimage and the ROM rejects it" bug.
 - **`BootData.length` includes the IVT and the 4 KB padding.** Not just the code. If you forget the `IMAGE_OFFSET` part of the addend, the ROM stops loading before your `.text` even starts.
-- **`csf_addr = 0`** disables HAB signature checking. Will revisit in Chapter 62.
+- **`csf_addr = 0`** disables **HAB** (High Assurance Boot — NXP's signed-boot framework; Ch 124) signature checking. Setting it to a non-zero address would point the ROM at a CSF (Command Sequence File) it must verify.
 
 ## 11.3  Building and inspecting
 

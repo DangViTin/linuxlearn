@@ -274,7 +274,7 @@ relocaddr   = 0x9ff37000
 reloc off   = 0x1f737000
 ```
 
-So U-Boot was built linked for an address of approximately `0x80800000` (the "load address") and is now running at `0x9ff37000` (high DRAM). The difference is the `reloc_off`.
+So U-Boot was built linked for `0x87800000` (the EVK's `CONFIG_SYS_TEXT_BASE`, also shown in `__image_copy_start` above) and is now running at `0x9ff37000` (high DRAM). The difference is the `reloc_off`. (Some older docs and EVK historical configs used `0x80800000`; current mainline uses `0x87800000`. If your `bdinfo` shows `0x80800000` as the link address, you're on an older build.)
 
 Try:
 

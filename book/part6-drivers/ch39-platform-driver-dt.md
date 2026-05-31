@@ -124,12 +124,11 @@ static int demo_probe(struct platform_device *pdev)
     return 0;
 }
 
-static int demo_remove(struct platform_device *pdev)
+static void demo_remove(struct platform_device *pdev)
 {
     struct demo_priv *priv = platform_get_drvdata(pdev);
     dev_info(&pdev->dev, "remove\n");
     (void)priv;   /* nothing to free; devm_* handles all */
-    return 0;
 }
 
 static const struct of_device_id demo_of_match[] = {

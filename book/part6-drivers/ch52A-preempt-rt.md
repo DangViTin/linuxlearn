@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 52A — PREEMPT_RT
 
-> **What:** the **PREEMPT_RT** patch set (now largely merged into mainline 6.x) — the kernel configuration that turns Linux into a hard-real-time OS, where worst-case interrupt-to-thread latency is measured in tens of microseconds on a Cortex-A7 instead of milliseconds. We cover the four core changes (preemptible spinlocks, threaded IRQs by default, priority inheritance, high-resolution timers), how to enable it on the i.MX6ULL, and how to measure latency with `cyclictest`.
+> **What:** **PREEMPT_RT** — fully merged into the mainline kernel since **v6.12** (December 2024) — is the kernel configuration that turns Linux into a hard-real-time OS, where worst-case interrupt-to-thread latency is measured in tens of microseconds on a Cortex-A7 instead of milliseconds. No out-of-tree patch is needed on v6.12 or later. We cover the four core changes (preemptible spinlocks, threaded IRQs by default, priority inheritance, high-resolution timers), how to enable it on the i.MX6ULL, and how to measure latency with `cyclictest`.
 > **Why:** standard Linux has a few-millisecond worst-case scheduling latency under load. That's fine for general computing but disqualifies it from motor control, audio processing, industrial PLCs, and anything that needs deterministic response. PREEMPT_RT bridges that gap. Many shipping industrial products (CNCs, robotic arms, real-time camera ML inference) run PREEMPT_RT Linux today.
 > **Focus:** **the deterministic-latency contract**. PREEMPT_RT promises that a high-priority thread will run within a bounded time after its waking event, regardless of what lower-priority threads or kernel code are doing. Internalising what "bounded" really means — and what defeats it — is the whole game.
 
@@ -51,7 +51,7 @@ The `hrtimer` framework gives ns-resolution timers (Ch 55A). PREEMPT_RT makes al
 
 ## 52A.3  Enabling PREEMPT_RT
 
-For 6.x kernels, PREEMPT_RT is partially in mainline. Check:
+On **v6.12 or later**, PREEMPT_RT is in mainline — no patch needed. Just enable the option in menuconfig:
 
 ```
 [host]$ make menuconfig
@@ -63,7 +63,7 @@ General setup --->
         (X) Fully Preemptible Kernel (Real-Time)
 ```
 
-If "Fully Preemptible Kernel (Real-Time)" is missing, you need the out-of-tree PREEMPT_RT patch:
+On earlier kernels (v6.1 LTS, older 6.6 stable points before the merge completion) the option may be missing for some architectures and you still need the out-of-tree patch:
 
 ```sh
 $ wget https://cdn.kernel.org/pub/linux/kernel/projects/rt/6.6/older/patch-6.6.20-rt19.patch.gz
@@ -73,7 +73,7 @@ $ make menuconfig    # enable Full Preemption
 $ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- zImage modules dtbs -j8
 ```
 
-Boot the new kernel; `uname -a` will show `PREEMPT_RT` in the version string.
+For new work in 2025+, target v6.12 LTS or newer and skip the patch step entirely. Boot the new kernel; `uname -a` will show `PREEMPT_RT` in the version string.
 
 ## 52A.4  Measuring latency with cyclictest
 

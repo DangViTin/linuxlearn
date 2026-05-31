@@ -128,7 +128,7 @@ General setup
     ( ) Fully Preemptible Kernel (Real-Time)
 ```
 
-Determines how long kernel code can hold the CPU before letting another thread run. **`PREEMPT_NONE`** maximizes throughput, **`PREEMPT_VOLUNTARY`** (the default) is a reasonable compromise, **`PREEMPT`** improves desktop responsiveness, **`PREEMPT_RT`** turns the kernel into a deterministic real-time kernel (Chapter 52A is dedicated to this).
+Determines how long kernel code can hold the CPU before letting another thread run. **`PREEMPT_NONE`** maximizes throughput, **`PREEMPT_VOLUNTARY`** (the default) is a reasonable compromise, **`PREEMPT`** improves desktop responsiveness, **`PREEMPT_RT`** turns the kernel into a low, bounded-latency real-time kernel (Chapter 52A is dedicated to this).
 
 For a typical embedded product, `PREEMPT_VOLUNTARY` is fine. For motion control or audio with hard latency budgets, `PREEMPT_RT`. For a router pushing packets, `PREEMPT_NONE`.
 

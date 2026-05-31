@@ -26,7 +26,7 @@ That's it. Any program that does these five things is a legitimate PID 1. The ch
 
 ## 33.2  BusyBox init
 
-We've been using this since Chapter 29. It is **~1500 lines of C**, statically compiled into the BusyBox binary, and does exactly the five things in §33.1 — no more, no less. Configuration is one file: `/etc/inittab` (Chapter 31 §31.5).
+We've been using this since Chapter 29. It is **~1500 lines of C**, statically linked into the BusyBox binary as one of its applets, and does exactly the five things in §33.1 — no more, no less. Configuration is one file: `/etc/inittab` (Chapter 31 §31.5).
 
 Features it has:
 

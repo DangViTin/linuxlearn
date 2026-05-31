@@ -59,8 +59,7 @@ static const struct regmap_config my_regmap_config = {
     .max_register = 0xFF,
 };
 
-static int my_probe(struct i2c_client *client,
-                    const struct i2c_device_id *id)
+static int my_probe(struct i2c_client *client)
 {
     struct regmap *regmap;
     unsigned int val;

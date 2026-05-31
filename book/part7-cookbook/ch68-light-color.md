@@ -245,7 +245,7 @@ static const struct iio_info mb_iio_info = {
     .read_raw = mb_read_raw,
 };
 
-static int mb_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int mb_probe(struct i2c_client *client)
 {
     struct iio_dev *idev;
     struct mybh *m;
@@ -273,10 +273,9 @@ static int mb_probe(struct i2c_client *client, const struct i2c_device_id *id)
     return devm_iio_device_register(&client->dev, idev);
 }
 
-static int mb_remove(struct i2c_client *client)
+static void mb_remove(struct i2c_client *client)
 {
     i2c_smbus_write_byte(client, OP_POWER_DOWN);
-    return 0;
 }
 
 static const struct of_device_id mb_of_match[] = {

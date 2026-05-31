@@ -20,8 +20,8 @@ Key parameters of the part variant used on Point Atom MINI:
 
 - **Core:** 1 × Cortex-A7 @ 528 / 696 MHz
 - **L1 cache:** 32 KB I + 32 KB D
-- **L2 cache:** none (only L1)
-- **TCM:** 128 KB tightly coupled (split as 32 KB ROM + 96 KB OCRAM accessible from outside — see §5.4)
+- **L2 cache:** 128 KB unified, integrated inside the Cortex-A7 MPCore (no external PL310 controller)
+- **On-chip memory:** 128 KB **OCRAM** at `0x00900000` (the most useful 128 KB on the chip) + a separate 96 KB **Boot ROM** at `0x00000000` (mask-programmed by NXP). There is **no TCM** — TCM is a Cortex-M / Cortex-R concept; A-profile cores rely on L1/L2 caches instead.
 - **DRAM:** 16-bit LPDDR2/DDR3L/DDR3 controller (MMDC), up to ~ 1 GB
 - **Boot media:** SD/MMC, eMMC, NAND, SPI-NOR, QSPI, parallel NOR, USB (recovery)
 - **Process:** 28 nm
@@ -65,7 +65,7 @@ The i.MX6ULL exposes a 4 GB physical address space. Most of it is unused; the re
 | **Boot ROM alias** | `0x00100000` | 96 KB | Same ROM, second alias used after high-vectors |
 | **OCRAM** | `0x00900000` | 128 KB | On-chip SRAM — the most useful 128 KB on the chip |
 | GIC distributor | `0x00A01000` | 4 KB | (and CPU interface at `0x00A02000`) |
-| L2 controller | (absent) | — | i.MX6ULL has no L2 |
+| External PL310 L2 controller | (absent) | — | i.MX6ULL's 128 KB L2 is integrated in the MPCore block, not a separate PL310 |
 | **AIPS-1** | `0x02000000` | 1 MB | IP slaves group 1: SDMA, GPIOs, UARTs, IOMUXC |
 | **AIPS-2** | `0x02100000` | 1 MB | IP slaves group 2: USB, MMDC, CCM, ANATOP, SNVS, EPIT, GPT |
 | **AIPS-3** | `0x02200000` | 1 MB | IP slaves group 3 (smaller; CAAM, SJC, etc.) |
@@ -83,12 +83,16 @@ The reference manual has the full map in Chapter 2 ("Memory Maps"). Print that t
 
 ## 5.4  OCRAM and the boot footprint
 
-Of the 128 KB OCRAM, the Boot ROM uses a portion for its own data while executing. By the time control reaches your code:
+Of the 128 KB OCRAM at `0x00900000`–`0x0091FFFF`, the Boot ROM uses a portion **while executing the boot sequence** for its own working area (exception vectors at the low end; MMU table, stack, and bookkeeping near the top). Per the i.MX6ULL Reference Manual (§8, Figure 8-3 "OCRAM Memory Map During Boot"):
 
-- **OCRAM `0x00907000`–`0x0091FFFF`** (~100 KB) is free for your use.
-- **OCRAM `0x00900000`–`0x00906FFF`** holds the ROM's working area; do not clobber it until you no longer plan to return to ROM functions.
+- **`0x00900000`–`0x009001FF`** — exception-vector region used by the Boot ROM (low ~0.5 KB).
+- **`0x00900200`–`0x00906FFF`** — also reserved for ROM bookkeeping (the practical "do not write here while the ROM may still be involved" zone).
+- **`0x00907000`–`0x00917FF0`** — **OCRAM Free Area during boot (~68 KB)** — this is where your bootable image (or U-Boot SPL) is loaded.
+- **`0x00918000`–`0x0091FFFF`** — used by the ROM for its MMU table, stack, and per-boot state (top ~32 KB).
 
-This means **your bare-metal images in Part II must fit within ~100 KB**. The lab in Chapter 9 (LED in pure assembly) will be < 1 KB. The full bare-metal stack with DDR init in Chapter 14 will be < 30 KB. U-Boot SPL is designed to fit in this window.
+So during the boot handoff, your usable window is the ~68 KB middle segment. **After the ROM hands off and you no longer need ROM services**, the *entire* 128 KB OCRAM (`0x00900000`–`0x0091FFFF`) is yours.
+
+This means **U-Boot SPL must fit in ~64 KB** (with a small reserve under the 68 KB window). The lab in Chapter 9 (LED in pure assembly) will be < 1 KB. The full bare-metal stack with DDR init in Chapter 14 will be < 30 KB. U-Boot SPL is designed for exactly this window.
 
 ## 5.5  The clock tree (at one level of detail)
 

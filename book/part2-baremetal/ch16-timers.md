@@ -135,8 +135,13 @@ void epit_init(void)
        LR = 66000 = (66 MHz / 1000 Hz) for 1 ms. */
     REG(EPIT_LR) = 66000;
     REG(EPIT_CMPR) = 0;
-    REG(EPIT_CR) = (1u << 25)                 /* CLKSRC = peripheral */
-                 | (1u << 22)                 /* IOVW */
+    /* Per RM §30.5.1 (EPIT_CR):
+     *   CLKSRC is the 2-bit field at [25:24]; 0b01 = peripheral clock → (1 << 24).
+     *   IOVW is bit 17 (NOT bit 22 — earlier drafts of this listing had that wrong).
+     *   PRESCALER is bits [15:4]; 0 = divide-by-1.
+     *   RLD = bit 3, OCIEN = bit 2, ENMOD = bit 1, EN = bit 0. */
+    REG(EPIT_CR) = (1u << 24)                 /* CLKSRC[25:24] = 0b01 (peripheral) */
+                 | (1u << 17)                 /* IOVW */
                  | (1u << 3)                  /* RLD */
                  | (1u << 2)                  /* OCIEN */
                  | (1u << 1)                  /* ENMOD */

@@ -173,7 +173,7 @@ Once U-Boot is up, port the kernel DT.
 
 ```sh
 cd linux
-cp arch/arm/boot/dts/imx6ull-14x14-evk.dts arch/arm/boot/dts/imx6ull-myboard.dts
+cp arch/arm/boot/dts/nxp/imx/imx6ull-14x14-evk.dts arch/arm/boot/dts/nxp/imx/imx6ull-myboard.dts
 # Edit to match your hardware
 ```
 
@@ -302,7 +302,7 @@ EOF
   mount ${TARGET_SD}2 /mnt/root
 
   cp $ROOT/linux/arch/arm/boot/zImage /mnt/boot/
-  cp $ROOT/linux/arch/arm/boot/dts/imx6ull-myboard.dtb /mnt/boot/
+  cp $ROOT/linux/arch/arm/boot/dts/nxp/imx/imx6ull-myboard.dtb /mnt/boot/
 
   tar -C /mnt/root -xf $ROOT/buildroot/output/images/rootfs.tar
   cd $ROOT/linux && make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_MOD_PATH=/mnt/root modules_install

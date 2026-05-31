@@ -19,7 +19,7 @@ The Linux kernel ships under several release tracks:
 - **Mainline** at `git.kernel.org/torvalds/linux.git` — Linus's tree. The current development tip; new releases roughly every 9 weeks (the "x.y" releases like 6.6, 6.7).
 - **Stable** — Greg KH applies bugfix backports to each mainline release for ~6 weeks after it. Tagged `6.6.1`, `6.6.2`, etc.
 - **Long-Term Support (LTS)** — selected mainline releases get fix backports for 2 or 6 years. As of 2026 the active LTS lines are `6.6`, `6.1`, `5.15`, `5.10`, `5.4`.
-- **Vendor BSPs** — NXP, ST, TI, and other silicon vendors ship forks pinned to a specific kernel minor with thousands of patches on top. The NXP fork for i.MX6ULL is `linux-imx`, currently pinned around `5.15` and `6.6` depending on the branch.
+- **Vendor BSPs** — NXP, ST, TI, and other silicon vendors ship forks pinned to a specific kernel minor with thousands of patches on top. NXP forks mainline into `linux-imx`. Active branches are pinned to `5.15` and `6.6`; older branches exist for legacy products.
 
 We build from **mainline** (or LTS where stability matters). The i.MX6ULL has had full support in mainline since v4.10 (released 2017); every silicon revision and DT change is upstreamed. Chapter 30A goes deeper on when each track is appropriate.
 
@@ -111,7 +111,7 @@ imx_v6_v7_defconfig
 mxs_defconfig
 ```
 
-`imx_v6_v7_defconfig` (formerly `imx_v7_defconfig`) is the omnibus i.MX configuration that covers every i.MX SoC the v6/v7 ARM cores support — i.MX5, i.MX6 (all variants including ULL), i.MX7. One config builds for all of them; a single `zImage` boots on any. This is mainline's preferred organisation.
+`imx_v6_v7_defconfig` (formerly `imx_v7_defconfig`) is the omnibus i.MX configuration that, on v6.6, covers i.MX31/35/27 (ARMv6), i.MX5 (selected boards), i.MX6 (all variants including ULL), and i.MX7. One config builds for all of them; a single `zImage` boots on any board with a matching DT. This is mainline's preferred organisation.
 
 ```sh
 $ export ARCH=arm
@@ -134,7 +134,7 @@ CONFIG_SOC_IMX6Q=y
 ...
 ```
 
-Every Y in `.config` is either compiled in (`=y`) or compiled as a loadable module (`=m`). The set of options is enormous (~7000 for a v6.6 kernel); for now we trust `imx_v6_v7_defconfig`'s defaults. Chapter 30 returns to specific knobs.
+Every entry in `.config` is either compiled in (`=y`) or compiled as a loadable module (`=m`). The set of options is enormous (~7000 for a v6.6 kernel); for now we trust `imx_v6_v7_defconfig`'s defaults. Chapter 30 returns to specific knobs.
 
 ## 25.4  Build
 
@@ -144,13 +144,13 @@ Single-shot build of everything we need:
 $ make -j$(nproc) zImage modules dtbs
 ```
 
-Three independent targets:
+Three artifact groups (`make` builds them in dependency order from the same object tree):
 
 - **`zImage`** — the compressed kernel image. ~6 MB. This is what U-Boot will `bootz`.
 - **`modules`** — every `=m` driver, compiled to `.ko` files. ~hundreds in a default config. Installed separately.
 - **`dtbs`** — every device tree blob the architecture defines. Includes `imx6ull-14x14-evk.dtb` for the NXP EVK and ~20 other i.MX6ULL variants.
 
-First build takes 5–10 minutes on a modern host depending on `-j` parallelism. Subsequent incremental builds are seconds.
+On a modern host with `-j$(nproc)`, the first build takes 5–10 minutes. Incremental rebuilds finish in seconds.
 
 ### What just got produced
 
@@ -158,7 +158,7 @@ First build takes 5–10 minutes on a modern host depending on `-j` parallelism.
 $ ls -lh arch/arm/boot/zImage
 -rw-r--r-- 1 you you 6.0M Jan 22 14:42 zImage
 
-$ ls arch/arm/boot/dts/imx6ull*.dtb
+$ ls arch/arm/boot/dts/nxp/imx/imx6ull*.dtb
 imx6ull-14x14-evk.dtb
 imx6ull-9x9-evk.dtb
 imx6ull-colibri-eval-v3.dtb
@@ -251,10 +251,10 @@ ELF Header:
   Entry point address:               0x80008000
   ...
 
-$ ls arch/arm/boot/dts/imx6ull-14x14-evk.dtb
-arch/arm/boot/dts/imx6ull-14x14-evk.dtb
+$ ls arch/arm/boot/dts/nxp/imx/imx6ull-14x14-evk.dtb
+arch/arm/boot/dts/nxp/imx/imx6ull-14x14-evk.dtb
 
-$ dtc -I dtb -O dts arch/arm/boot/dts/imx6ull-14x14-evk.dtb | head -30
+$ dtc -I dtb -O dts arch/arm/boot/dts/nxp/imx/imx6ull-14x14-evk.dtb | head -30
 /dts-v1/;
 / {
     #address-cells = <0x01>;
@@ -284,7 +284,7 @@ $ make O=~/imx6ull/build/kernel -j$(nproc) zImage modules dtbs
 
 # Symlink artefacts into TFTP and rootfs
 $ ln -sf ~/imx6ull/build/kernel/arch/arm/boot/zImage /srv/tftp/zImage
-$ ln -sf ~/imx6ull/build/kernel/arch/arm/boot/dts/imx6ull-14x14-evk.dtb /srv/tftp/imx6ull.dtb
+$ ln -sf ~/imx6ull/build/kernel/arch/arm/boot/dts/nxp/imx/imx6ull-14x14-evk.dtb /srv/tftp/imx6ull.dtb
 
 # Install modules into NFS-exported rootfs
 $ make O=~/imx6ull/build/kernel INSTALL_MOD_PATH=~/imx6ull/rootfs modules_install
@@ -295,8 +295,8 @@ $ make O=~/imx6ull/build/kernel INSTALL_MOD_PATH=~/imx6ull/rootfs modules_instal
 ## 25.8  Lab
 
 1. **Clone, defconfig, build.** Time the build. On a 4-core / 8-thread modern host, expect 5–8 minutes for a fresh full build, < 30 s for an incremental change.
-2. **Inspect the boot logo string.** Run `grep -n linux_banner init/version-timestamp.c` (or `init/version.c`) to find the banner format. Edit it to add `(yourname)`, rebuild *just* `zImage` (`make -j$(nproc) zImage`), and verify the boot message changes when you run it in Chapter 26.
-3. **Build for the EVK and the Colibri.** Both `.dtb`s come out of one build. Verify by re-running `ls arch/arm/boot/dts/imx6ull-*.dtb` after `make dtbs` and comparing against the list of `imx6ull-*` `.dts` source files in the same directory.
+2. **Inspect the boot logo string.** Run `grep -n linux_banner init/version.c` to find the banner format. (On v6.6 the banner is in `init/version.c`; `init/version-timestamp.c` exists only conditionally.) Edit it to add `(yourname)`, rebuild *just* `zImage` (`make -j$(nproc) zImage`), and verify the boot message changes when you run it in Chapter 26.
+3. **Build for the EVK and the Colibri.** Both `.dtb`s come out of one build. Verify by re-running `ls arch/arm/boot/dts/nxp/imx/imx6ull-*.dtb` after `make dtbs` and comparing against the list of `imx6ull-*` `.dts` source files in the same directory. *(Pre-v6.5 kernels keep the dts directly under `arch/arm/boot/dts/` — adjust accordingly.)*
 4. **Quantify the compression.** Compare sizes: `ls -l arch/arm/boot/{Image,zImage}` and `vmlinux`. The ratios tell you something about kernel content (lots of string tables, dictionaries, …).
 5. **Make distclean and reconfigure.** `make distclean` wipes `.config` and everything else. Re-run `make imx_v6_v7_defconfig && make -j$(nproc) zImage` and observe that the second build is essentially as fast as the first incremental build — `ccache` is the reason if you have it installed; otherwise the same speed.
 
@@ -305,7 +305,7 @@ $ make O=~/imx6ull/build/kernel INSTALL_MOD_PATH=~/imx6ull/rootfs modules_instal
 - **Forgetting `ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf-`.** The `make` will try to build a host x86-64 kernel and fail with cryptic errors deep in the architecture-specific code. Always export both before invoking `make`.
 - **Building from the source tree without `O=`.** Works, but `git status` becomes useless because every `make` populates the source tree with `.o` files. Out-of-tree builds keep the source pristine.
 - **Wrong defconfig.** `make imx_v6_v7_defconfig` not `make x86_64_defconfig`. The latter happens when you forget to export `ARCH=arm` — Linux helpfully picks the host default.
-- **Old gcc-toolchain miscompile.** Mainline kernels usually require a fairly recent gcc (≥ 5.1 for v6.x; ≥ 4.9 for older). Distribution `gcc-arm-linux-gnueabihf` is fine. Custom-built ancient toolchains sometimes miscompile RCU or aaprcp.
+- **Old gcc-toolchain miscompile.** Mainline kernels usually require a fairly recent gcc (≥ 5.1 for v6.x; ≥ 4.9 for older). Distribution `gcc-arm-linux-gnueabihf` is fine. Custom-built ancient toolchains sometimes miscompile RCU or AAPCS-sensitive code paths.
 - **`make modules_install` to a system location.** By default `make modules_install` writes to `/lib/modules/$(uname -r)/`. **Always** pass `INSTALL_MOD_PATH=...` when cross-building or you will overwrite your host's modules.
 - **Mismatch between `zImage` and `modules`.** Modules built against kernel version X will refuse to load on a running kernel built from version Y (they check the version's "vermagic" string). If you rebuild the kernel, rebuild + reinstall modules.
 

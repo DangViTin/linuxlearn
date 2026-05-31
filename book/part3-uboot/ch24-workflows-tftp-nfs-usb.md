@@ -39,7 +39,7 @@ The symlinks let you `make` in the kernel tree and the new artefacts are *immedi
 ```sh
 $ cd /srv/tftp
 $ ln -s ~/imx6ull/src/linux/arch/arm/boot/zImage .
-$ ln -s ~/imx6ull/src/linux/arch/arm/boot/dts/imx6ull-pa-mini.dtb .
+$ ln -s ~/imx6ull/src/linux/arch/arm/boot/dts/nxp/imx/imx6ull-pa-mini.dtb .
 ```
 
 ### TFTP from U-Boot

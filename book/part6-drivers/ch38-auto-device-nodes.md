@@ -69,7 +69,7 @@ struct hello_dev {
 In `hello_init`, after `cdev_add` succeeds:
 
 ```c
-    hd->class = class_create(THIS_MODULE, "hello");
+    hd->class = class_create("hello");
     if (IS_ERR(hd->class)) {
         err = PTR_ERR(hd->class);
         goto del_cdev;
@@ -246,7 +246,7 @@ static int __init hello_init(void)
     err = alloc_chrdev_region(&hello_base_devid, 0, N_DEVICES, "hello");
     if (err) return err;
 
-    hello_class = class_create(THIS_MODULE, "hello");
+    hello_class = class_create("hello");
     if (IS_ERR(hello_class)) {
         err = PTR_ERR(hello_class);
         goto unreg;

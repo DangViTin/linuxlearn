@@ -8,6 +8,8 @@ status: draft
 
 # Chapter 64 — QSPI NOR flash
 
+> **Naming convention used across Part VII.** Shell prompts shown as `[root@pa-mini:~]#` come from the reference test board — the Point Atom MINI configured with hostname `pa-mini`. Substitute your own hostname; nothing else about the lab assumes it.
+
 > **What:** how a QSPI NOR flash chip actually works on the wire, how the mainline `spi-nor` driver implements it, and how to write your own minimal driver from scratch for one specific chip. Three chips compared — **Winbond W25Q128** (16 MB), **Macronix MX25L25645G** (32 MB), **Micron MT25QL256ABA** (32 MB) — but the from-scratch driver targets the W25Q128 to keep the example concrete.
 > **Why:** the philosophy of this book is "raw — build it yourself, understand it forever." For QSPI flash that means: command bytes on the wire, status-register polling, page-program timing, JEDEC ID parsing. After this chapter you can read the mainline `spi-nor` source and know exactly what each function is hiding. If you ever encounter a chip that *isn't* in the database, you'll know how to add it (or replace the framework entirely with 200 lines).
 > **Focus:** **a NOR flash is a state machine driven by single-byte commands**. `0x9F` = read JEDEC ID. `0x06` = write-enable. `0x20` = sector erase. `0x02` = page program. `0x03` = read. Send the right bytes in the right order and you can read, erase, program, and identify any standard NOR flash with about 100 lines of code. The mainline driver wraps this in regmap-like abstractions and parameter databases, but the wire protocol is dead simple.
@@ -559,7 +561,7 @@ static int mf_probe(struct spi_device *spi)
     err = cdev_add(&m->cdev, m->devid, 1);
     if (err) goto unreg;
 
-    m->class = class_create(THIS_MODULE, "myflash");
+    m->class = class_create("myflash");
     if (IS_ERR(m->class)) { err = PTR_ERR(m->class); goto del_cdev; }
     device_create(m->class, NULL, m->devid, NULL, "myflash");
 

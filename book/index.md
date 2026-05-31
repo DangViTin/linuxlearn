@@ -10,6 +10,16 @@ description: Embedded Linux on i.MX6ULL — From First Boot to First Driver
 > An explanatory, mainline-first guide to bringing up embedded Linux on the i.MX6ULL.
 > Built for the MCU engineer who wants to understand every byte, not just `bitbake build`.
 
+:::{admonition} Versions targeted throughout the book
+:class: note
+- **Linux kernel:** v6.6 LTS (current driver APIs and DTS paths)
+- **U-Boot:** v2026.04 (or latest at time of read; SPL/FIT examples stable since v2024)
+- **GCC/binutils:** 13.x for the cross-toolchain
+- **Buildroot:** 2026.02; **Yocto:** scarthgap (5.0) / kirkstone (4.0)
+
+If you build against a different kernel, two known divergences matter most: (1) device-tree files for i.MX moved from `arch/arm/boot/dts/` to `arch/arm/boot/dts/nxp/imx/` in **v6.5**, and (2) several driver APIs changed between v6.3 and v6.11 (`i2c_driver.probe` lost its second arg in v6.3; `class_create` lost its `THIS_MODULE` arg in v6.4; `i2c_driver.remove` / `platform_driver.remove` return `void` since v6.11). All snippets in this book follow the v6.6 conventions.
+:::
+
 ```{toctree}
 :hidden:
 :caption: Front matter

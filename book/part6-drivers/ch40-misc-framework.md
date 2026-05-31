@@ -60,7 +60,7 @@ err = alloc_chrdev_region(&hd->devid, 0, 1, "hello");      /* 1 line */
 cdev_init(&hd->cdev, &hello_fops);                          /* 2 */
 hd->cdev.owner = THIS_MODULE;                               /* 3 */
 err = cdev_add(&hd->cdev, hd->devid, 1);                    /* 4 */
-hd->class = class_create(THIS_MODULE, "hello");             /* 5 */
+hd->class = class_create("hello");             /* 5 */
 hd->device = device_create(hd->class, NULL, hd->devid, NULL, "hello");  /* 6 */
 /* +cleanup labels, +reverse-order unwind */
 ```

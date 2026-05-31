@@ -246,7 +246,7 @@ static const struct fb_ops ms_fbops = {
     .fb_mmap     = fb_deferred_io_mmap,
 };
 
-static int ms_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int ms_probe(struct i2c_client *client)
 {
     struct myssd *m;
     struct fb_info *info;

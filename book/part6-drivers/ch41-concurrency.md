@@ -47,6 +47,23 @@ Three questions. Answer them and you've picked your primitive.
 
 That's it. Three questions, one primitive. Let's see them in action.
 
+### Context cheat sheet — what may sleep, what may not
+
+This is *the* table to memorize. Every later driver chapter (i2c, SPI, IIO, regmap, DMA, USB, etc.) assumes you know it; we will not repeat it.
+
+| Context | Examples | May sleep? | Locks you may take | Locks you must avoid |
+|---|---|---|---|---|
+| **Process** (syscall, `probe()`, file_operations) | `read`, `write`, `ioctl`, `open` | **yes** | `mutex_lock`, `spin_lock`, `down`, `wait_event`, `i2c_smbus_*`, `spi_sync`, `kmalloc(GFP_KERNEL)` | — |
+| **Threaded IRQ** (`request_threaded_irq` bottom half) | the `_threaded_fn` argument | **yes** | same as process context | — |
+| **Workqueue** (`schedule_work`, `delayed_work`) | `INIT_WORK` handlers | **yes** | same as process context | — |
+| **Softirq / tasklet / timer** | `softirq` callbacks, `mod_timer` callbacks | **no** | `spin_lock`, `atomic_*`, `mutex_trylock` (only) | `mutex_lock`, `i2c_smbus_*`, `msleep`, `kmalloc(GFP_KERNEL)` |
+| **Hard IRQ** (top half of `request_irq`) | the `_handler` argument when there's no threaded fn | **no — strictly atomic** | `spin_lock_irqsave`, `atomic_*` | everything that may sleep, including i2c/spi transfers, `printk` with KERN_DEBUG at high rate |
+| **Holding a spinlock** | inside `spin_lock` … `spin_unlock` | **no** | nested spinlocks (different order rule) | everything that may sleep |
+
+**Rule of thumb for sensor / bus drivers:** if you need to do an `i2c_smbus_*` or `spi_sync` (both can block on bus contention), you must be in **process context** or a **threaded IRQ** — never in a hard IRQ handler or under a spinlock. Use `request_threaded_irq` and put the bus access in the threaded half.
+
+We refer back to this table from many places. When a later chapter says "this runs in atomic context," consult the rows above.
+
 ## 41.3  Atomic operations
 
 Sometimes you just want to increment a counter from multiple contexts. A lock is overkill; the kernel exposes **atomic types** that compile to a single bus-locked instruction.

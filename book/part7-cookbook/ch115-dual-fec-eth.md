@@ -48,7 +48,7 @@ The reference Point Atom MINI board has only FEC1 wired (single Ethernet); to br
 
 Critical: each PHY has a **strap-pin-set MDIO address** (typically 0, 1, 2, …). FEC1's PHY at address 0; FEC2's PHY at address 1. Both share the MDIO bus (MDC/MDIO can be shared on most designs), and FEC2 reads address-1's registers.
 
-DT for both FECs (excerpt from `arch/arm/boot/dts/imx6ull-myboard.dts`):
+DT for both FECs (excerpt from `arch/arm/boot/dts/nxp/imx/imx6ull-myboard.dts`):
 
 ```dts
 &fec1 {

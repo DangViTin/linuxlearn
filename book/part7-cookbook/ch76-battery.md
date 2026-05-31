@@ -236,7 +236,7 @@ static const struct power_supply_desc mm_desc = {
 
 /* === Probe / Remove === */
 
-static int mm_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int mm_probe(struct i2c_client *client)
 {
     struct mymax *m;
     struct power_supply_config psy_cfg = {};

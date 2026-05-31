@@ -163,7 +163,7 @@ U-Boot 2025.01 (Jan 12 2026 - 17:42:31 +0700)
 
 CPU:   i.MX6ULL rev1.1 at 396 MHz
 Reset cause: POR
-Model: Freescale i.MX6 UltraLiteLite 14x14 EVK Board
+Model: Freescale i.MX6 UltraLite 14x14 EVK Board
 DRAM:  512 MiB
 PMIC:  PFUZE3000 DEV_ID=0x30 REV_ID=0x11
 MMC:   FSL_SDHC: 0, FSL_SDHC: 1
@@ -187,7 +187,7 @@ Pause. Read the boot log a third time. Notice:
 - "Trying to boot from MMC1" — SPL is reading `u-boot-dtb.imx` from the SD card and loading it into DRAM.
 - "U-Boot 2025.01" — the second stage has taken over, running from DRAM, with full peripheral support.
 - "CPU: i.MX6ULL rev1.1 at 396 MHz" — the boot-default ARM clock. Notice it didn't go to 696 MHz; the EVK config is conservative. Chapter 13's PLL config can apply here too.
-- "DRAM: 512 MiB" — SPL's DDR setup worked. The same 100-line MMDC dance as our Chapter 14, but tested across thousands of boards.
+- "DRAM: 512 MiB" — SPL's DDR setup worked. The productized version of your Chapter 14 MMDC bring-up — mainline's `arch/arm/mach-imx/mx6/ddr.c` is a ~1500-line table-driven engine that wraps the same MMDC register dance, hardened across thousands of boards. We dissect it in Ch 20 §20.7.
 - "Loading Environment from MMC..." — U-Boot tries to read its persistent env from the SD card. There isn't one yet; it falls back to defaults. `*** Warning - bad CRC` is normal on first boot.
 - "Hit any key to stop autoboot" — without intervention, U-Boot would run `bootcmd` (Chapter 23) which on the EVK config tries to find a kernel and chain-boot Linux.
 

@@ -328,7 +328,7 @@ static const struct iio_info mv_iio_info = {
     .read_raw = mv_read_raw,
 };
 
-static int mv_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int mv_probe(struct i2c_client *client)
 {
     struct iio_dev *idev;
     struct myvl *m;

@@ -227,7 +227,9 @@ Like `/dev/i2c-N`, there's a user-space chardev for SPI: `/dev/spidev<bus>.<cs>`
 };
 ```
 
-Why `"rohm,dh2228fv"`? Because the kernel maintainers refuse to add `"spidev"` as a magic generic compatible (it's not a chip; it's a hack). The `dh2228fv` is one of several chip-names "registered" to spidev as a workaround for development. For production, use the actual chip's compatible string with a real driver.
+Why `"rohm,dh2228fv"`? Because the kernel maintainers refuse to add `"spidev"` as a magic generic compatible (it's not a chip; it's a hack). The `dh2228fv` is one of several chip names "registered" to spidev as a workaround for development. For production, use the actual chip's compatible string with a real driver.
+
+> **Kernel warning since v4.15.** If you use this placeholder in a DT, `spidev_probe` prints `WARNING: Probing spidev with broken DT entry` and refuses to bind unless `CONFIG_SPI_SPIDEV` overrides are set. Modern best practice: either pick a real-chip compatible that already appears in `drivers/spi/spidev.c`'s `spidev_dt_ids[]` (e.g., `"semtech,sx1301"` for a known SPI radio), or write a proper DT overlay that adds a `compatible` your kernel build accepts. The cookbook chapters (Ch 98, 99, 101, 105, 106) use `rohm,dh2228fv` as shorthand; in production swap for the chip's real string + a tiny accepting driver, or build with the `spidev_compatible_array` patch.
 
 The spidev userspace API uses ioctl:
 

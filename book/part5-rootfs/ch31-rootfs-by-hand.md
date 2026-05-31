@@ -38,7 +38,7 @@ The Filesystem Hierarchy Standard says what each top-level directory is for. The
 └── mnt/         # ad-hoc mount points
 ```
 
-We will create every one of these and populate the populated ones.
+We create each of these directories. The ones that should contain files at boot (`bin/`, `sbin/`, `lib/`, `etc/`) we populate now; the ones the kernel or daemons fill (`proc/`, `sys/`, `dev/`, `tmp/`, `var/run/`) stay empty until mount time.
 
 ## 31.2  The plan
 
@@ -92,7 +92,7 @@ $ ls -lh busybox
 
 580 KB statically linked. (~450 KB with musl-gcc.)
 
-> **Static or dynamic?** Static is simpler to deploy — no libraries needed on the target. The drawback is **DNS resolution doesn't work** with static glibc, because glibc's NSS (Name Service Switch) requires dynamic loading. If you need DNS lookups on the target, build BusyBox *dynamically* and copy the toolchain's libraries into `~/imx6ull/rootfs/lib/`. We do both in this chapter — static for the first boot to keep things simple, then dynamic in §31.7 to enable DNS.
+> **Static or dynamic?** Static is simpler to deploy — no libraries needed on the target. The drawback is **DNS resolution over the network doesn't work** with static glibc, because glibc's NSS (Name Service Switch — the pluggable backend behind `gethostbyname` / `getaddrinfo`) is *dlopen'd* at runtime even from a "static" binary. A static glibc binary *can* still resolve names listed in `/etc/hosts`; what it can't do is real DNS over the network. If you need network DNS lookups on the target, build BusyBox *dynamically* and copy the toolchain's libraries into `~/imx6ull/rootfs/lib/`. We do both in this chapter — static for the first boot to keep things simple, then dynamic in §31.7 to enable DNS.
 
 ## 31.4  Populate the rootfs
 
@@ -320,7 +320,7 @@ Two things to know:
 1. **`-d` preserves symlinks.** Most `.so.N` files are symlinks to `.so.N.M`. Without `-d`, `cp` follows the symlink and copies the target — making both files identical full copies. With `-d`, the symlink stays a symlink and you save space.
 2. **`ld-linux-armhf.so.3` is the dynamic linker itself.** In the toolchain it's a symlink to the real `ld-2.31.so`. On the target it *must* be a real file at the path the ELF binaries' INTERP section points to (`/lib/ld-linux-armhf.so.3`). The `rm` + `cp` (without `-d`) dance after the wildcard copy forces the real file.
 
-Total size: ~60 MB for glibc, ~5 MB for musl. The glibc bulk is mostly NSS modules, locale data, and unused libraries — all of which you'd strip in a production build.
+Total size: ~60 MB unstripped for glibc, ~5–10 MB after `strip` and removing the locales / NSS modules you don't need; ~5 MB for a comparable musl install. The glibc bulk is mostly NSS modules, locale data, and unused libraries — all of which you'd strip in a production build.
 
 ## 31.11  Export over NFS, boot
 

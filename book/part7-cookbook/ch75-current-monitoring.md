@@ -399,7 +399,7 @@ ATTRIBUTE_GROUPS(mi);
 
 /* === Probe / Remove === */
 
-static int mi_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static int mi_probe(struct i2c_client *client)
 {
     struct myina *m;
     struct device *hwmon_dev;

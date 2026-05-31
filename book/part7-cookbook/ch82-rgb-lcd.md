@@ -352,11 +352,10 @@ static int mypanel_probe(struct platform_device *pdev)
     return 0;
 }
 
-static int mypanel_remove(struct platform_device *pdev)
+static void mypanel_remove(struct platform_device *pdev)
 {
     struct mypanel *p = platform_get_drvdata(pdev);
     drm_panel_remove(&p->panel);
-    return 0;
 }
 
 static const struct of_device_id mypanel_of_match[] = {

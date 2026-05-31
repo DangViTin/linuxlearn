@@ -328,8 +328,9 @@ void c_irq_dispatch(void)
 {
     uint32_t iar = REG(GICC_IAR);
     uint32_t irq = iar & 0x3FF;
+    if (irq == 1023) return;   /* spurious — IAR returns 1023 when no IRQ is active */
     if (irq < MAX_IRQ && handlers[irq]) handlers[irq]();
-    REG(GICC_EOIR) = iar;   /* end of interrupt */
+    REG(GICC_EOIR) = iar;       /* end of interrupt */
 }
 ```
 
@@ -337,7 +338,7 @@ A note on the `GICD_IPRIORITYR` writes: each IRQ has *one byte* of priority, not
 
 ## 15.7  Hooking up the UART1 IRQ
 
-UART1's IRQ goes through GIC SPI ID **26**. In GIC terms that's `26 + 32 = 58` — but the *GIC's view* of the IRQ ID also adds 32 internally. Conventionally we use the SoC's labeling, which on i.MX6ULL puts UART1 at GIC ID 58. Verify in RM Chapter 3 table.
+UART1's IRQ is shown as **IRQ 26** in the i.MX6ULL RM Table 3-1 (interrupt assignments). That number is the *SPI (Shared Peripheral Interrupt) offset*. The GIC's own ID space numbers SGIs 0–15, PPIs 16–31, and SPIs from 32 upward — so the GIC **INTID** for UART1 is `32 + 26 = 58`. We pass `58` to `gic_register()` and `gic_enable_irq()`. (Different SoC docs use one convention or the other; once you internalize "RM number + 32 = GIC INTID for SPIs," the rest is bookkeeping.)
 
 Modify `uart_init` (Chapter 12) to enable the RX-ready interrupt:
 

@@ -350,7 +350,7 @@ The general structure:
     };
 
     intc: interrupt-controller@a01000 {
-        compatible = "arm,cortex-a7-gic";
+        compatible = "arm,gic-400";   /* current mainline; "arm,cortex-a7-gic" is the older fallback */
         #interrupt-cells = <3>;
         interrupt-controller;
         reg = <0xa01000 0x1000>,
@@ -460,7 +460,7 @@ Or from a Linux user-space with ConfigFS (in newer kernels):
 # cat tmp102.dtbo > /sys/kernel/config/device-tree/overlays/tmp102/dtbo
 ```
 
-After overlay application, the kernel re-walks the DT, finds the new `tmp102@48` node, looks for a driver with `compatible = "ti,tmp102"` (the upstream driver `drivers/hwmon/tmp103.c` and its variants — verify the exact name in current sources), probes it, and `/sys/class/hwmon/hwmon<N>/temp1_input` becomes readable.
+After overlay application, the kernel re-walks the DT, finds the new `tmp102@48` node, looks for a driver with `compatible = "ti,tmp102"` (the upstream driver is `drivers/hwmon/tmp102.c`), probes it, and `/sys/class/hwmon/hwmon<N>/temp1_input` becomes readable.
 
 You did not recompile the kernel. You did not touch the rootfs. You added a hardware description and the kernel did the rest.
 
@@ -529,7 +529,7 @@ This is the Linux model. Internalise it and Part VI is dramatically easier.
 
 1. **Read `imx6ull.dtsi` end-to-end.** Skim every node. Identify which ones describe (a) the CPU, (b) the GIC, (c) on-chip RAM, (d) on-SoC peripherals, (e) clock providers, (f) pinctrl banks.
 2. **Read `imx6ull-14x14-evk.dts` end-to-end.** It's much shorter than the `.dtsi`. Identify the lines that (a) set the board's model string, (b) enable specific peripherals via `&uart1 { status = "okay"; }`, (c) describe board-specific pinmux fragments, (d) declare board-specific regulators.
-3. **Dump a compiled DTB back to source.** Run `dtc -I dtb -O dts arch/arm/boot/dts/imx6ull-14x14-evk.dtb`. Note the differences from the `.dts` — the `dtc` output is post-include, post-preprocessor, fully resolved.
+3. **Dump a compiled DTB back to source.** Run `dtc -I dtb -O dts arch/arm/boot/dts/nxp/imx/imx6ull-14x14-evk.dtb`. Note the differences from the `.dts` — the `dtc` output is post-include, post-preprocessor, fully resolved.
 4. **Find which driver binds.** Pick three DT compatible strings from the EVK DTB and grep mainline for them: `grep -r "fsl,imx6ul-uart" drivers/`. Identify the driver file in each case.
 5. **Write your first overlay.** Add a virtual I²C device — pick something innocuous like a non-existent ID at an unused address (`0x57`). Compile with `dtc -@ -O dtb tmp.dts -o tmp.dtbo`. Apply at U-Boot. Boot and `dmesg | grep tmp` to confirm the kernel *tried* to probe it (and failed because there's no actual device — that's fine; we wanted to confirm the overlay-apply path).
 6. **Find the `chosen.bootargs`** in your booted kernel by running `cat /proc/cmdline` on the target — that's exactly what U-Boot wrote into the DT.
@@ -542,7 +542,7 @@ This is the Linux model. Internalise it and Part VI is dramatically easier.
 - **Forgotten `;` at end of property.** DTC error messages for missing `;` are sometimes misleading; check the line above the error first.
 - **Reference vs definition.** `uart1: serial@2020000 { ... };` *defines* the node; `&uart1 { ... };` *references and modifies* it. If you write `uart1 { ... };` (no label, just the bare name in a separate `/ { uart1 { ... } }`), the DTC creates a *new* node `uart1` — which is almost never what you want.
 - **`clocks` order matters.** `clock-names` is positional; `clock-names = "ipg", "per"` means the *first* `clocks` entry is "ipg", the *second* is "per". Swap the order and the driver fails to find the right clock.
-- **`status = "okay"` typo.** Some old templates use `"ok"` (without "ay"). The DT spec says "okay". Kernels lenient about it for backward compat, but newer dtbs_check will warn.
+- **`status = "okay"` typo.** Some old templates use `"ok"` (without "ay"). The DT spec mandates `"okay"`. Older kernels accepted `"ok"` for backward compatibility, but modern `dtbs_check` rejects it as invalid against the schema.
 
 ## 27.14  Going deeper
 

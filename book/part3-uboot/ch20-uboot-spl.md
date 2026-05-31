@@ -9,8 +9,8 @@ status: draft
 # Chapter 20 — U-Boot SPL: the missing link
 
 > **What:** the **SPL** (Secondary Program Loader) — the first stage of the two-stage U-Boot — explained in enough detail that you can read its source and modify it for a custom board.
-> **Why:** the i.MX6ULL Boot ROM can only load ~100 KB into OCRAM. Full U-Boot is ~600 KB. SPL exists to bridge that gap: it is a small first-stage program that initializes DRAM, then loads full U-Boot into DRAM and jumps to it. Mechanically it is your Chapter 11–14 work, productized.
-> **Focus:** the **size constraint** as a design pressure. SPL has at most ~64 KB of code budget. Every feature pays for itself in bytes. Understanding what SPL chooses to include and what it skips is how you understand what is and isn't expected to work in the first 100 ms of a board's life.
+> **Why:** the i.MX6ULL OCRAM is 128 KB total at `0x00900000`, but the Boot ROM reserves the bottom of it (`0x00900000–0x00906FFF`, ~28 KB) for its own working area + scatter buffers. That leaves a **~68 KB practical window** for an SPL image (`0x00907000–0x0091FFFF`). Full U-Boot is ~600 KB and can't fit; SPL bridges that gap — a small first-stage program that initializes DRAM, loads full U-Boot into DRAM, and jumps to it. Mechanically, SPL is your Chapter 11–14 work, productized.
+> **Focus:** the **size constraint** as a design pressure. NXP's `mx6ull_14x14_evk_defconfig` caps `CONFIG_SPL_MAX_SIZE` near **64 KB** with a small reserve; treat that as your ceiling. Every feature pays for itself in bytes. Understanding what SPL chooses to include and what it skips is how you understand what is and isn't expected to work in the first 100 ms of a board's life.
 
 ## 20.1  Why two stages
 
@@ -20,7 +20,7 @@ Three possible solutions:
 
 1. **DCD-driven big load.** Put DRAM init into the DCD; the ROM then loads U-Boot directly into DRAM, bypassing OCRAM size limits. This works and was the dominant pattern in the i.MX5 era. Mainline U-Boot for i.MX6 has moved away from it; the DCD becomes unwieldy at ~800 bytes and is hard to maintain when DRAM timings change.
 2. **Multi-stage boot with SPL.** ROM loads a small SPL into OCRAM; SPL initializes DRAM; SPL loads the full U-Boot from the boot medium into DRAM; SPL jumps to it. **This is the modern pattern.**
-3. **Static link to a small U-Boot.** Strip features until U-Boot fits in 100 KB. Has been done. Painful.
+3. **Static link to a small U-Boot.** Strip features until U-Boot fits in ~64 KB. Has been done. Painful.
 
 Pattern 2 is what mainline does. Two stages, one for setup, one for the main job. The pattern repeats further up the stack: U-Boot then loads Linux, and Linux loads `/sbin/init`. Each stage knows more than the previous and runs from more resources.
 
@@ -40,7 +40,7 @@ That is it. SPL does not run the kernel. SPL does not handle networking. SPL doe
 
 ## 20.3  The size budget
 
-For i.MX6ULL, the Boot ROM's effective load window for SPL is **~100 KB** within OCRAM. The mainline `mx6ull_14x14_evk_defconfig` SPL builds at roughly **40 KB**. The headroom is real; the discipline is mandatory.
+For i.MX6ULL, the Boot ROM's effective load window for SPL is **~64 KB** of usable OCRAM (the chip has 128 KB at `0x00900000`, but the ROM reserves the bottom ~28 KB for its scatter buffers and working state, and `CONFIG_SPL_MAX_SIZE` in `mx6ull_14x14_evk_defconfig` is set to about 64 KB). The mainline SPL builds at roughly **40 KB**. The headroom is real; the discipline is mandatory.
 
 Configuration items that respect the budget:
 
@@ -68,7 +68,7 @@ $ size spl/u-boot-spl
   39204	   1872	   8112	  49188	   c024	spl/u-boot-spl
 ```
 
-If `text + data + bss > ~100 KB`, the ROM will silently refuse the image. The build emits a warning when you exceed `CONFIG_SPL_MAX_SIZE`, but not always — verify with `size` after every change.
+If `text + data + bss > CONFIG_SPL_MAX_SIZE` (~64 KB on the EVK defconfig), the build emits a warning — but not always under every linker configuration, so verify with `size` after every change. Exceed the practical OCRAM window and the ROM will silently refuse the image.
 
 ## 20.4  Where SPL lives in the source
 
@@ -244,28 +244,30 @@ $ xxd -s 0x400 -l 32 SPL
 Decode:
 
 - Magic `D1 00 20 40` ✓
-- Entry `0x80780000` (DRAM... wait, SPL runs from OCRAM)
+- Entry `0x80780000` — a **DRAM** address. That tells us this file is **not** the SPL; it's *full U-Boot's* `.imx`, which loads to DRAM. The dump above is from `u-boot.imx`, not `spl/u-boot-spl.imx`.
 
-Hmm. Let me re-check. The entry for an SPL is *inside OCRAM*, not DRAM. The address you see depends on the U-Boot version and board config. For SPL on i.MX6ULL, you'd expect entry near `0x00908000`. If you see something starting with `0x807...` that is **not** an SPL — that is full U-Boot's `.imx` which loads to DRAM (and which the SPL loaded from SD).
-
-Try with the actual SPL artifact:
+The SPL's `.imx` is a different file. To inspect it:
 
 ```sh
-$ xxd -s 0x400 -l 32 spl/u-boot-spl.imx     # different filename in some builds
+$ xxd -s 0x400 -l 32 spl/u-boot-spl.imx     # name varies by U-Boot version
 ```
 
-If the file doesn't exist under that name, look for `MLO` or `u-boot-spl-dtb.imx` in the build root. The IVT-bearing SPL artifact has different names across U-Boot versions; `find . -name "*.imx" -ls` after a fresh build to enumerate them.
+If that file doesn't exist, look for `MLO` or `u-boot-spl-dtb.imx` in the build root, or run `find . -name "*.imx" -ls` to enumerate the IVT-bearing artifacts. When you find the correct SPL file, its IVT will have:
 
-When you find the correct file, its IVT will have:
-
-- `entry` = somewhere in OCRAM (`0x00908000`-ish)
-- `self` = same OCRAM region
-- `BootData.start` = OCRAM load address
+- `entry`        = somewhere in OCRAM (`~0x00908000`)
+- `self`         = same OCRAM region (the IVT's own load address)
+- `BootData.start`  = OCRAM load address (`~0x00907400`)
 - `BootData.length` = SPL size + headers
 
-Identical structure to your Chapter 11 output. The DCD inside SPL's `.imx` is the DDR init that the ROM walks **before SPL even runs**. This is "Pattern 1 from §20.1" applied to SPL specifically — the ROM brings up DDR via DCD, then loads SPL into OCRAM, then SPL... wait no, that's not right either, because SPL is what initializes DDR.
+Identical structure to your Chapter 11 output, just with OCRAM addresses instead of DRAM addresses.
 
-The answer is subtle and worth pinning: the SPL `.imx` may or may not have a DCD. If it does, the DCD does *some* setup (clocks, maybe pads), but **not DDR** — DDR init is done by SPL's C code after SPL is loaded. The DCD's job in this case is the minimum needed before SPL's code can run. Compare your specific SPL's DCD against the EVK board's `.cfg` file (`board/freescale/mx6ull_14x14_evk/mx6ull_14x14_evk.cfg`) to see exactly what's there.
+**Does SPL have a DCD?** It can, but on i.MX6ULL it usually doesn't need one — and that is the deliberate design choice:
+
+- The ROM runs the DCD (if present) *before* it transfers control to the loaded image. The DCD's job is to configure whatever pads, clocks, or registers the loaded image *cannot configure for itself* — typically DDR, so the image can be loaded into DRAM.
+- **SPL is loaded into OCRAM, not DRAM.** So the DCD doesn't need to bring up DDR before loading SPL. SPL's *own C code* (the C function `spl_dram_init` / `mx6_dram_cfg`) brings up DDR — that's literally Ch 14 productized.
+- The SPL `.imx`'s DCD is therefore typically empty or near-empty, and full U-Boot's `.imx` doesn't have a meaningful DCD either (full U-Boot is loaded by SPL into DRAM that SPL just brought up).
+
+Compare your specific SPL's DCD content against the EVK board's `.cfg` file (`board/freescale/mx6ull_14x14_evk/mx6ull_14x14_evk.cfg`) to confirm what's actually there.
 
 ## 20.9  The SPL-to-U-Boot handshake
 
@@ -306,7 +308,7 @@ Full U-Boot's `_main` then proceeds with *its* `board_init_f` → relocation →
 - **`spl/u-boot-spl-dtb.bin` vs `spl/u-boot-spl-dtb.imx`.** The first is the raw SPL; the second is wrapped with an IVT for the Boot ROM. Use the second for SD-boot.
 - **Mixing SPL and full-U-Boot defconfigs.** They share one `.config`. The same defconfig builds both stages; you can't have separate configs without significant work.
 - **Forgetting that SPL has its own device tree.** SPL uses a *cut-down* DT — `u-boot-spl.dts` if defined — that only describes peripherals SPL actually uses. Adding a DT node for full U-Boot does not automatically make it visible to SPL.
-- **Out-of-bounds OCRAM access.** SPL has ~100 KB of OCRAM. If you accidentally grow it (large global arrays, large stack frames), boot fails silently — the image is bigger than the ROM expects.
+- **Out-of-bounds OCRAM access.** SPL has ~64 KB of usable OCRAM (the lower ~28 KB belongs to the Boot ROM). If you accidentally grow it (large global arrays, large stack frames), boot fails silently — the image is bigger than the ROM expects.
 - **Cache state at handoff.** If SPL leaves caches dirty, full U-Boot may not see what SPL wrote. The standard pattern is `cleanup_before_linux()`-equivalent before jumping — clean caches, disable MMU. Mainline does this; if you hand-edit you must too.
 - **Calling SPL functions from full U-Boot.** They don't exist there — different binary, different memory map. Build errors usually catch this; runtime errors when they don't.
 
