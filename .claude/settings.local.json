@@ -11,7 +11,9 @@
       "Bash(pdftotext -layout PA_P3.pdf PA_P3.txt)",
       "Bash(pdftotext -layout PA_P4.pdf PA_P4.txt)",
       "Bash(gh run *)",
-      "PowerShell(gh run *)"
+      "PowerShell(gh run *)",
+      "Bash(git -C \"C:\\\\Users\\\\ViTin\\\\OneDrive\\\\Project\\\\LinuxLearn\" status)",
+      "Bash(git -C \"C:\\\\Users\\\\ViTin\\\\OneDrive\\\\Project\\\\LinuxLearn\" log --oneline -10)"
     ]
   }
 }

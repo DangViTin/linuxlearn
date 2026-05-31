@@ -270,6 +270,103 @@ part7-cookbook/ch96-at-ble
 part7-cookbook/ch97-ble-mesh
 ```
 
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Long-range & specialty wireless)
+:maxdepth: 2
+
+part7-cookbook/ch98-lora
+part7-cookbook/ch99-sub-ghz-proprietary
+part7-cookbook/ch100-zigbee-thread
+part7-cookbook/ch101-uwb-ranging
+```
+
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Cellular)
+:maxdepth: 2
+
+part7-cookbook/ch102-usb-lte
+part7-cookbook/ch103-uart-modems
+part7-cookbook/ch104-nbiot
+```
+
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Identification)
+:maxdepth: 2
+
+part7-cookbook/ch105-rfid-nfc
+part7-cookbook/ch106-fingerprint
+```
+
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Positioning)
+:maxdepth: 2
+
+part7-cookbook/ch107-gps-pps
+```
+
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Industrial buses)
+:maxdepth: 2
+
+part7-cookbook/ch108-rs485-modbus
+part7-cookbook/ch109-lin-bus
+part7-cookbook/ch110-can-deep-dive
+```
+
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Motors & encoders)
+:maxdepth: 2
+
+part7-cookbook/ch111-quadrature-encoders
+part7-cookbook/ch112-motor-drivers
+```
+
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Indicators & actuators)
+:maxdepth: 2
+
+part7-cookbook/ch113-smart-leds
+part7-cookbook/ch114-beepers-relays
+```
+
+```{toctree}
+:hidden:
+:caption: Part VII — Device cookbook (Network & system power)
+:maxdepth: 2
+
+part7-cookbook/ch115-dual-fec-eth
+part7-cookbook/ch116-pmic
+part7-cookbook/ch117-external-rtc
+```
+
+```{toctree}
+:hidden:
+:caption: Part VIII — Debug, production, advanced
+:maxdepth: 2
+
+part7-debug/ch118-jtag-openocd-gdb
+part7-debug/ch119-kernel-debug-no-jtag
+part7-debug/ch120-userspace-debug
+part7-debug/ch120A-mainline-patch-submission
+part7-debug/ch121-custom-board-port
+part7-debug/ch121A-cicd-embedded
+part7-debug/ch122-cross-toolchain
+part7-debug/ch122A-bsp-mainline-migration
+part7-debug/ch123-yocto-vs-buildroot
+part7-debug/ch123A-yocto-layer-dev
+part7-debug/ch124-secure-boot-optee
+part7-debug/ch125-field-updates
+part7-debug/ch125A-vscode-gdbserver
+part7-debug/ch126-closing
+```
+
 ---
 
 ## What this is
