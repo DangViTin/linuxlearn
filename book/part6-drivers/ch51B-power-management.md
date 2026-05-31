@@ -9,12 +9,12 @@ status: draft
 # Chapter 51B — Power management
 
 > **What:** Linux's three power-management layers — **runtime PM** (drivers autonomously gate clocks and rails when idle), **DVFS** (CPU frequency-and-voltage scaling under load) and **system sleep** (suspend-to-RAM / standby / hibernation). By the end your driver participates in runtime PM, the system suspends to RAM cleanly, and the CPU clocks down when idle.
-> **Why:** for any battery-powered product, this is half the engineering work. Saving 50 mA in idle means 5× battery life on a 1 Ah cell. For mains-powered embedded, it's still meaningful: less heat, smaller heatsinks, lower fan noise. Linux's PM framework is rich and *opt-in* — drivers that don't implement it don't suspend; the whole device fails to enter suspend until you fix them.
+> **Why:** On battery-powered products, PM tuning is a large fraction of the work. Saving 50 mA in idle means 5× battery life on a 1 Ah cell. For mains-powered embedded, it's still meaningful: less heat, smaller heatsinks, lower fan noise. Linux's PM framework is rich and *opt-in* — drivers that don't implement it don't suspend; the whole device fails to enter suspend until you fix them.
 > **Focus:** **the three layers are mostly independent**. Runtime PM is "this peripheral is idle; gate its clock now." DVFS is "the CPU isn't busy; scale to 396 MHz." System sleep is "the user pressed the suspend button; stop everything safely, resume on a wake source." Implement them one at a time; don't tangle them up.
 
 ## 51B.1  Runtime PM
 
-Runtime PM is the kernel's autonomic nervous system. Each device declares idle and active states; the framework reference-counts usage and runs `runtime_suspend` / `runtime_resume` callbacks when the count crosses zero.
+Runtime PM is the kernel's automatic per-device idle/active state machine. Each device has an idle and an active state. The framework counts users with a refcount. When the refcount hits zero it calls `runtime_suspend`. When it goes from zero to one it calls `runtime_resume`.
 
 ```c
 #include <linux/pm_runtime.h>
@@ -108,7 +108,7 @@ cpu0_opp_table: opp-table {
 };
 ```
 
-Each OPP is a frequency + the voltage required to run at that frequency. The DVFS framework reads this table, picks an OPP, scales the regulator first (if going up), then the clock, then the regulator down (if going down) — the "voltage before frequency" / "frequency before voltage" dance that ensures the CPU is always supplied with enough voltage for its current speed.
+Each OPP is a frequency + the voltage required to run at that frequency. The DVFS framework reads this table, picks an OPP, and applies the change. When raising the clock, the regulator goes up first, then the clock; when lowering, the reverse. This ensures the CPU is always supplied with enough voltage for its current speed.
 
 User-space pick the **governor** (the algorithm that decides when to scale):
 
@@ -178,7 +178,7 @@ static const struct dev_pm_ops my_pm_ops = {
 };
 ```
 
-The kernel calls system-suspend callbacks during `echo mem > /sys/power/state` and runtime-suspend callbacks autonomously.
+System-suspend callbacks run when user-space writes `mem` to `/sys/power/state`. Runtime-suspend callbacks run automatically when the device goes idle.
 
 ### Wakeup sources
 
@@ -215,7 +215,7 @@ Summary: 23.4 wakeups/second
         ...
 ```
 
-`powertop` is invaluable for finding which userspace process is keeping the CPU awake. Goal: idle the device under test → see "kernel sleep" at 95%+. Wakeups should be < 10/sec at idle.
+`powertop` shows which userspace process is keeping the CPU awake. Goal: idle the device under test → see "kernel sleep" at 95%+. Wakeups should be < 10/sec at idle.
 
 ## 51B.5  The full optimisation playbook
 
@@ -230,7 +230,7 @@ The order of operations for "make this product 3× longer-lasting":
 7. **Drop USB/Ethernet PHY power when unused.** `ip link set eth0 down` actually drops the PHY's clock.
 8. **Compile out unused subsystems.** A smaller kernel boots faster, holds less in cache.
 
-Each step is small (~mA). Together they go from "1 Ah lasts 4 hours" to "1 Ah lasts 4 days."
+Each step saves a few mA. Together they take a 1 Ah cell from 4 hours to 4 days.
 
 ## 51B.6  Lab
 
@@ -248,7 +248,7 @@ Each step is small (~mA). Together they go from "1 Ah lasts 4 hours" to "1 Ah la
 - **Driver that never calls `pm_runtime_get/put`.** The device is permanently "active" from PM's view; runtime suspend never runs.
 - **System suspend on a driver without suspend ops.** Kernel logs "noop_suspend" and proceeds, but your peripheral may be left in a bad state on resume. Always provide ops or use `pm_ptr` to inherit reasonable defaults.
 - **Clock left enabled across suspend.** PMIC may try to drop rails while clock is still toggling, which can violate the chip's spec sheet. Order: gate clock first, then drop rail, on the way down; reverse on resume.
-- **DVFS without proper regulator support.** If `cpu-supply` is wrong, raising the frequency before voltage stabilises = unreliable execution. Always specify `operating-points-v2` with matched microvolt entries.
+- **DVFS without proper regulator support.** If `cpu-supply` is wrong, the kernel may raise the clock before voltage settles. Execution becomes unreliable. Always specify `operating-points-v2` with matched microvolt entries.
 - **Wakeup source enabled but `IRQ_TYPE_LEVEL_HIGH` instead of `IRQ_TYPE_EDGE`.** Some SoCs only wake on edge IRQs from certain banks. Confirm against datasheet.
 - **`wakealarm` set in the past.** Kernel ignores; system suspends indefinitely. Always compute as `$(date +%s) + N`.
 

@@ -11,8 +11,8 @@ status: draft
 > **Naming convention used across Part VII.** Shell prompts shown as `[root@pa-mini:~]#` come from the reference test board — the Point Atom MINI configured with hostname `pa-mini`. Substitute your own hostname; nothing else about the lab assumes it.
 
 > **What:** how a QSPI NOR flash chip actually works on the wire, how the mainline `spi-nor` driver implements it, and how to write your own minimal driver from scratch for one specific chip. Three chips compared — **Winbond W25Q128** (16 MB), **Macronix MX25L25645G** (32 MB), **Micron MT25QL256ABA** (32 MB) — but the from-scratch driver targets the W25Q128 to keep the example concrete.
-> **Why:** the philosophy of this book is "raw — build it yourself, understand it forever." For QSPI flash that means: command bytes on the wire, status-register polling, page-program timing, JEDEC ID parsing. After this chapter you can read the mainline `spi-nor` source and know exactly what each function is hiding. If you ever encounter a chip that *isn't* in the database, you'll know how to add it (or replace the framework entirely with 200 lines).
-> **Focus:** **a NOR flash is a state machine driven by single-byte commands**. `0x9F` = read JEDEC ID. `0x06` = write-enable. `0x20` = sector erase. `0x02` = page program. `0x03` = read. Send the right bytes in the right order and you can read, erase, program, and identify any standard NOR flash with about 100 lines of code. The mainline driver wraps this in regmap-like abstractions and parameter databases, but the wire protocol is dead simple.
+> **Why:** the philosophy of this book is "raw — build it yourself, understand it forever." For QSPI flash that means: command bytes on the wire, status-register polling, page-program timing, JEDEC ID parsing. After this chapter you can read the mainline `spi-nor` source and know exactly what each function is hiding. If you encounter a chip that is not in the database, you can add an entry — or replace the framework with about 200 lines of your own.
+> **Focus:** **a NOR flash is a state machine driven by single-byte commands**. `0x9F` = read JEDEC ID. `0x06` = write-enable. `0x20` = sector erase. `0x02` = page program. `0x03` = read. Send the right bytes in the right order and you can read, erase, program, and identify any standard NOR flash with about 100 lines of code. The mainline driver wraps this in abstractions and a parameter database, but the wire protocol itself is small.
 
 ## 64.1  Why QSPI NOR vs eMMC vs SD vs raw NAND
 
@@ -28,7 +28,7 @@ status: draft
 | Cost (volume) | $1–5 | $5–20 | $3–10 | $2–10 |
 | Best for | Small soldered boot device | Main consumer storage | Removable / dev | Mid-size industrial |
 
-QSPI NOR fits when storage need is < 32 MB, you want fast/deterministic boot, you want a soldered theft-resistant device, and you're not storing much user data. Many industrial i.MX6ULL designs boot from QSPI NOR.
+QSPI NOR fits when your storage need is under 32 MB, when you want a fast, deterministic boot, when you want a soldered device that resists theft, and when there is little user data to store. Many industrial i.MX6ULL designs boot from QSPI NOR.
 
 ## 64.2  Chip comparison
 
@@ -69,7 +69,7 @@ The minimum is six wires:
 
 **Layout:** ≤ 5 mm length-mismatch between SCLK and IO[0:3] traces at 80 MHz. Series termination 33 Ω on each line is common. Keep traces ≤ 4 cm.
 
-**Pull-ups:** 10 kΩ on IO2 and IO3 (so they're HIGH while still in 1-bit / single-IO mode at boot — quad mode hasn't been enabled yet, IO2 acts as /WP, IO3 as /HOLD; both active-low, so pulled HIGH means "not asserted").
+**Pull-ups:** 10 kΩ on IO2 and IO3. These pull-ups keep IO2 and IO3 HIGH while the chip is still in single-IO mode at boot. Quad mode is not enabled yet, so IO2 acts as /WP and IO3 as /HOLD. Both are active-low, so "HIGH" means "not asserted."
 
 ## 64.4  The protocol — what's on the wire
 
@@ -108,7 +108,7 @@ The host:
 | Chip erase | `0xC7` | none | none | tens of seconds |
 | 4-byte address mode | `0xB7` | none | none | switch to 4-byte addressing |
 
-That's basically the entire interface. Some chips add quad-IO commands (`0xEB` for read, `0x32` for program); same idea but with data spread over 4 IO lanes for ~4× throughput.
+That is the full interface. Some chips add quad-IO commands (`0xEB` for read, `0x32` for program); same idea but with data spread over 4 IO lanes for ~4× throughput.
 
 ### Three invariants that catch beginners
 
@@ -258,7 +258,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 }
 ```
 
-The page-boundary clamp in step 1 is critical — NOR chips wrap *within a page*: programming with an address of 0xFE and 4 bytes of data writes the last 2 bytes at 0xFE, 0xFF, then the next 2 bytes back at 0x00 and 0x01. Silent corruption. The driver splits long writes at page boundaries.
+Step 1's page-boundary clamp matters because NOR chips wrap *within a page*. If you program at address 0xFE with 4 bytes of data, the last 2 bytes go to 0xFE and 0xFF, then the next 2 bytes wrap back to 0x00 and 0x01 of the same page. Silent corruption. The driver splits long writes at page boundaries.
 
 ### How erase works
 
@@ -301,7 +301,7 @@ static int spi_nor_wait_till_ready(struct spi_nor *nor)
 }
 ```
 
-This is the heart of the framework: a polling loop that yields the CPU between checks. For a chip-erase (tens of seconds), the loop runs for a long time but the kernel stays responsive because of `cond_resched`.
+This polling loop is what makes the framework work on Linux: it yields the CPU between checks. For a chip-erase (tens of seconds), the loop runs for a long time but the kernel stays responsive because of `cond_resched`.
 
 ## 64.7  Writing a NOR-flash driver from scratch
 
@@ -615,7 +615,7 @@ DT to test it:
 };
 ```
 
-Note we're using ordinary SPI (`ecspi3`), not QSPI. The raw protocol works at single-IO mode up to ~50 MHz; using QSPI would require either an MMIO-driver for the i.MX QSPI controller's command-mode registers (more involved) or going through `spi_mem` (which is exactly what we said we were skipping). Pedagogically, ordinary SPI is the right choice for this from-scratch driver.
+Note we're using ordinary SPI (`ecspi3`), not QSPI. The raw protocol works at single-IO mode up to ~50 MHz; using QSPI would require either an MMIO-driver for the i.MX QSPI controller's command-mode registers (more involved) or going through `spi_mem` (which is exactly what we said we were skipping). For this teaching example, ordinary SPI is the right choice.
 
 Build, load, exercise:
 

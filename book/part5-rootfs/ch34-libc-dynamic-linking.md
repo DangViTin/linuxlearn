@@ -9,12 +9,12 @@ status: draft
 # Chapter 34 — libc, dynamic linking, and the loader
 
 > **What:** the C library that user-space programs link against (glibc, musl, uClibc-ng), the ELF dynamic-linker that resolves shared-library references at runtime (`/lib/ld-linux-armhf.so.3`), and the bookkeeping (PLT, GOT, `LD_LIBRARY_PATH`, `RPATH`) that makes `hello-world` actually find `printf`.
-> **Why:** every dynamically-linked program on the target depends on this machinery. When it works it's invisible; when it breaks you get "No such file or directory" on a file that obviously exists. Knowing what the loader does demystifies these failures.
-> **Focus:** **ld-linux's job.** When the kernel `exec`s a dynamically-linked program, the first thing that runs is *not* `main()` — it's the dynamic linker, which loads every required shared library, fixes up addresses, and only *then* jumps to your code. Once you've traced this sequence you can debug any "libfoo.so.X: cannot open shared object file" problem.
+> **Why:** every dynamically-linked program on the target depends on this machinery. When it works it's invisible. When it breaks you get `No such file or directory` on a file that does exist. Knowing what the loader does demystifies these failures.
+> **Focus:** **ld-linux's job.** When the kernel `exec`s a dynamically-linked program, the first thing that runs is *not* `main()` — it's the dynamic linker, which loads every required shared library, fixes up addresses, and only *then* jumps to your code. Once you've traced this sequence you can debug most `libfoo.so.X: cannot open shared object file` problems.
 
 ## 34.1  Three C libraries
 
-Embedded Linux gives you a real choice of C library, unlike a typical desktop where you get glibc and that's it.
+Embedded Linux lets you pick the C library. On a desktop you get glibc and nothing else.
 
 | | glibc | musl | uClibc-ng |
 |---|---|---|---|
@@ -27,7 +27,7 @@ Embedded Linux gives you a real choice of C library, unlike a typical desktop wh
 | Performance | optimized aggressively | conservative, predictable | adequate |
 | Used in mainstream | Debian, Ubuntu, Fedora | Alpine, Void | OpenWrt, Buildroot |
 
-For embedded Linux **musl is increasingly the default**. Reasons:
+For embedded Linux **musl is the default**. Reasons:
 
 - One sixth the size of glibc for the same program.
 - Static linking actually works (no NSS / dlopen surprises).
@@ -105,7 +105,7 @@ All of that happens before your `main()` runs. On embedded i.MX6ULL hardware, dy
 
 ## 34.3  PLT and GOT
 
-The two tables that make dynamic linking efficient.
+The PLT and GOT are the two tables that make dynamic linking efficient.
 
 ### GOT — Global Offset Table
 
@@ -215,7 +215,7 @@ For a deeper look:
       6: transferring control: my-binary
 ```
 
-`LD_DEBUG=libs` (`LD_DEBUG=help` for the full list of categories) is the diagnostic tool for "why isn't this library being found?" Far more useful than guessing.
+`LD_DEBUG=libs` (`LD_DEBUG=help` for the full list of categories) is the diagnostic tool for "why isn't this library being found?" Use `LD_DEBUG=libs` before guessing.
 
 ## 34.6  RPATH and friends
 
@@ -285,7 +285,7 @@ The decision is per-binary, not per-system. Mix as needed.
 
 - **`libfoo.so.X: cannot open shared object file`** — the dynamic linker can't find a NEEDED library. Diagnose with `LD_DEBUG=libs`. Fix by copying the library into `/lib` or adding to `LD_LIBRARY_PATH` / `RPATH`.
 - **`relocation error: undefined symbol`** — the library was found but doesn't have a symbol the binary needs. Usually means library *version* mismatch. The binary was built against newer libc; the runtime has older.
-- **Mixed glibc and musl on one rootfs.** glibc's SONAME is `libc.so.6` with loader `/lib/ld-linux-armhf.so.3`; musl's loader is `/lib/ld-musl-armhf.so.1` with its own libc — they have different SONAMEs and can technically coexist in separate prefixes. The real failure mode is when both expect to *own* the same `/lib/libc.so.6` symlink. Either pick one libc per rootfs, or place musl binaries under their own prefix with their own loader path baked in via `RPATH`.
+- **Mixed glibc and musl on one rootfs.** Mixing glibc and musl on one rootfs is possible but easy to get wrong. Glibc uses SONAME `libc.so.6` and loader `/lib/ld-linux-armhf.so.3`. Musl uses its own loader `/lib/ld-musl-armhf.so.1` and its own libc. They can live in separate prefixes. The failure mode is when both want to own the same `/lib/libc.so.6` symlink. Pick one libc per rootfs, or put musl binaries under their own prefix with the loader path baked in via `RPATH`.
 - **Static glibc + getaddrinfo.** Returns "Temporary failure in name resolution" with no obvious cause. NSS modules are dlopen'd at runtime even for "static" binaries; if the .so files aren't on disk you lose DNS. Either ship the NSS .so files alongside your "static" binary or switch to musl.
 - **`LD_LIBRARY_PATH` and setuid binaries.** Ignored for setuid binaries (security). Don't rely on it for system binaries.
 - **`ldconfig` not run after copying libraries.** Some glibc setups won't find a library until you `ldconfig`. Symptom: works after `ldconfig`, breaks on fresh boot. Fix: run `ldconfig` from `rcS` or include the library path in `/etc/ld.so.conf.d/`.

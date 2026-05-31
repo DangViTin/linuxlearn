@@ -25,9 +25,9 @@ If your last decade was MCU work, the first thing to internalise is this:
 | You print to a UART you set up | You call `printk` and it routes itself |
 | Crash → board resets | Crash → kernel panics → user is unhappy |
 
-A kernel module isn't a program. It's a **library that the kernel dynamically links into itself.** The kernel calls your `module_init` once when loaded, and your `module_exit` once when unloaded. In between, your code is sitting passive — invoked from system calls, interrupts, work queues, kthreads, whatever subsystem you've hooked into.
+A kernel module is a library that the kernel dynamically links into itself. The kernel calls your `module_init` once when loaded, and your `module_exit` once when unloaded. In between, your code waits, then runs when something calls into it — a system call, an interrupt, a work queue, a kthread, or whichever subsystem registered it.
 
-This isn't merely a coding-style change. It changes the failure modes too. A wild pointer in firmware corrupts your `.bss`. A wild pointer in a kernel module corrupts *the kernel*, and the kernel is whatever is currently running — kernel threads, other drivers, the scheduler. A bug that would have been a crashed loop is now an unbootable system.
+This is more than a coding-style change. The failure modes change too. A wild pointer in firmware corrupts your `.bss`. A wild pointer in a kernel module corrupts the kernel itself. That can mean kernel threads, other drivers, or the scheduler — whatever happens to be running. A bug that would have been a crashed loop is now an unbootable system.
 
 ## 36.2  The smallest module that compiles
 
@@ -58,7 +58,7 @@ MODULE_DESCRIPTION("Smallest possible kernel module");
 MODULE_VERSION("0.1");
 ```
 
-Twenty-some lines. Let's go through each.
+About twenty lines. Walk through each.
 
 **Headers.**
 - `<linux/init.h>` — defines `__init` and `__exit` macros, plus `module_init` and `module_exit`.
@@ -81,7 +81,7 @@ Note **none** of these are `<stdio.h>` or `<stdlib.h>`. **The kernel has no libc
 
 ## 36.3  The `Kbuild` Makefile
 
-You don't compile a kernel module with `arm-linux-gnueabihf-gcc hello.c -o hello.ko`. The kernel build system (Kbuild) is invasive — it generates per-module ELF sections, applies the kernel's own `CFLAGS` (including `-fno-stack-protector` and many others), and dynamically discovers the right `vmlinux` symbols. You build out-of-tree modules by *invoking the kernel's own Makefile* and pointing at your source.
+You don't compile a kernel module with `arm-linux-gnueabihf-gcc hello.c -o hello.ko`. Kbuild does a lot of work for you. It generates per-module ELF sections, applies the kernel's own `CFLAGS` (including `-fno-stack-protector` and many others), and dynamically discovers the right `vmlinux` symbols. You build out-of-tree modules by *invoking the kernel's own Makefile* and pointing at your source.
 
 `Makefile`:
 
@@ -143,7 +143,7 @@ depends:
 vermagic:       6.6.0 SMP mod_unload modversions ARMv7
 ```
 
-The **`vermagic`** is critical. It encodes the exact kernel version (`6.6.0`) and the config options that affect binary compatibility (`SMP`, `mod_unload`, etc.). When you `insmod hello.ko`, the kernel compares `hello.ko`'s vermagic to its own. **Mismatch = refused load.** You can't take a module built against 6.6.0 and load it on 6.6.1, even if the API is identical. This is a feature, not a bug — it prevents subtle ABI breakage.
+The **`vermagic`** is critical. It encodes the exact kernel version (`6.6.0`) and the config options that affect binary compatibility (`SMP`, `mod_unload`, etc.). When you `insmod hello.ko`, the kernel compares `hello.ko`'s vermagic to its own. If they differ, the load is refused. You can't take a module built against 6.6.0 and load it on 6.6.1, even if the API is identical. This is a feature, not a bug — it prevents subtle ABI breakage.
 
 ## 36.4  Loading and unloading
 
@@ -268,13 +268,13 @@ What you see in `dmesg` depends on the **console log level**. Read it:
 4    4    1    7
 ```
 
-Four numbers: current console log level, default for unmarked messages, minimum allowed, boot default. The console shows messages with priority **lower than or equal to** the first number — so `4` means levels `0`–`3` print to console, levels `4`–`7` only go to the ring buffer. Crank it up:
+Four numbers: current console log level, default for unmarked messages, minimum allowed, boot default. The console shows messages with priority **lower than or equal to** the first number — so `4` means levels `0`–`3` print to console, levels `4`–`7` only go to the ring buffer. Raise it:
 
 ```
 [root@pa-mini:~]# echo 8 > /proc/sys/kernel/printk
 ```
 
-Now everything prints to console. Useful for debugging; spammy in production.
+Now everything prints to console. Useful for debugging. Noisy in production.
 
 ## 36.7  Lab
 

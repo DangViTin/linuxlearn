@@ -10,7 +10,7 @@ status: draft
 
 > **What:** the kernel's display stack — the legacy **fbdev** (`/dev/fb0`) API and the modern **DRM/KMS** (Direct Rendering Manager / Kernel Mode Setting) framework. Both still ship; new drivers target DRM. We cover the i.MX6ULL **LCDIF** controller, the `panel-simple` driver that handles dozens of RGB-parallel panels, and how mainline kernels expose displays to user-space.
 > **Why:** LCDIF + RGB parallel LCDs are the bread and butter of i.MX6ULL HMI products. The framework has shifted significantly in the last 5 years (away from fbdev, toward DRM) and being current matters — DRM brings page-flipping, atomic mode-setting, fence-based synchronisation, and Wayland compatibility.
-> **Focus:** **panel-simple + DT timings == working display**. For 90 % of products you don't write a panel driver; you describe panel timings in DT, point at `panel-simple`, and the LCDIF driver handles the rest. The remaining 10 % is custom panels needing a chip-specific init sequence, covered in Ch 80–84 of the cookbook.
+> **Focus:** For most boards, panel-simple plus correct DT timings is enough. For 90 % of products you don't write a panel driver; you describe panel timings in DT, point at `panel-simple`, and the LCDIF driver handles the rest. The remaining 10 % is custom panels needing a chip-specific init sequence, covered in Ch 80–84 of the cookbook.
 
 ## 54.1  fbdev vs DRM
 
@@ -24,7 +24,7 @@ status: draft
 | Wayland | No | Yes |
 | User-space typical client | direct mmap | libdrm + Mesa / Cairo / GTK / Qt |
 
-For embedded HMI with one panel and a single fullscreen Qt app, fbdev still works. For anything with multiple outputs, GPU acceleration, or Wayland, DRM is the only option. **Both are present** on modern kernels; fbdev is emulated on top of DRM via `fbdev_emulation`. Your fullscreen Qt app sees `/dev/fb0`; under the hood DRM is doing the work.
+For embedded HMI with one panel and a single fullscreen Qt app, fbdev still works. For anything with multiple outputs, GPU acceleration, or Wayland, DRM is the only option. Both APIs are present on modern kernels. fbdev is emulated on top of DRM (`fbdev_emulation`). A fullscreen Qt app opens `/dev/fb0`, but DRM is doing the work underneath.
 
 ## 54.2  i.MX6ULL LCDIF
 
@@ -103,7 +103,7 @@ The `port`/`endpoint` graph wires LCDIF's output to panel's input. This is the `
 
 ## 54.4  panel-simple
 
-`drivers/gpu/drm/panel/panel-simple.c` is a magnificent hack: it has a *database* of dozens of supported panels (vendor-id + part-number), each with a struct of timings hardcoded. For a panel that's already in the database, you just add `compatible = "vendor,partno"`:
+`drivers/gpu/drm/panel/panel-simple.c` is a database-driven panel driver: it has a *database* of dozens of supported panels (vendor-id + part-number), each with a struct of timings hardcoded. For a panel that's already in the database, you just add `compatible = "vendor,partno"`:
 
 ```dts
 panel {
@@ -183,7 +183,7 @@ When a new panel doesn't display:
 5. **Verify backlight.** Even if the panel is showing correctly, with backlight off you see nothing.
 6. **Verify timings against the datasheet.** Off-by-one in front-porch is the most common error.
 
-`drm.debug=15` on kernel cmdline floods dmesg with DRM info; invaluable for chasing modeset issues.
+`drm.debug=15` on the kernel cmdline fills dmesg with DRM trace output. Very useful for modeset bugs.
 
 ## 54.8  Lab
 
@@ -196,9 +196,9 @@ When a new panel doesn't display:
 
 ## 54.9  Pitfalls
 
-- **Pixel clock too high.** PCLK > ~80 MHz on i.MX6ULL LCDIF → silent failure. Use lower pixel clock or smaller resolution.
+- **Pixel clock too high.** Above about 80 MHz the LCDIF gives no output. Use lower pixel clock or smaller resolution.
 - **Wrong polarity.** Image inverted vertically or shifted; classic "porch off by one" symptom.
-- **Backlight forgot.** "Display broken!" — backlight is off. Always test with daylight first.
+- **Backlight forgot.** "Display broken!" — backlight is off. Always check in good ambient light first.
 - **Pinmux clash.** LCDIF uses many pins (24 data + 4 control). Conflict with another peripheral muxed onto the same pin → garbled output.
 - **DT enable-gpios missing or wrong polarity.** Panel power-up sequence broken.
 - **Wrong DRM mode.** modetest's "preferred" mode may not be what you want; specify explicitly.

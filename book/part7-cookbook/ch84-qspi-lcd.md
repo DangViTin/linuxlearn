@@ -9,7 +9,7 @@ status: draft
 # Chapter 84 — QSPI LCD
 
 > **What:** displays driven over **quad-SPI** (4 data lanes instead of 1) for ~4× the bandwidth of plain SPI. Common on round smartwatch-style LCDs: **GC9D01** (round 160×160), **ST77916** (round 360×360), **SH8601** (AMOLED). We cover why QSPI matters for displays, the quad-mode MIPI-DBI command framing, the i.MX6ULL QSPI controller's display-mode constraints, and how the mainline `mipi-dbi` helper handles quad transfers.
-> **Why:** a plain-SPI 360×360 16-bit display needs 259 KB per frame — at 40 MHz SPI that's 52 ms = ~19 fps full-refresh, too slow for smooth animation. Quad-SPI quadruples the data rate: ~13 ms = ~75 fps. For round watch faces and animated UIs, QSPI is the difference between "smooth" and "slideshow." This is a newer, less-common interface — fewer mainline drivers, more chance you'll write your own.
+> **Why:** a plain-SPI 360×360 16-bit display needs 259 KB per frame — at 40 MHz SPI that's 52 ms = ~19 fps full-refresh, too slow for smooth animation. Quad-SPI quadruples the data rate to about 13 ms per frame, or 75 fps. That is the difference between smooth animation and a slideshow. QSPI is newer and less common. Fewer mainline drivers exist, so you are more likely to write your own.
 > **Focus:** **QSPI display = MIPI-DBI commands sent over 4 data lanes**. The command model is identical to Ch 83 (CASET/RASET/RAMWR), but each byte's 8 bits are spread across 4 IO lines (2 bits per line per clock), so pixels stream 4× faster. The challenge is that the i.MX6ULL QSPI controller is designed for *flash*, not displays — using it for a display means working within its command-LUT model.
 
 ## 84.1  Why QSPI for displays
@@ -67,11 +67,11 @@ Two practical approaches on i.MX6ULL:
 1. **Use the QSPI in `spi-mem` mode.** Recent kernels expose the QSPI controller via the `spi_mem` API, which `mipi_dbi` can drive for quad transfers. The mainline `spi-nxp-fspi.c` (for i.MX8) supports this; the older `fsl-quadspi.c` (i.MX6) has limited support. Check your kernel.
 2. **Bit-bang or use a different SoC.** If the QSPI controller can't do display-style transfers, you're stuck with plain SPI on i.MX6ULL. QSPI displays are more at home on i.MX8M / RP2040 / ESP32-S3 which have flexible QSPI/PIO peripherals.
 
-**Honest assessment**: the i.MX6ULL is *not* a great host for QSPI displays. Its QSPI is flash-centric. For a product needing a QSPI AMOLED, an i.MX8M Mini (with FlexSPI) or a dedicated display co-processor is a better fit. We cover the topic because the *displays* are increasingly common, and you may meet them on a more capable SoC.
+Honest assessment: the i.MX6ULL is *not* a great host for QSPI displays. Its QSPI is flash-centric. For a product needing a QSPI AMOLED, an i.MX8M Mini (with FlexSPI) or a dedicated display co-processor is a better fit. We still cover the topic. The displays are increasingly common, and you will likely meet them on a more capable SoC.
 
 ## 84.4  How mipi_dbi handles quad mode
 
-On SoCs whose SPI controller exposes `spi_mem` with quad support, the `mipi_dbi` helper can issue quad transfers. The newer DRM tiny drivers (e.g., for the ST77903, SH8601 AMOLEDs) use `spi_mem_op` structures:
+Some SPI controllers expose `spi_mem` with quad support. On those SoCs, the `mipi_dbi` helper can issue quad transfers. The newer DRM tiny drivers (e.g., for the ST77903, SH8601 AMOLEDs) use `spi_mem_op` structures:
 
 ```c
 /* Conceptual — quad pixel write via spi_mem */
@@ -92,7 +92,7 @@ A from-scratch QSPI display driver on a supporting SoC would:
 2. Send the init sequence via single-lane `spi_mem_op`s.
 3. Implement the `mipi_dbi` `fb_dirty` callback to send CASET/RASET (single-lane) then RAMWR pixels (quad-lane) via `spi_mem_exec_op`.
 
-The structure mirrors Ch 83's `myst7789.c`, but the pixel-write path uses a quad `spi_mem_op` instead of a plain `spi_sync`. We won't reproduce the full driver — it's Ch 83's driver with the data phase changed to quad, *and* it only works on an SoC whose controller supports quad `spi_mem` writes (not stock i.MX6ULL).
+The structure mirrors Ch 83's `myst7789.c`, but the pixel-write path uses a quad `spi_mem_op` instead of a plain `spi_sync`. We do not reproduce the full driver. It is the Ch 83 driver with the data phase changed to quad. It only works on an SoC whose controller supports quad `spi_mem` writes — stock i.MX6ULL does not.
 
 ## 84.5  When QSPI display makes sense
 

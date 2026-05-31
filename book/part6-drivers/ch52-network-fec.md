@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 52 — Network driver: FEC + KSZ8081
 
-> **What:** the i.MX6ULL's **FEC** (Fast Ethernet Controller) and the **KSZ8081** RMII PHY that nearly every Point Atom board uses. The kernel's network-device framework (`netdev`), the PHY library (`phylib`), MDIO bus operations, RMII vs MII timing — the full anatomy of "Linux has eth0 working."
-> **Why:** Ethernet is the most-debugged peripheral on any embedded board. Wrong PHY ID, wrong RMII clock direction, wrong delay-line settings — and you spend a week wondering why your `ping` drops every fifth packet. The mainline `fec_main.c` + `phylib` + `kszphy.c` stack is mature; understanding what it expects from DT and how to verify timing turns a one-week bug-hunt into a one-hour bring-up.
-> **Focus:** **the FEC ↔ PHY ↔ Linux pipeline**. The FEC is the MAC (Media Access Controller). The PHY is the SerDes that turns digital frames into wire signals. The MDIO bus is the management interface between them. Linux's `netdev` exposes the result as `eth0`. Get the four layers right and packets flow.
+> **What:** the i.MX6ULL's **FEC** (Fast Ethernet Controller) and the **KSZ8081** RMII PHY that nearly every Point Atom board uses. The kernel's network-device framework (`netdev`), the PHY library (`phylib`), MDIO bus operations, RMII vs MII timing — the full path from MAC to `eth0`.
+> **Why:** Ethernet is one of the most-debugged peripherals on any embedded board. Wrong PHY ID, wrong RMII clock direction, wrong delay-line settings — and you spend a week wondering why your `ping` drops every fifth packet. The mainline `fec_main.c` + `phylib` + `kszphy.c` stack is mature; understanding what it expects from DT and how to verify timing turns a one-week bug-hunt into a one-hour bring-up.
+> **Focus:** **the FEC ↔ PHY ↔ Linux pipeline**. The FEC is the MAC (Media Access Controller). The PHY is the SerDes that turns digital frames into wire signals. The MDIO bus is the management interface between them. Linux's `netdev` exposes the result as `eth0`.
 
 ## 52.1  The pipeline
 
@@ -81,7 +81,7 @@ Critical fields:
 - **`phy-handle`** — points to the PHY node. The MAC driver uses phylib to talk to it.
 - **`reg = <2>` (in the PHY node)** — the PHY's MDIO address. Set by board strapping (PHYAD pins).
 - **`micrel,led-mode = <1>`** — Micrel/Microchip-specific tweak (link-on-bicolor vs blink-on-activity).
-- **`clocks` and `clock-names = "rmii-ref"`** on the PHY — tell the PHY driver which clock provides the 50 MHz RMII reference. **This is the biggest bring-up gotcha**; see §52.5.
+- **`clocks` and `clock-names = "rmii-ref"`** on the PHY — tell the PHY driver which clock provides the 50 MHz RMII reference. This is the most common bring-up bug on i.MX6ULL boards; see §52.5.
 
 ## 52.3  netdev framework — what the driver provides
 
@@ -109,7 +109,7 @@ register_netdev(ndev);
 
 `alloc_etherdev_mqs` allocates a `net_device` with Ethernet defaults plus private storage. `register_netdev` creates the `eth0` interface and starts ifupdown / network manager hooks.
 
-The driver receives packets in `napi_poll` (NAPI: New API; the polled receive model used since Linux 2.6) and transmits in `ndo_start_xmit`. NAPI batches RX interrupts to reduce the IRQ rate at high packet rates — instead of one IRQ per packet, the driver gets one IRQ, then polls until the RX queue is empty, then re-arms IRQ.
+The driver receives packets in `napi_poll` (NAPI: New API; the polled receive model used since Linux 2.6) and transmits in `ndo_start_xmit`. NAPI batches RX interrupts. The driver gets one IRQ, then polls until the RX queue is empty, then re-arms the IRQ. This avoids one IRQ per packet at high rates.
 
 ## 52.4  phylib — the PHY library
 
@@ -148,7 +148,7 @@ The KSZ8081 can operate in two RMII modes:
 
 Which? **Depends on the board.** Point Atom boards historically use *MAC-supplied* clock (i.MX provides the 50 MHz to the PHY). Other boards do the reverse.
 
-Wrong direction = no link, no MDIO communication, mysterious failures. The DT must declare:
+If the clock direction is wrong, you get no link, no MDIO communication, and confusing symptoms. The DT must declare:
 
 - The PHY's `clocks = <&clks IMX6UL_CLK_ENET_REF>;` if MAC supplies clock.
 - Omit the `clocks` and instead have the PHY's `clock-names = "rmii-ref";` if PHY supplies clock — but the PHY chip itself must be ordered with the "RNB" or "RND" variant.

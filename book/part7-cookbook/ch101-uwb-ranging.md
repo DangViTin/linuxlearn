@@ -9,8 +9,8 @@ status: draft
 # Chapter 101 — UWB ranging
 
 > **What:** **Ultra-wideband** (UWB) two-way ranging for centimetre-accuracy indoor positioning. Three radios: **Qorvo (Decawave) DWM1000** (the classic, IEEE 802.15.4-2011 UWB), **DWM3000** (newer, FiRa/Apple-AirTag-compatible, lower power, 802.15.4-2020), **NXP NCJ29D5** (automotive-grade UWB for car access). On the i.MX6ULL we wire DWM3000 over SPI, dissect the IEEE 802.15.4 UWB frame, walk the Qorvo "DW3xxx Software API" reference driver, write a 300-line user-space two-way-ranging (TWR) client from scratch, and demonstrate 3-anchor TDoA for 2-D position.
-> **Why:** every modern phone (iPhone 11+, Galaxy S21+ Ultra, Pixel 6 Pro+) has UWB. Logistics warehouses are deploying UWB for forklift / asset tracking. Car keys (Apple Car Key, Tesla 3) use UWB to defeat relay attacks. Indoor venues use it for "blue-dot" navigation. None of this is BLE — BLE RSSI ranging is ±2 m on a good day; UWB ToF is ±10 cm. If you're building anything that *positions* objects indoors at sub-metre accuracy, this is the radio.
-> **Focus:** **UWB ranging is a time-of-flight measurement, and ToF accuracy depends on how cleanly the radio captures the first arriving signal**. Multipath (the signal bouncing off walls and arriving second) corrupts ToF if the demodulator latches the wrong peak. The DW3000 has hardware-supported leading-edge detection and per-receive antenna-delay calibration; getting the calibration right is 80 % of the engineering. The protocol on top — single-sided two-way ranging vs double-sided TWR vs TDoA — is the other 20 %.
+> **Why:** every modern phone (iPhone 11+, Galaxy S21+ Ultra, Pixel 6 Pro+) has UWB. Logistics warehouses are deploying UWB for forklift / asset tracking. Car keys (Apple Car Key, Tesla 3) use UWB to defeat relay attacks. Indoor venues use it for "blue-dot" navigation. None of this is BLE — BLE RSSI ranging is ±2 m on a good day; UWB ToF is ±10 cm. For sub-metre indoor positioning, UWB is the only practical choice.
+> **Focus:** UWB ranging is a time-of-flight measurement. ToF accuracy depends on how cleanly the radio captures the first arriving signal. Multipath (the signal bouncing off walls and arriving second) corrupts the measurement if the demodulator latches the wrong peak. The DW3000 has hardware-supported leading-edge detection and per-receive antenna-delay calibration. Calibration is most of the engineering. The protocol on top — SS-TWR, DS-TWR, TDoA — is the smaller piece.
 
 ## 101.1  How UWB measures distance
 
@@ -30,7 +30,7 @@ Initiator                Responder
    │  distance = ToF × c
 ```
 
-Error: any clock drift between initiator and responder during Treply scales into the ToF estimate. For ±20 ppm crystals + 200 µs Treply, drift error is ~4 ns ≈ 1.2 m. Bad.
+Error: any clock drift between initiator and responder during Treply scales into the ToF estimate. For ±20 ppm crystals and 200 µs Treply, the drift is about 4 ns, or 1.2 m of range error. That is unusable.
 
 **Double-Sided TWR (DS-TWR)** adds a second message so both clocks measure intervals, cancelling drift:
 
@@ -51,7 +51,7 @@ Initiator               Responder
    │  ToF = (Tround1×Tround2 - Treply1×Treply2) / (Tround1+Tround2+Treply1+Treply2)
 ```
 
-DS-TWR achieves the ~10 cm accuracy spec. Every commercial UWB anchor system uses it.
+DS-TWR achieves the ~10 cm accuracy spec. Most commercial UWB anchor systems use it.
 
 **TDoA (Time Difference of Arrival)** is the multilateration alternative: anchors are time-synced (wired or via a "sync anchor" broadcast); a tag broadcasts one packet; each anchor records the receive timestamp; differences yield position. Better for crowded tag populations (one TX, N anchors RX) but requires anchor time-sync infrastructure.
 
@@ -115,7 +115,7 @@ Critical: the antenna is on the module; **do not put metal within 5 cm** of it. 
 
 ## 101.4  How the Qorvo driver actually works
 
-Qorvo ships a reference "DW3xxx Software API" (~10k lines C) used in their reference designs and copied into community projects (`Makerfabs/DW3000`, etc.). It's not in mainline Linux — the dominant path is **user-space + spidev**.
+Qorvo ships a reference "DW3xxx Software API" (~10k lines C) used in their reference designs and copied into community projects (`Makerfabs/DW3000`, etc.). It's not in mainline Linux. Most projects use **`spidev` + a user-space driver**.
 
 The driver structure:
 

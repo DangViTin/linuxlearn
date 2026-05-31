@@ -9,7 +9,7 @@ status: draft
 # Chapter 51A — Watchdog
 
 > **What:** the **watchdog subsystem** — `/dev/watchdog`, the `watchdog_device` framework, and the user-space pattern (`systemd-watchdog` or a hand-written keepalive daemon) that reset the hardware timer periodically. If the timer ever expires, the SoC's watchdog peripheral resets the system. By the end you have a system that recovers automatically from any kernel hang or stuck application.
-> **Why:** every product shipped to a customer needs this. A kernel oops on an unrelated subsystem, a deadlock in your driver, a CPU stuck in a tight infinite loop in user-space — without a watchdog, that's a brick that needs a power-cycle by hand. With one, the device reboots within seconds, logs the event, and is back in service. Watchdog handling is the difference between "this product is reliable" and "this product is not."
+> **Why:** Most shipping products need this. A kernel oops in some other subsystem. A deadlock in your driver. A user-space process stuck in an infinite loop. Without a watchdog, the device becomes a brick that needs a manual power-cycle. With one, the device reboots within seconds, logs the event, and is back in service.
 > **Focus:** **the keepalive contract**. Some user-space process *must* write to `/dev/watchdog` (or call the right ioctl) before the timer expires, forever. If that process dies, hangs, or gets stuck on disk I/O, the watchdog fires and the system resets. Picking *which* process should hold this responsibility — and what "alive" means to it — is the design decision.
 
 ## 51A.1  Hardware vs software watchdog
@@ -67,7 +67,7 @@ write(fd, "V", 1);    /* "magic close" — disable watchdog on close */
 close(fd);
 ```
 
-**Magic close**: if `CONFIG_WATCHDOG_NOWAYOUT=y` (default on most distros), once `/dev/watchdog` is opened, it cannot be safely closed — closing without the magic "V" character first leaves it armed; closing with "V" disables it. This prevents a buggy daemon from accidentally disabling the watchdog by exiting.
+**Magic close**: With `CONFIG_WATCHDOG_NOWAYOUT=y` (the usual default), once `/dev/watchdog` is opened, it cannot be safely closed. To disable it on close, write a `'V'` first. Closing without the `'V'` leaves it armed. This prevents a buggy daemon from accidentally disabling the watchdog by exiting.
 
 For production builds, leave `NOWAYOUT=y` — your keepalive process is supposed to live forever; if it dies, you *want* the watchdog to fire.
 
@@ -88,7 +88,7 @@ Restart=always
 
 The unit becomes responsible: it must call `sd_notify(0, "WATCHDOG=1")` periodically; if it doesn't, systemd assumes the unit is hung and restarts it. systemd as a whole is hung → kernel resets.
 
-Layered watchdog: hardware → systemd → application. Each layer protects the layer above.
+Layered watchdog: hardware → systemd → application.
 
 ### Pattern B — busybox `watchdog` daemon
 
@@ -139,7 +139,7 @@ reserved-memory {
 };
 ```
 
-After a watchdog reset, `ls /sys/fs/pstore/` shows `dmesg-ramoops-N`, `console-ramoops-N` — the last KB of dmesg before the hang. Worth its weight in gold for debugging field failures.
+After a watchdog reset, `ls /sys/fs/pstore/` shows `dmesg-ramoops-N`, `console-ramoops-N` — the last KB of dmesg before the hang. Very useful for debugging field failures.
 
 ## 51A.6  Writing a watchdog driver (for completeness)
 
@@ -196,7 +196,7 @@ The core handles `/dev/watchdog`, ioctls, and sysfs. You just implement the four
 - **Pre-init watchdog**. The bootloader (U-Boot) can start the watchdog before the kernel boots. If the kernel takes longer to boot than the timeout, watchdog fires during boot. Either U-Boot disables it before jumping, or kernel takes over fast.
 - **Multiple processes opening `/dev/watchdog`.** First open arms it; later opens get -EBUSY (in most drivers). Stick to one feeder process.
 - **Watchdog during suspend.** Suspended kernel can't feed. Most watchdog drivers stop the timer on suspend automatically; verify your specific driver's behavior.
-- **Pretty short timeouts.** A 2-second timeout has no slack for slow user-space ops. 30 seconds is a saner default. Some products use 5–10 minutes (high-availability gear with long expected blocking ops).
+- **Short timeouts.** A 2-second timeout has no slack for slow user-space ops. 30 seconds is a saner default. Some products use 5–10 minutes (high-availability gear with long expected blocking ops).
 - **Forgetting ramoops region from kernel cmdline.** `mem=...` cuts off the reserved area. Tune carefully so ramoops's physical address is *inside* the visible-to-kernel memory map.
 
 ## 51A.9  Going deeper

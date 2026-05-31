@@ -40,7 +40,7 @@ When a process does `fd = open("/dev/hello", O_RDWR)` and then `write(fd, "hi", 
 
 Your driver provides a **`file_operations`** struct. The kernel's VFS layer looks up the right `file_operations` for a given device number, then calls your function pointers. Everything else is plumbing.
 
-What the user *thinks* they're doing — "writing to a file" — is whatever your `write` callback chooses to do. Send bytes over UART. Set GPIO pins. Allocate buffers. Cache and return on next read. The "file" abstraction is a façade; you decide what's behind it.
+What the user thinks is "writing to a file" is whatever your `write` callback decides to do — send UART bytes, toggle GPIOs, fill a buffer for next read. The "file" is a façade. You decide what's behind it.
 
 ## 37.2  Device numbers
 
@@ -65,7 +65,7 @@ unsigned int min = MINOR(devid);
 
 ### Picking a major number — don't
 
-Years ago you'd pick "an unused major" by reading `Documentation/admin-guide/devices.txt`, the list of all officially registered major numbers. Now we ask the kernel:
+The old way was to pick an unused major from a documented list (`Documentation/admin-guide/devices.txt`, the list of all officially registered major numbers). The modern way is to ask the kernel for one:
 
 ```c
 dev_t devid;
@@ -77,7 +77,7 @@ int err = alloc_chrdev_region(&devid, 0, 1, "hello");
 //                              out: assigned dev_t
 ```
 
-The kernel finds an unused major and returns the `dev_t` to you. Always prefer this for new drivers. Hard-coding majors was a 1990s pattern and is now actively discouraged.
+The kernel finds an unused major and returns the `dev_t` to you. Always prefer this for new drivers. Hard-coding majors is a 1990s pattern. Don't do it.
 
 After `alloc_chrdev_region`, you'll see your device in `/proc/devices`:
 
@@ -105,7 +105,7 @@ mycdev.owner = THIS_MODULE;
 err = cdev_add(&mycdev, devid, 1);   /* register; now reachable */
 ```
 
-After `cdev_add`, opening `/dev/hello` (assuming the device file exists with the right major/minor) routes through your `my_fops`. The pair `cdev_init` + `cdev_add` is conceptually one step that the kernel splits to make initialization-time vs. registration-time allocation distinguishable; you treat it as two lines next to each other.
+After `cdev_add`, opening `/dev/hello` (assuming the device file exists with the right major/minor) routes through your `my_fops`. `cdev_init` and `cdev_add` are really one logical step. The kernel splits them so it can tell apart initialization from registration. Treat them as two lines next to each other.
 
 To remove: `cdev_del(&mycdev)`.
 
@@ -292,14 +292,14 @@ static ssize_t hello_read(..., char __user *ubuf, ...)
 }
 ```
 
-The `__user` annotation on `ubuf` is a marker for `sparse` (a static analyzer) saying "this pointer is in user-space's address space; do not dereference it directly." On i.MX6ULL with no MMU domain protection it might *appear* to work — but only when the user buffer happens to be paged in and accessible from kernel mode, which is not always the case. On systems with **PAN** (Privileged Access Never, an ARMv8 feature; not on i.MX6ULL but on many newer SoCs) a direct dereference faults immediately.
+The `__user` annotation on `ubuf` is a marker for `sparse` (a static analyzer) saying "this pointer is in user-space's address space; do not dereference it directly." On i.MX6ULL there is no MMU domain protection, so a direct dereference might *appear* to work. But it only works when the user buffer is paged in and reachable from kernel mode — not always the case. On systems with **PAN** (Privileged Access Never, an ARMv8 feature; not on i.MX6ULL but on many newer SoCs) a direct dereference faults immediately.
 
 `copy_to_user` (and its sibling `copy_from_user`) do three things:
 1. **Validate the address** is within user-space (`access_ok`).
 2. **Handle page faults gracefully** — if the user-space page is paged out, the function brings it in.
 3. **Return the number of bytes NOT copied**. Zero = success. Nonzero = partial copy. **Most drivers convert any nonzero result to `-EFAULT`.**
 
-There's never a reason to bypass `copy_to/from_user`. If you find yourself thinking "I just need to peek at one byte," use `get_user(byte, p)` (single byte) or `put_user(byte, p)` (single write). Same safety guarantees, smaller code.
+Don't bypass `copy_to/from_user`. If you find yourself thinking "I just need to peek at one byte," use `get_user(byte, p)` (single byte) or `put_user(byte, p)` (single write). Same safety guarantees, smaller code.
 
 ### Idea 3: Locking
 
@@ -333,7 +333,7 @@ free_dev:
     return err;
 ```
 
-This `goto` cascade is **idiomatic kernel C**. Each label cleans up *exactly* what's been allocated up to that point. It's the most readable way to handle error paths in C — far better than nested `if`s. New kernel-module authors find it strange for an afternoon, then can't imagine writing it any other way. Read it carefully: each error-path target only does the cleanup for resources that were successfully acquired *before* this point.
+This `goto` cascade is **idiomatic kernel C**. Each label cleans up *exactly* what's been allocated up to that point. It is the kernel's idiomatic error-path style. After a dozen drivers it becomes natural. Read it carefully: each error-path target only does the cleanup for resources that were successfully acquired *before* this point.
 
 ## 37.5  Building, loading, testing
 
@@ -361,7 +361,7 @@ A few things to notice:
 
 - The major number (240) is **whatever the kernel picked**. It's not stable across reboots. Next chapter, we'll automate device-file creation with udev/mdev so you don't have to `mknod` by hand.
 - `echo "ping"` writes 5 bytes (4 + newline). `cat` reads all of them. Our buffer correctly tracks `buf_len`.
-- Multiple `cat`s in a row read the same 5 bytes each time — because our `read` checks `*ppos >= buf_len` and signals EOF appropriately, then `cat` reopens and starts from `*ppos = 0` next time.
+- Each new `cat` invocation gets a fresh open, so `*ppos` resets to 0. Within one `cat`, the first `read` returns 5 bytes and the second returns 0 (EOF).
 
 ## 37.6  Testing edge cases
 

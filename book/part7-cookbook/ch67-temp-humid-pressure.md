@@ -9,8 +9,8 @@ status: draft
 # Chapter 67 — Temperature / humidity / pressure
 
 > **What:** three I²C environmental sensors, dissected: **Bosch BME280** (T+H+P, the workhorse), **Sensirion SHT3x** (T+H, lab-grade accuracy), **ASAir AHT20** (T+H, cheap-and-good). For each: register map, the bytes on the wire, how the mainline IIO driver works, and — for BME280, the most complex — a from-scratch IIO driver implemented from the datasheet.
-> **Why:** environmental sensors are the most common I²C peripherals in IoT and HMI products. They're also the canonical sensors for understanding the IIO subsystem: a small driver, a clear data path, real compensation math that exposes why "raw" and "scale" are separate IIO attributes. By writing one from scratch you internalise both the chip and IIO.
-> **Focus:** **calibration math turns raw ADC bins into engineering units**. The BME280 ships per-chip calibration coefficients in non-volatile memory; the driver reads them at probe and applies a published polynomial to each raw measurement. Understanding this — and that the formula is in the *driver*, not the *chip* — is the whole game.
+> **Why:** environmental sensors are the most common I²C peripherals in IoT and HMI products. They're also the canonical sensors for understanding the IIO subsystem: a small driver, a clear data path, real compensation math that exposes why "raw" and "scale" are separate IIO attributes. Writing one from scratch teaches you both the chip and IIO at the same time.
+> **Focus:** **calibration math turns raw ADC bins into engineering units**. The BME280 ships per-chip calibration coefficients in non-volatile memory; the driver reads them at probe and applies a published polynomial to each raw measurement. Understanding this — that the compensation formula lives in the *driver*, not the *chip* — is the key insight.
 
 ## 67.1  Sensor comparison
 
@@ -33,7 +33,7 @@ status: draft
 **Pick guide:**
 - **BME280**: when you want pressure (altitude approximation), or when you're already in the BMP/BME ecosystem.
 - **SHT3x**: when you need humidity accuracy (HVAC, agriculture, calibration-reference work).
-- **AHT20**: when cost matters and ±2 % RH is fine. The "everyone's hobbyist humidity sensor."
+- **AHT20**: when cost matters and ±2 % RH is fine. The default cheap humidity sensor on hobbyist boards.
 
 ## 67.2  Schematic
 
@@ -219,7 +219,7 @@ static int bmp280_read_raw(struct iio_dev *indio_dev,
 }
 ```
 
-User-space reads `/sys/bus/iio/devices/iio:device0/in_temp_input` → driver issues "forced measurement," waits ~8 ms, reads the 8 raw bytes, applies the compensation formula, returns "23420" (mC).
+When user-space reads `/sys/bus/iio/devices/iio:device0/in_temp_input`, the driver issues a "forced measurement," waits about 8 ms, reads the 8 raw bytes, applies the compensation formula, and returns `23420` (millidegrees Celsius).
 
 ### The compensation formula (where the magic happens)
 
@@ -242,7 +242,7 @@ static s32 bme280_compensate_temp(struct bmp280_data *data, s32 adc_T)
 }
 ```
 
-This is *not* an approximation we made up. It's lifted byte-for-byte from the Bosch datasheet's pseudocode, page 25. The driver carries it as-published — same code in every BME280 driver across all OSes.
+These formulas are not approximations. They are lifted byte-for-byte from page 25 of the BME280 datasheet. The driver carries it as-published — same code in every BME280 driver across all OSes.
 
 `dig_T1`, `dig_T2`, `dig_T3` are the calibration coefficients read from chip NVM at probe. Each chip has slightly different ones (silicon process variation).
 
@@ -553,11 +553,11 @@ What we *skipped* compared to mainline:
 - Power management (`runtime_suspend` to drop to chip sleep mode).
 - Multi-chip support (we only handle BME280; mainline handles BMP180/280/380/580 too).
 
-Those are framework concerns, not "do you understand the chip" concerns. You understand the chip.
+Those are framework features, not chip-understanding features. The chip is what we set out to teach.
 
 ## 67.6  SHT3x — a different design philosophy
 
-SHT3x doesn't have a register map. Instead it uses **2-byte commands** sent on I²C, optionally followed by a data block with **CRC**. Sensirion's philosophy: less state in the chip, more in the host.
+SHT3x doesn't have a register map. Instead it uses **2-byte commands** sent on I²C, optionally followed by a data block with **CRC**. Sensirion's design choice: keep state in the host, not the chip.
 
 ### Commands
 
@@ -624,7 +624,7 @@ A one-shot read:
                     bit 7 of byte S is "busy" (1 = still measuring)
 ```
 
-The H and T raw values are 20-bit, packed across 5 bytes with a nibble split at byte 3.
+The H and T raw values are 20 bits each. They share a middle byte: the top 4 bits go to H, the bottom 4 bits to T.
 
 Conversion:
 
@@ -635,7 +635,7 @@ T_mC = ((t_raw * 200000) >> 20) - 50000;
 
 Mainline driver: `drivers/iio/humidity/aht20.c` (in newer kernels). ~250 lines.
 
-To convert the from-scratch driver: same structure as BME280, drop compensation, use AHT20's command sequence. Ten minutes of work once you've done BME280.
+To convert the from-scratch driver: same structure as BME280, drop compensation, use AHT20's command sequence. After the BME280 driver, converting to AHT20 is mostly mechanical command-table substitution.
 
 ## 67.8  Now: the mainline driver
 

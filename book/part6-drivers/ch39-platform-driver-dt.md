@@ -31,14 +31,14 @@ gpio1: gpio@209c000 {
 
 This is a **platform device**: a hardware block on the SoC, described by a DT node, with no enumerable bus connecting it (compared to USB, PCI, or even I²C, where a discovery protocol enumerates children). The CPU just has memory-mapped registers at a fixed physical address and an IRQ line connected to the GIC.
 
-The **platform bus** in the kernel is a virtual abstraction over this "no bus" case. It exists solely to give the driver/device model something to attach to. When the kernel parses the DT at boot, every node whose parent has no `compatible` for a real bus (i.e., everything directly under the SoC node) becomes a platform device. When you `insmod` a `platform_driver`, the platform bus walks the device list looking for matches.
+The **platform bus** in the kernel is a virtual abstraction over this "no bus" case. It exists only to give the device model something to attach to. At boot, every DT node whose parent does not name a real bus becomes a platform device. In practice that means everything directly under the SoC node. When you `insmod` a `platform_driver`, the platform bus walks the device list looking for matches.
 
 There are two kinds of buses in Linux:
 
 1. **Enumerable** — USB, PCI, I²C (devices can be discovered by polling). The bus driver enumerates; child devices appear automatically.
 2. **Non-enumerable** — platform, plus a few others. Devices must be described externally (DT, ACPI, board file). The platform bus is the catch-all for SoC peripherals.
 
-Almost everything on an i.MX6ULL is platform: GPIO blocks, UARTs, I²C controllers (the controllers themselves; the *devices on them* are I²C-bus children), SPI controllers, PWM, ADC, timers, FlexCAN, Ethernet MAC, USB OTG controllers, LCDIF, eCSPI, etc.
+Almost everything on i.MX6ULL is a platform device: GPIO blocks, UARTs, I²C/SPI/eCSPI controllers, PWM, ADC, timers, FlexCAN, Ethernet MAC, USB OTG, LCDIF. (The devices on an I²C bus are I²C-bus children, not platform devices.)
 
 ## 39.2  The pieces
 
@@ -152,7 +152,7 @@ MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Demo platform driver");
 ```
 
-That's the whole template. Let's pull apart the four interesting pieces.
+That is the full template. Look at the four pieces that matter.
 
 ### Piece A: `of_match_table` + `MODULE_DEVICE_TABLE`
 
@@ -197,7 +197,7 @@ priv->base = devm_ioremap_resource(&pdev->dev, res);
 
 The `devm_` prefix is a kernel pattern that means **device-managed**: resources allocated this way are *automatically freed when the device goes away*. No `kfree`, no `iounmap`, no `free_irq` in your `remove()` function — it's all handled.
 
-This is the biggest stylistic win in modern kernel code. Compare:
+`devm_*` is the biggest readability gain in modern kernel code. Compare:
 
 ```c
 /* Without devm_ */
@@ -296,7 +296,7 @@ demo demo@1000: remove
 demo demo@1000: probe: matched compatible 'demo'
 ```
 
-Useful in development: re-probe a device after fixing a hardware glitch, without rebooting. Also useful in production for power-saving (unbind unused hardware to drop its clocks).
+Useful in development for re-probing a device after a hardware glitch, without a reboot. Also useful in production: unbind unused hardware to drop its clocks.
 
 ## 39.6  Getting more from the DT
 

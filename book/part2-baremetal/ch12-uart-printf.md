@@ -9,12 +9,12 @@ status: draft
 # Chapter 12 — UART driver and `printf`
 
 > **What:** a polled UART1 driver and a tiny `printf` clone that uses it. By the end of the chapter your bare-metal program can say `Hello, world!` instead of blink.
-> **Why:** debugging bare-metal without `printf` is doable but slow. Adding the first textual output channel is a force multiplier — every later chapter in Part II spends `printf` budget freely.
-> **Focus:** the **UART baud-divisor formula** and the **status-register polling loop**. Both repeat across every UART implementation in the world; once you see them on i.MX6ULL, you have seen them everywhere.
+> **Why:** debugging bare-metal without `printf` is doable but slow. Adding text output changes everything. Every later chapter in Part II uses `printf` freely.
+> **Focus:** the **UART baud-divisor formula** and the **status-register polling loop**. Both repeat across most UART implementations. After this chapter you will recognize them anywhere.
 
 ## 12.1  Which UART, and on which pins
 
-The i.MX6ULL has eight UART controllers (UART1 through UART8). The board's debug header from Chapter 8 brings out **UART1**. Its TX is `UART1_TX_DATA` and RX is `UART1_RX_DATA`. On the Point Atom MINI these are routed to pads **UART1_TX_DATA** and **UART1_RX_DATA** in their default mux — but in i.MX naming, those pad names are aliases for specific physical pads. Per the schematic, this is the pair on the 4-pin debug header you wired up.
+The i.MX6ULL has eight UART controllers (UART1 through UART8). The board's debug header from Chapter 8 brings out **UART1**. Its TX is `UART1_TX_DATA` and RX is `UART1_RX_DATA`. On the Point Atom MINI these signals come out on the pads literally named UART1_TX_DATA and UART1_RX_DATA, in their reset mux (ALT0). The 4-pin debug header from Chapter 8 brings them out.
 
 For our purposes:
 
@@ -49,7 +49,7 @@ The simplest values that yield this ratio cleanly are `(UBIR+1) = 71`, `(UBMR+1)
 - `UBIR = 70`
 - `UBMR = 3082`
 
-If exact match is impossible, the chip rounds; up to ~3% baud error is tolerated by most receivers. Mismatched baud manifests as garbage characters that resemble valid ASCII but aren't.
+If exact match is impossible, the chip rounds; up to ~3% baud error is tolerated by most receivers. A mismatched baud rate shows up as garbage characters that look like ASCII but are not.
 
 ## 12.3  Register map (the ones we actually use)
 
@@ -77,8 +77,8 @@ The full list is RM Table 55-3. We will not visit most of them.
 Three bits we will touch by name:
 
 - **`UCR1.UARTEN`** (bit 0) — overall UART enable.
-- **`UCR2.SRST`** (bit 0) — software reset; **active-low**, so we clear it to assert reset, set it to release. (Yes, polarity is confusing; per RM.)
-- **`UCR2.TXEN | UCR2.RXEN`** (bits 2, 1) — TX and RX enables.
+- **`UCR2.SRST`** (bit 0) — software reset, **active-low**. Clear the bit to *assert* reset; set it to release. (Yes, the polarity is unusual. That is what the RM says.)
+- **`UCR2.TXEN | UCR2.RXEN`** (bits 1 and 2) — TX and RX enables.
 - **`USR1.TRDY`** (bit 13) — TX FIFO has space for at least one byte.
 - **`USR2.RDR`** (bit 0) — receive data ready.
 
@@ -204,7 +204,7 @@ int uart_getc(void)
 }
 ```
 
-The thing to read repeatedly is `uart_init()`. Every line is documented in the RM and every line is the result of someone's wasted afternoon when they skipped it. A few specific points:
+Read `uart_init()` carefully. Each line is in the RM, and each line costs someone an afternoon when it is skipped. A few specific points:
 
 - **UBIR must be written before UBMR.** The order matters; the controller's internal divider is latched on the UBMR write. Reverse and you'll get baud rates 6.8% off, which still looks like text but has occasional corruption.
 - **The `\n` → `\r\n` translation in `uart_puts`** is here because dumb terminals (and `picocom` by default) expect CRLF endings to advance to a new line *and* return to column 0. We do not get this for free.
@@ -212,7 +212,7 @@ The thing to read repeatedly is `uart_init()`. Every line is documented in the R
 
 ## 12.5  A 200-line `printf`
 
-We could use a third-party tiny printf (`mpaland/printf` is excellent), and you should in real projects. For the book, we write our own minimal one — just enough to be useful, ~120 lines.
+You should use a third-party printf (`mpaland/printf` is excellent) in real projects. For the book we write our own, ~120 lines.
 
 `mini_printf.c`:
 

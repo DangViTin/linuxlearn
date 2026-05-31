@@ -9,8 +9,8 @@ status: draft
 # Chapter 24 — Workflows — TFTP, NFS, USB-OTG
 
 > **What:** stop reflashing the SD card. From this chapter on, every kernel change and every rootfs change is visible on the board within seconds, over the wire — TFTP for the kernel + DTB, NFS for the rootfs, USB-OTG (`uuu`) for recovery.
-> **Why:** an embedded engineer's productivity is bounded by how fast they iterate. Reflash-via-SD takes 1–2 minutes per change. TFTP-and-NFS takes 5–10 seconds. Multiplied across hundreds of kernel builds in Parts IV–VI, that's days of saved time. The Linux-host CLI workflow in this chapter is the one this book uses for all subsequent development.
-> **Focus:** the **single mental loop** — edit a file on the host; the target sees it instantly. That loop is what makes embedded Linux feel like embedded development rather than embedded compilation.
+> **Why:** Iteration speed bounds productivity. SD-reflash takes 1–2 minutes per cycle. TFTP+NFS takes 5–10 seconds. Across hundreds of kernel builds in Parts IV–VI, that adds up to days. The workflow in this chapter is what the rest of the book assumes.
+> **Focus:** the single mental loop: edit a file on the host, the target sees it immediately. That loop is what turns embedded Linux from a build-and-flash cycle into real development.
 
 ## 24.1  Three transports, three jobs
 
@@ -81,7 +81,7 @@ Now the boot sequence is: power on → ROM → SPL → U-Boot → TFTP → kerne
 
 ### Speed
 
-TFTP runs at ~1 MB/s on 10/100 Ethernet (UDP, small windows). A 6 MB `zImage` arrives in ~6 seconds. Faster than `dd`-then-eject-then-insert-then-boot.
+TFTP runs at ~1 MB/s on 10/100 Ethernet (UDP, small windows). A 6 MB `zImage` arrives in ~6 seconds. Faster than `dd`, eject, insert, boot.
 
 ## 24.3  NFS for the rootfs
 
@@ -138,13 +138,13 @@ Now: edit a file in `~/imx6ull/rootfs/etc/...` on the host. The target sees the 
 - **Device tree blobs.** Same — TFTP, not NFS.
 - **The bootloader.** SD card or eMMC.
 
-So the boot chain has three transports active simultaneously: SD/eMMC for U-Boot, TFTP for kernel/DTB, NFS for everything in user space. That's the goal.
+So the boot chain has three transports active simultaneously: SD/eMMC for U-Boot, TFTP for kernel/DTB, NFS for everything in user space.
 
 ### Speed and reliability
 
 NFS over wired 100 Mbit Ethernet is consistently fast (~10 MB/s read). NFS over Wi-Fi is occasionally slow and occasionally drops packets — *not* recommended for the root mount. If your Wi-Fi USB driver is being developed (Chapter 55E), keep an Ethernet cable plugged in.
 
-A common boot-time hang is "NFS mount timed out." Almost always: server-side firewall blocking, wrong export options, or wrong kernel cmdline path. Diagnose with the kernel cmdline `nfs.callback_tcpport=0` and `nfsroot=...,debug` (kernel must be built with `CONFIG_NFS_DEBUG`).
+A common boot-time hang is "NFS mount timed out." Almost always the cause is a server-side firewall, wrong export options, or a wrong kernel cmdline path. Diagnose with the kernel cmdline `nfs.callback_tcpport=0` and `nfsroot=...,debug` (kernel must be built with `CONFIG_NFS_DEBUG`).
 
 ## 24.4  USB-OTG recovery via `uuu`
 
@@ -232,7 +232,7 @@ $ # On the board:
 target# reboot
 ```
 
-~30 seconds for a kernel-source change to be observable. **You can't iterate this fast any other way on this hardware.**
+~30 seconds for a kernel-source change to be observable. No other workflow on this hardware iterates this fast.
 
 For user-space changes, it's even faster:
 

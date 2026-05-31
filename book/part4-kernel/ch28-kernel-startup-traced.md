@@ -9,7 +9,7 @@ status: draft
 # Chapter 28 — Kernel startup, traced
 
 > **What:** trace the kernel from the first instruction at `stext` to the moment it `exec`s `/sbin/init` — with the source files and line numbers at every step. By the end you should be able to point at any line of the boot log from Chapter 26 and say which function in which source file printed it.
-> **Why:** the kernel boot path is large but knowable. Every line you trace is something you no longer fear when it goes wrong. By the time you have walked `stext → __mmap_switched → start_kernel → rest_init → kernel_init` once, you can debug "why is my system not booting?" with confidence.
+> **Why:** The boot path is long but readable. Each line you trace becomes one less thing that surprises you when something breaks. By the time you have walked `stext → __mmap_switched → start_kernel → rest_init → kernel_init` once, you can debug "why is my system not booting?" with confidence.
 > **Focus:** the **four phases** of kernel startup: (1) architecture-specific assembly that runs *before* virtual memory, (2) early C in `start_kernel()` that brings up subsystems in a fixed order, (3) `rest_init()` which forks PID 1 and PID 2, (4) `kernel_init` which exec's user-space. Each phase has a clean handoff to the next.
 
 ## 28.1  The four phases
@@ -93,7 +93,7 @@ ENTRY(stext)
 ENDPROC(stext)
 ```
 
-Worth pinning:
+Four points to keep in mind:
 
 - **`__lookup_processor_type`** walks a linker-supplied array (`__proc_info_begin..__proc_info_end`) of `struct proc_info_list`. Each entry says "for MIDR mask X = value Y, this is your `cpu_setup`, `cpu_cache_fns`, etc." The Cortex-A7 entry lives in `arch/arm/mm/proc-v7.S`. If your CPU isn't recognised, the kernel hangs in `__error_p` (you see no output because UART isn't initialised yet — Chapter 26 §26.5 covers this failure mode).
 - **`__vet_atags`** does a quick byte-pattern check on the data at `r2`. If it looks like a DTB (magic bytes `0xD00DFEED`) or ATAGS, it's accepted; otherwise the address is zeroed and the kernel will later boot with no DT (almost certainly panicking).
@@ -220,7 +220,7 @@ A few calls earn their own attention.
 
 ### `setup_arch(&command_line)` — `arch/arm/kernel/setup.c`
 
-The biggest single call in `start_kernel()` on ARM. Walks roughly:
+The biggest single call in `start_kernel()` on ARM. The main steps are:
 
 1. **`setup_machine_fdt(__atags_pointer)`** — parses the DT blob (passed in `r2` and saved by Phase 1). Calls `unflatten_device_tree()` which converts the flat DTB to the in-memory tree of `struct device_node`. Reads `/chosen/bootargs` and stores it in `boot_command_line`.
 2. **`parse_early_param()`** — handles a small set of cmdline tokens that need to be processed before most subsystems exist (`earlycon=`, `debug=`, `nokaslr`, `mem=`).
@@ -248,7 +248,7 @@ Walks the DT for clocksource and clockevent providers (the generic ARM timer, or
 
 ### `console_init()` — `drivers/tty/`
 
-Now binds the *real* console driver to the UART. Until this point, all `printk` output has been either (a) buffered in the `printk` ring buffer (visible later when `dmesg` runs), or (b) shoved out via `earlycon` if the bootloader set that up. After `console_init()`, every subsequent `printk` reaches the UART in real time.
+Now binds the *real* console driver to the UART. Until this point, all `printk` output went to one of two places. Either it sat in the `printk` ring buffer for `dmesg` to read later, or it was pushed to the UART by `earlycon` if the bootloader configured that. After `console_init()`, every later `printk` reaches the UART in real time.
 
 ### Roughly 30 more init calls
 
@@ -296,7 +296,7 @@ noinline void __ref rest_init(void)
 Three things happen:
 
 1. **PID 1 created.** `user_mode_thread(kernel_init)` creates a task running `kernel_init()` as PID 1. This task will eventually `exec` user space.
-2. **PID 2 created.** `kernel_thread(kthreadd)` creates a task running `kthreadd()` as PID 2. `kthreadd` is the kernel-thread daemon: every subsequent `kthread_create()` is dispatched through it. (Why a separate task? Because creating kthreads requires holding certain locks, and the boot thread can't easily acquire them.)
+2. **PID 2 created.** `kernel_thread(kthreadd)` creates a task running `kthreadd()` as PID 2. `kthreadd` is the kernel-thread daemon: every subsequent `kthread_create()` is dispatched through it. There is a separate task for this because creating kthreads needs certain locks that the boot thread cannot easily take.
 3. **The boot CPU becomes the idle thread (PID 0).** `cpu_startup_entry(CPUHP_ONLINE)` enters `do_idle()`, which is the per-CPU idle loop. When no other task is runnable, the CPU runs idle, which on ARM eventually executes `wfi` (wait for interrupt).
 
 After `rest_init()` returns to the boot CPU's task, that task *is* PID 0 doing idle.
@@ -405,7 +405,7 @@ In English:
    - Else try `/sbin/init`, `/etc/init`, `/bin/init`, `/bin/sh` in order.
 5. **`run_init_process()`** calls `kernel_execve()` which `exec`s the chosen binary. **On a successful `exec`, the calling task's image is replaced** — `kernel_init()`'s code is unmapped, the new program runs. From the kernel's perspective, PID 1 is now /sbin/init (which lives in user space). `kernel_init` "returns" only in the sense that it never returns from `kernel_execve`.
 
-After this point, the kernel is in steady-state. User-space processes run; the kernel responds to syscalls and interrupts. We have completed the boot.
+After this point, the kernel is in steady state. User-space processes run. The kernel responds to syscalls and interrupts. The boot is done.
 
 ## 28.7  Mapping boot-log lines to source
 
@@ -423,7 +423,7 @@ For every memorable boot-log line, you can now name the source location. Spot-ch
 | `Freeing unused kernel image (initmem) memory: 1024K` | `mm/page_alloc.c` | `free_initmem` |
 | `Run /sbin/init as init process` | `init/main.c` | `run_init_process` |
 
-That table is the deliverable of this chapter. After Chapter 28 you can grep the kernel for any boot-log string and find where it came from in under 60 seconds.
+That table is the goal of this chapter. After it, you can grep the kernel for any boot-log line and find its source in under a minute.
 
 ## 28.8  Lab
 

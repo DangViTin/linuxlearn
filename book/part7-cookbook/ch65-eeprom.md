@@ -9,8 +9,8 @@ status: draft
 # Chapter 65 — I²C / SPI EEPROM
 
 > **What:** small persistent storage chips — bytes addressable, no erase-before-write needed, ~1M write cycles. We'll walk the chip-side protocol byte-by-byte, dissect how the mainline `at24` driver actually works, then write a tiny from-scratch I²C-EEPROM driver. Three chips compared — **Microchip AT24C02** (I²C, 256 B), **AT24C512** (I²C, 64 KB), **25LC512** (SPI, 64 KB).
-> **Why:** EEPROM is the "metadata anchor" of an embedded board — MAC address, board serial, calibration. The protocol is *trivial*; writing your own driver in 100 lines is genuinely possible and clarifying. After this chapter the kernel's `at24.c` will look like ordinary plumbing, not magic.
-> **Focus:** **two protocol gotchas** — (a) page-aligned writes (writing across a page boundary silently wraps within the same page), and (b) the ACK-poll loop (the chip NACKs while internally programming, you poll until it ACKs). Master those and the rest is byte arithmetic.
+> **Why:** EEPROM is the place embedded boards store small permanent facts about themselves — MAC address, board serial, calibration. The protocol is small. Writing your own driver in 100 lines is realistic and worth the time. After this chapter the kernel's `at24.c` will read as ordinary code, not a mystery.
+> **Focus:** **two protocol gotchas** — (a) page-aligned writes (writing across a page boundary silently wraps within the same page), and (b) the ACK-poll loop (the chip NACKs while internally programming, you poll until it ACKs). Get those two right and the rest is byte arithmetic.
 
 ## 65.1  When EEPROM beats flash, OTP fuses, NVRAM
 
@@ -82,7 +82,7 @@ For a write of 4 bytes to offset 0x40:
    Slave:                  ←─┘         ←─┘   ←─┘    ←─┘    ←─┘    ←─┘
 ```
 
-Then the chip enters **internal write cycle** for ~5 ms. During this time it **NACKs every I²C transaction**. The host polls (issues address-write, sees NACK, retries) until it gets an ACK — that's "ACK polling," the standard way to know the write finished.
+After the data bytes, the chip starts an *internal write cycle* of about 5 ms. During this time it NACKs every I²C transaction. The host keeps issuing address-write transactions; each NACK means "still writing," and the first ACK means "done." This is called **ACK polling**.
 
 For AT24C512 (and larger), the byte address is **2 bytes**: send 0xA0, ACK, addr_high, ACK, addr_low, ACK, then data. Same protocol, one more address byte.
 
@@ -237,7 +237,7 @@ Two things to notice:
 1. **The page-boundary split**: `chunk = min(count, at24->page_size - page_offset)` ensures we never cross a page boundary in one transaction.
 2. **ACK polling**: the loop with `regmap_read(regmap, 0, &dummy)` tests whether the chip ACKs *yet*. While the chip is writing internally, it NACKs every transaction; the loop spins (yielding with `usleep_range`) until it gets an ACK.
 
-That's the whole driver. ~50 lines of meaningful code; the rest is parameter tables, DT plumbing, and edge-case handling (multi-address chips, write-protect GPIOs).
+That is the whole driver. Around 50 lines of real code. The rest is parameter tables, DT plumbing, and edge cases (multi-address chips, write-protect GPIOs).
 
 ## 65.6  Writing an I²C EEPROM driver from scratch
 
@@ -598,8 +598,8 @@ After factory: WP held high, field firmware can read but not write. Reboot → k
 2. **Build and load `myeeprom.ko`.** Write 12 bytes ("Hello world!"), read back. Verify it survives reboot.
 3. **Provoke the page-boundary bug.** Modify `me_fops_write` to skip the split — write 12 bytes in one `me_write_page` call (relax the validation `if`). Observe data corruption: bytes 8–11 overwrite bytes 0–3 of page 0, not bytes 0–3 of page 1. Restore the split.
 4. **ACK-poll timing.** Add `ktime` measurement around the ACK-poll loop. With a 5 ms internal cycle, expect ~5 ms per write.
-5. **Switch to mainline `at24`.** Unload `myeeprom`; bind the same chip with `compatible = "atmel,24c02"`. Verify `/sys/bus/i2c/devices/1-0050/eeprom` appears. Same chip, more features.
-6. **nvmem MAC.** Configure DT as in §65.7. Boot; `ip link show eth0`; verify the MAC matches the bytes you wrote at offset 0. This is the production pattern — own it.
+5. **Switch to mainline `at24`.** Unload `myeeprom`; bind the same chip with `compatible = "atmel,24c02"`. Verify `/sys/bus/i2c/devices/1-0050/eeprom` appears. Same chip, more features available.
+6. **nvmem MAC.** Configure DT as in §65.7. Boot; `ip link show eth0`; verify the MAC matches the bytes you wrote at offset 0. This is the production pattern.
 
 ## 65.10  Pitfalls
 
@@ -607,7 +607,7 @@ After factory: WP held high, field firmware can read but not write. Reboot → k
 - **Address-width confusion.** AT24C02 uses 1-byte address; AT24C512 uses 2-byte. The mainline driver derives this from chip size; the from-scratch driver hardcodes one or the other.
 - **5 ms write cycle not waited for.** Issuing the next command before the cycle finishes → NACK → kernel error. The ACK-poll loop is mandatory.
 - **Multiple EEPROMs on one bus.** Strap each chip's A0/A1/A2 differently to give unique addresses (0x50–0x57). If two chips share an address, neither responds correctly.
-- **WP pin floating.** Reads return all-0xFF forever; writes silently fail. Tie WP low, or wire to a GPIO with default-low.
+- **WP pin floating.** Reads return all-0xFF and writes silently fail. Tie WP low, or wire it to a GPIO that defaults to low.
 - **Wrong nvmem cell offset.** Driver reads garbage as the MAC. Cross-check `reg = <offset size>` against your factory-write script.
 - **`/WP` and software write-protect register coexist.** Some chips have *both* a hardware /WP pin *and* a software status-register write-protect. Make sure both allow writes.
 - **The "WC" pin.** Some EEPROMs name it WC (write control) instead of WP. Same idea, different polarity sometimes — read the datasheet.

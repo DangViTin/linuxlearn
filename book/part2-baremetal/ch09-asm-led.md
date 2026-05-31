@@ -9,8 +9,8 @@ status: draft
 # Chapter 9 — First LED, pure assembly
 
 > **What:** code that blinks an LED on the Point Atom MINI. No C. No libc. No bootloader. ~25 lines of ARM assembly, < 1 KB image, loaded into OCRAM by the Boot ROM over USB-OTG.
-> **Why:** this is your "I own this chip" moment. Every layer above bare-metal exists to make hard things easier, and you cannot tell whether they are doing it well unless you have once done it the hard way.
-> **Focus:** the **three-write pattern** that brings up any GPIO on any i.MX SoC — `CCGR` (clock), `IOMUXC` (pin), `GPIO_GDIR + GPIO_DR` (use). Internalize it; we use it for every peripheral, forever.
+> **Why:** This is the moment you really own the chip. Higher layers exist to make hard things easy, but you can only judge them if you have done it the hard way once.
+> **Focus:** the **three-write pattern** that brings up any GPIO on any i.MX SoC — `CCGR` (clock), `IOMUXC` (pin), `GPIO_GDIR + GPIO_DR` (use). Memorize it. We use it for every peripheral in the book.
 
 ## 9.1  What we are about to build
 
@@ -29,11 +29,11 @@ loop:
     branch loop
 ```
 
-That is, literally, the program. About 50 instructions, 200 bytes of `.text`, zero data. We push it to OCRAM via `uuu` in SDP mode. The Boot ROM transfers control. The LED blinks.
+That is, literally, the program. About 50 instructions, 200 bytes of `.text`, zero data. We push it to OCRAM via `uuu` in SDP mode. The Boot ROM transfers control and the LED blinks.
 
-We will not use a linker script in this chapter — the program is small enough that we hand-place it. Chapter 10 introduces the linker script as soon as we want C.
+No linker script this chapter. The program is small enough to hand-place. Chapter 10 introduces the linker script as soon as we want C.
 
-> **Which pin?** On both Point Atom ALPHA and MINI, the user LED ("LED0", marked **D1** on the silkscreen) drives **GPIO1_IO03** active-LOW (the GPIO pulls the cathode side of the LED low to turn it on, with the anode tied to the 3.3 V rail through a current-limiting resistor). Both boards use the same pin. *Confirm against your board's schematic for safety.* If your LED is on a different pin, every register address in this chapter changes, but the pattern does not. Because we are merely *toggling* the bit in this chapter, the active-low wiring is invisible to the program (the LED just blinks opposite-phase from what you might naively expect).
+> **Which pin?** On both Point Atom ALPHA and MINI, the user LED (D1 on the silkscreen) is on **GPIO1_IO03**. The wiring is active-low: the anode goes to 3.3 V through a current-limiting resistor; the GPIO pulls the cathode low to turn the LED on. *Confirm against your board's schematic for safety.* If your LED is on a different pin, every register address in this chapter changes, but the pattern does not. Because we only toggle the bit, active-low wiring does not change our code. The LED just blinks with inverted phase.
 
 ## 9.2  The three-write pattern, explained
 
@@ -45,7 +45,7 @@ To make any pin output a level under software control on i.MX6ULL, you do exactl
 
 Optionally, you also write to `IOMUXC_SW_PAD_CTL_PAD_<padname>` to set drive strength, slew rate, pull, etc. For an LED you can usually leave this at reset defaults.
 
-These addresses, for our case (GPIO1_IO03), from the i.MX6ULL Reference Manual:
+Addresses for GPIO1_IO03, from the Reference Manual:
 
 | Register | Address | Purpose |
 |----------|---------|---------|
@@ -68,7 +68,7 @@ Every CCM_CCGRx register holds **16 clock gates × 2 bits each** = 32 bits. The 
 | `10` | *Reserved* — do not program this value |
 | `11` | Clock on in all CPU run modes (RUN/WAIT/STOP) — "always on" |
 
-So "enable GPIO1 always" is `0b11` written into CG13's bit-pair. CG13 occupies bits 26–27 of CCGR1 (CG0 is bits 0–1, CG1 bits 2–3, …, CG15 bits 30–31). The OR-mask is `0b11 << 26 = 0x0C000000`. We can either OR-in that mask or just write `0xFFFFFFFF` to CCGR1 (turning every gate in CCGR1 on); for a learning exercise the OR-in form is cleaner. **This 2-bit encoding applies to every CCGR write throughout the book** — Chapters 13, 14, 18 reuse it.
+So "enable GPIO1 always" is `0b11` written into CG13's bit-pair. CG13 occupies bits 26–27 of CCGR1 (CG0 is bits 0–1, CG1 bits 2–3, …, CG15 bits 30–31). The OR-mask is `0b11 << 26 = 0x0C000000`. We can either OR-in that mask or just write `0xFFFFFFFF` to CCGR1 (turning every gate in CCGR1 on); for a learning exercise the OR form is cleaner because it leaves the other gates unchanged. **This 2-bit encoding applies to every CCGR write throughout the book** — Chapters 13, 14, 18 reuse it.
 
 ## 9.3  The assembly source
 
@@ -148,8 +148,8 @@ A few notes on what's there and what isn't:
 
 - **No exception vectors.** The Boot ROM doesn't require them. We are running with interrupts disabled (CPSR.I=1 from reset) and we don't enable them, so no exception ever fires. Chapter 15 will install a real vector table.
 - **No `.data`, no `.bss`.** Every value we use is an immediate or computed at run time. Therefore no startup code is needed to copy or zero anything.
-- **No `main()`.** `_start` is the entry; it never returns. Hanging off the end of an asm program is not a thing on bare-metal — you must explicitly loop forever.
-- **`ldr r0, =0x...`** is GNU assembler syntax for "load-pc-relative pool constant". The assembler generates a literal pool somewhere after the function and the `ldr` becomes a load from that pool. Cortex-A7 cannot encode arbitrary 32-bit immediates in a single instruction; this pseudo-form is the standard idiom.
+- **No `main()`.** `_start` is the entry; it never returns. An assembly program has no caller to return to; you must explicitly loop forever.
+- **`ldr r0, =0x...`** is GNU assembler syntax for "load-pc-relative pool constant". The assembler generates a literal pool somewhere after the function and the `ldr` becomes a load from that pool. Cortex-A7 cannot encode arbitrary 32-bit immediates in one instruction. This pseudo-form is the standard idiom.
 - **`1:` is a local label.** `1b` means "branch to the nearest `1` label going backward." This is a GAS convention for local loops; it avoids us inventing new names.
 - **`.syntax unified`** says "use the modern ARM/Thumb-unified mnemonics", which lets us write `orr r1, r1, ...` even in ARM mode without surprises.
 
@@ -345,10 +345,10 @@ Your code:
   → sets pin ALT5
   → sets pin direction = output
   → enters blink loop
-LED blinks. The blink is, in the most literal sense, you driving electrons through silicon you wrote a contract with.
+LED blinks. You wrote every instruction the CPU executed to get here.
 ```
 
-There is nothing between your code and the chip. No bootloader. No kernel. No OS. This is, more than any other moment in this book, embedded *Linux* — because you understand now what the next 50 chapters are *adding* to this picture.
+Nothing sits between your code and the chip. The next 50 chapters add layers on top of what you just built.
 
 ## 9.8  Lab
 

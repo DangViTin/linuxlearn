@@ -9,8 +9,8 @@ status: draft
 # Chapter 42 — Sleeping, waiting, polling
 
 > **What:** **wait queues** (`wait_queue_head_t`, `wait_event_interruptible`, `wake_up`), the `.poll` file_operations callback, and the `O_NONBLOCK` machinery. Together these let a `read(2)` or `write(2)` syscall block until data is ready, wake exactly the right process when it is, and integrate with `select(2)` / `poll(2)` / `epoll`.
-> **Why:** every driver that produces data on its own schedule — UART, keyboard, sensor, network — needs a way to make a reader wait without polling. Without wait queues, your `read` callback either returns "no data, try again" (caller burns CPU spinning) or blocks the CPU itself (kernel hangs). Wait queues are how Linux makes blocking I/O efficient: the thread sleeps, the scheduler runs something else, and an interrupt or timer wakes the thread exactly when its data is ready.
-> **Focus:** **the sleep/wake protocol**. The reader registers itself on a wait queue, checks a condition, and sleeps if not met. The producer modifies state then calls `wake_up`. The kernel guarantees no missed wakeups via a careful prepare-and-check sequence. Get this dance right and your driver's blocking I/O is correct; get it wrong and you have a "sometimes the read just hangs forever" bug.
+> **Why:** drivers that produce data on their own schedule (UART, keyboard, sensor, network) need a way to make a reader wait without polling. Without wait queues, your `read` callback either returns "no data, try again" (caller burns CPU spinning) or blocks the CPU itself (kernel hangs). Wait queues are how Linux makes blocking I/O efficient. The thread sleeps. The scheduler runs something else. An interrupt or timer wakes the thread when its data is ready.
+> **Focus:** **the sleep/wake protocol**. The reader registers itself on a wait queue, checks a condition, and sleeps if not met. The producer modifies state then calls `wake_up`. The kernel guarantees no missed wakeups via a careful prepare-and-check sequence. Get the sequence right and your driver's blocking I/O is correct. Get it wrong and reads sometimes hang forever.
 
 ## 42.1  The two ways to wait
 
@@ -58,7 +58,7 @@ This loop is what prevents the "lost wakeup" race: the producer might `wake_up` 
 | `wait_event_interruptible_timeout(...)` | Both interruptible and timeout |
 | `wait_event_killable(wq, cond)` | Like interruptible, but only fatal signals interrupt |
 
-For driver `read`/`write` callbacks: **use `wait_event_interruptible` or `wait_event_interruptible_timeout`**. Never use the uninterruptible variants — a stuck driver with uninterruptible waiters is the classic D-state hang that takes the system down with it.
+For driver `read`/`write` callbacks: **use `wait_event_interruptible` or `wait_event_interruptible_timeout`**. Never use the uninterruptible variants. A stuck driver with uninterruptible waiters is the classic D-state hang — the user cannot kill the process; only a reboot fixes it.
 
 ### Wake variants
 
@@ -154,7 +154,7 @@ if (filp->f_flags & O_NONBLOCK) {
 
 If the user opened the device with `O_NONBLOCK`, we *never* sleep — we return `-EAGAIN` (= "would block; try again later") immediately if no data. This is what `epoll` and similar event loops want.
 
-`O_NONBLOCK` is a per-open flag. The user can also flip it later via `fcntl(fd, F_SETFL, O_NONBLOCK)`. Always honor it.
+`O_NONBLOCK` is a per-open flag. The user can change it later via `fcntl(fd, F_SETFL, O_NONBLOCK)`. Always check it.
 
 ## 42.4  poll / select / epoll
 
@@ -285,7 +285,7 @@ Quick guide:
 - **Process context, can sleep, exact delay not critical:** `msleep`.
 - **Process context, can sleep, want to be killable:** `msleep_interruptible`.
 - **Process context, sleeping but short:** `usleep_range`. Kernel may bundle short sleeps to reduce wake-ups.
-- **Atomic context (IRQ handler, spinlock held):** `udelay` or `mdelay` only — these busy-wait. Don't `mdelay` more than ~10 ms; that's bad on a single-core system.
+- **Atomic context (IRQ handler, spinlock held):** `udelay` or `mdelay` only — these busy-wait. Do not `mdelay` more than ~10 ms — you stall every other task on a single-core system.
 - **Need to wait for a condition with a timeout:** `wait_event_interruptible_timeout`.
 
 ## 42.6  Tasks state machine
@@ -325,7 +325,7 @@ For chardev `read`/`write`, always use interruptible.
 - **Forgetting to wake.** Producer changes state but never calls `wake_up`. Reader sleeps forever. Symptom: works once (initial check passes), hangs after.
 - **`wait_event` instead of `wait_event_interruptible` in `read`/`write` callbacks.** Process becomes unkillable when stuck. Always use interruptible variants in fops.
 - **Returning `-EINTR` instead of `-ERESTARTSYS`.** Both are valid responses to a signal during a sleep, but `-ERESTARTSYS` causes the kernel to re-execute the syscall after the signal handler returns (if the signal handler permits). `-EINTR` returns the error directly to user-space, requiring the app to retry. Prefer `-ERESTARTSYS`; it's friendlier.
-- **`poll_wait` after returning the mask.** The order is: register first (`poll_wait`), then return the mask. Reverse it and the kernel may register no wait at all, leading to busy-looping in `select`.
+- **`poll_wait` called after returning the mask.** Order matters: register the wait first, then return the mask. Reverse it and the kernel may register no wait, so `select` busy-loops.
 - **Calling `msleep` in an IRQ handler.** IRQ handlers are atomic. Use `udelay` or `mdelay` (busy-wait, no sleep), or schedule a workqueue/tasklet to do the sleeping work.
 - **Memory-barrier wishful thinking.** Producer writes data buffer, then wakes; reader is woken, then reads buffer. The `wake_up` family has implicit barriers — wake_up implies a full barrier, and the woken task's resumption implies a barrier too. You usually don't need explicit `smp_wmb()`/`smp_rmb()`. But if you're doing fancy lockless work, double-check `Documentation/memory-barriers.txt`.
 

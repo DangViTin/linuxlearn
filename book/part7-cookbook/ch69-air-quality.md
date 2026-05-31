@@ -10,7 +10,7 @@ status: draft
 
 > **What:** three radically different "what's in the air" sensors: **Sensirion SCD30** (NDIR CO₂, I²C with clock-stretching), **AMS CCS811** (metal-oxide TVOC + eCO₂, I²C with interrupt), **Plantower PMS5003** (laser-scattering PM, UART). Each represents a different sensing physics, a different bus, a different protocol shape. For each: physics, protocol, the mainline driver, plus a from-scratch UART-based PMS5003 driver (since it's the most pedagogically interesting and the existing IIO support is fragmented).
 > **Why:** the air-quality market is exploding (post-pandemic; IAQ in offices; outdoor pollution dashboards). These three sensors together cover the dimensions that matter: CO₂ (occupancy, ventilation), VOCs (cleaning chemicals, paint, formaldehyde), particulate matter (combustion, dust, wildfire smoke). Knowing which chip claims to measure what — and what it *actually* measures — separates a useful product from a placebo.
-> **Focus:** **NDIR is physics; metal-oxide is correlation; laser scatter is counting**. NDIR (CO₂): direct absorbance measurement, traceable to the molecule. MOX (CCS811): a tin-oxide film whose resistance changes with reducing gases — the "eCO₂" is *inferred* from VOC trends, **not** actually measured. PM: literally counting particles flowing through a laser beam. Internalise this hierarchy and you'll never trust an "eCO₂" reading on its face again.
+> **Focus:** **NDIR measures physics directly. Metal-oxide infers from a correlation. Laser scatter counts particles. Three very different things wearing the label 'air quality sensor.'** NDIR (CO₂): direct absorbance measurement, traceable to the molecule. MOX (CCS811): a tin-oxide film whose resistance changes with reducing gases — the "eCO₂" is *inferred* from VOC trends, **not** actually measured. PM: literally counting particles flowing through a laser beam. Once you see this hierarchy, an "eCO₂" reading reads as "rough VOC trend that someone scaled into CO₂-looking numbers," not as a CO₂ measurement.
 
 ## 69.1  Sensor comparison
 
@@ -28,8 +28,8 @@ status: draft
 | Mainline driver | `scd30_core.c` + `scd30_i2c.c` | `ccs811.c` | none in mainline; SerDev driver in some BSPs |
 
 **Pick guide:**
-- **SCD30**: when you need **real CO₂**, traceable to a standard, for ventilation control or occupancy detection. Expensive but honest.
-- **CCS811**: when you want **a trend** in air quality (VOC build-up from cleaning chemicals, paint, body odour). Don't claim "this is CO₂."
+- **SCD30**: when you need **real CO₂**, traceable to a standard, for ventilation control or occupancy detection. Expensive but accurate.
+- **CCS811**: when you want **a trend** in air quality (VOC build-up from cleaning chemicals, paint, body odour). Don't label CCS811 output as "CO₂" to end users.
 - **PMS5003**: when you need **PM monitoring** — air quality monitor product, wildfire-smoke alert, HVAC filter health.
 
 You often combine all three. A complete IAQ (indoor air quality) sensor stack is: temp/humidity (Ch 67) + real CO₂ (SCD30) + VOC trend (CCS811) + PM (PMS5003).
@@ -66,7 +66,7 @@ A heated SnO₂ film. In dry air, oxygen ions adsorb on the film, raising its re
 
 The chip's firmware maps resistance to two output numbers:
 - **TVOC** (Total Volatile Organic Compounds, ppb).
-- **eCO₂** (equivalent CO₂, ppm) — *not* CO₂; it's an estimate based on the assumption that human-occupancy CO₂ rise tracks human-occupancy VOC rise. **Wrong by design** when you have non-human VOC sources (cooking, cleaning, painting).
+- **eCO₂** (equivalent CO₂, ppm) — *not* CO₂; it's an estimate based on the assumption that human-occupancy CO₂ rise tracks human-occupancy VOC rise. **Inaccurate by construction** whenever a VOC source other than human breath is present — cooking, cleaning, painting all corrupt it.
 
 The film "burns in" over the first 48 hours (chemistry stabilises), drifts over months (poisoning), and ages over years.
 
@@ -118,7 +118,7 @@ uint32_t bits = (raw[0]<<24) | (raw[1]<<16) | (raw[3]<<8) | raw[4];
 float co2_ppm = *(float*)&bits;
 ```
 
-(Skipping the CRC bytes at indices 2 and 5; check them and retry on mismatch.)
+Indices 2 and 5 are CRC bytes — skipped here for the value extraction, but check them and retry on mismatch.
 
 ### Mainline SCD30 driver
 
@@ -485,7 +485,7 @@ User-space reads all of them via IIO + serdev, feeds an MQTT topic, plots in Gra
 - **Calling eCO₂ "CO₂".** It isn't. CCS811's eCO₂ is calibrated to track human-occupancy *if and only if* there are no other VOC sources. Cooking, paint, cleaning products, smoking — all corrupt it. If your product advertises "CO₂ sensor," use SCD30, not CCS811.
 - **CCS811 24-hour burn-in.** Brand-new chip reports nonsense for the first 20 minutes; reasonable after 24 hours of continuous operation. Document this; don't show users readings during burn-in.
 - **SCD30 ASC corrupting calibration.** Auto self-calibration assumes your room reaches outdoor CO₂ (400 ppm) sometime each week — fails for hermetically sealed environments. Disable ASC via the FRC command if the room never opens up.
-- **PMS5003 fan failure.** Particle count silently goes to zero or near-zero. Detect by: count is identically zero for > 10 frames in a row → likely fan failure. Most products have a "fan power" pin; cycle it.
+- **PMS5003 fan failure.** Particle count silently goes to zero or near-zero. Detect by: count is identically zero for > 10 frames in a row → likely fan failure. Most products bring out a "fan power" pin. Toggle it off and on to reset the fan.
 - **PMS5003 in dust storms.** The chip's saturation limit is ~500 µg/m³. In actual dust storms (Sahara, wildfire heart) values can hit 1500+; PMS5003 will report 500 forever.
 - **SCD30 clock-stretching beyond timeout.** I²C controllers vary in their max-stretch tolerance. i.MX6ULL is fine at 400 kHz; some bridges fail. Use scope to check SCL low durations if reads are flaky.
 - **CCS811 /WAKE polarity.** Active low. Tying it permanently low works (no sleep), but increases power. For battery products, GPIO it.

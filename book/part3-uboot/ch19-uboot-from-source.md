@@ -9,7 +9,7 @@ status: draft
 # Chapter 19 — U-Boot from source, first boot
 
 > **What:** clone mainline U-Boot, build it for the i.MX6ULL, `dd` the result to an SD card, boot it, get a `=>` prompt. Then run a few commands and recognize, in U-Boot's output, every step we did by hand in Chapters 9–17.
-> **Why:** Part II proved we can boot the chip ourselves. From here on the question is no longer "can we?" but "what does the professional version of this work look like?" U-Boot is that version. Reading its source is the most concentrated lesson in real-world embedded-Linux engineering available.
+> **Why:** Part II proved we can boot the chip ourselves. From here on the question is what the professional version looks like. U-Boot is that version. Its source is one of the best embedded-Linux codebases to read.
 > **Focus:** **recognition**. By the end of Part III you should be able to point at any line of U-Boot's `arch/arm/cpu/armv7/start.S` or `arch/arm/mach-imx/spl.c` and say "that is Chapter 14 §14.6, rewritten by someone who has done it a thousand times." That recognition is what Part II bought us.
 
 ## 19.1  Why mainline U-Boot
@@ -45,7 +45,7 @@ If you want a stable release rather than the development tip:
 $ git checkout v2025.01           # or whichever release is current
 ```
 
-Older systems may need an explicit `--depth=1` to avoid pulling ~50 MB of git history. Disk is cheap; we keep history.
+On slow connections, add `--depth=1` to skip ~50 MB of git history. Disk is cheap. Keep the history.
 
 ### Directory layout
 
@@ -99,7 +99,7 @@ $ make mx6ull_14x14_evk_defconfig
 $ make -j$(nproc)
 ```
 
-The first build takes 1–2 minutes on a modern host. A few interesting moments scroll past:
+The first build takes 1–2 minutes on a modern host. A few interesting lines scroll past:
 
 - `HOSTCC scripts/...` — building host-side helpers (tools, dtc, mkimage) with the *host's* compiler.
 - `CC arch/arm/cpu/armv7/start.o` — that file is the bare-metal startup. You just compiled the i.MX6ULL equivalent of your Chapter 10 `startup.S`. **Open it. Read it.**
@@ -108,7 +108,7 @@ The first build takes 1–2 minutes on a modern host. A few interesting moments 
 - `OBJCOPY u-boot.bin` — the raw binary (Chapter 6).
 - `MKIMAGE u-boot.imx` — wrapping with an IVT + BootData (Chapter 7), the same operation our `mkimx.py` performs.
 
-When `make` returns to the prompt without errors, the build artefacts are:
+When `make` finishes without errors, the build produces these files:
 
 | File | What it is |
 |------|------------|
@@ -126,7 +126,7 @@ Two of these are what we will actually use:
 - **`SPL`** — the first stage, gets `dd`'d to the SD card at offset `0x400` (LBA 2). This is what the i.MX6ULL Boot ROM finds and runs.
 - **`u-boot-dtb.imx`** — the second stage, gets `dd`'d to the SD card at offset `69 KiB` (the location SPL's defconfig is built to look for).
 
-Actually, for the SD-boot case the SPL is what carries the IVT, and the SPL loads `u-boot-dtb.imx` (or `u-boot.img`) from a later offset on the card. There is also a simpler **no-SPL** flow where `u-boot-dtb.imx` itself is what the ROM loads — used when U-Boot fits in OCRAM (rarely true these days). We will use the SPL flow throughout this book.
+For the SD-boot case, SPL carries the IVT. SPL then loads `u-boot-dtb.imx` (or `u-boot.img`) from a later offset on the card. There is also a simpler **no-SPL** flow where `u-boot-dtb.imx` itself is what the ROM loads — used when U-Boot fits in OCRAM (rarely true these days). We will use the SPL flow throughout this book.
 
 ## 19.4  Flash to SD
 
@@ -149,7 +149,7 @@ $ sync
 
 (Or use the helper from Chapter 3 with two invocations; or write a small wrapper.)
 
-A more pleasant alternative: `uuu` can do the whole thing over USB-OTG without an SD card. We will use that in Chapter 24. For now, SD is concrete and the steps are the most explicit.
+A nicer alternative: `uuu` does the whole thing over USB-OTG, no SD card needed. We will use that in Chapter 24. For now, SD is concrete and the steps are the most explicit.
 
 ## 19.5  First boot
 
@@ -179,15 +179,15 @@ Hit any key to stop autoboot:  3 ...
 =>
 ```
 
-If you press a key before the autoboot counts down, you land at the `=>` prompt. We did it.
+If you press a key during autoboot, you land at the `=>` prompt.
 
-Pause. Read the boot log a third time. Notice:
+Read the boot log again, slowly. Notice:
 
 - "U-Boot SPL" prints first. That's a small program, loaded by ROM, that initialized DDR. **The exact responsibilities you wrote in Chapter 14.**
 - "Trying to boot from MMC1" — SPL is reading `u-boot-dtb.imx` from the SD card and loading it into DRAM.
 - "U-Boot 2025.01" — the second stage has taken over, running from DRAM, with full peripheral support.
 - "CPU: i.MX6ULL rev1.1 at 396 MHz" — the boot-default ARM clock. Notice it didn't go to 696 MHz; the EVK config is conservative. Chapter 13's PLL config can apply here too.
-- "DRAM: 512 MiB" — SPL's DDR setup worked. The productized version of your Chapter 14 MMDC bring-up — mainline's `arch/arm/mach-imx/mx6/ddr.c` is a ~1500-line table-driven engine that wraps the same MMDC register dance, hardened across thousands of boards. We dissect it in Ch 20 §20.7.
+- "DRAM: 512 MiB" — SPL's DDR setup worked. The production version of your Chapter 14 MMDC bring-up. Mainline's `arch/arm/mach-imx/mx6/ddr.c` is a ~1500-line table-driven driver that wraps the same MMDC sequence, hardened across thousands of boards. We dissect it in Ch 20 §20.7.
 - "Loading Environment from MMC..." — U-Boot tries to read its persistent env from the SD card. There isn't one yet; it falls back to defaults. `*** Warning - bad CRC` is normal on first boot.
 - "Hit any key to stop autoboot" — without intervention, U-Boot would run `bootcmd` (Chapter 23) which on the EVK config tries to find a kernel and chain-boot Linux.
 
@@ -257,7 +257,7 @@ The Chapter 14 memtest equivalent:
 80000000: cafebabe                              ....
 ```
 
-DRAM works. Same DRAM we configured by hand in Chapter 14, but the SPL did it for us this time.
+DRAM works. Same DRAM as Chapter 14, but SPL configured it this time.
 
 ### `mmc info`
 
@@ -320,9 +320,9 @@ static void spl_dram_init(void)
 }
 ```
 
-That's it. Three structs and one function call. Inside `mx6_ddr3_cfg` (in `arch/arm/mach-imx/mx6/ddr.c`) you will find ~600 lines that do *exactly* what your Chapter 14 `ddr_init` does — pad config, MMDC core registers, MR loads, ZQ cal, write-leveling — but parameterized, table-driven, and validated across every Micron / Nanya / ISSI DDR3 part NXP supports.
+Three structs and one function call. Inside `mx6_ddr3_cfg`, you'll find ~600 lines doing the same job as your Chapter 14 `ddr_init`: pad config, MMDC core registers, MR loads, ZQ cal, write-leveling. The difference is that it is table-driven and validated across every Micron, Nanya, and ISSI DDR3 part NXP supports.
 
-Read it. It is the cleanest production-grade DDR3 init code in any open-source project. The fact that it does not look magical to you is the entire point of Chapter 14.
+Read it. After Chapter 14, none of it should look magical. That is the point.
 
 ## 19.8  Lab
 

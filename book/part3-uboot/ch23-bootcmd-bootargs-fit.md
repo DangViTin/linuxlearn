@@ -9,8 +9,8 @@ status: draft
 # Chapter 23 — `bootcmd`, `bootargs`, FIT images
 
 > **What:** the *contract* between U-Boot and the Linux kernel. `bootcmd` is what U-Boot runs to load and start the kernel; `bootargs` is what U-Boot tells the kernel about the system; FIT (Flattened Image Tree) is the modern signed-bundle format that carries kernel + DTB + initramfs in one file.
-> **Why:** these three things are the difference between "U-Boot works" and "Linux boots." They are also where most "the kernel won't start" bugs live. Master them and you can diagnose boot failures from the boot log alone.
-> **Focus:** the **cmdline as a contract**. The kernel's behavior depends entirely on what it finds in `chosen.bootargs` of the DT (which `bootargs` writes to). Understand which knobs are kernel-side and which are U-Boot-side and you stop chasing ghosts.
+> **Why:** These three things sit between "U-Boot works" and "Linux boots." Most "the kernel won't start" bugs live here. Once you understand them, you can diagnose boot failures from the boot log alone.
+> **Focus:** the **cmdline as a contract**. The kernel's behavior depends entirely on what it finds in `chosen.bootargs` of the DT (which `bootargs` writes to). Know which knobs are kernel-side and which are U-Boot-side, and you stop chasing the wrong file.
 
 ## 23.1  `bootcmd` — U-Boot's autoboot
 
@@ -49,7 +49,7 @@ bootcmd=run findfdt; mmc dev ${mmcdev}; mmc rescan;
          fi
 ```
 
-It's verbose but the pattern is universal:
+The script is verbose, but the pattern is common to most boards:
 
 1. Find the appropriate DT (`findfdt` runs `setenv fdtfile imx6ull-pa-mini.dtb` based on board detection).
 2. Initialize MMC.
@@ -69,7 +69,7 @@ nfsboot=setenv bootargs console=ttymxc0,115200 root=/dev/nfs nfsroot=${serverip}
          bootz 0x82000000 - 0x83000000
 ```
 
-One `setenv bootcmd '...'; saveenv` and the board boots over the network on every power-up. Fast iteration; we use this in Chapter 24.
+One `setenv bootcmd '...'; saveenv` and the board network-boots on every power-up. Chapter 24 builds on this.
 
 ## 23.2  `bootargs` — the kernel command line
 
@@ -130,7 +130,7 @@ This is the channel through which the kernel learns the cmdline. There is also a
 
 ## 23.3  `bootm`, `bootz`, `booti` — what's the difference
 
-Three commands, very similar names, different jobs.
+Three commands with similar names but different jobs.
 
 | Command | Expected kernel format | Endianness |
 |---------|------------------------|------------|
@@ -144,7 +144,7 @@ If your kernel build produces a **uImage** (a zImage wrapped with U-Boot's legac
 
 If your kernel build is **arm64**, use **`booti`**.
 
-All three take the same arguments after the address: `[initrd-addr] [dtb-addr]`. The `-` in `bootz 0x82000000 - 0x83000000` means "no initrd, DTB at the next address."
+All three take the same arguments after the address: `[initrd-addr] [dtb-addr]`. The `-` in `bootz 0x82000000 - 0x83000000` means "no initrd; DTB is at the next argument."
 
 ## 23.4  Boot scripts — a slightly nicer layer
 
@@ -167,7 +167,7 @@ mkimage -A arm -O linux -T script -C none -d boot.cmd boot.scr
 
 Copy `boot.scr` onto the SD card's FAT partition. If U-Boot's default `bootcmd` includes "look for `boot.scr` and run it" (the EVK config does), the script runs on next boot.
 
-Mostly useful for distros. For development, edit `bootcmd` directly.
+Boot scripts are mostly for distros. For development work, just edit `bootcmd`.
 
 ## 23.5  FIT — Flattened Image Tree
 
@@ -256,7 +256,7 @@ The `#conf-mini` selects the configuration. With no `#`, the default applies.
 
 ### Why this matters in Chapter 23A
 
-A FIT can carry **multiple DTBs and multiple configurations**. That is what we use in Chapter 23A to ship one image for several board variants — strap pins or an EEPROM ID pick which `conf-xxx` to invoke at boot time.
+A FIT can hold several DTBs and several configurations. That is what we use in Chapter 23A to ship one image for several board variants — strap pins or an EEPROM ID pick which `conf-xxx` to invoke at boot time.
 
 For now, get one config working.
 

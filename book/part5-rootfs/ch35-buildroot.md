@@ -9,8 +9,8 @@ status: draft
 # Chapter 35 — Buildroot, after you can do it by hand
 
 > **What:** Buildroot — a make-driven build system that produces a complete root filesystem (optionally + bootloader + kernel + cross-toolchain) from one `make` command and one `.config` file. By the end you will have built a working rootfs that boots on the i.MX6ULL, then customised it with extra packages, and learned where to look when the build fails.
-> **Why:** Chapter 31 took us 22 pages and a dozen hand-typed commands to get a BusyBox shell. Buildroot does the same in 20 minutes of compile time and one menuconfig session, and on top of that adds 3000+ optional packages (Qt, alsa-utils, openssh, mosquitto, nodejs, ...). We did Ch 31 first so you know what Buildroot is doing under the hood; now we let the tool save time.
-> **Focus:** **the `output/` tree** — every artefact Buildroot produces lives in one place under `output/`, with a predictable layout. Once you can navigate `output/`, debugging build failures becomes a directed search rather than a hunt.
+> **Why:** Chapter 31 took us 22 pages and a dozen hand-typed commands to get a BusyBox shell. Buildroot does the same in twenty minutes of compile time and one menuconfig session. On top of that it offers 3000+ optional packages (Qt, alsa-utils, openssh, mosquitto, nodejs, ...). Chapter 31 was for understanding; this chapter is for speed.
+> **Focus:** **the `output/` tree** — every artefact Buildroot produces lives in one place under `output/`, with a predictable layout. Once you know `output/`, debugging a failed build is a directed search instead of a hunt.
 
 ## 35.1  What Buildroot is
 
@@ -33,7 +33,7 @@ Three things Buildroot is *not* good at:
 2. **Concurrent multi-config builds.** Each `make` is one config; switching configs means rebuilding.
 3. **Long-term maintenance of many products.** Yocto / OpenEmbedded scales to many product variants better.
 
-For *learning* and for *single-purpose products with simple package needs*, Buildroot is the right tool. For *commercial product lines with many variants*, Yocto is. Most engineers learn Buildroot first.
+Buildroot is the right tool for learning, and for single-purpose products with simple package needs. Yocto is the right tool for commercial product lines with many variants. Most engineers learn Buildroot first.
 
 ## 35.2  Get the source
 
@@ -111,7 +111,7 @@ imx6ull-14x14-evk.dtb   rootfs.cpio   rootfs.cpio.gz   rootfs.ext2
 rootfs.ext4 → rootfs.ext2                rootfs.tar    SPL    u-boot-dtb.imx   zImage
 ```
 
-The whole stack — SPL, U-Boot, kernel, DTB, rootfs in multiple formats — produced by one `make`. The defconfig also enabled `BR2_TARGET_UBOOT` and `BR2_LINUX_KERNEL`, which we'll often turn off if we want to build only the rootfs.
+The whole stack — SPL, U-Boot, kernel, DTB, rootfs in multiple formats — produced by one `make`. The defconfig enables `BR2_TARGET_UBOOT` and `BR2_LINUX_KERNEL`. Turn both off when you only need the rootfs.
 
 ## 35.4  The output/ tree
 
@@ -351,7 +351,7 @@ That file is ~200 lines and contains only the differences from defaults. Anyone 
 | Rebuild time | Edit + retest in seconds (NFS) | Edit + rerun build (~1 minute for an overlay change) |
 | New package | Hunt down + build + install yourself | One menuconfig click |
 
-The hand-built path was for *understanding*. Buildroot is for *production work*. From this chapter on, we use Buildroot.
+The hand-built path taught the structure. Buildroot is what you ship. The rest of the book uses Buildroot.
 
 ## 35.10  Lab
 

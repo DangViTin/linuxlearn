@@ -9,8 +9,8 @@ status: draft
 # Chapter 86 — Touch input ICs
 
 > **What:** three touch technologies at increasing complexity. **TTP223** (single capacitive button, GPIO output — `gpio-keys`), **MPR121** (12-channel capacitive, I²C, with IRQ), **XPT2046/ADS7846** (4-wire resistive touchscreen controller, SPI, ADC-based, needs calibration). For each: physics, protocol, the input subsystem integration, and a from-scratch XPT2046 input driver — the most interesting, since resistive touch requires reading X/Y ADC channels and software calibration.
-> **Why:** a display without touch is a monitor; with touch it's an interface. Capacitive buttons replace mechanical ones (no wear, sealed enclosures). Capacitive matrices give you piano keys, sliders, proximity. Resistive touch is the cheap way to make any LCD interactive (works with gloves and stylus, unlike capacitive). Each is a different input-subsystem pattern — this chapter completes the input picture started in Ch 45 and the multi-touch GT911 of Ch 55G.
-> **Focus:** **capacitive = threshold detection, resistive = ADC + calibration**. A cap button outputs a clean digital "touched"; you wire it to `gpio-keys` and you're done. Resistive touch gives you two ADC readings (X, Y position) that map non-linearly to screen pixels — calibration (the `tslib` / `xinput_calibrator` step) turns raw ADC counts into pixel coordinates.
+> **Why:** A display without touch is a monitor. Add touch and it becomes an interface. Capacitive buttons replace mechanical ones (no wear, sealed enclosures). Capacitive matrices give you piano keys, sliders, proximity. Resistive touch is the cheap way to make any LCD interactive (works with gloves and stylus, unlike capacitive). Each is a different input-subsystem pattern — this chapter completes the input picture started in Ch 45 and the multi-touch GT911 of Ch 55G.
+> **Focus:** Capacitive touch is threshold detection — a digital touched/not-touched. Resistive touch is two ADC readings plus a calibration step. A capacitive button outputs a clean digital 'touched' signal. Wire it to `gpio-keys` and you are done. Resistive touch gives you two ADC readings, X and Y, that do not map directly to screen pixels. A calibration step (using `tslib` or `xinput_calibrator`) converts raw ADC counts into pixel coordinates.
 > **Tooling.** This chapter uses `evtest`, `libinput-tools`, `xinput_calibrator` (resistive), `i2c-tools`.
 > - **Ubuntu-base (target):** `apt install evtest libinput-tools xinput-calibrator i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_EVTEST=y BR2_PACKAGE_LIBINPUT=y BR2_PACKAGE_TSLIB=y BR2_PACKAGE_I2C_TOOLS=y`
@@ -62,9 +62,9 @@ gpio_keys {
 };
 ```
 
-Each TTP223's output → a GPIO → a `gpio-keys` button. Touching the pad generates a `KEY_POWER` / `KEY_MENU` input event. `evtest /dev/input/eventN` shows them. Done — zero driver code.
+Each TTP223's output → a GPIO → a `gpio-keys` button. Touching the pad generates a `KEY_POWER` or `KEY_MENU` input event, which `evtest /dev/input/eventN` will show. No driver code needed.
 
-The TTP223 has configuration pads (TOG, AHLB) you bridge to set: momentary vs toggle output, active-high vs active-low, fast vs low-power mode. These are *hardware* straps, not software — set them on the PCB.
+The TTP223 has configuration pads (TOG, AHLB) you bridge to set: momentary vs toggle output, active-high vs active-low, fast vs low-power mode. These are hardware straps, not software-configurable. Set them on the PCB.
 
 ## 86.3  MPR121 — 12-channel capacitive
 
@@ -395,8 +395,8 @@ For a cleaner kernel-side approach, the mainline `ads7846` driver + the `touchsc
 
 - **TTP223 strap config.** Momentary vs toggle, active-high vs low — set by PCB straps (TOG, AHLB pads), not software. Get them right at layout.
 - **MPR121 thresholds too sensitive.** Default thresholds may trigger on proximity, not touch. Tune touch/release thresholds with hysteresis (touch > release).
-- **XPT2046 PENIRQ during sampling.** Sampling toggles the panel layers, which can spuriously trigger PENIRQ. The mainline driver masks PENIRQ during sampling. Our simple driver polls the GPIO instead — works but less clean.
-- **Resistive touch needs calibration, always.** Raw ADC ≠ pixels. Ship `ts_calibrate` or a kernel-side calibration matrix. Uncalibrated touch is unusable.
+- **XPT2046 PENIRQ during sampling.** Sampling toggles the panel layers, and that can trigger PENIRQ even when no one is touching. The mainline driver masks PENIRQ during sampling. Our simple driver polls the GPIO instead — it works, but the mainline approach is cleaner.
+- **Resistive touch needs calibration, always.** Raw ADC values are not pixel coordinates. Ship `ts_calibrate` or a kernel-side calibration matrix. Uncalibrated touch is unusable.
 - **X/Y swapped or inverted.** Depends on panel mounting. Fix via calibration or DT `touchscreen-swapped-x-y` / `touchscreen-inverted-x`.
 - **Noisy resistive readings.** Median-filter (we do 5 samples). Single-sample touch jitters badly.
 - **Ghost touches at light pressure.** Gate on pressure (Z) — reject touches below a Z threshold.

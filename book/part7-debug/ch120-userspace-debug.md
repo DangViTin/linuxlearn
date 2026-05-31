@@ -9,7 +9,7 @@ status: draft
 # Chapter 120 — User-space debugging
 
 > **What:** the toolkit for debugging your **user-space applications** on the i.MX6ULL target from a host workstation. **gdbserver** + **gdb-multiarch** for breakpoint-and-step debugging across the network; **strace** for "what syscalls is this program making"; **ltrace** for shared-library calls; **perf** for sampling profilers + hardware-counter-based analysis + flamegraphs; **core dumps** with `coredumpctl` for post-mortem analysis of crashed processes.
-> **Why:** kernel debugging (Ch 118, 119) is the rare case; you'll debug applications 10× more often. The pattern: target runs `gdbserver`; host runs `gdb-multiarch` with the unstripped binary; you set breakpoints by source line, inspect variables, step through code — exactly as if developing locally. `strace` reveals "the open() is returning EACCES" before you've even opened gdb. `perf` answers "why is my video pipeline using 80 % CPU" with a flamegraph. Master these and you debug embedded apps as productively as desktop ones.
+> **Why:** Kernel debugging (Ch 118, 119) is less common in day-to-day work; most of the time you're debugging applications. The pattern: target runs `gdbserver`; host runs `gdb-multiarch` with the unstripped binary; you set breakpoints by source line, inspect variables, step through code — exactly as if developing locally. `strace` reveals "the open() is returning EACCES" before you've even opened gdb. `perf` answers "why is my video pipeline using 80 % CPU" with a flamegraph. Once these are set up, embedded app debug feels much like desktop debug.
 > **Focus:** **gdbserver is the network agent (no debugger UI; just exposes the process's debug API over TCP); gdb-multiarch on the host knows ARM and connects; the unstripped ELF + sysroot give it symbols and headers**. For performance: `perf` is the universal sampling tool; understand the difference between sampling (CPU%-style overview, low overhead) and tracing (every event, high overhead). For crashed programs: configure `coredumpctl` to save dumps to a known location, retrieve from the target, analyze on the host.
 > **Tooling.** **Target:** `gdbserver`, `strace`, `ltrace`, `perf` (from `linux-tools`), optional `valgrind`. **Host:** `gdb-multiarch` (or your cross gdb), Brendan Gregg's `FlameGraph` scripts (`git clone https://github.com/brendangregg/FlameGraph`). Ubuntu install (target): `apt install gdbserver strace ltrace linux-tools-generic valgrind`. Buildroot: `BR2_PACKAGE_GDB=y` + `BR2_PACKAGE_GDB_SERVER=y`, `BR2_PACKAGE_STRACE=y`, `BR2_PACKAGE_LTRACE=y`, `BR2_PACKAGE_LINUX_TOOLS_PERF=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
@@ -97,7 +97,7 @@ From host:
 
 Especially useful for hung daemons: attach, `bt`, `print global_state`, identify the deadlock, detach.
 
-## 120.5  strace — the syscall flashlight
+## 120.5  strace — trace syscalls
 
 ```sh
 strace ./myapp
@@ -112,7 +112,7 @@ exit_group(0)                        = ?
 +++ exited with 0 +++
 ```
 
-Every syscall, its arguments, its return value. Killer for:
+Every syscall, its arguments, its return value. Useful for:
 
 - "Why is `open()` failing?" → `strace -e openat ./myapp` shows the failed path + errno.
 - "What files does this access?" → `strace -e file ./myapp`.
@@ -143,7 +143,7 @@ free(0x55c0080)                               = <void>
 
 Use when "is this calling the right OpenSSL function" matters.
 
-## 120.7  perf — the universal profiler
+## 120.7  perf — sampling profiler and counters
 
 `perf` is the Linux performance toolkit. Three main modes:
 
@@ -157,7 +157,7 @@ perf top -p <pid>
 #   8.2 %  libc.so.6    malloc
 ```
 
-Updates every second. Press `?` for help; arrow keys to navigate; `Enter` to drill into a function's assembly.
+Continuously updated, like `htop`, but functions instead of processes. Press `?` for help; arrow keys to navigate; `Enter` to drill into a function's assembly.
 
 ### perf record + perf report — sampling profile
 
@@ -170,7 +170,7 @@ perf report
 # ...
 ```
 
-99 Hz sampling (not a round 100 Hz — that's deliberate, to avoid harmonic with periodic kernel timers that often run at 100/250/1000 Hz) gives ~1 sample per 10 ms with minimal overhead (~0.1–0.5 %). Perfect for "what is this thing actually doing."
+99 Hz sampling, not 100 Hz, avoids harmonics with kernel timers (which run at 100/250/1000 Hz). At 99 Hz you get about one sample per 10 ms with 0.1–0.5 % CPU overhead. Good for figuring out what an app is actually doing.
 
 ### Flamegraphs
 
@@ -181,7 +181,7 @@ perf script | ./FlameGraph/stackcollapse-perf.pl | ./FlameGraph/flamegraph.pl > 
 # Open out.svg in a browser; interactive flame graph
 ```
 
-The single most useful CPU-profile visualization. X-axis = sample count (~time spent); Y-axis = call stack. Click any block to zoom; type to search. Once you've used flamegraphs, you wonder how anyone debugged performance without them.
+A useful CPU-profile visualization. The x-axis is sample count (roughly time spent); the y-axis is the call stack. Click any block to zoom; type to search.
 
 ### Hardware counters
 
@@ -296,7 +296,7 @@ Now you know: line 127 calls poll() on a socket that's hung. Fix: add a timeout,
 ## 120.11  Pitfalls
 
 - **gdbserver and gdb-multiarch ABI mismatch.** Cross-compiler ARM ABI must match target's libc ABI (gnueabihf vs gnueabi). Different ABI = unable to set breakpoints in shared libraries.
-- **Sysroot pointing to wrong path.** gdb finds libc.so.6 in /lib (host) instead of the cross-built one; symbols mismatch. Always `set sysroot` before `target remote`.
+- **Sysroot pointing to wrong path.** When `sysroot` points at the wrong path, gdb loads the host's `libc.so.6` from `/lib`. Symbols then mismatch. Always `set sysroot` before `target remote`.
 - **Stripped binaries.** No symbols, no source-level debug. Build with `-g`; copy unstripped to host; ship stripped to target.
 - **PIE binaries with ASLR.** Address space randomization makes addresses different each run. GDB handles it; manual address arithmetic doesn't. Disable ASLR for repeatable debug: `setarch -R ./myapp`.
 - **strace heavy slowdown.** Tracing a high-syscall-rate process can 10× slow it. Use `-e trace=read,write` to filter.

@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 30A — Kernel lifecycle: mainline, stable, LTS, vendor BSPs
 
-> **What:** a decision framework for the single most consequential architectural choice in any Linux-based product: *which* kernel release do we ship? Mainline tip, the latest stable, an LTS, a vendor BSP frozen years ago, or something curated between them?
-> **Why:** the choice determines your security-fix cadence, your driver-update cost, your hardware-support range, and your migration burden for the next five-to-ten years. Get it right and the product ships updates effortlessly; get it wrong and three years from now you're trying to backport six years of CVEs onto a fork no one upstream cares about.
-> **Focus:** **maintenance economics**, not features. Whatever you pick, you commit to *maintaining* — or paying someone to maintain — the gap between it and whatever the world is doing next.
+> **What:** a decision framework for one of the most important architectural choices in any Linux-based product: *which* kernel release do we ship? Mainline tip, the latest stable, an LTS, a vendor BSP frozen years ago, or something curated between them?
+> **Why:** the choice determines your security-fix cadence, your driver-update cost, your hardware-support range, and your migration burden for the next five-to-ten years. If you choose well, updates ship easily for years. If you choose poorly, three years from now you are backporting six years of CVEs onto a fork no one upstream maintains.
+> **Focus:** **maintenance economics**, not features. Whatever you pick, you commit to maintaining the gap between it and what the world ships next. If you cannot maintain it yourself, you pay someone who will.
 
 ## 30A.1  The six release tracks
 
@@ -114,12 +114,12 @@ A vendor BSP typically contains:
 
 The vendor releases new tags periodically (NXP about quarterly). Old tags get little attention.
 
-**The upside.** Plug it in, it works. Every peripheral on the vendor's reference board has a driver. The vendor's tool — Yocto layer (`meta-imx`), demo image, evaluation kit — assumes their BSP.
+**The upside.** Every peripheral on the vendor's reference board has a working driver. The vendor's tool — Yocto layer (`meta-imx`), demo image, evaluation kit — assumes their BSP.
 
 **The downside.** Three things you must factor in:
 
 - **Security-fix latency.** The vendor's quarterly cadence means CVEs in your BSP base are typically 1-3 months behind mainline. Some critical fixes never get backported to the vendor's older releases.
-- **Mainline drift.** Every quarter, the vendor's tree diverges further from mainline. Any patch you write against the vendor BSP is not directly applicable to mainline. Your work has half-life.
+- **Mainline drift.** Every quarter, the vendor's tree drifts further from mainline. Any patch you write against the BSP needs porting before it works against mainline. The longer you wait, the harder that port becomes.
 - **Vendor abandonment risk.** When NXP stops supporting i.MX6ULL (they will, eventually), `linux-imx` will stop getting updates for that SoC. You're then maintaining the BSP yourself or porting to mainline.
 
 **When to choose a vendor BSP:**
@@ -164,9 +164,9 @@ For our i.MX6ULL on Point Atom MINI:
 
 ## 30A.7  The 4.1.15 trap
 
-A common scenario: you find an existing vendor BSP pinned to Linux 4.1.15 (NXP's i.MX BSP from 2017). The hardware works. The board boots. You're tempted to ship it.
+Here is a common scenario. You inherit a vendor BSP pinned to Linux 4.1.15 (NXP's i.MX BSP from 2017). The hardware works and the board boots, so you are tempted to ship it.
 
-What you're really shipping:
+What you would actually be shipping:
 
 - **A kernel from 2017.** Five-plus years of CVE backlog. Even cherry-picking critical fixes is a part-time job.
 - **A driver model from 2017.** Many subsystems (DT bindings YAML, modern clk framework, regmap-everywhere, devm-_* helpers, etc.) have evolved. Code you write against 4.1.15 doesn't transfer to mainline without rewrite.
@@ -198,7 +198,7 @@ Three scenarios:
 - Need: just works out of the box; users will run their own kernels too.
 - **Decision: Mainline tip, refresh per Yocto release.** Hobbyists expect to be current; nobody's running this kit for 5 years.
 
-The pattern across all three: **the field-life of the product, multiplied by the security-tolerance of the application, determines the kernel track.**
+The pattern across all three: **the product's field life and the security level required together determine the kernel track.**
 
 ## 30A.9  Lab
 
@@ -210,11 +210,11 @@ The pattern across all three: **the field-life of the product, multiplied by the
 
 ## 30A.10  Pitfalls
 
-- **"Just stay on 5.4 forever."** 5.4 ends in Dec 2025. Forever is shorter than you think.
+- **"Just stay on 5.4 forever."** 5.4 ends in Dec 2025. That is not forever.
 - **"We'll upgrade the kernel later."** "Later" never comes if your code is so deeply intertwined with vendor BSP internals that migration is a major rewrite. Budget the migration *now*, even if you delay execution.
 - **"LTS = no breaking changes."** LTS gets bug fixes and security patches. Behavior fixes can change semantics. Test before deploying.
 - **"Mainline is unstable."** Modern mainline is *very* stable; what's unstable is mainline tip *between releases*. Pick a tagged release (`v6.6` not `master`) and you have what was tested.
-- **"We don't need security fixes; the device isn't on the internet."** Increasingly false. Even isolated devices get USB sticks. Even airgapped devices get supply-chain attacks. Apply security fixes.
+- **"We don't need security fixes; the device isn't on the internet."** This is less and less true. Even isolated devices receive USB sticks. Even airgapped devices face supply-chain attacks. Apply the fixes.
 - **"Our customer requires the vendor BSP."** Sometimes true (compliance, IP). Often a habit. Push back on the contractual requirement when the technical justification is weak.
 
 ## 30A.11  Going deeper

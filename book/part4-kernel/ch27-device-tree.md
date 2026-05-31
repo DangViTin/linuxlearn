@@ -9,8 +9,8 @@ status: draft
 # Chapter 27 — Device Tree: the contract between firmware and kernel
 
 > **What:** the **Device Tree** — its origin, its grammar, the standard properties, how it's compiled (`dtc`) and consumed (`of_*` APIs in the kernel), and how a driver binds to a node via the `compatible` string. By the end you should be able to read `imx6ull-14x14-evk.dts` line by line, write an overlay that adds a new I²C device, and predict which kernel driver will probe it.
-> **Why:** the Device Tree is the single biggest mental shift for an MCU engineer moving to Linux. There is no `arch/arm/mach-mx6/board-mx6ull.c` with hand-written platform device tables anymore. There is a `.dts` file that describes the hardware, and the kernel matches drivers to nodes by string at runtime. Understanding this dynamic-binding model is the prerequisite for every chapter in Part VI.
-> **Focus:** the **`compatible` string** as the keystone. Compatible-strings in DT nodes are matched against compatible-strings in driver source code. That single mechanism is how every driver in mainline finds its hardware. Internalise this and the rest of DT is grammar.
+> **Why:** DT is the biggest mental shift in this chapter. There is no longer a hand-written `board-*.c` with platform device tables. There is a `.dts` file that describes the hardware, and the kernel matches drivers to nodes by string at runtime. Understanding this dynamic-binding model is the prerequisite for every chapter in Part VI.
+> **Focus:** the **`compatible` string** as the keystone. Compatible-strings in DT nodes are matched against compatible-strings in driver source code. That single mechanism is how every driver in mainline finds its hardware. Once you have this, the rest of DT is just grammar.
 
 ## 27.1  Why the Device Tree exists
 
@@ -30,11 +30,11 @@ static struct s3c2410_uartcfg smdk2440_uartcfgs[] = {
 };
 ```
 
-Each board got its own ~500-line C file, hand-written, compiled into the kernel. By 2010 the ARM `arch/` tree held thousands of such files and Linus Torvalds publicly complained that ARM was "a fucking pain in the ass". The community's response was to adopt the **Device Tree**, which had been used on PowerPC since the early 2000s — borrowed in turn from Open Firmware on Sun and Apple machines.
+Each board got its own ~500-line C file, hand-written, compiled into the kernel. By 2010 the ARM `arch/` tree held thousands of such files and Linus Torvalds publicly complained that ARM was "a fucking pain in the ass". The community's response was to adopt the **Device Tree**, which had been used on PowerPC since the early 2000s. PowerPC in turn borrowed it from Open Firmware on Sun and Apple machines.
 
 The premise of DT is simple: instead of describing hardware in C code that gets compiled into the kernel, describe it in a structured *text* file (`.dts`) that gets compiled separately into a *binary* blob (`.dtb`). The kernel reads the blob at boot time, builds an in-memory representation, and matches drivers to nodes dynamically. One kernel binary now supports thousands of boards because the per-board description lives outside the kernel.
 
-The consequence: when you support a new board variant, you don't recompile the kernel; you write a DTS file. When you change which I²C chip is on which bus, you edit DT, not C. The kernel binary is now genuinely generic across the ARM ecosystem.
+The consequence: when you support a new board variant, you don't recompile the kernel; you write a DTS file. When you change which I²C chip is on which bus, you edit DT, not C. One ARM kernel binary now works across many boards.
 
 ## 27.2  DTS, DTB, DTC, DTSI
 
@@ -173,13 +173,13 @@ DT properties take five basic data types:
 
 A "cell" is exactly 32 bits. Multiple cells in one property are space-separated inside `< >`. Properties of arbitrary complexity are built from these primitives.
 
-References — the angle-bracket form combined with the `&label` shortcut — get richer:
+References use the angle-bracket form together with the `&label` shortcut. They can be richer:
 
 ```dts
 clocks = <&clks IMX6UL_CLK_UART1_IPG>, <&clks IMX6UL_CLK_UART1_SERIAL>;
 ```
 
-Reads as: "two clock entries; each is (a reference to the `clks` node, plus an integer index)." The clock provider — the node labelled `clks` — interprets the integer. The number of cells per entry comes from a `#clock-cells` property on the provider node (described in the next section).
+This says: two clock entries. Each entry is a reference to the `clks` node plus an integer index. The clock provider (the node labelled `clks`) decides what that integer means. The number of cells per entry comes from a `#clock-cells` property on the provider node (described in the next section).
 
 ## 27.6  Standard properties
 
@@ -214,7 +214,7 @@ static struct platform_driver serial_imx_driver = {
 };
 ```
 
-At boot, the kernel walks the DT. For each node with a `compatible` property, it walks through every registered driver's `of_match_table` looking for a match. The first match (matching against the *first* compatible string in the node, then the second, then ...) wins; the driver's `probe()` is invoked. *This is how the kernel finds drivers for hardware.*
+At boot, the kernel walks the DT. For each node with a `compatible` property, it walks through every registered driver's `of_match_table` looking for a match. The first match (matching against the *first* compatible string in the node, then the second, then ...) wins; the driver's `probe()` is invoked. *This is how the kernel matches drivers to hardware at boot.*
 
 Reading our example:
 
@@ -286,7 +286,7 @@ pinctrl-0 = <&pinctrl_uart1>;
 pinctrl-1 = <&pinctrl_uart1_sleep>;
 ```
 
-Each `pinctrl-N` references a pin-configuration node. `pinctrl-names` gives a symbolic name per state. The driver activates a state with `pinctrl_select_state(p, "default")`. Default is automatically activated when the driver probes.
+Each `pinctrl-N` points to a pin-configuration node, and `pinctrl-names` gives each one a symbolic name. The driver picks a state with `pinctrl_select_state(p, "default")`. Default is automatically activated when the driver probes.
 
 ### `status`
 
@@ -462,9 +462,9 @@ Or from a Linux user-space with ConfigFS (in newer kernels):
 
 After overlay application, the kernel re-walks the DT, finds the new `tmp102@48` node, looks for a driver with `compatible = "ti,tmp102"` (the upstream driver is `drivers/hwmon/tmp102.c`), probes it, and `/sys/class/hwmon/hwmon<N>/temp1_input` becomes readable.
 
-You did not recompile the kernel. You did not touch the rootfs. You added a hardware description and the kernel did the rest.
+You did not recompile the kernel or touch the rootfs. You added a hardware description and the kernel handled the rest.
 
-This is the model that justifies the DT's existence.
+This is why DT exists.
 
 ## 27.10  OF API — accessing DT from driver code
 
@@ -523,7 +523,7 @@ void uart1_init(void) {
 
 And then *the driver* — written once for every board with this UART — reads those properties and does the equivalent register writes for you. The board engineer's job is to *describe* what's present, not to *do* the bring-up. The driver author's job is to handle every property correctly so any board can use the driver.
 
-This is the Linux model. Internalise it and Part VI is dramatically easier.
+This is the Linux model. Once this clicks, Part VI is much easier.
 
 ## 27.12  Lab
 

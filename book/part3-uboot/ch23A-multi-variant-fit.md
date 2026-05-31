@@ -9,7 +9,7 @@ status: draft
 # Chapter 23A — Multi-variant FIT images and DT overlays
 
 > **What:** one FIT image that boots correctly on three different board variants — same kernel, different DTBs — with the variant selected at boot time from a strap pin or an EEPROM ID.
-> **Why:** real products ship in revisions. Rev A has a 4.3" display; Rev B has a 7" display and a fan controller; Rev C drops the display and adds a Wi-Fi module. Shipping three separate images means three separate OTA targets and three release-engineering pipelines. **Shipping one image** means one OTA stream and one set of QA artifacts.
+> **Why:** Real products ship in revisions. Rev A has a 4.3-inch display, Rev B has a 7-inch display and a fan, Rev C drops the display and adds Wi-Fi. Three separate images means three OTA targets and three release pipelines. One image means one OTA stream and one QA artifact set.
 > **Focus:** the **runtime-selection mechanism** — strap pin or EEPROM ID read by U-Boot before `bootm` selects which `configurations` entry to apply. Plus DT overlays, which let you patch one base DTB with small fragments rather than maintaining N full DTBs.
 
 ## 23A.1  The scenario
@@ -119,7 +119,7 @@ ls -lh multi.itb
 # 6.5 MB — kernel 4 MB + 3 × DTBs 200 KB + rootfs 1 MB + overhead
 ```
 
-The kernel is included *once*, regardless of how many configurations reference it. Same for the rootfs. FIT does not duplicate.
+The kernel is stored once, no matter how many configurations reference it. Same for the rootfs. FIT does not duplicate payloads.
 
 ## 23A.3  Booting a specific configuration
 
@@ -170,7 +170,7 @@ int board_late_init(void)
 }
 ```
 
-Two pins encode four states. The strapping resistors are set during PCB assembly; software reads them on every boot. The env var `variant` then feeds `bootcmd`:
+Two pins encode four states. PCB assembly populates the strap resistors. Software reads them on every boot. The env var `variant` then feeds `bootcmd`:
 
 ```
 bootcmd=load mmc 0:1 0x82000000 multi.itb; bootm 0x82000000#${variant}
@@ -205,7 +205,7 @@ int board_late_init(void)
 }
 ```
 
-Advantages over strap pins: 256 possible IDs, easy to reprogram in the field, no extra pads needed if you already have an I²C EEPROM for serial number / MAC address.
+Advantages over strap pins: 256 possible IDs, you can reprogram in the field, and no extra pads if you already have an EEPROM for serial number or MAC address.
 
 ### Pattern C — eFuse
 
@@ -216,7 +216,7 @@ u32 board_id;
 fuse_read(BOARD_ID_BANK, BOARD_ID_WORD, &board_id);
 ```
 
-One-time programmable; uncopiable; tamper-resistant. Used in production for the security-conscious. Expensive to undo if you make a mistake — the fuse cannot be cleared.
+One-time programmable, hard to copy, tamper-resistant. Used in security-critical production. If you burn the wrong value, you cannot clear it.
 
 For dev work, strap pins or EEPROM. For shipping security-critical products, eFuse.
 
@@ -320,7 +320,7 @@ boot_multi=setenv bootargs console=ttymxc0,115200 root=/dev/mmcblk0p2 rw rootwai
 
 That's an in-U-Boot embedded script. It probes the EEPROM, reads the ID byte, maps it to a configuration name, and `bootm`s the selected configuration.
 
-When you receive a unit, you don't ask "which rev is this?" The unit answers itself.
+When you receive a unit, you don't have to ask which rev it is. The unit identifies itself at boot.
 
 ## 23A.7  Lab
 

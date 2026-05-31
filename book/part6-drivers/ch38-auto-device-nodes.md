@@ -44,13 +44,13 @@ When your driver calls `device_create(...)`, this happens:
 
 The driver call (`device_create`) doesn't itself create `/dev/hello`. It creates the **sysfs entry** at `/sys/class/hello/hello/`, which the kernel uses to broadcast the uevent. The actual `/dev/hello` is created by the **listener**.
 
-This is profoundly different from how you might imagine it. The kernel does **not** maintain `/dev/`. The kernel publishes events; user-space chooses what to do with them. Different listeners can make wildly different choices (udev creates rich-permission nodes with named symlinks; mdev creates minimal nodes; both work).
+This is different from how you might imagine it. The kernel does not maintain `/dev/`. It publishes events. User-space decides what to do with them. Different listeners can make wildly different choices (udev creates rich-permission nodes with named symlinks; mdev creates minimal nodes; both work).
 
 (Aside: there is a fallback. If `CONFIG_DEVTMPFS=y` and the kernel mounts devtmpfs on `/dev/` — Ch 32 — the *kernel itself* auto-creates the device node, no user-space listener required. Then udev/mdev's job becomes just refining permissions and creating symlinks. We'll assume devtmpfs is on, which it is in 99% of modern setups.)
 
 ## 38.2  Adding to the chardev driver
 
-Take the driver from Chapter 37 and add three lines.
+Take the Ch 37 driver and add a class, a device, and matching cleanup — about a dozen lines.
 
 ```c
 #include <linux/device.h>
@@ -124,7 +124,7 @@ No `mknod` step. The file appears at load and disappears at unload.
 struct class *class_create(struct module *owner, const char *name);
 ```
 
-Creates a directory `/sys/class/<name>/`. Conceptually, a *class* is a group of devices that share a role (LED, RTC, GPIO chip, network interface, sound card). The class directory becomes a namespace under which individual devices live. It also publishes group-level attributes that udev/mdev rules can match on.
+Creates a directory `/sys/class/<name>/`. A *class* is a group of devices that share a role — LED, RTC, GPIO chip, network interface, sound card. The class directory holds one entry per device in that group. It also publishes group-level attributes that udev/mdev rules can match on.
 
 The kernel ships dozens of standard classes:
 
@@ -136,7 +136,7 @@ bluetooth   input       net        regulator     spi_master
 ...
 ```
 
-When you create your own class (`"hello"`), `/sys/class/hello/` appears. New custom-driver chardevs that *don't fit* an existing class do this — make a class with the driver's name. Drivers that *do* fit (an LED driver belongs in `leds`, an RTC in `rtc`) skip class creation and register with the **subsystem** framework instead (Ch 44–48 cover those frameworks one by one).
+When you create your own class (`"hello"`), `/sys/class/hello/` appears. New custom-driver chardevs that *don't fit* an existing class do this — make a class with the driver's name. Drivers that fit an existing class skip `class_create` and register with the subsystem framework directly. For example, an LED driver belongs in `leds` and an RTC in `rtc`. Ch 44–48 cover these subsystems.
 
 ### `device_create`
 
@@ -175,7 +175,7 @@ MINOR=0
 SUBSYSTEM=hello
 ```
 
-The `uevent` file is special: reading it prints the current state, **writing** to it re-broadcasts the event. (`echo add > uevent` re-triggers — useful for replaying events on a system that booted before udev was running.)
+The `uevent` file is special: reading it prints the current state, **writing** to it re-broadcasts the event. Writing `echo add > uevent` re-triggers the event. This is useful for replaying events on a system that booted before udev was running.
 
 ## 38.4  Picking permissions and ownership
 

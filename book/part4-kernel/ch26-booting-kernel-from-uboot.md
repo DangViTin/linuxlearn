@@ -9,7 +9,7 @@ status: draft
 # Chapter 26 — Booting the kernel from U-Boot
 
 > **What:** transfer the `zImage` + `imx6ull-14x14-evk.dtb` we built in Chapter 25 to the board over TFTP, run `bootz` in U-Boot, and watch the first 30 lines of kernel output appear on the UART. Decode each line.
-> **Why:** this is the moment your work as a *Linux* engineer begins. Up to here we have done bare-metal, bootloader, and pre-Linux infrastructure. From here on, Linux is running and we are reading its output, not writing the words it prints.
+> **Why:** From here on, Linux is running. Your job changes from writing the boot code to reading what the kernel prints.
 > **Focus:** the **kernel boot log** as a diagnostic instrument. Every line means something specific; every successful boot prints predictable lines in predictable order. If you can recognise the first 30 lines, you can recognise which of them is missing or wrong on a board that's not booting.
 
 ## 26.1  The pre-boot contract
@@ -25,7 +25,7 @@ The kernel expects three things at the moment U-Boot transfers control:
 
 The first instruction the kernel executes is `stext` (in `arch/arm/kernel/head.S`); it begins by reading `r2` to find the DTB. If `r2` is wrong, the kernel cannot parse its hardware description and dies silently (no UART, no output, no diagnostic — because UART has not been initialised yet).
 
-This is the *one* hardware contract every ARM Linux boot relies on. Get `r2` right and the kernel boots ~95 % of the time. Get it wrong and you stare at silence.
+This is the *one* hardware contract every ARM Linux boot relies on. If `r2` is correct, the kernel almost always boots. If `r2` is wrong, you see nothing on the UART.
 
 ## 26.2  The three-command boot
 
@@ -41,7 +41,7 @@ What each does:
 
 1. `tftp 0x82000000 zImage` — pulls the kernel from your TFTP server into DRAM at `0x82000000`. The address was chosen for two reasons: it's far enough above the DRAM base (`0x80000000`) that U-Boot's image (currently relocated near the top of DRAM) doesn't conflict, and it's far enough below that the kernel has room to decompress upward into.
 2. `tftp 0x83000000 imx6ull.dtb` — pulls the DT blob to a second location. ~50 KB.
-3. `bootz 0x82000000 - 0x83000000` — start a zImage at `0x82000000`, no initrd (`-`), DTB at `0x83000000`. This is the magic line: U-Boot sets `r2 = 0x83000000`, hands off, and disappears.
+3. `bootz 0x82000000 - 0x83000000` — start a zImage at `0x82000000`, no initrd (`-`), DTB at `0x83000000`. This is the key step. U-Boot sets `r2 = 0x83000000`, jumps to the kernel, and is done.
 
 You can save these as an env one-shot:
 
@@ -65,7 +65,7 @@ Before `bootz`, set `bootargs`:
 Token by token:
 
 - **`console=ttymxc0,115200`** — once the i.MX UART driver loads, route `printk` to UART1 at 115200 baud. *If this token is wrong, you see no kernel output.* The driver name `ttymxc0` is the i.MX-specific convention; other SoCs use `ttyS0`, `ttyAMA0`, etc.
-- **`earlycon`** — very early UART printk *before* the full driver loads. Reads the DT's `chosen.stdout-path` to find which UART. Without `earlycon`, the first ~10 boot lines are buffered and you only see them once the regular console comes up.
+- **`earlycon`** — very early UART printk *before* the full driver loads. Reads the DT's `chosen.stdout-path` to find which UART. Without `earlycon`, the first ~10 boot lines stay in a buffer. You see them only when the regular console driver loads.
 - **`root=/dev/mmcblk0p2`** — what device holds the rootfs. We will return to this in Part V; for the first boot we may not have a usable rootfs yet, in which case the kernel panics. That's fine for *this* chapter — we're verifying kernel boot, not full system boot.
 - **`rw`** — mount the root read-write.
 - **`rootwait`** — don't panic if `root=` isn't immediately ready; wait. Always safe to include.
@@ -166,15 +166,15 @@ That last "Mounted root" line is the threshold: the kernel has finished its own 
 
 If you see *nothing at all* after `Starting kernel ...`:
 
-- **The DTB address in `r2` is wrong.** Usually `bootz 0x82000000 - 0x83000000` is correct. If you accidentally typed `bootz 0x82000000 0x83000000` (no `-`), U-Boot interprets `0x83000000` as the initrd address and there's no DTB. Symptom: silence.
+- **The DTB address in `r2` is wrong.** Usually `bootz 0x82000000 - 0x83000000` is correct. If you type `bootz 0x82000000 0x83000000` (no `-`), U-Boot reads `0x83000000` as the initrd address. The kernel then gets no DTB. Symptom: silence.
 - **Wrong DTB for the board.** Kernel finds *a* DTB but it describes hardware the actual board doesn't have. Symptom: silence after `Starting kernel ...`. Cross-check the DT model line by trying earlycon (see below).
 - **`console=` token wrong.** Kernel boots fine; UART driver loads; but printk is redirected somewhere else. Symptom: nothing after `Starting kernel ...`. Add `earlycon` to bootargs to see *very* early printk before the driver loads — if those appear, the regular console is the problem.
 - **DDR not all working.** The kernel does an early memtest of sorts; if DRAM has bit errors it usually panics early but the panic might not reach the UART. Rerun the U-Boot `mtest` first.
 
 If you see *some output then silence*:
 
-- **Driver hang.** Look at the *last* line printed. The next subsystem to probe is likely hanging. Common culprit: PMIC over I²C — if I²C is broken, voltage regulators don't come up, devices don't enumerate, kernel hangs.
-- **VFS panic** ("Cannot open root device 'mmcblkXpY'"): rootfs not found. Symptom is loud and clear; fix `root=` cmdline.
+- **Driver hang.** Look at the *last* line printed. The next subsystem to probe is likely hanging. A common cause is the PMIC on I²C. If I²C is broken, the regulators stay off. Devices fail to enumerate, and the kernel hangs.
+- **VFS panic** ("Cannot open root device 'mmcblkXpY'"): rootfs not found. The panic message is clear. Fix the `root=` argument.
 - **`Kernel panic - not syncing: VFS: Unable to mount root fs`**: same as above; the kernel says exactly what's wrong.
 
 ## 26.6  Verifying with earlycon

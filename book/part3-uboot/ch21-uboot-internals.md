@@ -26,7 +26,7 @@ Full U-Boot's job, once SPL hands it control:
 8. `cli_loop` (in `common/cli.c`) — the interactive shell.
 9. `cmd_process` — the command dispatcher; we trace it in §21.5.
 
-Each step has a name we can grep for. Each step is < 200 lines. Total reading time, all of it, end-to-end, ~3 hours. Do it once and the bootloader stops being a black box.
+Each step has a name you can grep for. Each is under 200 lines. End-to-end reading takes about 3 hours. Do it once and U-Boot is no longer a black box.
 
 ## 21.1a  The linker script and the named address-range symbols
 
@@ -179,7 +179,7 @@ void board_init_f(ulong boot_flags)
 }
 ```
 
-Read that list top to bottom. **It is the entire pre-relocation boot.** Each entry is a small function in the same file (or in `arch/`, `lib/`, etc.). Each is < 50 lines. The architecture is: *one giant array of function pointers, walked in order, halt on the first non-zero return.*
+Read the list top to bottom. That is the entire pre-relocation boot. Each entry is a small function (< 50 lines) in the same file or in `arch/` / `lib/`. The design is simple: one array of function pointers, walked in order, stop on the first non-zero return.
 
 A few entries worth pausing on:
 
@@ -213,15 +213,15 @@ here:
     bl  board_init_r
 ```
 
-That's the relocation handshake. Every detail matters.
+That is the relocation handshake.
 
 ## 21.4  Relocation — the trick that confuses everyone
 
-This is the most surprising design choice in U-Boot for a newcomer. Let's pin it down.
+Relocation is the most confusing U-Boot design for a newcomer. Here is how it works.
 
 ### Why relocate at all
 
-When U-Boot was originally built for embedded systems running from flash, relocation made sense: "copy yourself from slow XIP flash to fast RAM, fix pointers, run from RAM." On a modern i.MX6ULL booting from SD via SPL, U-Boot is already in RAM. So why relocate?
+Originally U-Boot ran from flash. Relocation meant: copy yourself from slow XIP flash to fast RAM, fix pointers, run from RAM. On a modern i.MX6ULL booting from SD via SPL, U-Boot is already in RAM. So why relocate?
 
 Two reasons:
 
@@ -260,9 +260,9 @@ fixloop:
     bx      lr                     @ jump to relocated code via patched lr
 ```
 
-The post-copy `bx lr` is the **single most important instruction** in this entire chapter. Before it, the CPU is executing the original (pre-relocation) U-Boot. After it, the CPU is executing the relocated copy. The transition is one machine instruction.
+The post-copy `bx lr` is the key instruction. Before it, the CPU runs the original U-Boot in low DRAM. After it, the CPU runs the relocated copy in high DRAM. The transition is one machine instruction.
 
-After this, the original U-Boot in low DRAM is reusable memory — the kernel can land there.
+After the jump, the old copy in low DRAM is free memory. The kernel can be loaded there.
 
 ### What you observe
 
@@ -365,7 +365,7 @@ hello from a custom U-Boot command
 first arg: world
 ```
 
-Eight lines of code, one Makefile line. You have just shipped a U-Boot patch — a tiny one, but a real one. This is the discipline pattern for everything in `cmd/`.
+Eight lines of code, one Makefile line. That is a real U-Boot patch, small but complete. Every command in `cmd/` follows this pattern.
 
 ## 21.6  The environment
 
@@ -414,7 +414,7 @@ Once Linux is booted, `fw_setenv` and `fw_printenv` (in the `u-boot-tools` packa
 
 ## 21.7  The driver model (DM)
 
-U-Boot's modern driver framework. Conceptually identical to Linux's `struct device` + `struct driver`, but much smaller. Three core concepts:
+U-Boot's modern driver framework. Same idea as Linux's `struct device` + `struct driver`, but much smaller. Three core concepts:
 
 - **`udevice`** — an instance: "the UART at address 0x02020000 on bus AIPS-1."
 - **`driver`** — the code that knows how to operate one *kind* of device: "any i.MX UART."
@@ -454,7 +454,7 @@ U_BOOT_DRIVER(my_uart) = {
 
 If a node with `compatible = "fsl,my-uart"` exists in the DT, DM creates a `udevice` for it and calls `my_uart_probe`. The `dm_serial_ops` callbacks are then routed by the `serial` uclass to the right operations.
 
-You write a Linux driver later in Chapter 39 and the structure will look almost identical. That is not a coincidence — DM was deliberately modeled on the Linux driver model.
+You will write a Linux driver in Chapter 39 with almost the same structure. DM was modeled on the Linux driver model on purpose.
 
 ## 21.8  Reading a real boot, end to end
 
@@ -482,7 +482,7 @@ Hit any key to stop autoboot:    ← run_main_loop's autoboot countdown
 =>                               ← cli_loop's prompt
 ```
 
-Now you can also predict, with high confidence, where to look in the source if any of those lines reports an error.
+If any of those lines reports an error, you now know which source file to open.
 
 ## 21.9  Lab
 
@@ -506,7 +506,7 @@ Now you can also predict, with high confidence, where to look in the source if a
 
 ## 21.10  Pitfalls
 
-- **Forgetting `saveenv`.** Most "my env change didn't stick" bug reports are this.
+- **Forgetting `saveenv`.** Most "my env change didn't stick" bugs are this.
 - **Editing U-Boot, expecting hot reload.** U-Boot is not Linux. To see a code change you rebuild, reflash, reboot. There is no `modprobe`-equivalent.
 - **Function pointer addresses in C code.** Because of relocation, taking `&foo` may surprise you — it returns the relocated address, not the linked address. This matters when you write the address to MMIO or share it with an external system.
 - **Custom commands not appearing.** Check that you (a) added the `.o` to `cmd/Makefile`'s `obj-y`, (b) did not typo the `U_BOOT_CMD` macro, (c) rebuilt.

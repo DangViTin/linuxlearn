@@ -9,8 +9,8 @@ status: draft
 # Chapter 33 — Init systems
 
 > **What:** PID 1 — what it does, what it should do, and the three real choices for an embedded Linux system: BusyBox `init` (tiny, traditional), `sysvinit` (the classical desktop init from the 90s), and `systemd` (the modern service manager that runs on basically every desktop distro).
-> **Why:** PID 1 is special. The kernel will panic if it dies. Everything else that runs on your system is, ultimately, started or supervised by PID 1. The choice you make here determines how you write boot scripts, how you crash-restart services, how logs are collected, and how much disk and RAM the system uses just to "be up."
-> **Focus:** the **trade-off triangle**: simplicity, capability, and footprint. BusyBox wins simplicity and footprint; systemd wins capability; sysvinit is the historical middle. For most embedded products in 2025, BusyBox init is the right answer. Knowing *why* is the goal of this chapter.
+> **Why:** PID 1 is special: the kernel panics if it dies, and every other process on the system descends from it. The choice you make here determines how you write boot scripts, how you crash-restart services, how logs are collected, and how much disk and RAM the system uses just to "be up."
+> **Focus:** the **trade-off triangle**: simplicity, capability, and footprint. BusyBox wins on simplicity and footprint. Systemd wins on capability. Sysvinit is the historical middle. For most embedded products in 2025, BusyBox init is the right answer. Knowing *why* is the goal of this chapter.
 
 ## 33.1  What PID 1 actually does
 
@@ -49,7 +49,7 @@ Features it does *not* have:
 - RAM and flash budget are tight. The init itself adds 0 bytes (it's inside busybox).
 - You want to *understand* every line that runs at boot. You can read all the init code in an hour.
 
-For 80 % of i.MX6ULL-class embedded products, this is the right answer.
+For most i.MX6ULL-class embedded products, this is the right answer.
 
 ## 33.3  sysvinit
 
@@ -108,11 +108,11 @@ The `LSB info` block in the comment header gives dependency hints — sysvinit c
 
 **When *not* to choose sysvinit:**
 
-- You're starting fresh in 2025. BusyBox init does the same job with one tenth the bytes; systemd does *more* if you need it. There's little niche left for sysvinit on a new design.
+- You're starting fresh in 2025. BusyBox init does the same job with one tenth the bytes; systemd does *more* if you need it. Sysvinit has little reason to exist in a new design.
 
 ## 33.4  systemd
 
-The 600-pound gorilla. Every major desktop distro (Debian, Ubuntu, Fedora, Arch) ships systemd by default. It is *the* default for general-purpose Linux in 2025.
+Systemd is the giant in the room. Every major desktop distro (Debian, Ubuntu, Fedora, Arch) ships systemd by default. It is *the* default for general-purpose Linux in 2025.
 
 What you get:
 
@@ -206,11 +206,11 @@ For the rest of this book — and for most readers' real products — **BusyBox 
 2. **Add a respawning service.** Edit `/etc/inittab` to add `::respawn:/usr/bin/my-counter`. Write `my-counter` as a tiny script that prints the date every 10 seconds. Save, reboot, watch.
 3. **Trigger a manual shutdown.** From the console: `halt`. Read what BusyBox init does in response (it runs the `shutdown` lines from inittab). Compare with `reboot`.
 4. **Read a systemd unit.** If you have a Debian/Ubuntu host nearby, `cat /lib/systemd/system/ssh.service`. Note the syntax differences vs BusyBox.
-5. **Estimate the boot-time difference.** Boot your BusyBox rootfs and note the time from `kernel_init` to login prompt (the kernel timestamps in `dmesg` are your clock). Compare with the same hardware running Ubuntu-base (Ch 35A); typical: 2-second BusyBox vs 8-second Ubuntu-base, almost all the difference being systemd.
+5. **Estimate the boot-time difference.** Boot your BusyBox rootfs and note the time from `kernel_init` to the login prompt. The `dmesg` timestamps are your clock. Now do the same on the Ubuntu-base rootfs (Ch 35A). Typical figures: ~2 s BusyBox vs ~8 s Ubuntu-base. Most of the gap is systemd.
 
 ## 33.9  Pitfalls
 
-- **Zombies accumulating.** If your `respawn` lines aren't actually being reaped, you may have processes that double-fork and detach. The grandchildren get reparented to PID 1; if PID 1's `wait()` loop is correct, they're reaped automatically. BusyBox init handles this correctly out of the box. Custom PID-1 binaries often *don't*; symptom: `ps` shows growing list of `<defunct>` processes.
+- **Zombies accumulating.** Some daemons double-fork and detach. The grandchild then gets reparented to PID 1. If PID 1's `wait()` loop is correct, the kernel hands it the SIGCHLD and the child is reaped. BusyBox init does this correctly. Custom PID-1 binaries often forget the `wait()` loop; the symptom is `<defunct>` processes piling up in `ps`.
 - **Respawn storm.** A `respawn` line for a service that immediately exits causes infinite restart loop, burning CPU. BusyBox init doesn't rate-limit; add a `sleep 5` to your service or use systemd's `RestartSec=`.
 - **`/etc/inittab` syntax differences.** sysvinit uses runlevels in the second field; BusyBox ignores that field entirely. Don't copy/paste between init implementations.
 - **`init=` cmdline overrides everything.** Even if `/sbin/init` exists, if you boot with `init=/bin/sh`, the kernel runs the shell directly. Useful for recovery; surprising if you forgot you set it.

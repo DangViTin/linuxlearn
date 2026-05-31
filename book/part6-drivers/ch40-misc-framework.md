@@ -8,8 +8,8 @@ status: draft
 
 # Chapter 40 — The misc framework
 
-> **What:** `miscdevice` — a one-call shortcut that turns 80 lines of "allocate major, register cdev, create class, create device" boilerplate into 10 lines. For simple character devices that don't fit a standard subsystem, this is the right starting point.
-> **Why:** the Ch 37–38 pattern (alloc_chrdev_region + cdev_init + cdev_add + class_create + device_create) is correct but verbose. The misc framework is the kernel's pre-canned version. Many real drivers — `/dev/watchdog`, `/dev/hwrng`, `/dev/rfkill`, `/dev/btrfs-control`, `/dev/loop-control` — use it. Knowing when to reach for it saves real effort.
+> **What:** `miscdevice` — a one-call shortcut that turns 80 lines of "allocate major, register cdev, create class, create device" boilerplate into 10 lines. Use it for simple character devices that don't fit a standard subsystem.
+> **Why:** the Ch 37–38 pattern (alloc_chrdev_region + cdev_init + cdev_add + class_create + device_create) is correct but verbose. The misc framework is the kernel's pre-canned version. Many real drivers — `/dev/watchdog`, `/dev/hwrng`, `/dev/rfkill`, `/dev/btrfs-control`, `/dev/loop-control` — use it. Knowing when to use it saves you the chardev boilerplate.
 > **Focus:** **misc is just chardev with shared major 10**. There's no new mechanism — the kernel reserves major 10 for "miscellaneous" devices and the misc framework hands out minor numbers within that major. Your driver provides just minor + name + fops; the rest is done for you.
 
 ## 40.1  When to use misc (and when not to)
@@ -25,7 +25,7 @@ Don't use misc when:
 - You need *many* dynamically-numbered instances (loop devices, USB serial ports). Misc minor space is limited.
 - You're writing a driver that should integrate with a framework (LED → `leds-class`; input device → `input_register_device`; sound → ALSA/ASoC; network → `netdev`). The Part VI subsystem chapters will cover these.
 
-For the in-between cases — "simple chardev, one or two instances, no existing framework" — misc is perfect.
+For these in-between cases — simple chardev, one or two instances, no matching framework — misc fits.
 
 ## 40.2  The API
 
@@ -48,7 +48,7 @@ int  misc_register(struct miscdevice *misc);
 void misc_deregister(struct miscdevice *misc);
 ```
 
-Two functions. That's the whole API.
+Two functions. The full API.
 
 ## 40.3  Hello, misc
 
@@ -153,7 +153,7 @@ Read any of them: you'll see `misc_register` used exactly as we used it, surroun
 
 ## 40.7  Pitfalls
 
-- **`miscdevice` struct must outlive the registration.** Don't put it on the stack of `init()`. Make it `static` (as in the example) or allocate it from `kmalloc`. The misc layer holds a pointer to your struct.
+- **`miscdevice` must outlive the registration**, because the misc layer holds a pointer to it. Don't put it on the stack of `init()` — make it `static` or allocate it with `kmalloc`.
 - **Multiple modules registering with the same `name`.** `misc_register` returns `-EBUSY`. The first one wins. Pick a unique name.
 - **Forgetting `.mode`.** Default is 0600 (root-only). Set 0660 (or whatever) explicitly if you want non-root access.
 - **Need a custom class but using misc.** Misc devices all live in `/sys/class/misc/`. If you need your own class with shared attributes across instances, drop back to manual chardev (Ch 37–38) — misc isn't the right tool.

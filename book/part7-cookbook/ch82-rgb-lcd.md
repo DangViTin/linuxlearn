@@ -9,8 +9,8 @@ status: draft
 # Chapter 82 — RGB parallel LCD on LCDIF
 
 > **What:** "dumb" RGB-parallel TFT panels driven by the i.MX6ULL's **LCDIF** controller. Three panels compared: **ATK4384** (4.3" 480×272), **ATK7016** (7" 1024×600), **ATK10261** (10.1" 1280×800). The panel has no controller — it just accepts pixel clock + sync + 24 data lines. The "driver" is therefore a *timing description* + the DRM panel framework. We cover panel timings deeply, how `panel-simple` works internally, and how to add a custom panel (two ways: DT-only via `panel-dpi`, or a real `drm_panel` driver from scratch).
-> **Why:** parallel-RGB is the bread-and-butter HMI display interface for i.MX6ULL. Unlike a smart SPI panel (Ch 83), a parallel panel has no frame buffer of its own — the SoC continuously streams pixels at the pixel clock, refreshing 60× per second. Get the timings right and the panel works; get one porch wrong and you see a rolling, torn, or blank screen. This chapter is mostly about *reading a panel datasheet's timing table and translating it to DT*.
-> **Focus:** **pixel clock + 6 porch numbers + 3 polarities = a working panel**. The LCDIF is a raster generator: it outputs HSYNC/VSYNC/DE/PCLK and 24 RGB bits, scanning left-to-right, top-to-bottom, forever. The panel datasheet gives you the exact timing; you transcribe it into a `panel-timing` DT node. There is no "smart" negotiation — the numbers must match the glass.
+> **Why:** parallel-RGB is the standard HMI display interface for i.MX6ULL. A parallel panel has no frame buffer of its own. The SoC streams pixels at the pixel clock and refreshes the glass 60 times a second. Get the timings right and the panel works. Get one porch wrong and the image rolls, tears, or stays blank. This chapter is mostly about *reading a panel datasheet's timing table and translating it to DT*.
+> **Focus:** A working panel needs a pixel clock, six porch numbers, and three polarities. That is the entire job. The LCDIF is a raster generator: it outputs HSYNC/VSYNC/DE/PCLK and 24 RGB bits, scanning left-to-right, top-to-bottom, forever. The panel datasheet gives you the exact timing; you transcribe it into a `panel-timing` DT node. There is no negotiation. The numbers must match the glass.
 
 ## 82.1  Panel comparison
 
@@ -25,7 +25,7 @@ status: draft
 | Touch | resistive or capacitive option | capacitive (GT911) | capacitive (GT911) |
 | i.MX6ULL feasible? | ✓ easily | ✓ (near LCDIF max) | ⚠ 71 MHz pclk exceeds safe LCDIF range (~70 MHz) |
 
-**i.MX6ULL LCDIF pixel-clock ceiling** is ~70 MHz in practice. The ATK4384 (9 MHz) and ATK7016 (51 MHz) are comfortable; ATK10261 (71 MHz) is at the edge — works but marginal, sometimes needs reducing to a lower-refresh timing.
+**i.MX6ULL LCDIF pixel-clock ceiling** is ~70 MHz in practice. The ATK4384 (9 MHz) and ATK7016 (51 MHz) are comfortable; ATK10261 at 71 MHz is at the limit. It usually works but you may need to drop to a lower refresh rate.
 
 ## 82.2  How a parallel-RGB panel works
 
@@ -52,7 +52,7 @@ The signals:
 - **DE** (data enable): high during the visible region; the panel only shows pixels when DE is high.
 - **R/G/B[7:0]**: 24 data lines (18 for RGB666 panels).
 
-The "porches" are blanking intervals — legacy from CRT days (the electron beam needed time to fly back), but LCDs still use the timing model. The panel datasheet specifies exact porch widths.
+The "porches" are blanking intervals. They are a CRT legacy — the electron beam needed time to fly back. LCDs kept the timing model. The panel datasheet specifies exact porch widths.
 
 ### The timing math
 
@@ -111,7 +111,7 @@ The LCDIF side:
 
 For ATK4384 substitute: `clock-frequency = <9000000>; hactive = <480>; vactive = <272>; hfront-porch = <5>; hback-porch = <40>; hsync-len = <1>; vback-porch = <8>; vfront-porch = <8>; vsync-len = <1>;`.
 
-These numbers come directly from the panel datasheet's "AC Timing Characteristics" / "Display Timing" table. **Transcribing them is the entire job.**
+These numbers come directly from the panel datasheet's "AC Timing Characteristics" / "Display Timing" table. Transcribing them is the entire job.
 
 ### The modern DRM way: panel-simple + of_graph
 
@@ -263,11 +263,11 @@ static const struct panel_desc atk7016 = {
 { .compatible = "alientek,atk7016", .data = &atk7016 },
 ```
 
-Notice the DRM `drm_display_mode` uses *cumulative* values (hsync_start = hdisplay + front_porch) rather than the DT's separate porch fields. The conversion is mechanical but easy to fumble.
+Notice the DRM `drm_display_mode` uses *cumulative* values (hsync_start = hdisplay + front_porch) rather than the DT's separate porch fields. The conversion is simple but easy to get wrong.
 
 ### Approach 3: A full drm_panel driver from scratch
 
-For a panel needing custom power sequencing or init commands (rare for dumb RGB panels, common for panels with an init-controller), write a `drm_panel` driver:
+Some panels need custom power sequencing or init commands. This is rare for dumb RGB panels but common for panels with an init controller. For those, write a `drm_panel` driver:
 
 ```c
 #include <drm/drm_panel.h>
@@ -393,7 +393,7 @@ panel {
 };
 ```
 
-~120 lines. It registers a `drm_panel` with the timing and power sequencing; the LCDIF DRM driver finds it via the of_graph link and uses its mode. For a *dumb* panel this is overkill (use panel-dpi), but for a panel that needs an init sequence (e.g., a panel with an embedded controller requiring SPI commands before it accepts RGB — covered in Ch 83), this is the structure you extend.
+About 120 lines. It registers a `drm_panel` with the timing and power sequencing. The LCDIF DRM driver finds the panel through the of_graph link and uses its mode. For a *dumb* panel this is overkill (use panel-dpi), but for a panel that needs an init sequence (e.g., a panel with an embedded controller requiring SPI commands before it accepts RGB — covered in Ch 83), this is the structure you extend.
 
 ## 82.6  Backlight + power sequencing
 

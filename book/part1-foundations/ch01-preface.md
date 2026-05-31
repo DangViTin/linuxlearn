@@ -12,13 +12,13 @@ status: draft
 
 There is no shortage of books and tutorials that show you how to get embedded Linux running on a board. Most of them follow the same script: install a vendor BSP, run `bitbake` or `make`, flash an SD card, log in. Twenty minutes from `git clone` to a Linux prompt. Beautiful.
 
-The trouble is that you have learned almost nothing. The vendor BSP brought up your DDR. Yocto cross-compiled your toolchain. U-Boot's `defconfig` set every register on your behalf. The kernel's `imx_v7_defconfig` enabled the right drivers because someone, somewhere, already did the work. If anything breaks — a different DRAM chip, a custom IOMUX, a peripheral the BSP doesn't know about — you have no foothold to debug from. You can read the Linux source but you cannot *see* where the system came from.
+The trouble is that you learned almost nothing. The BSP set up the DDR, Yocto built your toolchain, U-Boot's defconfig set every register, and the kernel's `imx_v7_defconfig` enabled the drivers — all because someone else had done the work. If anything breaks, like a different DRAM chip or a custom IOMUX, you have no foothold to debug from. You can read the Linux source but you cannot *see* where the system came from.
 
-This book is the opposite path. We will build, by hand, every layer between *power-on-reset* and a running multi-process Linux system on the i.MX6ULL. We will write the boot image bytewise. We will configure the DDR controller register-by-register against the JEDEC sequence. We will hand-write the linker script, the page table, the device tree. We will compile U-Boot, then read its source until every line is familiar. We will boot a mainline Linux kernel — not a vendor fork — with a root filesystem built from a single statically-linked binary.
+This book is the opposite path. You will build every layer between power-on-reset and a running Linux system on the i.MX6ULL by hand. That means writing the boot image bytewise, setting DDR registers against the JEDEC sequence, hand-writing the linker script, page table, and device tree, then compiling U-Boot from source. You will read its source until every line is familiar, and boot a mainline Linux kernel — not a vendor fork — with a root filesystem built from a single statically-linked binary.
 
-Only after we can do all of this from scratch do we permit ourselves the convenience tools: Buildroot in Chapter 35, our own toolchain in Chapter 60, Yocto in Chapter 61, secure boot in Chapter 62. By that point, the tools will feel like productivity wins rather than magic. You will know what each of them does because you have already done it the hard way.
+Only after we can do all of this from scratch do we permit ourselves the convenience tools: Buildroot in Chapter 35, our own toolchain in Chapter 60, Yocto in Chapter 61, secure boot in Chapter 62. By then the tools will feel like time-savers, not magic. You will know what each of them does because you have already done it the hard way.
 
-The cost is patience. The reward is that no future bug in any of those tools can hide from you.
+It takes patience. The payoff is that no bug in those tools can hide from you later.
 
 ## 1.2  Who this book is for
 
@@ -30,7 +30,7 @@ You have heard about Linux on embedded targets — maybe shipped a product with 
 
 You are not a Linux expert. You may not know what a "wait queue" is, or whether `/sys/class/gpio` is a real filesystem, or what the difference between `vmlinux` and `zImage` is. By Chapter 30, you will.
 
-If that is roughly you, this book is written for you. If you have *no* embedded background at all — if "register" means "bank teller window" — the bare-metal chapters in Part II will feel cruel. There are gentler introductions; come back here after.
+If that is roughly you, this book is written for you. If you have *no* embedded background at all — if "register" makes you think of a bank teller's window, Part II will feel cruel. There are gentler introductions; come back here after.
 
 ## 1.3  What "raw" means in this book
 
@@ -42,7 +42,7 @@ A few concrete commitments:
 - We **never** copy-paste a configuration without explaining what each field does. The first time you see a DDR controller register, every bit of it is decoded. The second time you can look it up in the appendix.
 - We **avoid Yocto, Buildroot, and other "framework" builders** until they have been thoroughly demystified by us having done the same work by hand.
 
-This discipline is the entire point of the book. Skip it at your own risk.
+This discipline is the point of the book. Skip it and you lose the point.
 
 ## 1.4  What this book does not cover
 
@@ -130,7 +130,7 @@ ASCII first, SVG when ASCII fails. We do not require any rendering tools to read
 
 ## 1.9  How the chapters depend on each other
 
-Bare-metal Part II (Chapters 9–18) is the only part the impatient reader can skip without losing the thread. But: *you should not skip it*. It is where this book differs from every other embedded-Linux book on the shelf, and it is the part that will save you, six months from now, when a bring-up problem traces all the way back to a misconfigured AHB clock.
+Part II (Chapters 9–18) is the only part an impatient reader can skip without losing the thread. You should not skip it anyway. It is where this book differs from every other embedded-Linux book on the shelf. It is also the part that will save you six months from now, when some bring-up problem traces back to a misconfigured AHB clock.
 
 A pruning guide for readers in different situations:
 
@@ -153,7 +153,7 @@ You will need it open next to you for most of the book. It is roughly 5000 pages
 4. The interrupt vector number, if any (the GIC SPI table).
 5. The initialization sequence the manufacturer recommends (usually a numbered list at the start of the block's chapter).
 
-Five items, ten minutes, every new peripheral. This habit, more than anything else, is what separates engineers who can bring up a custom board from engineers who can only operate on someone else's eval kit.
+Five items, ten minutes, every new peripheral. That habit is what separates engineers who can bring up a custom board from engineers who can only run someone else's eval kit.
 
 ## 1.11  Where to ask for help
 
@@ -163,7 +163,7 @@ When the book leaves you stuck, the following are, in this author's experience, 
 - **The U-Boot mailing list** (`u-boot@lists.denx.de`). Read-only for a few weeks before posting.
 - **The Linux kernel mailing lists** (`linux-arm-kernel`, the relevant subsystem list — `linux-i2c`, `linux-spi`, `linux-rtc`, etc.). Etiquette matters; read `Documentation/process/` before posting.
 - **The Bootlin training material** (free, public). The best second source after this book.
-- **LWN.net**. A subscription is among the best dollars per byte in technical journalism.
+- **LWN.net**. A subscription is one of the best deals in technical writing.
 
 Stack Overflow is the worst place to ask about Linux internals. The kernel changes too fast and the upvoted answers go stale. Go to the source.
 

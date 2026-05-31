@@ -9,8 +9,8 @@ status: draft
 # Chapter 85 — OLED & e-paper
 
 > **What:** two non-backlit display technologies. **OLED** — self-emissive monochrome dot-matrix: **Solomon SSD1306** (128×64, I²C/SPI), **Sino Wealth SH1106** (132×64, the "almost-SSD1306"). **E-paper** — bistable reflective: **Solomon SSD1680** (the controller behind most 1.5"–2.9" e-paper modules). For each: the framebuffer-RAM model, the refresh mechanics (instant for OLED, multi-second for e-paper), the mainline driver, and a from-scratch SSD1306 fbdev driver.
-> **Why:** OLEDs are the cheapest possible "real display" — a $2 128×64 OLED gives you a crisp status screen with no backlight, perfect contrast, ~20 mA. E-paper is the opposite extreme: zero idle power (the image persists with no power), sunlight-readable, but slow to update. Both show up constantly in IoT status displays, instruments, smart-home panels, electronic shelf labels. They need very different driver thinking than the raster panels of Ch 82–84.
-> **Focus:** **OLED is a page-addressed bitmap; e-paper is a two-buffer LUT-driven waveform machine**. The SSD1306 stores a 1-bit-per-pixel image in internal RAM organized as 8 "pages" of 128 bytes; you push the whole bitmap and it displays instantly. The SSD1680 stores *two* images (old + new) and replays a per-pixel voltage *waveform* (the LUT) over ~2 seconds to flip the e-ink particles — a completely different mental model.
+> **Why:** OLEDs are the cheapest "real display" you can buy. A 128×64 OLED costs around $2, draws ~20 mA, and has perfect contrast without a backlight. E-paper is the opposite. Zero idle power — the image persists with no power. Sunlight-readable. But slow to update. Both show up constantly in IoT status displays, instruments, smart-home panels, electronic shelf labels. They need very different driver thinking than the raster panels of Ch 82–84.
+> **Focus:** OLED uses a page-addressed bitmap. E-paper uses a two-buffer waveform replay driven by a LUT. They need very different driver code. The SSD1306 stores a 1-bit-per-pixel image in internal RAM organized as 8 "pages" of 128 bytes; you push the whole bitmap and it displays instantly. The SSD1680 stores *two* images (old + new) and replays a per-pixel voltage *waveform* (the LUT) over ~2 seconds to flip the e-ink particles — a completely different mental model.
 
 ## 85.1  Technology & chip comparison
 
@@ -98,7 +98,7 @@ A working SSD1306 init (the canonical sequence):
 0xAF              display on
 ```
 
-The `0x8D 0x14` (charge pump enable) is the #1 gotcha — the OLED needs an internal boost converter for the ~7 V it requires; forget this command and the screen never lights.
+The `0x8D 0x14` (charge pump enable) is the #1 gotcha. The OLED needs an internal boost converter for the ~7 V it requires. Forget this command and the screen stays black.
 
 ## 85.3  How the mainline driver works
 
@@ -372,9 +372,9 @@ What we skipped vs the mainline `ssd130x` DRM driver:
 
 SH1106 is nearly pin- and command-compatible with SSD1306, *except* its RAM is **132 columns wide** while the visible panel is 128. The visible area is centered, so columns 2–129 are shown; columns 0–1 and 130–131 are off-screen.
 
-The consequence: when you set the column window, you must offset by 2. A driver written for SSD1306 (offset 0) shows the SH1106 image shifted 2 pixels right, with garbage wrapping on the left edge. The mainline `ssd130x` driver has a `col_offset` field set from DT for exactly this.
+The consequence: when you set the column window, you must offset by 2. A driver written for SSD1306 (offset 0) shows the SH1106 image shifted 2 pixels right, with garbage wrapping on the left edge. The mainline `ssd130x` driver reads a `col_offset` value from DT to handle this case.
 
-To adapt the from-scratch driver: change `ms_cmd(m, 0x21); ms_cmd(m, 0); ms_cmd(m, 127);` to `ms_cmd(m, 0x21); ms_cmd(m, 2); ms_cmd(m, 129);`. (Or — SH1106 doesn't support horizontal addressing mode at all in some variants; you set page + column manually per page.)
+For SH1106, change the column window from 0–127 to 2–129. Some SH1106 variants do not support horizontal addressing mode at all — for those, set the page and column manually for each page.
 
 ## 85.6  SSD1680 e-paper — a completely different model
 
@@ -399,7 +399,7 @@ Two refresh modes:
 
 ### Why this is hard for a generic framebuffer
 
-A normal framebuffer driver assumes "write pixel, see it." E-paper assumes "write image, trigger a 2-second update, then see it." The deferred-io model breaks (you can't flush 30×/sec — each flush takes 2 s). E-paper drivers expose a custom update trigger and let user-space decide *when* to refresh.
+A normal framebuffer is "write pixel, see it." E-paper is "write image, trigger update, wait 2 seconds, see it." The deferred-io model breaks (you can't flush 30×/sec — each flush takes 2 s). E-paper drivers expose a custom update trigger and let user-space decide *when* to refresh.
 
 Mainline: `drivers/gpu/drm/tiny/repaper.c` (for Pervasive Displays panels) and various SSD1680 patches. The DRM driver does a full refresh on each DRM page-flip — acceptable for "update once per minute" status displays, terrible for anything interactive.
 
@@ -435,7 +435,7 @@ For e-paper, you design the UI around the refresh model: update once per minute 
 - **OLED burn-in.** A static image (a logo, a fixed UI) burns in over months. Invert/shift periodically, or dim, for always-on displays.
 - **E-paper partial-refresh ghosting.** Accumulates; schedule periodic full refreshes.
 - **E-paper update while busy.** Triggering a new update before BUSY clears corrupts the image. Always wait for BUSY.
-- **E-paper temperature sensitivity.** Below ~0 °C, e-paper refreshes very slowly or not at all. The waveform LUT is temperature-dependent; good modules have a temperature sensor + multiple LUTs.
+- **E-paper temperature sensitivity.** Below ~0 °C, e-paper refreshes very slowly or not at all. The waveform LUT is temperature-dependent. Good modules include a temperature sensor and ship multiple LUTs for the controller to switch between.
 
 ## 85.9  Going deeper
 

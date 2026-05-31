@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 35A — Ubuntu-base rootfs as a peer to BusyBox/Buildroot
 
-> **What:** an Ubuntu rootfs on the i.MX6ULL. Not Ubuntu-the-distro with GNOME — that's too heavy. We use **Ubuntu-base**, the same Debian-family userland your laptop has, in a 80 MB tarball that runs `apt` and `bash` natively. You unpack it, `chroot` into it via `qemu-user-static`, install packages from the host's network, then NFS-boot the target into it.
-> **Why:** for projects where the developer's familiarity matters more than image footprint, Ubuntu-base wins. Engineers who use `apt-get install` daily on their dev machines get the same workflow on the target. Glibc, full coreutils, systemd, an actual `bash` — all present, in exchange for ~80 MB on disk and ~30 MB RAM at idle vs. BusyBox's < 5 MB / < 10 MB.
-> **Focus:** the **`qemu-user-static` + `chroot` trick** — installing armhf packages from x86_64 host into the armhf rootfs by transparently running ARM binaries on the host CPU through QEMU emulation. The trick is invisible to `apt-get` and makes the whole workflow possible.
+> **What:** an Ubuntu rootfs on the i.MX6ULL. Ubuntu-the-distro with GNOME is too heavy. We use **Ubuntu-base** instead, the same Debian-family userland your laptop has, in a 80 MB tarball that runs `apt` and `bash` natively. You unpack it, `chroot` into it via `qemu-user-static`, install packages from the host's network, then NFS-boot the target into it.
+> **Why:** for projects where the developer's familiarity matters more than image footprint, Ubuntu-base wins. Glibc, full coreutils, systemd, an actual `bash` — all present, in exchange for ~80 MB on disk and ~30 MB RAM at idle vs. BusyBox's < 5 MB / < 10 MB.
+> **Focus:** the **`qemu-user-static` + `chroot` trick** — installing armhf packages from x86_64 host into the armhf rootfs by transparently running ARM binaries on the host CPU through QEMU emulation. Apt-get doesn't notice and the workflow works.
 
 ## 35A.1  When this is the right answer
 
@@ -26,9 +26,9 @@ status: draft
 | Best for prototypes / dev boards | | ✓ |
 | Best for shipping products | ✓ (usually) | |
 
-The killer feature: **`apt install <anything>`** — Ubuntu's ~100 000-package archive available, no recompilation. For early development this is irresistible.
+The headline feature is `apt install <anything>` — Ubuntu's ~100 000-package archive available, no recompilation. For early development this is hard to beat.
 
-The killer cost: ~25× the disk and ~3× the RAM vs Buildroot. On i.MX6ULL with 512 MiB DRAM and an 8 GB eMMC, both are fine. On a 32 MiB device, only Buildroot fits.
+The headline cost is ~25× the disk and ~3× the RAM vs Buildroot. On i.MX6ULL with 512 MiB DRAM and an 8 GB eMMC, both are fine. On a 32 MiB device, only Buildroot fits.
 
 ## 35A.2  Get the rootfs tarball
 
@@ -63,7 +63,7 @@ $ ls /usr/bin/qemu-arm-static
 /usr/bin/qemu-arm-static
 ```
 
-`qemu-user-static` is a CPU emulator that runs *one ARM binary at a time* on your x86_64 host. `binfmt-support` registers it with the kernel so that when the kernel sees `exec("/usr/bin/ls")` and `ls` is an ARM binary, it transparently runs `qemu-arm-static /usr/bin/ls` instead.
+`qemu-user-static` runs one ARM binary at a time on your x86_64 host. `binfmt-support` registers it with the kernel via `binfmt_misc`. When the kernel sees `exec` of an ARM ELF, it transparently invokes `qemu-arm-static` to run it.
 
 This means: inside the `chroot`, when you type `apt install nano`, `apt` is an ARM binary, `dpkg` is an ARM binary, every `.postinst` script's binary callouts are ARM — and they *all run on your x86_64 host* via QEMU emulation. The chroot doesn't know the difference. Neither do the binaries.
 
@@ -244,7 +244,7 @@ dev@pa-mini:~$ python3 -c 'print("hello from an ARM Ubuntu")'
 hello from an ARM Ubuntu
 ```
 
-A full Ubuntu shell. `apt install` works (the target downloads from `ports.ubuntu.com` via its own network). `python3` is there. Every command you're used to is there.
+A full Ubuntu shell. `apt install` works, `python3` is there, every command you're used to is there.
 
 Boot time on i.MX6ULL: ~12-15 seconds from `bootz` to login prompt (vs ~3 s for BusyBox). Most of that is systemd's startup.
 

@@ -9,19 +9,19 @@ status: draft
 # Chapter 52A — PREEMPT_RT
 
 > **What:** **PREEMPT_RT** — fully merged into the mainline kernel since **v6.12** (December 2024) — is the kernel configuration that turns Linux into a hard-real-time OS, where worst-case interrupt-to-thread latency is measured in tens of microseconds on a Cortex-A7 instead of milliseconds. No out-of-tree patch is needed on v6.12 or later. We cover the four core changes (preemptible spinlocks, threaded IRQs by default, priority inheritance, high-resolution timers), how to enable it on the i.MX6ULL, and how to measure latency with `cyclictest`.
-> **Why:** standard Linux has a few-millisecond worst-case scheduling latency under load. That's fine for general computing but disqualifies it from motor control, audio processing, industrial PLCs, and anything that needs deterministic response. PREEMPT_RT bridges that gap. Many shipping industrial products (CNCs, robotic arms, real-time camera ML inference) run PREEMPT_RT Linux today.
-> **Focus:** **the deterministic-latency contract**. PREEMPT_RT promises that a high-priority thread will run within a bounded time after its waking event, regardless of what lower-priority threads or kernel code are doing. Internalising what "bounded" really means — and what defeats it — is the whole game.
+> **Why:** standard Linux has a few-millisecond worst-case scheduling latency under load. That's fine for general computing but disqualifies it from motor control, audio processing, industrial PLCs, and anything that needs deterministic response. PREEMPT_RT bridges that gap. Many industrial products run PREEMPT_RT Linux today — CNCs, robotic arms, real-time camera inference.
+> **Focus:** **the deterministic-latency contract**. PREEMPT_RT promises that a high-priority thread will run within a bounded time after its waking event, regardless of what lower-priority threads or kernel code are doing. What "bounded" actually means, and what breaks it, is the main thing to learn.
 
 ## 52A.1  What "real-time" means here
 
-"Real-time" doesn't mean "fast." It means "*deterministic*." A standard Linux kernel might run your callback in 100 µs on average — but every 1000th time, it takes 5 ms because some other kernel code held a non-preemptible lock. For audio sampling at 48 kHz (20.8 µs/sample) or a motor control loop at 5 kHz (200 µs/sample), that worst case is fatal.
+"Real-time" doesn't mean "fast." It means "*deterministic*." On a standard kernel, your callback runs in about 100 µs on average. But every 1000th time, it takes 5 ms because some other kernel code held a non-preemptible lock. For audio sampling at 48 kHz (20.8 µs/sample) or a motor control loop at 5 kHz (200 µs/sample), that worst case is fatal.
 
 PREEMPT_RT trades a few percent of throughput for bounded worst case. With it enabled and tuned on i.MX6ULL Cortex-A7, you can expect:
 
 - **Standard kernel under load**: ~100 µs typical, 5–10 ms worst case.
 - **PREEMPT_RT under load**: ~30 µs typical, ~150 µs worst case.
 
-The 30× improvement in the long tail makes hard-RT applications viable.
+A 30× drop in the worst case makes hard-RT applications viable.
 
 ## 52A.2  What PREEMPT_RT changes
 
@@ -35,13 +35,13 @@ The exception: `raw_spinlock` — the few critical locks that genuinely need to 
 
 ### 2. Threaded interrupts by default
 
-Standard Linux runs IRQ handlers in IRQ context — atomic, fast, but blocking other IRQs of the same priority. PREEMPT_RT runs *all* IRQ handlers as kernel threads, schedulable like any other thread. A real-time thread can preempt an IRQ handler thread; SCHED_FIFO priorities determine order.
+Standard Linux runs IRQ handlers in IRQ context: atomic, fast, but blocking other IRQs at the same priority. PREEMPT_RT runs every IRQ handler as a kernel thread. The scheduler treats them like any other thread. A real-time thread can preempt an IRQ handler thread; SCHED_FIFO priorities determine order.
 
 You already use `request_threaded_irq` (Ch 43); PREEMPT_RT extends this to *every* IRQ, even ones registered with `request_irq`. The primary handler becomes vestigial.
 
 ### 3. Priority inheritance for all mutexes
 
-Without priority inheritance: low-priority task A holds mutex M. High-priority task B wants M, blocks. Medium-priority task C runs (preempts A). B is now blocked indefinitely by C — *priority inversion*. PREEMPT_RT's mutexes implement PI: when B blocks on M, the kernel temporarily boosts A's priority to B's. A runs through to release M, B unblocks, normal priorities restored.
+Without priority inheritance, priority inversion happens. Low-priority task A holds mutex M. High-priority task B wants M and blocks. Medium-priority task C runs and preempts A. B now waits behind C indefinitely. PREEMPT_RT's mutexes implement PI: when B blocks on M, the kernel temporarily boosts A's priority to B's. A runs through to release M, B unblocks, normal priorities restored.
 
 This single feature avoids the Mars Pathfinder bug.
 
@@ -112,7 +112,7 @@ This is the test that matters — latency *under load*, not at idle.
 
 ## 52A.5  Configuration tuning
 
-PREEMPT_RT alone isn't enough. Tune:
+PREEMPT_RT alone is not enough. You also need to tune the kernel, the cmdline, and userspace:
 
 ### Kernel config
 
@@ -178,4 +178,4 @@ int main(void) {
 - **`tools/rt-tests/`** — cyclictest, oslat, hackbench source.
 - **Open Source Automation Development Lab (OSADL) latency archives** — long-running latency plots across many hardware platforms.
 
-> Next chapter: **Chapter 53 — Sound (ALSA + ASoC).** Ethernet behind us, audio next: the most architecturally complex subsystem in the kernel, with three drivers (machine, codec, CPU-DAI) cooperating to make a single `aplay` work.
+> Next chapter: **Chapter 53 — Sound (ALSA + ASoC).** Ethernet behind us, audio next: one of the most layered subsystems in the kernel, with three drivers (machine, codec, CPU-DAI) cooperating to make a single `aplay` work.

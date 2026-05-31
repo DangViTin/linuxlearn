@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 100 — ZigBee / Thread / 802.15.4
 
-> **What:** the **IEEE 802.15.4** family — the certified mesh networking stack used by Philips Hue, Aqara, Eve, IKEA Trådfri, Google Nest. We compare **TI CC2530** (legacy ZigBee 3.0), **Nordic nRF52840** (modern, OpenThread + ZigBee + BLE in one chip), and **Silicon Labs EFR32MG** (commercial-grade ZigBee/Thread). On Linux, the i.MX6ULL is the **gateway** (running zigbee2mqtt, Thread Border Router, or Home Assistant), not a node. The radio is on a coprocessor module; Linux talks to it over UART/USB as a **ZNP** (ZigBee Network Processor) or **NCP** (Network Coprocessor).
-> **Why:** 802.15.4 is the only mesh radio with serious certification, vendor cross-compat, and consumer-product penetration. If you're building a *gateway* (smart-home hub, factory data collector, gateway-as-a-service), you're integrating with 802.15.4 modules. Nodes you don't write — you buy them. The Linux skill is **gateway integration**: pairing the radio coprocessor, serial framing of the host-controller protocol, MQTT bridging, OTA upgrade management.
-> **Focus:** **the radio firmware is a black box; you talk to it over a serial protocol (EZSP, Thread Spinel, ZNP) that mirrors the network layer**. Just like BLE HCI (Ch 95), the host-controller boundary is what you debug. Once the gateway daemon (zigbee2mqtt, OpenThread Border Router) is up, MQTT/MDNS handles the rest. No kernel driver to write — `ttyUSB`/`spidev` is the chip-side interface and a user-space daemon is the brain.
+> **What:** the **IEEE 802.15.4** family. It is the certified mesh networking stack that powers most retail smart-home meshes: Philips Hue, Aqara, Eve, IKEA Trådfri, Google Nest. We compare **TI CC2530** (legacy ZigBee 3.0), **Nordic nRF52840** (modern, OpenThread + ZigBee + BLE in one chip), and **Silicon Labs EFR32MG** (commercial-grade ZigBee/Thread). On Linux, the i.MX6ULL is the **gateway** (running zigbee2mqtt, Thread Border Router, or Home Assistant), not a node. The radio is on a coprocessor module; Linux talks to it over UART/USB as a **ZNP** (ZigBee Network Processor) or **NCP** (Network Coprocessor).
+> **Why:** 802.15.4 is the only mesh radio with serious certification, vendor cross-compat, and consumer-product penetration. If you're building a *gateway* (smart-home hub, factory data collector, gateway-as-a-service), you're integrating with 802.15.4 modules. You do not write the nodes; you buy them. The Linux skill is **gateway integration**: pairing the radio coprocessor, serial framing of the host-controller protocol, MQTT bridging, OTA upgrade management.
+> **Focus:** **the radio firmware is a black box. You talk to it over a serial protocol (EZSP, Thread Spinel, ZNP) that mirrors the network layer**. Just like BLE HCI (Ch 95), the host-controller boundary is what you debug. Once the gateway daemon (zigbee2mqtt, OpenThread Border Router) is up, MQTT/MDNS handles the rest. No kernel driver to write — `ttyUSB`/`spidev` is the chip-side interface and a user-space daemon is the brain.
 > **Tooling.** This chapter uses Node.js 18+, `zigbee2mqtt` (via npm), Mosquitto broker; for Thread, build `openthread/ot-br-posix` from source.
 > - **Ubuntu-base (target):** `apt install nodejs npm mosquitto mosquitto-clients`
 > - **Buildroot:** `BR2_PACKAGE_NODEJS=y BR2_PACKAGE_MOSQUITTO=y  # otbr typically self-built`
@@ -33,9 +33,9 @@ The big shift: **Matter** (the new consumer smart-home standard) runs *over* Thr
 
 ## 100.2  Why the radio lives on a coprocessor
 
-A 802.15.4 PHY is timing-strict: ack-on-receive is required within 1 ms, channel hopping happens at sub-ms boundaries, and the MAC retransmit logic must run reliably. Linux's CPU schedule, plus SPI/USB latency, makes a hosted Linux implementation hard.
+A 802.15.4 PHY is timing-strict: ack-on-receive is required within 1 ms, channel hopping happens at sub-ms boundaries, and the MAC retransmit logic must run reliably. Between Linux's scheduling jitter and SPI/USB latency, running the MAC on the host CPU is not reliable.
 
-Solution: the radio chip runs **its own firmware** containing the PHY + MAC + (optionally) the higher layers. The Linux host talks to it over UART/USB/SPI using a serial control protocol. There are three common splits:
+Solution: the radio chip runs **its own firmware**. The firmware contains the PHY and MAC, and may also contain the higher network layers. The Linux host talks to it over UART/USB/SPI using a serial control protocol. There are three common splits:
 
 ```
 RCP (Radio Co-Processor)        NCP (Network Co-Processor)        SoC (full host)
@@ -67,7 +67,7 @@ This chapter focuses on the **gateway role**: RCP for Thread, ZNP/EZSP for ZigBe
 - –96 dBm receiver sensitivity (vs LoRa SF12's –137; vs BLE 1M's –93). 
 - Range similar to BLE.
 
-Channel/WiFi overlap (the cause of *every* "my ZigBee network is flaky" thread):
+Channel/WiFi overlap (the most common cause of "my ZigBee network is flaky" reports):
 
 ```
 Channel:  11   12   13   14   15   16   17   18   19   20   21   22   23   24   25   26
@@ -81,7 +81,7 @@ ZigBee-friendly: 15, 20, 25, 26 (avoid WiFi 1/6/11)
 Thread default: 11, 15, 20, 25
 ```
 
-Plan the ZigBee/Thread channel with `nmcli dev wifi list` and `iwlist scan` to see local WiFi channels first. A poorly chosen channel gives a network with 30 % packet loss that "mysteriously works fine at home" (because the user's home WiFi is on a different channel than the customer's).
+Plan the ZigBee/Thread channel with `nmcli dev wifi list` and `iwlist scan` to see local WiFi channels first. A poorly chosen channel can give 30 % packet loss in the field. The same network "works fine at home" because the home WiFi happens to sit on a different channel than the customer's.
 
 ## 100.4  The ZigBee stack (vendor-rolled, you don't touch it)
 
@@ -182,11 +182,11 @@ mosquitto_pub -t 'zigbee2mqtt/0xabcd1234/set' -m '{"state":"OFF"}'
 - CMD0/CMD1 identifies the command (e.g., AF_DATA_REQUEST_EXT to send a packet).
 - FCS is XOR of LEN through last data byte.
 
-You'd rarely send raw — the adapter does it — but `btmon`-style debugging (zigbee2mqtt has `debug:true`) shows you the frame stream so you can trace "why is my pairing failing." The protocol is documented in TI's "Z-Stack Monitor and Test API" PDF.
+You rarely send raw frames; the adapter does it for you. But `btmon`-style debugging (set `debug:true` in zigbee2mqtt) prints the frame stream. This is how you trace a failed pairing. The protocol is documented in TI's "Z-Stack Monitor and Test API" PDF.
 
 ## 100.6  Bringing up an nRF52840 as Thread RCP
 
-Modern path. Same chip can do OpenThread Border Router (Matter-ready), BLE Mesh (Ch 97), or ZigBee — your firmware choice.
+This is the modern path. Same chip can do OpenThread Border Router (Matter-ready), BLE Mesh (Ch 97), or ZigBee — your firmware choice.
 
 ### Step 1: flash RCP firmware
 
@@ -225,7 +225,7 @@ ip -6 addr show wpan0
 # inet6 fe80::abcd:.../64 scope link
 ```
 
-A Thread device joining the network gets an IPv6 in `fd11:22::/64`; you ping it like any IPv6 host. **This is the Thread killer feature**: every node is a normal IPv6 endpoint. Matter rides on top of this.
+A Thread device joining the network gets an IPv6 in `fd11:22::/64`; you ping it like any IPv6 host. **This is what makes Thread different from ZigBee**: every node is a normal IPv6 endpoint. Matter rides on top of this.
 
 ### Step 3: pair a Thread device
 

@@ -9,11 +9,11 @@ status: draft
 # Chapter 119 — Kernel debugging without JTAG
 
 > **What:** the **software-only kernel debugging toolkit** that works on a deployed device with no hardware debug access. **printk**'s deeper toolbox (`pr_debug`, `dynamic_debug`, ring-buffer levels), **ftrace** (function tracer + `function_graph` + tracepoint events), **trace-cmd** + **KernelShark** (record + GUI), **bpftrace** and **bcc** (eBPF for live kernel introspection), **kgdb** over serial (when you do want a debugger but only have UART), and the **oops decoder** workflow (`addr2line`, `scripts/decode_stacktrace.sh`).
-> **Why:** JTAG (Ch 118) is the surgeon's tool; this chapter is the medical kit you actually carry. You can't ship a fleet with a JTAG cable attached; you can ship a fleet with ftrace enabled. On a customer's device hanging once every 3 days, you need *post-hoc forensics* — what was the kernel doing in the second before the freeze? ftrace's persistent buffer + an oops decoder gives you that. eBPF lets you attach a probe to `tcp_retransmit_skb` on a production server and count retransmits per remote — without recompiling the kernel.
-> **Focus:** **the right tool for the right symptom**. Spam in `dmesg` → `dynamic_debug` to filter. "It worked once, now hangs" → ftrace `function_graph` of the suspect subsystem. "What system calls is this app making?" → bpftrace one-liner. "Kernel oops on customer device" → save dmesg, decode_stacktrace.sh against your matching vmlinux. "I want to actually breakpoint and step a remote production kernel" → kgdb over serial (rare, but the right tool sometimes).
+> **Why:** JTAG is for bench work. This chapter covers what you can run on a deployed device with no debug header. You can't ship a fleet with a JTAG cable attached; you can ship a fleet with ftrace enabled. If a customer's device hangs once every three days, you need to know what the kernel was doing in the second before the freeze. ftrace's persistent buffer plus the oops decoder answers that. eBPF lets you attach a probe to `tcp_retransmit_skb` on a production server and count retransmits per remote address, without recompiling the kernel.
+> **Focus:** match the tool to the symptom. Too much output in `dmesg`: use `dynamic_debug` to filter. "It worked once, now hangs": ftrace `function_graph` on the suspect subsystem. "What system calls is this app making?": a bpftrace one-liner. "Kernel oops on customer device": save dmesg and run decode_stacktrace.sh against the matching vmlinux. "I want to breakpoint and step a remote production kernel": kgdb over serial (rare, but sometimes the right call).
 > **Tooling.** **Target:** `trace-cmd` (for ftrace), optional `bpfcc-tools` / `bpftrace` (eBPF — better on aarch64 / newer kernels). **Host:** `kernelshark` to visualise ftrace dumps; `crash(8)` for vmcore analysis. Ubuntu install: `apt install trace-cmd kernelshark bpfcc-tools bpftrace`. Buildroot: `BR2_PACKAGE_TRACE_CMD=y`, `BR2_PACKAGE_BCC=y`, `BR2_PACKAGE_BPFTRACE=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
-## 119.1  printk — the survivor
+## 119.1  printk
 
 The kernel's `printk` is your first line of debug. Levels:
 
@@ -40,7 +40,7 @@ echo 7 > /proc/sys/kernel/printk   # show DEBUG and lower on console
 
 Or boot with `loglevel=7` cmdline.
 
-**pr_debug is the secret weapon**: by default it compiles to nothing (zero-cost when off). Enable per-file via `dyndbg`:
+`pr_debug` is worth knowing about: by default it compiles to nothing (zero-cost when off). Enable per-file via `dyndbg`:
 
 ```sh
 # Enable all pr_debug in net/wireless/
@@ -53,9 +53,9 @@ echo 'func nl80211_get_wiphy +p' > /sys/kernel/debug/dynamic_debug/control
 dyndbg="file drivers/net/ethernet/freescale/fec_main.c +p"
 ```
 
-This unlocks **massive** existing debug coverage in mainline drivers without recompiling.
+This enables existing debug prints in mainline drivers without rebuilding.
 
-## 119.2  ftrace — the surgical tracer
+## 119.2  ftrace
 
 `ftrace` lives in `/sys/kernel/tracing/`. It's a function call tracer that records every kernel function call (and optionally entry/exit pairs) with nanosecond timestamps into a ring buffer.
 
@@ -102,7 +102,7 @@ cat trace
 #  3) + 45.012 us   |  }
 ```
 
-Indentation shows call depth; duration per call (`us`); markers (`!` = >100 µs, `+` = >10 µs) draw attention to slow paths. Killer for performance investigation.
+Indentation shows call depth; duration per call (`us`); markers (`!` = >100 µs, `+` = >10 µs) draw attention to slow paths. Useful for performance investigation.
 
 ### Events — predefined tracepoints
 
@@ -139,9 +139,9 @@ trace-cmd record -e sched_switch -e block -p function_graph -g ext4_file_read my
 kernelshark trace.dat
 ```
 
-KernelShark gives a timeline-per-CPU view with function-graph trees and event flags overlaid. Indispensable for "why did this 1-second operation take 10 seconds."
+KernelShark gives a timeline-per-CPU view with function-graph trees and event flags overlaid. Useful for `why did this 1-second operation take 10 seconds`.
 
-## 119.3  eBPF — modern probes
+## 119.3  eBPF
 
 eBPF lets you attach safe (verified) C-like programs to thousands of kernel hook points. `bpftrace` is the high-level DSL; `bcc` (Python+C) is the lower-level library.
 
@@ -161,11 +161,11 @@ bpftrace -e 'kprobe:vfs_read { @reads = hist(arg2); }' -c 'dd if=/dev/zero of=/t
 bpftrace -e 'tracepoint:syscalls:sys_enter_execve { printf("%s %s\n", comm, str(args->filename)); }'
 ```
 
-These are *production-safe* — eBPF verifier prevents infinite loops, bad memory access, kernel crashes. You can run them on a live customer device.
+eBPF programs are production-safe. The in-kernel verifier rejects infinite loops, bad memory access, and anything that would crash the kernel. You can run them on a live customer device.
 
 For embedded — i.MX6ULL is technically a Cortex-A7 (32-bit) and eBPF support on 32-bit ARM is limited; better tooling on aarch64. The principle is the same; consider arm64 SoCs for newer designs where eBPF is the primary debug tool.
 
-## 119.4  kgdb — actual GDB over serial
+## 119.4  kgdb — GDB over serial
 
 When you do want full GDB on a deployed device but have no JTAG:
 
@@ -188,7 +188,7 @@ Limitations:
 
 Most useful for: a kernel that hangs early-boot (you set `kgdbwait`); a deployed device with a specific reproducible bug; a CI test runner that can attach gdb on test failure.
 
-## 119.5  Kernel oops — the autopsy
+## 119.5  Kernel oops
 
 When the kernel hits an unhandled fault, it prints an "oops":
 
@@ -228,7 +228,7 @@ arm-linux-gnueabihf-addr2line -e my_driver.ko -f 0x24
 # /path/to/my_driver.c:42
 ```
 
-That points to the exact source line. Combine with `git blame` and you know whose patch caused the regression.
+That points to the exact source line. Run `git blame` on it to see which patch introduced the regression.
 
 For the oops to be useful, you must have:
 - `CONFIG_DEBUG_INFO=y` when building.
@@ -254,7 +254,7 @@ crash> rd 0x80c00000 32       # read kernel memory
 crash> log                    # dmesg
 ```
 
-`crash` is RH's tool; takes some learning, but for "produced oopses we can't reproduce, give me a full snapshot" it's incomparable.
+`crash` is RH's tool; takes some learning, but for oopses you can't reproduce, it's the right tool.
 
 Embedded systems often lack the disk space for vmcore (200+ MB); skip kdump and rely on ftrace + oops decoder.
 

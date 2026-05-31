@@ -10,7 +10,7 @@ status: draft
 
 > **What:** the mainline kernel's machine-checkable description of every Device Tree binding — a JSON-Schema document (in YAML form) that says *exactly* which properties a node should have, of what type, with what constraints. Plus the `make dt_binding_check` / `make dtbs_check` targets that validate your DTS against them.
 > **Why:** Since kernel v4.18 (mid-2018), every new binding *must* ship a YAML schema, and existing bindings are being migrated. Without a schema, your patch will not be accepted upstream. Without a schema check on your CI, your binding can silently drift between board variants and you'll only discover it when something breaks.
-> **Focus:** the **schema as a contract**. A binding YAML is the source of truth for what a node *should* look like. The DTS files are checked against it; drivers are documented by it. Master one binding YAML and you can read or write any of them.
+> **Focus:** the **schema as a contract**. A binding YAML is the source of truth for what a node *should* look like. The DTS files are checked against it; drivers are documented by it. Read one binding YAML carefully and the rest follow the same pattern.
 
 ## 27A.1  Why bindings need schemas
 
@@ -153,7 +153,7 @@ Section-by-section:
 - **`maintainers`** — who signs off on changes.
 - **`allOf: [$ref: serial.yaml#]`** — inherits constraints from a parent schema. Every UART binding includes the generic-serial schema, which adds e.g. `current-speed` and `rs485-*` properties.
 - **`properties`** — the meat. Each property gets a sub-schema saying what kind of value it accepts.
-  - `compatible.oneOf` — three legal forms. (a) Just `fsl,imx1-uart` or `fsl,imx21-uart` alone. (b) `fsl,imx25-uart` (or one of several others) followed by a fallback to `fsl,imx21-uart`. (c) A three-string list ending in `fsl,imx21-uart`. Anything else is rejected.
+  - `compatible.oneOf` — three legal forms: just `fsl,imx1-uart` or `fsl,imx21-uart`; a SoC string followed by `fsl,imx21-uart` as fallback; or a three-string list ending in `fsl,imx21-uart`. Anything else is rejected.
   - `reg.maxItems: 1` — exactly one address-range, no more.
   - `clocks.items` — exactly two entries; the schema even documents what each represents.
   - `clock-names.items` — must be the literal strings "ipg" and "per", in that order.
@@ -162,7 +162,7 @@ Section-by-section:
 - **`unevaluatedProperties: false`** — *no other properties* are allowed. This catches typos. If you wrote `clock-name` (singular), the schema rejects it as an unknown property.
 - **`examples`** — a working DT fragment that must validate against the schema. Doubly useful: it documents usage *and* it's lint-checked as part of `dtbs_check`.
 
-This single file replaces what used to be ~30 lines of free-form English, and it's machine-verifiable.
+This one file replaces ~30 lines of English prose, and it can be checked by tools.
 
 ## 27A.3  Running the checks
 
@@ -344,11 +344,11 @@ These parents define standard properties common to the *class* (e.g., `current-s
 
 ## 27A.8  Pitfalls
 
-- **Schema-validation passes but DT still doesn't work at runtime.** The schema only catches *syntactic* errors — wrong types, wrong arity, missing required props. Semantic errors (a `reg` value pointing at the wrong physical address) pass schema but fail at boot. Schema is necessary, not sufficient.
+- **Schema-validation passes but DT still doesn't work at runtime.** The schema only catches *syntactic* errors — wrong types, wrong arity, missing required props. Semantic errors (a `reg` value pointing at the wrong physical address) pass schema but fail at boot. The schema catches some bugs but not all. You still need to test on real hardware.
 - **Forgetting to install `dtschema`.** Symptom: `dt_binding_check` reports zero warnings on a tree that clearly has issues. Means the validator silently isn't running. Verify: `pip show dtschema`.
-- **Schema example doesn't validate.** Common when you write a binding without testing the example. Run `dt_binding_check` against your own binding *first*; only then propose it upstream.
+- **Schema example doesn't validate.** Common when you write a binding without testing the example. Run `dt_binding_check` against your own binding first. Only then propose it upstream.
 - **`additionalProperties: false` too strict.** If you forget that the inherited base schema allows certain extra properties, the strict-mode rejection of "unknown" properties will reject legal usage. Use `unevaluatedProperties: false` (which respects `allOf` inheritance) instead.
-- **`maxItems` vs `items`.** `maxItems: 1` says "up to one entry, of any type". `items: [- description: foo]` says "exactly one entry, described as foo". Different. Use the latter when you want to document semantics.
+- **`maxItems` vs `items`.** `maxItems: 1` means up to one entry of any type. `items: [- description: foo]` means exactly one entry, described as foo. These are different — use the second form when you want the description to appear in the docs.
 
 ## 27A.9  Going deeper
 

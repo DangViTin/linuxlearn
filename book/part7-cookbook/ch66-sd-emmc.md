@@ -9,12 +9,12 @@ status: draft
 # Chapter 66 — SD card and eMMC deep dive
 
 > **What:** the **MMC subsystem** that backs both SD cards and eMMC. Speed modes (DS, HS, HS200, HS400, SDR104), the **EXT_CSD** register (the eMMC's metadata block), boot partitions, RPMB, wear monitoring, and the "removable card in a production product" antipattern. Three configurations compared: **µSD on a card slot**, **soldered eMMC at HS200**, **soldered eMMC with secure boot via RPMB**.
-> **Why:** for most i.MX6ULL products with > 32 MB storage need, the choice is "SD or eMMC." Picking wrong dooms you to field failures or wasted engineering. eMMC is the right choice for production; SD is fine for dev boards. This chapter is mostly the why behind that statement, plus the bring-up + monitoring details.
-> **Compare**: removable SD (cheap, accessible, dies first), soldered eMMC HS200 (200 MB/s, 5-year industrial life), eMMC with RPMB (~10 % overhead, replay-protected for secure boot).
+> **Why:** for most i.MX6ULL products with > 32 MB storage need, the choice is "SD or eMMC." Picking wrong leads to field failures or wasted engineering effort. eMMC is the right choice for production; SD is fine for dev boards. This chapter is mostly the why behind that statement, plus the bring-up + monitoring details.
+> **Compare**: removable SD (cheap, accessible, dies first), soldered eMMC HS200 (200 MB/s, rated for 5+ years of continuous service in industrial-grade parts), eMMC with RPMB (~10 % overhead, replay-protected for secure boot).
 
 ## 66.1  SD card vs eMMC — the production reality
 
-SD cards die. Often. In ways that surprise engineers used to flash chips:
+SD cards fail often, in ways that surprise engineers used to flash chips:
 
 - **No wear levelling guarantees**. The card's controller does *some* — but cheap cards (the kind whose price you negotiate down) skimp on it.
 - **Power-loss corruption**. A write in progress when power drops can corrupt the entire FAT/ext4 metadata, not just the in-flight sector. eMMC has better resilience (built-in caching with battery backup in some packages), but SD cards are notoriously fragile.
@@ -30,7 +30,7 @@ eMMC advantages:
 - Authenticated boot partitions (RPMB).
 - Industrial grade available, AEC-Q100 for automotive.
 
-The cost difference is < $1 in volume. Make the engineering call early.
+The cost difference is < $1 in volume. Decide between SD and eMMC at schematic time, not after the first field unit fails.
 
 ## 66.2  i.MX6ULL MMC hardware
 
@@ -106,9 +106,9 @@ For an SD slot on uSDHC1:
 
 ## 66.5  The MMC protocol — what's actually on the wire
 
-Unlike QSPI and EEPROM (Ch 64/65) — where a from-scratch driver was tractable in ~200 lines — an MMC/SD **host controller** driver is genuinely a different scale. The SD spec is ~700 pages; the eMMC spec is ~400. There are ~60 commands, multi-stage state machines, signal-voltage switching, tuning windows, CRC validation, and physical-layer subtleties. **Writing one from scratch in a chapter is not honest pedagogy.**
+Unlike QSPI and EEPROM (Ch 64/65) — where a from-scratch driver was tractable in ~200 lines — an MMC/SD **host controller** driver is genuinely a different scale. The SD spec is ~700 pages; the eMMC spec is ~400. There are ~60 commands, multi-stage state machines, signal-voltage switching, tuning windows, CRC validation, and physical-layer subtleties. **Writing one from scratch in a single chapter is not realistic.**
 
-What we *can* do — and what's productive — is **trace a single `read()` through the layers** so you understand exactly what the kernel does, and you can read the existing host driver's source after.
+What we *can* do is **trace a single `read()` through the layers** so you understand exactly what the kernel does, and you can read the existing host driver's source after.
 
 ### The protocol vocabulary
 
@@ -218,7 +218,7 @@ static const struct mmc_host_ops sdhci_esdhc_ops = {
 };
 ```
 
-**That's the abstraction**. The core asks the host driver to "execute this request" or "switch to bus width 8" without caring whether the controller is uSDHC, sdhci-pci, dw-mshc, or anything else. The host driver translates abstract requests into specific MMIO writes for its hardware.
+**That is the abstraction.** The core asks the host driver to "execute this request" or "switch to bus width 8" without caring whether the controller is uSDHC, sdhci-pci, dw-mshc, or anything else. The host driver translates abstract requests into specific MMIO writes for its hardware.
 
 ### Tracing a single 4-KB read
 
@@ -377,13 +377,13 @@ HS200 eMMC: 100–150 MB/s sequential, ~2500 IOPS random 4k write. Compare to a 
 
 - **`bus-width = <4>`** on a chip with 8 data lines wired. You get DS or HS speeds at best; HS200 needs 8-bit. Check schematic ↔ DT.
 - **Missing `vqmmc-supply`** for HS200. Driver can't switch to 1.8 V signaling; falls back to HS50. Look for "fall back" messages in dmesg.
-- **`non-removable` on an SD slot.** Card-detect ignored; system keeps trying after card removal.
+- **`non-removable` on an SD slot.** The card-detect signal is ignored, so the system keeps trying to talk to the slot after the card is removed.
 - **`cd-gpios` polarity wrong.** Empty slot reports as "card present" (or vice versa). `GPIO_ACTIVE_LOW` is typical for card-detect switches.
 - **eMMC tuning fails.** HS200 requires per-card calibration ("tuning"). Some eMMCs require specific tuning patterns. Mainline supports this; if you see "tuning failed" in dmesg, the eMMC chip is buggy (not common but happens — usually fixable by `mmc-ddr-1_8v` instead of HS200).
-- **fsync slow.** eMMC `fsync` does a real flush-to-flash cycle (10s–100s of ms). If your app fsyncs after every write, performance tanks. Batch writes.
+- **fsync slow.** eMMC `fsync` does a real flush-to-flash, which takes 10 to 100 ms. If your application calls `fsync` after every write, throughput drops sharply. Batch your writes.
 - **Write amplification.** Even with TRIM, eMMC's GC writes amplify your data ~2–5×. A 10 GB/day app actually writes 30 GB/day to flash. Plan lifetime accordingly.
 - **`force_ro` on boot partitions**. Default is RO; you must clear it to write. Don't forget to re-arm.
-- **Power-fail mid-erase.** eMMC's internal erase block is invisible. A power loss can corrupt a *bigger area than you wrote*. Industrial eMMCs (Micron e.MMC, KIOXIA) have PFAIL protection; consumer ones don't.
+- **Power-fail mid-erase.** eMMC's internal erase block is invisible. A power loss can corrupt a wider area than you actually wrote. Industrial eMMCs (Micron, KIOXIA) include PFAIL protection. Consumer parts do not.
 
 ## 66.13  Going deeper
 

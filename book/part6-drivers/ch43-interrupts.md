@@ -9,8 +9,8 @@ status: draft
 # Chapter 43 — Interrupts
 
 > **What:** **`request_irq`**, the **top-half / bottom-half split**, and the four standard bottom halves — softirqs, tasklets, work queues, and threaded IRQs. By the end you'll have a driver that owns a hardware IRQ, acknowledges it in nanoseconds in the top half, and processes the event without blocking the rest of the kernel.
-> **Why:** interrupts are how hardware tells the kernel something happened: data arrived, DMA finished, a button was pressed, a timer expired. Get the IRQ-handler design wrong and you cause one of two failures — *missed interrupts* (handler too slow or wrong polarity) or *IRQ storms* (handler doesn't acknowledge, hardware re-asserts continuously, system locks up). The right design is mechanical once you know the rules.
-> **Focus:** **the IRQ contract is "fast, atomic, and minimal."** Your top-half runs with interrupts disabled, in atomic context (no sleeping, no `kmalloc(GFP_KERNEL)`, no `copy_to_user`). Anything that takes more than a few microseconds *must* be deferred to a bottom half. Internalise this constraint and the API choices for the rest of this chapter make obvious sense.
+> **Why:** interrupts are how hardware tells the kernel something happened: data arrived, DMA finished, a button was pressed, a timer expired. Get the IRQ-handler design wrong and you hit one of two failures: *missed interrupts* (handler too slow or wrong polarity) or *IRQ storms* (handler does not acknowledge, hardware re-asserts continuously, system hangs). The rules below give you the right design every time.
+> **Focus:** **the IRQ contract is "fast, atomic, and minimal."** Your top-half runs with interrupts disabled, in atomic context (no sleeping, no `kmalloc(GFP_KERNEL)`, no `copy_to_user`). Anything that takes more than a few microseconds *must* be deferred to a bottom half. Once you accept this constraint, the API choices below follow naturally.
 
 ## 43.1  How the i.MX6ULL gets an interrupt to your code
 
@@ -40,7 +40,7 @@ The chain, end to end:
 
 Two things to notice:
 
-1. **IRQ numbers in DT and `request_irq` are virtual.** The DT says `interrupts = <0 99 IRQ_TYPE_LEVEL_HIGH>` — that's the GIC's hardware number. The kernel maps it to a virtual IRQ (`virq`) at boot time, then your `request_irq` uses the virq. You usually don't see the conversion — the framework hands you the virq directly.
+1. **IRQ numbers in DT and `request_irq` are virtual.** The DT line `interrupts = <0 99 IRQ_TYPE_LEVEL_HIGH>` carries the GIC hardware number. At boot, the kernel maps it to a virtual IRQ (a *virq*). Your `request_irq` uses this virq. You usually do not see the mapping happen — the framework hands you the virq.
 2. **GIC is the multiplexer.** The CPU has one IRQ line. The GIC has up to ~160 inputs (i.MX6ULL specific) and figures out which is firing. The kernel's GIC driver demultiplexes and routes to your handler.
 
 ## 43.2  The top half

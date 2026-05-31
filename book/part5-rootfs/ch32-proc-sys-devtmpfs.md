@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 32 — /proc, /sys, devtmpfs
 
-> **What:** the three virtual filesystems through which user space sees and pokes the kernel — `procfs` (process & system info), `sysfs` (the modern device model), and `devtmpfs` (device nodes). Each is RAM-backed, kernel-populated, and indispensable.
-> **Why:** every later chapter pokes `/proc` or `/sys` somewhere — to read a sensor, to set a GPIO, to inspect a driver. Knowing *which* virtual filesystem holds what, and what its file-format conventions are, is what separates "I can read tutorials" from "I can solve a problem nobody has solved before."
-> **Focus:** **the file-as-interface pattern.** In Unix everything is a file; the kernel takes that literally. `cat /proc/cpuinfo` reads CPU info; `echo 1 > /sys/class/leds/led0/brightness` turns on an LED; `cat /proc/interrupts` shows IRQ counts. Master this idiom and you can debug things without writing any code.
+> **What:** the three virtual filesystems through which user space sees and pokes the kernel — `procfs` (process & system info), `sysfs` (the modern device model), and `devtmpfs` (device nodes). Each is RAM-backed and populated by the kernel.
+> **Why:** every later chapter pokes `/proc` or `/sys` somewhere — to read a sensor, to set a GPIO, to inspect a driver. Knowing which virtual filesystem holds what is what makes the difference between following a tutorial and debugging an unfamiliar problem.
+> **Focus:** **the file-as-interface pattern.** In Unix everything is a file; the kernel takes that literally. `cat /proc/cpuinfo` reads CPU info; `echo 1 > /sys/class/leds/led0/brightness` turns on an LED; `cat /proc/interrupts` shows IRQ counts. Once you know this idiom, a lot of debugging needs no code.
 
 ## 32.1  Three virtual filesystems, three jobs
 
@@ -20,7 +20,7 @@ status: draft
 | **sysfs** | `/sys` | The kernel's device model (drivers, buses, devices) | Modern device introspection and control |
 | **devtmpfs** | `/dev` | Device nodes auto-created by the kernel | Actually reading from / writing to devices |
 
-All three are **virtual** — RAM-backed, no physical storage. They are populated by the kernel on the fly: every entry you see corresponds to *some* in-kernel data structure. Writing to a file usually invokes a kernel callback that interprets the bytes.
+All three are **virtual** — RAM-backed, no physical storage. They are populated by the kernel on the fly. Every entry corresponds to a kernel data structure. Writing to a file usually calls a kernel callback that parses the bytes.
 
 ## 32.2  procfs — the process FS that grew
 
@@ -86,7 +86,7 @@ The non-PID entries in `/proc/` are global system info:
 | `/proc/uptime` | System uptime in seconds (since boot) |
 | `/proc/version` | The full `linux_banner` string |
 | `/proc/cmdline` | The bootargs the kernel received (echo of what `chosen.bootargs` from DT carried) |
-| `/proc/interrupts` | Per-IRQ counts. Diagnostic gold for "is my IRQ firing?" |
+| `/proc/interrupts` | Per-IRQ counts. Useful for `is my IRQ firing?` |
 | `/proc/iomem` | The physical memory map: kernel code, kernel data, peripherals |
 | `/proc/devices` | Registered character and block major numbers |
 | `/proc/filesystems` | Filesystems the kernel knows about (loadable + built-in) |
@@ -323,7 +323,7 @@ The `@` prefix runs the command *after* the node is created (`$` runs *before*; 
 - **Confusing `/proc/<pid>/mem` with `/proc/<pid>/maps`.** `maps` is the *layout* (text, addresses, permissions); `mem` is the raw bytes. Reading `mem` without `ptrace` is usually denied.
 - **`/proc/sys/kernel/hotplug` overwritten.** If you `echo /sbin/mdev > /proc/sys/kernel/hotplug` and later run something that sets it to something else (rare but possible), mdev stops working. Check the file's value at runtime.
 - **Forgetting that `/sys` paths are case-sensitive.** `/sys/class/Leds/` won't work; it's `leds`.
-- **Sysfs path stability assumptions.** A path like `/sys/devices/platform/2020000.serial/tty/ttymxc0/` may rename when kernel versions change. Prefer `/sys/class/tty/ttymxc0/` (the class-based view) for scripts.
+- **Sysfs path stability assumptions.** Don't hard-code paths under `/sys/devices/`; they rename across kernel versions. Use `/sys/class/...` in scripts.
 
 ## 32.7  Going deeper
 

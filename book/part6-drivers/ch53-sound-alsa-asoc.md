@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 53 — Sound: ALSA and ASoC
 
-> **What:** the kernel's audio framework — **ALSA** (Advanced Linux Sound Architecture) and **ASoC** (ALSA System on Chip, the embedded refinement). ASoC splits an audio chain into three driver pieces: **CPU-DAI** (the SoC's I²S/SAI controller), **codec** (the analog chip, e.g., WM8960 or SGTL5000), and **machine** (the glue that wires them together for one specific board). By the end you can `aplay test.wav` over a WM8960 on the Point Atom ALPHA.
-> **Why:** audio is one of the most stressful real-time loops in any system. 48000 samples/second × 2 channels × 16 bits = a 96 KB/s data stream that must never glitch. ASoC's three-way split is the kernel's solution to *not* re-writing a complete audio driver for every new SoC + codec combination — you reuse the CPU-DAI and codec drivers, only writing a small machine driver per board.
-> **Focus:** **the three drivers cooperate via `snd_soc_dai_link`**. The machine driver declares "CPU-DAI X drives codec Y over format Z at clock W." Once you grok this binding pattern, every ASoC driver in the kernel becomes legible.
+> **What:** the kernel's audio framework — **ALSA** (Advanced Linux Sound Architecture) and **ASoC** (ALSA System on Chip, the embedded refinement). ASoC splits an audio chain into three drivers. The **CPU-DAI** is the SoC's I²S/SAI controller. The **codec** is the analog chip (WM8960, SGTL5000). The **machine driver** wires them together for one specific board. By the end you can `aplay test.wav` over a WM8960 on the Point Atom ALPHA.
+> **Why:** audio is one of the tightest real-time loops in any embedded system. 48000 samples/second × 2 channels × 16 bits = a 96 KB/s data stream that must never glitch. ASoC's three-way split is the kernel's solution to *not* re-writing a complete audio driver for every new SoC + codec combination — you reuse the CPU-DAI and codec drivers, only writing a small machine driver per board.
+> **Focus:** **the three drivers cooperate via `snd_soc_dai_link`**. The machine driver declares "CPU-DAI X drives codec Y over format Z at clock W." Once you understand this binding, ASoC drivers become readable.
 > **Tooling.** This chapter uses `alsa-utils` (`alsamixer`, `aplay`, `arecord`, `amixer`).
 > - **Ubuntu-base (target):** `apt install alsa-utils libasound2-dev`
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_ALSA_LIB=y`
@@ -119,7 +119,7 @@ Three nodes:
    WM8960 sigma-delta DAC ──→ analog audio ──→ amp ──→ speaker
 ```
 
-Every period (typically 1024 samples = ~21 ms at 48 kHz), the DMA fires an IRQ; ALSA refills that period from the user-space buffer; the cycle continues. As long as user-space writes fast enough that the buffer doesn't underrun, sound plays seamlessly.
+DMA fires an IRQ every period (typically 1024 samples, about 21 ms at 48 kHz). ALSA refills that period from the user-space buffer. The cycle continues. If user-space writes fast enough to avoid an underrun, playback continues without glitches.
 
 If userspace can't keep up: **xrun** (underrun). ALSA logs it; sound clicks or pauses. Reasons: CPU too loaded, period too short, user-space process scheduling jitter (Ch 52A's PREEMPT_RT helps).
 

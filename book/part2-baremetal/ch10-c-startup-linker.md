@@ -9,8 +9,8 @@ status: draft
 # Chapter 10 — C + startup.S + linker script
 
 > **What:** the same blinking LED as Chapter 9, but with `main()` written in C. To get there we need a proper startup that sets the stack, zeroes `.bss`, copies `.data` from its load address to its run address, then branches to `main`. We also write our first real linker script.
-> **Why:** every later chapter in Part II is in C. C demands an environment — initialized globals, zeroed uninitialized globals, a stack, a stable entry point. The toolchain does *not* provide these on bare-metal; you do. This chapter is the one place where we lay them down so the next eight chapters do not have to.
-> **Focus:** the **LMA vs VMA** distinction for `.data` (introduced in Chapter 6, made concrete here). When you can answer "where does the initial value of a global live, and how does it get to RAM?", you understand startup.
+> **Why:** every later chapter in Part II is in C. C demands an environment — initialized globals, zeroed uninitialized globals, a stack, a stable entry point. The toolchain does *not* provide these on bare-metal; you do. This chapter is the one place where we set these up once so the next eight chapters can ignore them.
+> **Focus:** the **LMA vs VMA** distinction for `.data` (introduced in Chapter 6, made concrete here). If you can answer where the initial value of a global lives and how it reaches RAM, you understand startup.
 
 ## 10.1  What `int x = 7;` actually needs
 
@@ -22,11 +22,11 @@ int   y;               // uninitialized → .bss
 const int z = 42;      // const + initialized → .rodata
 ```
 
-On a hosted system (your Linux laptop), the loader reads the ELF, mmaps `.data` and `.rodata` from disk, allocates and zero-fills `.bss`, and your program starts. On bare-metal, *there is no loader*. We are loaded as a flat blob into OCRAM (or DRAM, later). Whoever drops us at our load address has done all they will do.
+On a hosted system (your Linux laptop), the loader reads the ELF, mmaps `.data` and `.rodata` from disk, allocates and zero-fills `.bss`, and your program starts. On bare-metal, *there is no loader*. We are loaded as a flat blob into OCRAM (or DRAM, later). Whoever loaded us is done. The rest is on us.
 
 So we, ourselves, must:
 
-- **Set a stack pointer.** Without it, the first function-call instruction in C destroys the world.
+- **Set a stack pointer.** Without it, the first C function call crashes.
 - **Zero `.bss`.** Otherwise `y` is whatever was in OCRAM when we arrived.
 - **Copy `.data` from its load location to its run location** (when those differ). This is the LMA-vs-VMA dance from Chapter 6.
 - **Branch to `main`.**
@@ -98,7 +98,7 @@ Decoded line by line:
 - **`_stack_top`** — computed at link time as the high water mark. The startup loads SP from this.
 - **`/DISCARD/`** — throws away ELF notes and attributes that have no place in a bare-metal binary.
 
-Three things in this script are easy to get wrong; all three you only get wrong once.
+Three things in this script are easy to get wrong. Each one bites only once.
 
 1. **Forgetting `KEEP` around the vector table.** When you later link with `-gc-sections`, the linker removes the table because nothing in C references it. `KEEP` prevents this.
 2. **Forgetting `AT(_etext)` for `.data`.** Then VMA = LMA always, and you don't notice anything is missing — until you move `.data` to DRAM and your initial values turn out to be whatever was in DRAM at boot.
@@ -172,7 +172,7 @@ A few notes on the assembly choices:
 
 - **`cpsid if, #0x13`** is a `cps` instruction with the side effect of setting the mode bits to `0b10011` (SVC) and the I and F mask bits. One instruction; three guarantees.
 - **`strlo r2, [r0], #4`** is post-indexed: store, *then* add 4 to r0. `lo` (= `cc` = unsigned less-than) is the AAPCS-comparison flag that pairs with `cmp` in our loop. This conditional store/post-increment idiom is so common in ARM startup that you should be able to read it instantly.
-- **`bl main`** is a *branched-and-link*, which sets LR to the return address. If `main` does return, we fall through to `hang`. The `wfi` (Wait For Interrupt) instruction makes the core idle in a low-power state instead of busy-spinning at 396 MHz, which is at minimum polite.
+- **`bl main`** is *branch-and-link*: it sets LR to the return address before branching. If `main` does return, we fall through to `hang`. The `wfi` (Wait For Interrupt) instruction makes the core idle in a low-power state instead of busy-spinning at 396 MHz, which is at least polite to the power budget.
 - **`.section .text.startup`** puts our startup code in a named subsection. The linker script's `*(.text*)` matches `.text.startup` and pulls it in early. We could just put it in plain `.text` — naming it explicitly is hygiene, not necessity.
 - The vector table at the top is mostly placeholder `b .` (branch-to-self). In Chapter 15 we replace those self-loops with real handlers.
 
@@ -359,7 +359,7 @@ In the LED program, these freedoms produce code that happens to work — because
 while ((REG(UART_STATUS) & TX_EMPTY) == 0) {}
 ```
 
-…without `volatile`, the compiler can decide the read of `UART_STATUS` is invariant inside the loop, hoist it out, and produce an infinite spin. This bug has happened to every embedded engineer at least once.
+…without `volatile`, the compiler treats `UART_STATUS` as constant inside the loop, reads it once before the loop, and spins forever. Most embedded engineers hit this bug once. Avoid it by reflex.
 
 Rule: **every memory-mapped register access uses `volatile`. Every one.** Macroize it once (as we did with `REG()`) and stop thinking about it.
 
@@ -375,8 +375,8 @@ Rule: **every memory-mapped register access uses `volatile`. Every one.** Macroi
 
 - **`bss` not zeroed.** Symptom: nondeterministic startup behavior across resets. Cause: forgot the loop, or got the `_sbss`/`_ebss` symbols wrong in the linker script.
 - **`.data` not copied.** Symptom: globals appear to have random initial values. Cause: forgot the copy loop, or `AT(_etext)` not in the linker script (so LMA and VMA collided in a way the loop didn't notice).
-- **Stack not aligned at function entry.** AAPCS requires SP to be 8-byte aligned at every public function entry. Our `_stack_top = ORIGIN + LENGTH` aligns naturally because LENGTH is a multiple of 8 — but if you change LENGTH to an odd value, expect baffling crashes inside libgcc helpers.
-- **`-fno-common` not set.** Two `int foo;` declarations in two `.c` files silently collide. Sometimes works, sometimes corrupts. Always enable.
+- **Stack not aligned at function entry.** AAPCS requires SP to be 8-byte aligned at every public function entry. `_stack_top = ORIGIN + LENGTH` aligns naturally as long as LENGTH is a multiple of 8. Change LENGTH to an odd value and expect crashes inside libgcc helpers.
+- **`-fno-common` not set.** Two `int foo;` declarations in two `.c` files silently merge into one symbol. Sometimes the result works, sometimes it corrupts memory. Always enable.
 - **Forgot `volatile`.** Discussed above.
 - **Linker script does not declare `.rodata`.** GCC may emit string literals into `.rodata`, which falls through to the next region. We folded `.rodata` into `.text` here; if you split them out, make sure both are placed in OCRAM.
 - **`_sbss` is not 4-byte aligned.** Our `ALIGN(4)` on `.bss` handles this. If you ever remove it, the `strlo r2, [r0], #4` in startup will hit an unaligned-address fault.

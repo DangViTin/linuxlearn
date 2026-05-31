@@ -9,8 +9,8 @@ status: draft
 # Chapter 29 — Initramfs from scratch
 
 > **What:** the absolute minimum user space that a Linux kernel can hand off to — a single statically-linked binary in a cpio archive, ~30 KB, that prints "hello" and reboots. Then a BusyBox-based initramfs with a real shell. Both reachable in under an hour.
-> **Why:** the standard rootfs path (`root=/dev/mmcblk0p2`) hides a lot. Building an initramfs by hand surfaces the actual kernel-to-userspace handoff: what kernel_init's `kernel_execve` does, what `/init` must look like, how cpio archives become a populated filesystem at boot. Once you've done it once, everything else in Part V (Buildroot, Ubuntu-base, overlayfs) is "the same plus features."
-> **Focus:** the **cpio archive as a filesystem image** that the kernel unpacks into the initial tmpfs. Once that mental model is solid, the rest is mechanics.
+> **Why:** the standard rootfs path (`root=/dev/mmcblk0p2`) hides a lot. Building an initramfs by hand surfaces the actual kernel-to-userspace handoff: what kernel_init's `kernel_execve` does, what `/init` must look like, how cpio archives become a populated filesystem at boot. Once you have done it once, Buildroot and Ubuntu-base in Part V build on the same idea, just with more pieces.
+> **Focus:** the **cpio archive as a filesystem image** that the kernel unpacks into the initial tmpfs. Once that model is clear, the rest is just commands.
 
 ## 29.1  What an initramfs is
 
@@ -23,7 +23,7 @@ Two ways to get the cpio archive into kernel memory:
 1. **Built into the kernel image.** The kernel's `usr/initramfs_data.cpio.gz` gets linked into `vmlinux` (and therefore into `zImage`). The kernel knows the archive's location; on boot it extracts it.
 2. **Loaded separately by the bootloader.** U-Boot reads `initramfs.cpio.gz` into RAM at some address, passes that address via the DT's `/chosen/linux,initrd-start` and `linux,initrd-end` properties (or the legacy ATAGS), and the kernel extracts from there.
 
-Option 1 is simpler for tiny one-binary images. Option 2 is more flexible (you can change the rootfs without rebuilding the kernel) and is the standard choice for any non-trivial image. We'll do both.
+Option 1 is simpler for tiny images. Option 2 is more flexible — you can change the rootfs without rebuilding the kernel — and is the standard choice for anything bigger. We'll do both.
 
 ## 29.2  The smallest possible initramfs
 
@@ -125,11 +125,11 @@ rebooting in 1...
 [   7.214xxx] reboot: Restarting system
 ```
 
-That's it. The smallest user space that boots Linux on this hardware. **30 KB compiled. Two lines of effort.**
+That is the smallest user space that boots Linux on this board: 30 KB compiled.
 
 ## 29.4  A BusyBox-based initramfs (real shell)
 
-`hello` is a curiosity. A practical embedded initramfs has a shell, some utilities, and an init system. **BusyBox** packs all of those into one ~600 KB statically-linked binary that exposes hundreds of applets (every Unix utility you remember and several you forgot).
+`hello` is just a demo. A practical initramfs has a shell and some utilities, plus an init system. **BusyBox** packs all of these into one statically-linked binary of about 600 KB. It exposes hundreds of applets — most of the common Unix utilities.
 
 ```sh
 $ cd ~/imx6ull/src
@@ -268,7 +268,7 @@ For embedded, **BusyBox init** is the default. We use it in this book through Ch
 - **`/init` linked dynamically.** If `/init` depends on `libc.so.6` and `libc.so.6` isn't in the cpio, exec fails silently. Either statically link (recommended) or include the needed `.so` files in `/lib/` of the initramfs.
 - **`init=` vs `rdinit=`.** `init=path` tells the kernel to look on the *root filesystem* (the one specified by `root=`). `rdinit=path` tells it to look on the *initramfs*. For initramfs-only boots, use `rdinit=` or just rely on the default `/init` lookup.
 - **cpio archive built without `-H newc`.** Default cpio format isn't what the kernel expects; the unpacker reports an error and gives up. Always `-H newc`.
-- **Trailing slash on `find .`.** `find . | cpio ...` produces relative paths starting with `./` — that's what cpio expects. `find /home/you/initramfs | cpio ...` produces absolute paths, which give you a `/home/you/initramfs/init` inside the archive — and the kernel doesn't find `/init`. Always `cd` into the rootfs first.
+- **Trailing slash on `find .`.** `find .` gives relative paths like `./init`, which is what cpio wants. `find /home/you/initramfs` gives absolute paths, so the archive ends up with `/home/you/initramfs/init` and the kernel cannot find `/init`. Always `cd` into the rootfs first.
 - **BusyBox not statically linked.** Built dynamic by default. Forgetting to set static causes the binary to need glibc shared objects you don't have in the initramfs. Symptom: `Kernel panic - not syncing: Attempted to kill init!` because `exec` fails.
 - **No `/dev/console` before `kernel_init` opens it.** Kernel handles this automatically via devtmpfs auto-mount, but if you disable that in `.config`, you'll see `Warning: unable to open an initial console` and lose all stdio in your init. Keep `CONFIG_DEVTMPFS=y` and `CONFIG_DEVTMPFS_MOUNT=y`.
 

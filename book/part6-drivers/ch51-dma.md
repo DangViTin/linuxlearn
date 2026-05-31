@@ -9,8 +9,8 @@ status: draft
 # Chapter 51 — DMA
 
 > **What:** Linux's **`dmaengine`** framework — the portable way to ask a hardware DMA controller to move bytes between memory and a peripheral (or memory and memory) without involving the CPU between start and completion. By the end you'll have an SPI or UART driver that hands off a 4 KB transfer to the SDMA controller and goes to sleep until the completion callback wakes it.
-> **Why:** the CPU is a terrible bulk-data mover. Sustained 10 Mbps of SPI traffic eats a chunk of i.MX6ULL's CPU when each byte requires an IRQ; the SDMA controller does it at zero CPU cost. Any driver that streams data — SPI, I²S audio, CSI camera, LCDIF, eMMC — uses DMA. Knowing the dmaengine consumer API turns "this driver is incomprehensible" into "this driver is a textbook dmaengine consumer."
-> **Focus:** **the four-step ritual** — request a channel, configure direction & widths, prepare a descriptor, submit + issue + wait. Once you can mentally walk those four steps for any peripheral, every DMA driver in the kernel looks like a variation on one theme.
+> **Why:** The CPU is bad at bulk data moves. At 10 Mbps SPI, one IRQ per byte burns a large fraction of the i.MX6ULL CPU. SDMA does the same job at zero CPU cost. Any driver that streams data — SPI, I²S audio, CSI camera, LCDIF, eMMC — uses DMA. Once you know the consumer API, most DMA-using drivers read the same way.
+> **Focus:** **the four standard steps** — request a channel, configure direction & widths, prepare a descriptor, submit + issue + wait. Once you know these four steps, most DMA drivers look the same.
 
 ## 51.1  When and why
 
@@ -20,7 +20,7 @@ Without DMA, an SPI driver writes one byte to TX, waits for "TX empty," writes t
 
 The trade-off:
 - **Setup cost.** Configuring an SDMA transfer costs ~1 µs. For 4-byte transfers, PIO is faster.
-- **Memory pinning.** DMA needs physically-contiguous, cache-coherent buffers. `dma_alloc_coherent` (slower, smaller pool) or `dma_map_single` (faster, manages cache) — Ch 4's MMU/cache material matters here.
+- **Memory pinning.** DMA needs physically-contiguous, cache-coherent buffers. Use `dma_alloc_coherent` (slower, smaller pool) or `dma_map_single` (faster, manages cache). The MMU/cache material from Ch 4 matters here.
 - **Debug pain.** A misconfigured DMA writes to random memory. Bugs are harder to diagnose than PIO bugs.
 
 Rule of thumb: use DMA for transfers ≥ 64 bytes, polling/PIO for shorter.
@@ -65,7 +65,7 @@ Each `<&sdma N M K>` triple is provider-specific. For i.MX SDMA: `<&sdma <channe
 
 `dma-names` gives each channel a *symbolic* name; drivers ask for `"rx"` or `"tx"` (not channel number 7). Same pattern as PWM and clocks.
 
-## 51.4  The four-step ritual
+## 51.4  The four standard steps
 
 In a peripheral driver's probe, plus the runtime transfer path:
 
@@ -134,7 +134,7 @@ desc->callback        = rx_done_cb;
 desc->callback_param  = priv;
 ```
 
-`dma_map_single` pins the buffer in physical memory, flushes the CPU cache appropriately, and returns the bus-visible physical (or IOVA) address. The kernel handles the cache dance — your CPU might have modified the buffer, so caches are flushed *to memory* before DMA reads from it (`DMA_TO_DEVICE`), or invalidated *from memory* after DMA writes to it (`DMA_FROM_DEVICE`).
+`dma_map_single` pins the buffer in physical memory, flushes the CPU cache appropriately, and returns the bus-visible physical (or IOVA) address. The kernel handles the cache flush/invalidate sequence — your CPU might have modified the buffer, so caches are flushed *to memory* before DMA reads from it (`DMA_TO_DEVICE`), or invalidated *from memory* after DMA writes to it (`DMA_FROM_DEVICE`).
 
 For scatter-gather (multiple non-contiguous chunks): `dmaengine_prep_slave_sg(chan, sg_list, sg_count, dir, flags)`.
 
@@ -205,11 +205,11 @@ Memcpy DMA is rare on i.MX6ULL (CPU is fast enough at small sizes). Useful on bi
 
 ## 51.7  Cache coherency — the trap
 
-The trap that catches everyone: you populate a buffer in user-space, give the kernel pointer to your driver, your driver DMAs from it — and DMA reads stale data because the CPU's recent writes are still in L1 cache.
+A common bug: User-space fills a buffer. The driver hands the kernel pointer to DMA. DMA reads stale data — the CPU's recent writes are still in L1 cache.
 
 `dma_map_single(dev, ptr, size, DMA_TO_DEVICE)` solves this by **flushing** (writing back) the relevant cache lines to memory before the DMA reads them. The matching `dma_unmap_single` does nothing for `TO_DEVICE`; for `FROM_DEVICE`, it **invalidates** the cache so subsequent CPU reads come from the (DMA-written) memory.
 
-The kernel handles this for you *if you use the APIs correctly*. If you cast a pointer to `dma_addr_t` and skip the map call, you'll get sporadic data corruption that depends on whether the cache line happened to be evicted between operations. **Always use dma_map_* or dma_alloc_coherent — never cast.**
+The kernel handles cache coherency for you, but only if you use the APIs. If you cast a pointer to `dma_addr_t` and skip `dma_map_*`, you get random data corruption. Whether it appears depends on whether the cache line was evicted between operations. **Always use dma_map_* or dma_alloc_coherent — never cast.**
 
 ## 51.8  Lab
 

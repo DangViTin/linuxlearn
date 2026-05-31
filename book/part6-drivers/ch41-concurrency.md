@@ -9,7 +9,7 @@ status: draft
 # Chapter 41 — Concurrency in the kernel
 
 > **What:** the kernel synchronization toolbox — `atomic_t`, `spinlock_t`, `mutex`, `rwlock_t`, `semaphore`, RCU, and the per-CPU and memory-barrier primitives that back them. By the end you can answer "what lock should I use?" by asking three questions.
-> **Why:** every driver that touches shared state in two contexts (a process and an interrupt; a process and a timer; two processes via `open(2)`) has a race. Pick the wrong primitive and you get the wrong of two failure modes: a silent data-corruption race, or a lockup so deep that `dmesg` can't tell you what happened.
+> **Why:** every driver that touches shared state in two contexts (a process and an interrupt; a process and a timer; two processes via `open(2)`) has a race. Pick the wrong primitive and you hit one of two failure modes: a silent data-corruption race, or a lockup so deep that `dmesg` cannot tell you what happened.
 > **Focus:** **the three questions** — *who else can be running this code at the same time?* (process, softirq, hardirq, multiple CPUs); *is the critical section allowed to sleep?* (mutex if yes, spinlock if no); *is the access read-mostly?* (RCU if yes). Get these three answers right and the API choice is mechanical.
 
 ## 41.1  Why the kernel is concurrent
@@ -22,7 +22,7 @@ Unlike a single-core MCU running a single firmware loop, the kernel is concurren
 4. **Softirqs and tasklets.** A "bottom half" — softirq, tasklet, or work queue — can run on the same CPU as your driver, interleaving at quantum boundaries.
 5. **Multiple syscalls.** Two processes both calling `read(fd)` on your device file are racing inside your driver simultaneously.
 
-Concurrency is the rule, not the exception. Every variable that's read or written from more than one of the contexts above needs a *plan* — locking, atomics, or one of the lock-free patterns we'll get to.
+Concurrency is the default. Every shared variable needs a plan. Every variable that's read or written from more than one of the contexts above needs locking, atomics, or one of the lock-free patterns we'll get to.
 
 ## 41.2  The decision tree
 
@@ -135,7 +135,7 @@ spin_unlock(&my_lock);
 
 Three rules for spinlocks:
 
-1. **Hold time must be short.** While you hold a spinlock, the holding CPU has IRQs disabled (in the IRQ-safe variant) and the kernel won't preempt the current task. Other CPUs trying to grab the lock burn cycles. "Short" means microseconds, not milliseconds.
+1. **Hold time must be short.** While you hold a spinlock, the kernel will not preempt the current task. In the IRQ-safe variant, IRQs are disabled on the holding CPU too. Other CPUs trying to grab the lock burn cycles. "Short" means microseconds, not milliseconds.
 2. **No sleeping while held.** Don't call `kmalloc(GFP_KERNEL)`, `copy_to_user`, `mutex_lock`, or anything that might sleep. Kernel debug builds (`CONFIG_DEBUG_ATOMIC_SLEEP=y`) will catch and shame you for these.
 3. **Don't reschedule.** Don't call `schedule()`, don't call `cond_resched()`, don't call user-space syscalls.
 
@@ -237,7 +237,7 @@ The catch: rwlocks have a famously bad performance profile on heavily contended 
 
 ## 41.7  RCU — the read-mostly secret weapon
 
-Read-Copy-Update is one of the kernel's cleverest tricks. Readers pay **zero** synchronization cost — no atomic operations, no lock acquisition, no memory barriers in the fast path. Writers copy, modify, and publish atomically. Old readers see the old version until they finish; new readers see the new.
+Read-Copy-Update is the kernel's read-mostly trick: readers pay zero synchronization cost — no atomic operations, no lock acquisition, no memory barriers in the fast path. Writers copy, modify, and publish atomically. Old readers see the old version until they finish; new readers see the new.
 
 ```c
 #include <linux/rcupdate.h>
@@ -276,7 +276,7 @@ void update_config(int s, int m)
 
 `rcu_read_lock()`/`rcu_read_unlock()` are basically free — they expand to nothing on most kernel configurations (`CONFIG_PREEMPT_NONE`) or to a per-CPU counter increment (`CONFIG_PREEMPT_RCU`). No spinning, no atomics in the read path.
 
-The catch: writes are expensive (`synchronize_rcu()` can take milliseconds) and you can only protect *pointer* updates this way. RCU is heavy machinery; you wouldn't use it for a simple counter. But for "lookup-then-use" data structures read on every packet, it's revolutionary — that's why almost every networking-fast-path data structure in the kernel is RCU-protected.
+The catch: writes are expensive (`synchronize_rcu()` can take milliseconds) and you can only protect *pointer* updates this way. RCU is heavy machinery — not for a simple counter. But for "lookup-then-use" data on every packet, it is dramatically faster than any lock — that's why almost every networking-fast-path data structure in the kernel is RCU-protected.
 
 We won't go deeper here. If you find yourself wanting RCU, read `Documentation/RCU/whatisRCU.rst` and the references; it has subtleties.
 
@@ -308,7 +308,7 @@ u64 sum_all(void)
 }
 ```
 
-Per-CPU data is brilliant when reads are rare relative to writes (the opposite of RCU's sweet spot). Linux's `getrusage` accounting, networking statistics, scheduler runqueue load — all use per-CPU.
+Per-CPU data works well when reads are rare relative to writes (the opposite of RCU's case). Linux's `getrusage` accounting, networking statistics, scheduler runqueue load — all use per-CPU.
 
 On a single-core CPU (the i.MX6ULL), the per-CPU array has one slot and `this_cpu_inc` is just a normal increment. Still useful, because you've written code that scales to multi-core too.
 
@@ -321,9 +321,9 @@ Build the kernel with `CONFIG_PROVE_LOCKING=y`. (It costs ~20% performance, so d
 - Flags forgotten unlocks.
 - Highlights wait-context mismatches (RT, IRQ context, etc.).
 
-When it triggers, you get a wall of dmesg output with two stack traces (acquire path 1 vs acquire path 2) and a verdict like "deadlock possible." Read it carefully — it tells you exactly which locks, in which order, and from which functions.
+When it triggers, you get a wall of dmesg output. Two stack traces, one per lock acquisition path, and a verdict like "deadlock possible." Read it carefully — it tells you which locks, in which order, from which functions.
 
-Worth turning on. Worth keeping on through development. Then disable for production.
+Turn it on during development. Disable for production.
 
 ## 41.10  A worked example: thread-safe ring buffer
 

@@ -10,11 +10,11 @@ status: draft
 
 > **What:** a mental model of an embedded Linux system, expressed in terms a microcontroller engineer already understands.
 > **Why:** every later chapter assumes this vocabulary. If a word from this chapter is fuzzy at the end, the rest of the book will be twice as hard.
-> **Focus:** the **user/kernel split**. Once you internalize it, ninety percent of Linux's surface stops looking strange.
+> **Focus:** the **user/kernel split**. Once you have it, most of Linux stops looking strange.
 
 ## 2.1  The system you already understand
 
-Picture the firmware you wrote last year for a Cortex-M. After reset, the CPU jumps to the vector table at address `0x0`, your reset handler initializes RAM, clears `.bss`, copies `.data`, and calls `main()`. Inside `main()`, you set up clocks, peripherals, and an interrupt or two, then either spin in a `while(1)` loop or hand control to an RTOS scheduler that round-robins your tasks.
+Picture the firmware you wrote last year for a Cortex-M. After reset, the CPU jumps to the vector table at address `0x0`. The reset handler initializes RAM, clears `.bss`, copies `.data`, and calls `main()`. Inside `main()`, you set up clocks, peripherals, and an interrupt or two, then either spin in a `while(1)` loop or hand control to an RTOS scheduler that round-robins your tasks.
 
 The system has the following properties:
 
@@ -58,13 +58,13 @@ A few things to notice immediately.
 
 **Layer 1 is not your code.** The Boot ROM is a small mask-programmed firmware that NXP burned into the silicon when the chip was fabricated. You cannot change it. You can only obey its expectations: present a boot image at the right offset, with the right magic header, on the boot device it is configured to read from. Chapter 7 is entirely about Layer 1.
 
-**Layer 2 is the closest analogue to "your firmware" from the MCU world.** U-Boot is, in every meaningful sense, a small bare-metal C program. It runs without an MMU at first; it does its own clock and DDR setup; it has drivers for SD cards and Ethernet that look not unlike your MCU drivers. The difference is that U-Boot's job is to load and start Layer 3, not to *be* the application.
+**Layer 2 is the closest analogue to "your firmware" from the MCU world.** U-Boot is a small bare-metal C program. It runs without an MMU at first; it does its own clock and DDR setup; its SD card and Ethernet drivers look much like the ones you wrote on the MCU. The difference is that U-Boot's job is to load and start Layer 3, not to *be* the application.
 
-**Layer 3 is the kernel.** Once U-Boot transfers control, the kernel never returns. It owns the hardware forever. Every interrupt now goes through the kernel; every memory allocation goes through the kernel; every peripheral access from anywhere outside the kernel goes through the kernel.
+**Layer 3 is the kernel.** Once U-Boot transfers control, the kernel never returns. From that point on, it owns the hardware. Every interrupt now goes through the kernel; every memory allocation goes through the kernel; every peripheral access from anywhere outside the kernel goes through the kernel.
 
 **Layer 4 is "user space".** This is where your application code, the shell, and the daemons live. From Layer 4's point of view, the hardware does not exist — you cannot, from a user-space program, write directly to a GPIO register and expect anything to happen. You ask the kernel.
 
-The conceptual split between Layer 3 and Layer 4 is the single most important idea in this chapter and the foundation for everything in Parts V and VI.
+The split between Layer 3 and Layer 4 is the most important idea in this chapter. Everything in Parts V and VI builds on it.
 
 ## 2.3  The user/kernel split, made concrete
 
@@ -73,7 +73,7 @@ In the MCU world, all code is privileged. In Linux, code runs in one of two mode
 - **Kernel mode** (also "supervisor", "EL1" on AArch64, "SVC mode" on ARMv7-A): full access to every peripheral, every memory address, every CPU instruction.
 - **User mode** ("EL0", "USR mode" on ARMv7-A): cannot access kernel memory, cannot execute privileged instructions, cannot read or write peripheral registers directly.
 
-This is not a software convention. It is enforced by the CPU. If a user-mode instruction attempts to write to a kernel address, the CPU raises a fault — a real hardware exception, indistinguishable from a Cortex-M MemManage fault — and the kernel's exception handler kills the offending process.
+This is not a software convention — the CPU enforces it. If a user-mode instruction attempts to write to a kernel address, the CPU raises a fault — a real hardware exception, indistinguishable from a Cortex-M MemManage fault — and the kernel's exception handler kills the offending process.
 
 How then does a user-mode program ever ask for I/O? Through a **system call**, a controlled transition from user mode to kernel mode. On ARMv7-A, the `svc` instruction (formerly `swi`) raises an SVC exception; the CPU switches to SVC mode, jumps to the exception handler, and the kernel decides what to do based on the syscall number in `r7` and arguments in `r0`–`r6`.
 
@@ -93,7 +93,7 @@ How then does a user-mode program ever ask for I/O? Through a **system call**, a
     fd in r0, back in user mode
 ```
 
-Every interaction between application code and the kernel takes this shape. There is no exception. Reading a file? `read()` is a syscall. Allocating memory? `brk()` or `mmap()` is a syscall. Sleeping? `nanosleep()` is a syscall. Writing to the LED? It depends — you may use `write()` against a sysfs file, or `ioctl()` against a device node, or `mmap()` a memory region — but each is a syscall.
+Every interaction between an application and the kernel takes this shape — no exceptions. Reading a file uses `read()`. Allocating memory uses `brk()` or `mmap()`. Sleeping uses `nanosleep()`. All are syscalls. Writing to the LED? It depends — you may use `write()` against a sysfs file, or `ioctl()` against a device node, or `mmap()` a memory region — but each is a syscall.
 
 In your MCU firmware, there were perhaps 50 functions in your driver library and you called them directly. In Linux, the **syscall is the interface** and there are roughly 400 of them. They are documented in `man 2 <name>` on any Linux host.
 
@@ -107,7 +107,7 @@ Three reasons:
 2. **Multi-tasking with multi-trust.** You can run code you do not fully trust — third-party binaries, scripts, even a network service exposed to the internet — without it being able to compromise the rest of the system.
 3. **Resource arbitration.** Many processes want the I²C bus, the CPU, the network. Someone must serialize and schedule. The kernel is that someone.
 
-You will hear engineers occasionally argue that on a *fully controlled* embedded device, the split is overkill. They are not wrong in principle, and Zephyr/FreeRTOS exist for that argument. But once you adopt Linux, you adopt the split, and embracing it makes the rest of the system easier — not harder.
+You will hear engineers occasionally argue that on a *fully controlled* embedded device, the split is overkill. They are not wrong in principle — Zephyr and FreeRTOS exist for exactly that case. But once you adopt Linux, you adopt the split, and embracing it makes the rest of the system easier — not harder.
 
 ## 2.4  Virtual memory, in one section
 
@@ -139,7 +139,7 @@ This single mechanism is the substrate for *everything* that distinguishes Linux
 
 A *physical* address — say, the IOMUXC register block at `0x020E0000` — is not, by default, mapped into any user process's address space. The kernel maps it into its own address space and accesses it on behalf of the user via a driver. This is *why* a user-space program cannot just write to a GPIO register: even if it could find the right address, the MMU would not translate it because the page is not mapped into that process.
 
-You will spend Chapter 17 building, by hand, a minimal first-level page table on bare metal. After that, the MMU stops being magical.
+You will spend Chapter 17 building, by hand, a minimal first-level page table on bare metal. After that the MMU stops being a black box.
 
 ## 2.5  Processes, threads, and where they live
 
@@ -158,7 +158,7 @@ What about ISRs? In your MCU firmware, an ISR was a function whose stack might b
 
 ## 2.6  Vocabulary you must internalize
 
-The following terms recur in every later chapter. Pin this section.
+The following terms recur in every later chapter. Bookmark this section.
 
 ### File descriptor (fd)
 

@@ -9,7 +9,7 @@ status: draft
 # Chapter 25 — Building mainline Linux for i.MX6ULL
 
 > **What:** clone the mainline Linux source, build a `zImage` + device tree blobs + modules for the i.MX6ULL, and inspect the artefacts. Stop just short of booting; that is Chapter 26.
-> **Why:** every later chapter assumes a built kernel tree on disk. The build itself is mechanical, but the artefacts it produces — and the source-tree structure you will navigate for the next several Parts — are the first thing that needs to be at your fingertips.
+> **Why:** every later chapter assumes a built kernel tree on disk. The build is mechanical. What matters is the artefacts it produces and the source-tree layout you will use in every later chapter.
 > **Focus:** the four build artefacts you actually use (`vmlinux`, `zImage`, `*.dtb`, `*.ko`) and the four directories you will visit most (`arch/arm/`, `drivers/`, `include/`, `Documentation/`).
 
 ## 25.1  Why mainline
@@ -17,7 +17,7 @@ status: draft
 The Linux kernel ships under several release tracks:
 
 - **Mainline** at `git.kernel.org/torvalds/linux.git` — Linus's tree. The current development tip; new releases roughly every 9 weeks (the "x.y" releases like 6.6, 6.7).
-- **Stable** — Greg KH applies bugfix backports to each mainline release for ~6 weeks after it. Tagged `6.6.1`, `6.6.2`, etc.
+- **Stable** — Greg KH backports bug fixes to each mainline release for about 6 weeks. Tags look like `6.6.1`, `6.6.2`, and so on.
 - **Long-Term Support (LTS)** — selected mainline releases get fix backports for 2 or 6 years. As of 2026 the active LTS lines are `6.6`, `6.1`, `5.15`, `5.10`, `5.4`.
 - **Vendor BSPs** — NXP, ST, TI, and other silicon vendors ship forks pinned to a specific kernel minor with thousands of patches on top. NXP forks mainline into `linux-imx`. Active branches are pinned to `5.15` and `6.6`; older branches exist for legacy products.
 
@@ -92,7 +92,7 @@ linux/
 └── usr/                 # initramfs cpio packager
 ```
 
-The hierarchy is consistent: **subsystem at top → vendor at the second level → SoC/board at the third**. The i.MX6ULL UART driver lives at `drivers/tty/serial/imx.c`; its DT binding is at `Documentation/devicetree/bindings/serial/fsl-imx-uart.yaml`; its register definitions are inside the driver file. This pattern repeats for every subsystem.
+Every subsystem follows the same layout: top-level is the subsystem, next level is the vendor, and the lowest level is the SoC or board. The i.MX6ULL UART driver lives at `drivers/tty/serial/imx.c`; its DT binding is at `Documentation/devicetree/bindings/serial/fsl-imx-uart.yaml`; its register definitions are inside the driver file. This pattern repeats for every subsystem.
 
 The four directories you will spend the most time in over the rest of this book:
 
@@ -111,7 +111,7 @@ imx_v6_v7_defconfig
 mxs_defconfig
 ```
 
-`imx_v6_v7_defconfig` (formerly `imx_v7_defconfig`) is the omnibus i.MX configuration that, on v6.6, covers i.MX31/35/27 (ARMv6), i.MX5 (selected boards), i.MX6 (all variants including ULL), and i.MX7. One config builds for all of them; a single `zImage` boots on any board with a matching DT. This is mainline's preferred organisation.
+`imx_v6_v7_defconfig` (formerly `imx_v7_defconfig`) is the omnibus i.MX configuration that, on v6.6, covers i.MX31/35/27 (ARMv6), i.MX5 (selected boards), i.MX6 (all variants including ULL), and i.MX7. One config builds for all of them. A single `zImage` boots on any board that has a matching DT. This is the mainline style.
 
 ```sh
 $ export ARCH=arm
@@ -294,15 +294,15 @@ $ make O=~/imx6ull/build/kernel INSTALL_MOD_PATH=~/imx6ull/rootfs modules_instal
 
 ## 25.8  Lab
 
-1. **Clone, defconfig, build.** Time the build. On a 4-core / 8-thread modern host, expect 5–8 minutes for a fresh full build, < 30 s for an incremental change.
+1. **Clone, defconfig, build.** Time the build. On a modern 4-core / 8-thread host, expect 5-8 minutes for a fresh build and under 30 seconds for an incremental change.
 2. **Inspect the boot logo string.** Run `grep -n linux_banner init/version.c` to find the banner format. (On v6.6 the banner is in `init/version.c`; `init/version-timestamp.c` exists only conditionally.) Edit it to add `(yourname)`, rebuild *just* `zImage` (`make -j$(nproc) zImage`), and verify the boot message changes when you run it in Chapter 26.
 3. **Build for the EVK and the Colibri.** Both `.dtb`s come out of one build. Verify by re-running `ls arch/arm/boot/dts/nxp/imx/imx6ull-*.dtb` after `make dtbs` and comparing against the list of `imx6ull-*` `.dts` source files in the same directory. *(Pre-v6.5 kernels keep the dts directly under `arch/arm/boot/dts/` — adjust accordingly.)*
 4. **Quantify the compression.** Compare sizes: `ls -l arch/arm/boot/{Image,zImage}` and `vmlinux`. The ratios tell you something about kernel content (lots of string tables, dictionaries, …).
-5. **Make distclean and reconfigure.** `make distclean` wipes `.config` and everything else. Re-run `make imx_v6_v7_defconfig && make -j$(nproc) zImage` and observe that the second build is essentially as fast as the first incremental build — `ccache` is the reason if you have it installed; otherwise the same speed.
+5. **Make distclean and reconfigure.** `make distclean` wipes `.config` and everything else. Re-run the defconfig and the build. The second build is almost as fast as an incremental build. If you have `ccache` installed, that is why. If not, it is still about the same.
 
 ## 25.9  Pitfalls
 
-- **Forgetting `ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf-`.** The `make` will try to build a host x86-64 kernel and fail with cryptic errors deep in the architecture-specific code. Always export both before invoking `make`.
+- **Forgetting `ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf-`.** `make` will build a host x86-64 kernel and fail somewhere deep in arch code. Always export both before invoking `make`.
 - **Building from the source tree without `O=`.** Works, but `git status` becomes useless because every `make` populates the source tree with `.o` files. Out-of-tree builds keep the source pristine.
 - **Wrong defconfig.** `make imx_v6_v7_defconfig` not `make x86_64_defconfig`. The latter happens when you forget to export `ARCH=arm` — Linux helpfully picks the host default.
 - **Old gcc-toolchain miscompile.** Mainline kernels usually require a fairly recent gcc (≥ 5.1 for v6.x; ≥ 4.9 for older). Distribution `gcc-arm-linux-gnueabihf` is fine. Custom-built ancient toolchains sometimes miscompile RCU or AAPCS-sensitive code paths.

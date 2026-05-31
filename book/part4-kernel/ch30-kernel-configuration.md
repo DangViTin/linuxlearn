@@ -9,8 +9,8 @@ status: draft
 # Chapter 30 — Kernel configuration deep-dive
 
 > **What:** the kernel's Kconfig system — `make menuconfig`, the `.config` file, defconfig snapshots — and the dozen config options that matter most for an i.MX6ULL embedded image. By the end you should be able to enable/disable any kernel feature, save a clean `defconfig`, and explain to a teammate why each option is set.
-> **Why:** Through Chapter 29 we used `imx_v6_v7_defconfig` as a black box. For real products you'll customise: smaller kernels for smaller flash, PREEMPT_RT for real-time, specific debug options on engineering builds. Knowing where each knob lives and what it does is the difference between "Linux works" and "Linux works the way *we* need it to."
-> **Focus:** **`.config` is the source of truth.** Every other interface (`menuconfig`, `xconfig`, etc.) is just a UI on top. Read it, edit it carefully, regenerate, repeat.
+> **Why:** Through Chapter 29 we used `imx_v6_v7_defconfig` as a black box. For real products you'll customise: smaller kernels for smaller flash, PREEMPT_RT for real-time, specific debug options on engineering builds. Knowing where each knob lives lets you build a kernel that fits your product, not just one that boots.
+> **Focus:** `.config` is the canonical file. `menuconfig`, `xconfig`, and the others are just UIs that edit it. Read it, edit through the UI, and rebuild.
 
 ## 30.1  The Kconfig system
 
@@ -71,7 +71,7 @@ Each `--->` is a submenu. Each `[*]` / `<*>` / `<M>` / `< >` is a yes/module/no 
 
 ## 30.3  The `.config` file
 
-After saving in `menuconfig`, the entire state lives in **`.config`** at the kernel-tree root. It's a plain text file — every line is either `CONFIG_FOO=y`, `CONFIG_FOO=m`, `CONFIG_FOO="string"`, `CONFIG_FOO=10`, or `# CONFIG_FOO is not set`.
+After saving in `menuconfig`, the entire state lives in `.config` at the kernel-tree root. It is plain text. Each line is one of: `CONFIG_FOO=y`, `CONFIG_FOO=m`, `CONFIG_FOO="string"`, `CONFIG_FOO=10`, or `# CONFIG_FOO is not set`.
 
 ```sh
 $ wc -l .config
@@ -111,11 +111,11 @@ $ make ARCH=arm myboard_defconfig
 $ make ARCH=arm -j$(nproc) zImage
 ```
 
-Two commands; the second engineer has the same kernel. This is why upstream ships `imx_v6_v7_defconfig` instead of full `.config`s.
+With those two commands, the second engineer has the same kernel. This is why upstream ships `imx_v6_v7_defconfig` instead of full `.config`s.
 
 ## 30.5  The dozen knobs that matter most
 
-You can read every help text in `menuconfig` and learn nothing useful for hours. Here are the dozen options that *actually matter* on the path from `defconfig` to "i.MX6ULL embedded image":
+Reading every help text in `menuconfig` takes hours and is not the fastest way to learn what matters. Here are the dozen options that matter most on the path from `defconfig` to an i.MX6ULL image:
 
 ### Preemption model — `CONFIG_PREEMPT_*`
 
@@ -128,7 +128,7 @@ General setup
     ( ) Fully Preemptible Kernel (Real-Time)
 ```
 
-Determines how long kernel code can hold the CPU before letting another thread run. **`PREEMPT_NONE`** maximizes throughput, **`PREEMPT_VOLUNTARY`** (the default) is a reasonable compromise, **`PREEMPT`** improves desktop responsiveness, **`PREEMPT_RT`** turns the kernel into a low, bounded-latency real-time kernel (Chapter 52A is dedicated to this).
+Determines how long kernel code can hold the CPU before letting another thread run. **`PREEMPT_NONE`** maximizes throughput, **`PREEMPT_VOLUNTARY`** (the default) is a reasonable compromise, **`PREEMPT`** improves desktop responsiveness, `PREEMPT_RT` turns the kernel into a real-time kernel with bounded, low latency (Chapter 52A is dedicated to this).
 
 For a typical embedded product, `PREEMPT_VOLUNTARY` is fine. For motion control or audio with hard latency budgets, `PREEMPT_RT`. For a router pushing packets, `PREEMPT_NONE`.
 
@@ -324,7 +324,7 @@ You start from a known baseline and apply targeted changes. Easier to maintain t
 - **`make defconfig` overwrites `.config`.** If you've made customisations and run `make defconfig`, those changes are gone. Save with `make savedefconfig` first.
 - **Different defconfigs in different parts of the tree.** `arch/arm/configs/imx_v6_v7_defconfig` is for ARM 32-bit i.MX6/i.MX7. `arch/arm64/configs/defconfig` is for everything ARM 64-bit. Don't cross them.
 - **Disabling `CONFIG_MMU`.** There is a `CONFIG_MMU` symbol you can clear. Don't. The result is `nommu` Linux for parts without an MMU, which won't run on Cortex-A7 anyway.
-- **Disabling `CONFIG_PREEMPT_VOLUNTARY` to "make it faster".** What you actually get is `CONFIG_PREEMPT_NONE`, which is server-oriented (high latency, high throughput). For an interactive system this is a regression. Read the help on each Preemption Model option before changing.
+- **Disabling `CONFIG_PREEMPT_VOLUNTARY` to "make it faster".** If you turn off `CONFIG_PREEMPT_VOLUNTARY`, the build falls back to `CONFIG_PREEMPT_NONE`, which is the server profile (higher latency, higher throughput). On an interactive system this is a regression. Read the help on each Preemption Model option before changing.
 
 ## 30.10  Going deeper
 

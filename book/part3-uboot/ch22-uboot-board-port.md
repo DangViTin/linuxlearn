@@ -9,8 +9,8 @@ status: draft
 # Chapter 22 — Porting U-Boot to a custom board
 
 > **What:** fork the mainline `mx6ull_14x14_evk` board into a new `mx6ull_pa_mini` (Point Atom MINI) board directory. Update DDR timings, IOMUX, MAC PHY address, and defaults. End with a U-Boot binary that boots cleanly on the MINI from your bare-board changes, not on the EVK config.
-> **Why:** in real product work, you almost never ship the vendor reference board. You ship a custom PCB that resembles the reference but has different pads, different I/O, different DRAM. The port is the *deliverable*. This chapter is how you produce it.
-> **Focus:** the **anatomy of a board port** — board folder, defconfig, board header, DT, and the points where each touches U-Boot's core. Once you have done one port, every subsequent one is a copy-and-modify of the same five files.
+> **Why:** In real product work, you rarely ship the vendor reference board. The custom PCB looks similar but has different pads, different I/O, different DRAM. The port is the deliverable. This chapter is how you produce it.
+> **Focus:** the **anatomy of a board port** — board folder, defconfig, board header, DT, and the points where each touches U-Boot's core. After the first port, every later one is a copy-and-modify of the same five files.
 
 ## 22.1  What "porting" means
 
@@ -18,7 +18,7 @@ Three categories of port:
 
 1. **Cosmetic port** — same board, different default behavior (custom hostname, prompt, autoboot env). One file changes. Not really a port.
 2. **Variant port** — same SoC, same DDR, different peripherals. New defconfig + new DT + maybe new pinmux. Most "custom" boards.
-3. **Real port** — same SoC family, different DDR part, different PMIC, different boot media. New defconfig + new DT + new DDR config + new board.c. The Point Atom MINI vs the NXP EVK is approximately this. Closer to variant but with DDR and pinmux changes.
+3. **Real port** — same SoC family, different DDR part, different PMIC, different boot media. New defconfig + new DT + new DDR config + new board.c. The Point Atom MINI vs the NXP EVK is approximately this. It is mostly a variant port plus DDR and pinmux work.
 
 For this chapter we do a **variant + DDR port**: fork the EVK to a new board directory, change DDR timings to match the MINI's specific DRAM part, change the pinmux for KEY/LED/BEEP/Ethernet PHY, and update the env defaults.
 
@@ -39,7 +39,7 @@ include/configs/mx6ull_pa_mini.h          # legacy "board config" header
 configs/mx6ull_pa_mini_defconfig          # the .config we ship
 ```
 
-That's six items, four of which are short. The 90 % of the port lives in `spl.c` (DDR config) and the DTS.
+That's six items, four of which are short. About 90% of the work is in `spl.c` (DDR config) and the DTS.
 
 ## 22.3  Step 1 — Fork the EVK
 
@@ -240,7 +240,7 @@ This is the *U-Boot* device tree (used to inform U-Boot of its own board's hardw
 
 ## 22.6  Step 4 — DDR config in `spl.c`
 
-This is the part you cannot fake. The Point Atom MINI's DDR3 chip and trace layout differ from the EVK's. You must produce matching calibration values.
+There is no shortcut for DDR. The Point Atom MINI's DDR3 chip and trace layout differ from the EVK's. You must produce matching calibration values.
 
 Open `board/myorg/mx6ull_pa_mini/spl.c`. Find these three structs (the names and fields match `board/freescale/mx6ull_14x14_evk/spl.c`):
 
@@ -300,7 +300,7 @@ static void spl_dram_init(void)
 }
 ```
 
-That single call performs every register write Chapter 14 documented. The library in `arch/arm/mach-imx/mx6/ddr.c` walks the structs and emits the right sequence.
+That one call performs every register write from Chapter 14. The library in `arch/arm/mach-imx/mx6/ddr.c` walks the structs and emits the right sequence.
 
 ## 22.7  Step 5 — Per-board IOMUX and peripheral init
 
@@ -337,9 +337,9 @@ int board_init(void)
 }
 ```
 
-The macros `MX6_PAD_UART1_TX_DATA__UART1_DCE_TX` etc. are generated from the i.MX6ULL IOMUX tables; they encode pad, mux mode, and SELECT_INPUT in one constant. See `arch/arm/include/asm/arch-mx6/mx6ul_pins.h`.
+These macros come from the i.MX6ULL IOMUX tables. Each one encodes the pad, the mux mode, and the SELECT_INPUT value in a single constant. See `arch/arm/include/asm/arch-mx6/mx6ul_pins.h`.
 
-Add overrides as needed for `board_late_init` (env defaults), `board_phy_config` (RGMII PHY tweaks), `board_eth_init` (PHY address override).
+Add overrides if you need them: `board_late_init` for env defaults, `board_phy_config` for RGMII PHY tweaks, `board_eth_init` for PHY-address overrides.
 
 ## 22.8  Step 6 — Build and flash
 
@@ -395,7 +395,7 @@ pa-mini=> i2c probe
 Valid chip addresses: ...     # whatever's on I2C1
 ```
 
-Each line confirms a piece of the port. If any fails, the per-line section above tells you which file to revisit.
+Each line confirms a piece of the port. If any check fails, go back to the section that introduced that peripheral and check the file mentioned there.
 
 ## 22.10  MAINTAINERS file
 

@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 83 — SPI LCD
 
-> **What:** "smart" TFT panels with an embedded controller and frame buffer, driven over SPI. Two controllers compared: **Sitronix ST7789** (240×240 / 240×320), **Ilitek ILI9341** (240×320). Unlike the dumb parallel panels of Ch 82, these have their own RAM — you send an init sequence + pixel data over SPI, and the controller refreshes the glass itself. We cover the MIPI-DBI command model, the DRM **tiny** driver framework (`mipi-dbi`), and a from-scratch DRM tiny driver for ST7789.
-> **Why:** SPI LCDs are cheap ($3–8), need only 4–5 wires (vs 28 for parallel), and are everywhere — smartwatches, thermostats, handheld instruments, hobbyist gadgets. The trade-off: SPI bandwidth limits refresh rate (a 240×240 16-bit frame is 115 KB; at 40 MHz SPI that's ~23 ms = ~40 fps max for a full refresh). For static or partial-update UIs, that's plenty.
-> **Focus:** **the MIPI-DBI command/data model + partial updates**. The controller speaks a standardized command set (MIPI Display Bus Interface): `0x2A` set column range, `0x2B` set row range, `0x2C` write pixels. A D/C (data/command) GPIO distinguishes command bytes from data bytes. Only sending the *changed* rectangle (partial update) is the key to acceptable performance.
+> **What:** "smart" TFT panels with an embedded controller and frame buffer, driven over SPI. Two controllers compared: **Sitronix ST7789** (240×240 / 240×320), **Ilitek ILI9341** (240×320). Unlike the dumb parallel panels in Ch 82, these have their own RAM. You send an init sequence and pixel data over SPI. The controller refreshes the glass on its own. We cover the MIPI-DBI command model, the DRM **tiny** driver framework (`mipi-dbi`), and a from-scratch DRM tiny driver for ST7789.
+> **Why:** SPI LCDs are cheap and small. They need 4–5 wires versus 28 for parallel, and they appear in smartwatches, thermostats, handheld instruments, and hobby gadgets. The trade-off is bandwidth. A 240×240 16-bit frame is 115 KB. At 40 MHz SPI that takes ~23 ms — about 40 fps for a full refresh. For static or partial-update UIs, that is plenty.
+> **Focus:** the MIPI-DBI command/data model and partial updates. The controller speaks a standardized command set (MIPI Display Bus Interface): `0x2A` set column range, `0x2B` set row range, `0x2C` write pixels. A D/C (data/command) GPIO distinguishes command bytes from data bytes. Send only the changed rectangle. That keeps refresh fast enough.
 
 ## 83.1  Controller comparison
 
@@ -54,7 +54,7 @@ Wiring:
    GND  ───────────────► GND
 ```
 
-Note: 3-wire mode (no DC pin; the D/C bit is embedded as a 9th bit per byte) exists but is awkward on most SPI controllers — 4-wire (separate DC GPIO) is standard.
+A 3-wire mode also exists. The D/C bit becomes a 9th bit per byte, so there is no DC pin. Most SPI controllers cannot generate the 9-bit frame, so 4-wire (a separate DC GPIO) is the standard.
 
 ### Key commands
 
@@ -329,9 +329,9 @@ What the `mipi_dbi` helper did for us:
 - Provided the DRM CRTC/connector/plane plumbing.
 - Provided `/dev/fb0` fbdev emulation.
 
-What *we* provided: the init sequence (the chip-specific magic) and the pixel dimensions. ~200 lines, mostly the init sequence.
+We provided two things: the chip-specific init sequence and the pixel dimensions. About 200 lines, mostly the init sequence.
 
-What we'd add for production: rotation handling (MADCTL variations), power management (sleep on disable), and using the mainline `panel-mipi-dbi` generic driver instead of a custom one.
+For production: handle rotation through MADCTL. Add sleep on disable for power management. Better still, switch to the mainline `panel-mipi-dbi` generic driver and skip the custom code entirely.
 
 ## 83.5  The even-easier way: panel-mipi-dbi
 

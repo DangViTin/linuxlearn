@@ -10,7 +10,7 @@ status: draft
 
 > **What:** **non-LoRa short-range radios** for fleets that need higher throughput than LoRa or have no infrastructure: **Nordic nRF24L01+** (2.4 GHz, 250 kbps – 2 Mbps GFSK, the dominant cheap mesh radio), **TI CC1101** (sub-GHz 300–928 MHz multi-mode), **TI CC1200** (newer, lower phase noise, higher data rate, better Wi-SUN candidate). We dissect each chip's SPI command/register model, the **Enhanced ShockBurst** auto-ACK in nRF24, the CC1101 state machine, write a 200-line nRF24 P2P driver from scratch in user space, then wire DT for the existing kernel drivers where they exist.
 > **Why:** LoRa (Ch 98) buys range with bandwidth. The opposite trade — sub-second latency, multi-kbps throughput, no MAC stack, no infrastructure, $1–4 BOM — is what nRF24L01 and CC1101 give you. Every consumer remote control, garage opener, weather station, and dozens-of-nodes IoT prototype uses one of these. The kernel has *some* support (`nrf24` is out-of-tree; CC1101 has an old in-tree driver), but as with LoRa, most production stacks live in user space against `spidev`. Understanding the chip's state machine + SPI command shape is everything.
-> **Focus:** **these chips are state machines you drive with SPI commands; the radio behavior is determined by which state you're in, not by individual register values**. nRF24's state machine has 7 states (Power-Down, Standby-I, Standby-II, RX, TX, etc.); CC1101's has 13. Almost every "the chip doesn't work" bug is the chip being in the wrong state — TX commanded from RX, FIFO read while still receiving, command issued before the previous one's settling time elapsed. Master the state diagram and the radios are trivial.
+> **Focus:** **these chips are state machines driven by SPI commands. The behavior depends on the current state, not on individual register values**. nRF24's state machine has 7 states (Power-Down, Standby-I, Standby-II, RX, TX, etc.); CC1101's has 13. Almost every "the chip doesn't work" bug is the chip being in the wrong state — TX commanded from RX, FIFO read while still receiving, command issued before the previous one's settling time elapsed. Learn the state diagram and the rest is straightforward.
 
 ## 99.1  Choosing the chip
 
@@ -68,8 +68,8 @@ The two GPIO-style control pins:
 - **CSN** (Chip Select Not) — SPI CS, frames each command.
 - **CE** (Chip Enable) — controls active TX/RX. CE=0 means "go to Standby-I and hold there"; CE=1 means "start TX (if PRIM_RX=0) or stay in RX (if PRIM_RX=1)."
 
-The state-transition rules that bite every newcomer:
-- Switching between TX and RX requires going through Standby-I (`CE=0`, wait 130 µs, set `PRIM_RX`, `CE=1`).
+These transition rules catch every newcomer:
+- To switch between TX and RX you must pass through Standby-I. Set `CE=0`, wait 130 µs, set `PRIM_RX`, then set `CE=1`.
 - The TX FIFO is loaded *before* CE goes high; pulsing CE for ≥10 µs triggers transmission of one packet.
 
 ### SPI commands
@@ -127,7 +127,7 @@ The PRX side automatically generates the ACK on receipt. The CPU doesn't run cod
 
 You can even piggyback an **ACK payload**: PRX's `W_ACK_PAYLOAD` queues a payload that rides back inside the ACK frame, giving 32-byte bidirectional half-duplex with one transmit + auto-ACK pair.
 
-This is why nRF24 dominates the BOM-conscious low-rate radio market.
+This is why nRF24 is the default choice when BOM cost matters and rates stay below 1 Mbps.
 
 ### Six receive pipes — the multi-PRX, one-PTX pattern
 
@@ -164,7 +164,7 @@ GPIO  ┤ IRQ     ├───────────────────�
 
 The IRQ pin is active-low; it asserts on `RX_DR`, `TX_DS`, or `MAX_RT`. Reading `STATUS` and writing 1 back to the bit clears the interrupt.
 
-**Power supply gotcha**: the 1 Mbps TX burst draws ~12 mA peaks at the rail; without the 10 µF bulk + 100 nF local decoupling, the supply droops and the next TX corrupts. The single most common reason "the modules I bought don't work."
+**Power supply gotcha**: the 1 Mbps TX burst draws ~12 mA peaks at the rail; without the 10 µF bulk + 100 nF local decoupling, the supply droops and the next TX corrupts. This is the most common reason a newly bought module appears dead.
 
 ## 99.4  How the out-of-tree nRF24 kernel drivers actually work
 
@@ -380,7 +380,7 @@ int main(int argc, char **argv) {
 }
 ```
 
-Two boards, same binary, one with `r` arg and one without — instant 1 Mbps ACKed point-to-point link. Add `OBSERVE_TX` reading to see retry counts; add multi-pipe addresses to make a hub.
+Two boards, same binary — one with the `r` argument, one without — and you have a 1 Mbps ACKed point-to-point link. Add `OBSERVE_TX` reading to see retry counts; add multi-pipe addresses to make a hub.
 
 ## 99.6  CC1101 — sub-GHz state-machine radio
 
@@ -409,15 +409,17 @@ Command strobes (single-byte SPI):
 - `SFRX` (0x3A) flush RX FIFO
 - `SFTX` (0x3B) flush TX FIFO
 
-Configuration is ~40 registers (IOCFG2/1/0, FIFOTHR, SYNC1/0, PKTLEN, PKTCTRL1/0, ADDR, CHANNR, FSCTRL1/0, FREQ2/1/0, MDMCFG4/3/2/1/0, DEVIATN, MCSM2/1/0, FOCCFG, BSCFG, AGCCTRL2/1/0, ...). TI ships **SmartRF Studio** which generates the register dump for any desired modulation / data rate / deviation — you'll absolutely use it.
+Configuration is ~40 registers (IOCFG2/1/0, FIFOTHR, SYNC1/0, PKTLEN, PKTCTRL1/0, ADDR, CHANNR, FSCTRL1/0, FREQ2/1/0, MDMCFG4/3/2/1/0, DEVIATN, MCSM2/1/0, FOCCFG, BSCFG, AGCCTRL2/1/0, ...). TI's **SmartRF Studio** generates the register dump for any modulation, data rate, and deviation. Almost everyone uses it for CC1101 bring-up.
 
-The killer detail: registers are write-once and survive across IDLE → RX/TX transitions, so you configure at startup and then just strobe `SRX` / `STX` to flip mode.
+Once configured, registers persist across IDLE ↔ RX/TX transitions. Strobing `SRX` or `STX` does not reset them. You can rewrite them at any time. So you configure at startup and then just strobe `SRX` / `STX` to flip mode.
 
 ### Walk of the kernel CC1101 driver
 
-The in-tree `drivers/net/wireless/ti/cc1101.c` (an out-of-tree fork, never merged; *the in-tree wireless dir does not contain this — verify with current kernel*) follows a pattern similar to nRF24: SPI device, GPIO IRQ (GDO0 = pkt_rx, GDO2 = chip_ready), char device. The full driver is ~1500 lines because it implements packet framing + length-byte vs fixed-length modes + address filtering — features the chip supports in hardware but the driver must enable per use case.
+The in-tree `drivers/net/wireless/ti/cc1101.c` (an out-of-tree fork, never merged) follows a pattern similar to nRF24: SPI device, GPIO IRQ (GDO0 = pkt_rx, GDO2 = chip_ready), char device. The full driver is ~1500 lines because it implements packet framing + length-byte vs fixed-length modes + address filtering — features the chip supports in hardware but the driver must enable per use case.
 
-The most useful CC1101 starting point is **`elechouse/CC1101` on GitHub** (Arduino-derived but C99) — clean code that walks register init → packet send → receive. Port that to user space on `spidev` + libgpiod and you have a working sub-GHz radio in ~300 lines.
+> *Note: the in-tree wireless directory does not contain this driver — verify against your current kernel before assuming it is present.*
+
+A good CC1101 starting point is **`elechouse/CC1101` on GitHub** (Arduino-derived but C99) — clean code that walks register init → packet send → receive. Port that to user space on `spidev` + libgpiod and you have a working sub-GHz radio in ~300 lines.
 
 ### A 30-line user-space CC1101 send
 

@@ -8,13 +8,13 @@ status: draft
 
 # Chapter 35B — Read-only rootfs + overlayfs
 
-> **What:** mount the root filesystem **read-only** on a shipped product, then use **`overlayfs`** to give the parts of `/` that must be writable (e.g., `/var/log/`, `/etc/`, `/tmp/`) a per-boot tmpfs or persistent overlay. End result: the system can lose power at any instant without corrupting its rootfs.
+> **What:** mount the root filesystem **read-only** on a shipped product, then use **`overlayfs`** to give the parts of `/` that must be writable (e.g., `/var/log/`, `/etc/`, `/tmp/`) a per-boot tmpfs or persistent overlay. The result: power can drop at any instant without corrupting the rootfs.
 > **Why:** every shipping industrial product mounts its rootfs read-only. The reason is simple: a user yanks the power, the filesystem doesn't catch the close-and-flush, the next boot's `fsck` finds inconsistencies, sometimes corrects them, sometimes returns "dropped to /bin/sh for emergency repair." A read-only rootfs cannot be corrupted by power loss because no one is writing to it. The trade is that any data the system *does* need to write must go somewhere else — a tmpfs (lost on reboot), a separate data partition (persistent), or an overlay (write-through to tmpfs / data partition).
 > **Focus:** the **three-tier model** — `lowerdir` (immutable rootfs), `upperdir` (where changes accumulate), `workdir` (overlay's scratch space). Once you understand those three, every overlayfs setup follows the same shape.
 
 ## 35B.1  The problem this solves
 
-A standard development rootfs is mounted `rw` (read-write). The kernel buffers writes in its page cache and flushes them to disk lazily. If power dies between the buffer-add and the flush, you have:
+A standard development rootfs is mounted `rw` (read-write). The kernel buffers writes in its page cache and flushes them to disk lazily. If power drops between the page-cache write and the disk flush, you can end up with:
 
 - Files partially written (data in disk blocks that the inode doesn't yet point to)
 - Inodes updated but their containing block not yet flushed (vice versa)
@@ -22,7 +22,7 @@ A standard development rootfs is mounted `rw` (read-write). The kernel buffers w
 
 `fsck` runs on next boot and tries to fix what it can. Sometimes it succeeds. Sometimes a critical config file ends up with garbage in it and your system boots into a degraded state. Sometimes `fsck` decides the filesystem is unrecoverable and aborts to a recovery shell.
 
-Anyone who has shipped a product in the field has stories about devices that came back from customers with corrupted rootfs after a power glitch.
+Every team that has shipped a product has at least one corrupted-rootfs story from a power glitch in the field.
 
 The fix: **don't write to the rootfs at runtime**. If nothing is writing, nothing can be half-written. Power-loss safety becomes a property of the filesystem layout, not of the application or filesystem driver.
 
@@ -258,7 +258,7 @@ After reboot:
 - `/var/log/important.txt`'s last few lines may be missing or partial — but **only the lines written in the second or two before power loss**. The earlier content is preserved.
 - The system boots cleanly.
 
-Compare with the same test on a RW rootfs: half the time you get a clean boot; half the time `fsck` finds something that needs manual intervention. Over 1000 power cycles, the difference is overwhelming.
+Compare with the same test on a RW rootfs: half the time you get a clean boot; half the time `fsck` finds something that needs manual intervention. Over a thousand power cycles, the difference is large enough to count.
 
 ## 35B.6  Factory reset
 
@@ -285,7 +285,7 @@ A common production button-combination is "hold the recovery button at boot for 
 
 - **`/etc/resolv.conf` and `/etc/adjtime`.** Both written at runtime in default Ubuntu/Debian setups. Either symlink them to `/run/` (tmpfs) or use overlay. If they end up trying to write to a RO mount, things like DHCP and NTP silently misbehave.
 - **systemd's `/etc/machine-id`.** Generated on first boot, written to `/etc/`. On RO root, systemd may regenerate it every boot, breaking journal continuity. Fix: pre-generate at flash time.
-- **Forgetting `ro` in `bootargs`.** Trivially defeats everything. Always verify with `mount | head -1` after boot.
+- **Forgetting `ro` in `bootargs`.** Without `ro` in `bootargs` the whole scheme is defeated. Verify with `mount | head -1` after boot.
 - **Overlay `workdir` must be on the same filesystem as `upperdir`.** Different filesystems for `workdir` and `upperdir` is an immediate mount failure.
 - **Tmpfs filling up.** `/var/log` on tmpfs without log rotation, plus a chatty daemon, eats your RAM. Set `size=` explicitly and use `logrotate` (or just `> /var/log/messages` from cron).
 - **Apps writing to `/etc/` expecting persistence.** If your app does `fopen("/etc/myapp.conf", "w")` to save settings, with Pattern A those settings are lost on reboot. Either use Pattern B (overlay) or move the writable file to `/data/` (a real persistent partition).

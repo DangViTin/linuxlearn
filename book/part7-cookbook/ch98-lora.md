@@ -9,8 +9,8 @@ status: draft
 # Chapter 98 — LoRa
 
 > **What:** **LoRa** — a Semtech-proprietary sub-GHz long-range modulation (chirp spread spectrum) reaching multiple kilometres at sub-100 kbps. Four real radios compared: **Semtech SX1276/78** (legacy LoRa, 433/868/915 MHz), **SX1262** (current generation, lower power, FSK + LoRa), **LLCC68** (cheap SX1262 sibling, limited SF range), and **EByte E22-900M30S** (a ready-to-fly SX1262 module with PA + LNA). We dissect the radio's SPI register map, walk the kernel `sx127x` / `sx1301` candidate drivers (and why **most production LoRa stacks live in user space**), write a tiny SPI-only LoRa driver from scratch in user space (no kernel driver), then bring up a real LoRaWAN gateway with **ChirpStack**.
-> **Why:** LoRa is the only short-message radio that crosses kilometres without infrastructure, sub-watt, and into deep building penetration. It's the workhorse for agricultural sensors, wildlife trackers, water-meter telemetry, and remote alarms. Most engineers cargo-cult the "Arduino LoRa library" without understanding the modulation, the registers, or why a bad antenna kills 80 % of the budget. This chapter strips the magic.
-> **Focus:** **LoRa is a SPI radio with two state machines on top — modem and packet handler — and a tightly coupled antenna RF chain you cannot ignore**. Chirp spread spectrum (CSS) gives ~–137 dBm sensitivity at SF12/125 kHz, but the air-time at SF12 is *seconds per packet*, throttled by duty-cycle regulation (1 % on 868 MHz EU). Understanding the **spreading factor / bandwidth / coding rate / preamble** four-tuple — and what each costs in air-time, sensitivity, and power — is the whole engineering job. The radio is easy. The link budget is the engineering.
+> **Why:** LoRa is the only short-message radio that crosses kilometres without infrastructure, sub-watt, and into deep building penetration. It's the workhorse for agricultural sensors, wildlife trackers, water-meter telemetry, and remote alarms. Many engineers copy the "Arduino LoRa library" without understanding the modulation, the registers, or why a bad antenna costs most of your link budget. This chapter walks the whole stack.
+> **Focus:** **LoRa is a SPI radio with two state machines on top — modem and packet handler — and a tightly coupled antenna RF chain you cannot ignore**. Chirp spread spectrum (CSS) gives ~–137 dBm sensitivity at SF12/125 kHz, but the air-time at SF12 is *seconds per packet*, throttled by duty-cycle regulation (1 % on 868 MHz EU). The four-tuple of spreading factor, bandwidth, coding rate, and preamble is the whole engineering job. You must know what each one costs in air-time, sensitivity, and power. The radio is easy. The link budget is the engineering.
 
 ## 98.1  LoRa vs everything else short-message
 
@@ -27,7 +27,7 @@ status: draft
 | Air time per packet | **seconds at SF12** | 1 ms | 5 ms | 200 ms | <1 ms |
 | Duty cycle limit | 0.1–10 % (regional) | none | 0.1–10 % | none | none |
 
-The trade is brutal: LoRa buys range with bitrate. At SF12/BW125, you transmit ~250 bits per *second* (yes, per second). A 50-byte payload costs **~2 seconds of air time**. EU 868 MHz lets you transmit only 1 % of the time → ~30 packets/hour. That single number drives every product decision.
+The trade is direct: LoRa buys range with bitrate. At SF12/BW125, you transmit ~250 bits per *second* (yes, per second). A 50-byte payload costs **~2 seconds of air time**. EU 868 MHz lets you transmit only 1 % of the time → ~30 packets/hour. That single number drives every product decision.
 
 **Pick guide:**
 - **SX1276/78** — legacy projects, abundant code, OK power; pick SX1262 instead for anything new.
@@ -59,7 +59,7 @@ Key consequences:
 
 - **Symbol time** doubles every increase of SF: `Tsym = 2^SF / BW`. At SF12/BW125: 32.768 ms *per symbol*. At SF7/BW125: 1.024 ms.
 - **Bitrate** ≈ `SF × BW / 2^SF × CR`. At SF12/BW125/CR4/5: ~293 bps. At SF7/BW125/CR4/5: ~5.5 kbps.
-- **Sensitivity** improves ~2.5 dB per SF step: SF7 ≈ –123 dBm, SF12 ≈ –137 dBm — that's **14 dB** range, or ~5× the distance.
+- **Sensitivity** improves about 2.5 dB per SF step. SF7 is around −123 dBm; SF12 is around −137 dBm. That is **14 dB** of headroom, or roughly 5× the range.
 - **Demodulation** is processing-gain-based: even buried in noise, the chirp correlation pulls the signal out. This is why LoRa works below the noise floor.
 
 The four-tuple you tune for every link:
@@ -103,7 +103,7 @@ Block diagram (SX1262, the one to use for new designs):
 The two chips differ in interface style:
 
 - **SX1276/78** are **register-mapped**: `WRITE_REG addr value`, `READ_REG addr` on SPI. ~120 registers documented in the datasheet. You configure by writing each register.
-- **SX1262** is **command-based**: `SetPacketType`, `SetRfFrequency`, `SetTxParams`, `SetModulationParams`, `WriteBuffer`, `SetTx`. Each is an opcode + payload over SPI; the chip parses it. Easier to use, but very different "feel" from SX1276 code.
+- **SX1262** is **command-based**: `SetPacketType`, `SetRfFrequency`, `SetTxParams`, `SetModulationParams`, `WriteBuffer`, `SetTx`. Each is an opcode + payload over SPI; the chip parses it. Easier to use, but the code looks different from SX1276's.
 
 This is the #1 source of porting pain when moving SX1276 code to SX1262.
 
@@ -170,9 +170,9 @@ GPIO  ─┤ DIO0/IRQ     ├─────────────────
        └──────────────┘                                  └────────┘
 ```
 
-Mandatory rules — every one of these has bricked a board somewhere:
+Mandatory rules. Every one of these has destroyed a board in the field:
 
-1. **Antenna or 50 Ω dummy load at TX every time.** Transmitting into an open or short pin destroys the PA in milliseconds. *Especially* during bring-up when you're tempted to "just see if it works."
+1. **Antenna or 50 Ω dummy load at TX every time.** Transmitting into an open or short pin destroys the PA in milliseconds. This matters most during bring-up, when it is tempting to power the radio without an antenna just to see if it responds.
 2. **VDD bulk capacitor ≥ 10 µF + 100 nF near the chip.** Each transmit pulse is ~120 mA at +22 dBm — the supply must hold up. A weak rail = power droop = the modem retransmits = battery dies overnight.
 3. **Ground plane under the radio.** Single-sided protoboard works at SF12 for ~30 m. Move to a real PCB with continuous ground for anything beyond eval.
 4. **TCXO recommended for SF11/SF12.** The crystal must hold ±20 ppm over temperature; a cheap XTAL drifts and the SF12 demodulator (very narrow effective bandwidth) loses the signal. SX1262 has TCXO control built in (`SetDIO3AsTCXOCtrl`).
@@ -188,7 +188,7 @@ There's no `subsystem/lora/` in mainline. There are out-of-tree drivers (`sx127x
 3. **Timing is not RT-critical.** LoRa packets are tens-to-thousands of milliseconds long. User-space SPI latency (a few ms) is irrelevant.
 4. **Mainline has refused most LoRa kernel patches** for these reasons. The community converged on user-space.
 
-This is unusual in this book — every other chapter says "the kernel driver does this." Here the kernel is the bus controller and nothing more.
+This is unusual in this book. Almost every other chapter says "the kernel driver does this." On LoRa, the kernel is only the SPI bus controller.
 
 There *is* one important exception: **LoRaWAN gateway concentrators** (Semtech SX1301, SX1302, SX1303) — multi-channel parallel demodulators on PCIe or SPI used in *gateways* (not nodes). Even these are bound by `spidev`, with a user-space "packet forwarder" (`lora_pkt_fwd`, ChirpStack-MP-Packet-Forwarder). The hardware is FPGA-like; the abstraction is in user space.
 
@@ -545,7 +545,7 @@ End-to-end, an SX1262 node running OTAA-joined LoRaWAN will:
 5. → downlinked through gateway-bridge → packet-forwarder → over the air → node receives the JoinAccept
 6. Node now sends uplinks; ChirpStack decrypts; your application server (or an MQTT subscriber) consumes them
 
-A private LoRaWAN network running on one i.MX6ULL is genuinely possible. The kernel is involved as the SPI driver and nothing else.
+A private LoRaWAN network on one i.MX6ULL is realistic. The kernel is involved as the SPI driver and nothing else.
 
 ## 98.9  Lab
 
@@ -569,7 +569,7 @@ A private LoRaWAN network running on one i.MX6ULL is genuinely possible. The ker
 - **SF12 timing.** A SF12/BW125 packet of 51 bytes takes ~2.3 seconds. Your `while(... & TX_DONE)` poll loop must allow for it; many sample drivers time out at 1 s. Use 5+ seconds or compute from the air-time formula.
 - **Duty cycle violations.** EU 868 g1 sub-band is **1 %**. At SF12, that's two packets per minute, period. Build a duty-cycle tracker in firmware or you'll be illegally transmitting and the regulator can fine you.
 - **TCXO not started.** SX1262 with TCXO: you must call `SetDIO3AsTCXOCtrl(voltage, delay)` before any frequency operation. Skip it and the radio's PLL drifts → packets demodulate with high error or not at all on SF11/SF12.
-- **The chip is alive after `Sleep`.** SX127x in Sleep mode preserves register state and consumes ~200 nA. SX1262 in Cold Start (`SetSleep(0x00)`) loses configuration — you must reconfigure on wake. Check the datasheet.
+- **`Sleep` does not erase state on SX127x — but on SX1262 Cold Start it does.** SX127x in Sleep mode preserves register state and consumes ~200 nA. SX1262 in Cold Start (`SetSleep(0x00)`) loses configuration — you must reconfigure on wake. Check the datasheet.
 - **Single-chip "RF switch destroyed" failure.** A common module fault: the chip transmits OK at first but receive sensitivity is –80 dBm instead of –123 dBm — the internal/external RF switch was killed during a TX-into-open. Detect by measuring RSSI of a known close transmitter; if it's >40 dB worse than spec, the switch is gone.
 - **Out-of-tree driver kernel-version pinning.** `sx127x-driver` is community-maintained; major kernel updates break it. If you go the kernel-netdev route, pin your kernel until you have time to forward-port.
 - **Concentrator SPI clock too fast.** SX1303 SPI tops out at 8 MHz; some carrier boards expose 50 MHz `ecspi`. Set `spi-max-frequency = <8000000>;` or it works in the lab and fails on customer hardware.

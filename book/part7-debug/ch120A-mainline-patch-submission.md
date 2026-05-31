@@ -9,8 +9,8 @@ status: draft
 # Chapter 120A — Mainline patch submission workflow
 
 > **What:** the **end-to-end workflow** for submitting a patch to the Linux kernel: `git format-patch`, `scripts/checkpatch.pl`, `scripts/get_maintainer.pl`, `git send-email`, the `b4` tool for series management, response etiquette (`Reviewed-by`, `Acked-by`, v2/v3 iteration), and the **Lore** archive for finding similar prior work. Worked on a real candidate patch — e.g., a YAML binding addition for a sensor used in your Cookbook chapter, or a one-line bug fix in the FEC driver.
-> **Why:** if you write a driver in this book and it's useful, it can go upstream. Upstream-merged code is maintained forever (security backports, API migrations); your out-of-tree fork is on you. But the kernel community has strict, *unwritten* rules — wrong commit-message format, untested patches, replying to review with hostility, top-posting on mailing lists — these get your patch silently dropped no matter how good the code is. This chapter is the cultural primer the kernel docs don't write down.
-> **Focus:** **the workflow is git-format-patch → checkpatch → get_maintainer → send-email → respond to review → v2 → repeat**. The cultural part is harder: be concise; one fix per patch; explain *why* not just *what*; never ignore review feedback (even if you disagree, respond); CC the right people but no spammy CC; subject lines are `[PATCH] subsystem/file: short summary`. Lore.kernel.org is the public archive of every mailing-list discussion since ~1998; **always search there before sending** — your "novel" fix may have been tried and rejected three times already, and the rejection threads tell you why.
+> **Why:** If you write a driver that's useful, it can go upstream. Upstream-merged code gets security backports and API migrations for free; an out-of-tree fork is yours to maintain. The kernel community has strict and partly unwritten rules. A wrong commit-message format, an untested patch, a hostile reply to review, or a top-posted email is enough to get a patch silently dropped, no matter how good the code is.
+> **Focus:** **the workflow is git-format-patch → checkpatch → get_maintainer → send-email → respond to review → v2 → repeat**. The cultural part is harder: be concise; one fix per patch; explain *why* not just *what*; never ignore review feedback (even if you disagree, respond); CC the right people but no spammy CC; subject lines are `[PATCH] subsystem/file: short summary`. Lore.kernel.org is the public archive of every mailing-list discussion since ~1998. Always search it before sending. A "novel" fix may have been tried and rejected three times already, and the rejection threads tell you why.
 
 ## 120A.1  Decide what you're submitting
 
@@ -110,7 +110,7 @@ checkpatch enforces:
 # linux-kernel@vger.kernel.org (open list)
 ```
 
-The output is your To: + CC: list. **Do not invent additional CCs** — only what `get_maintainer.pl` says. Spam to "the whole kernel" gets you on people's filter-out lists.
+The output is your To and CC list. Don't add extra CCs beyond what `get_maintainer.pl` returns. CC'ing every kernel address you can find gets you ignored or filtered.
 
 ## 120A.6  Send via git send-email
 
@@ -187,7 +187,7 @@ git send-email --to ... 00*.patch
 
 ## 120A.8  v2 / v3 — revising based on feedback
 
-Maintainer responds with feedback. Don't argue; address each point. If you disagree, explain politely.
+When a maintainer responds with feedback, address each point. If you disagree, say so politely and explain why.
 
 ```sh
 # Make changes
@@ -250,7 +250,7 @@ Rules:
 - **Address every comment**: either "fixed in v2," "I disagree because …," or "this is out of scope for this patch."
 - **Don't take feedback personally**. Code review is the kernel's quality bar; criticism is professional, not personal.
 
-If you go silent for >2 weeks after a review, your patch gets dropped from maintainers' queues. Stay engaged.
+If you go silent for more than two weeks after a review, your patch will be dropped from the maintainer's queue. Stay engaged.
 
 ## 120A.11  Lore — search before you send
 
@@ -382,7 +382,7 @@ git send-email --to "Rob Herring <robh@kernel.org>" \
                0001-*.patch
 ```
 
-DT bindings are one of the easiest categories to get merged — they're additive (don't break anything) and self-contained. Good first-patch target.
+DT bindings are one of the easiest categories to get merged — they're additive (don't break anything) and self-contained, which makes them a good first-patch target.
 
 ## 120A.13  Lab
 

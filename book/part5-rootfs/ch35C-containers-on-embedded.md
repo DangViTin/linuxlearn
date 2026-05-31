@@ -9,8 +9,8 @@ status: draft
 # Chapter 35C — Container runtimes on embedded
 
 > **What:** running OCI containers on an i.MX6ULL with Podman. By the end you'll have an Alpine Linux container running a small Python web server, accessing the host's GPIO from inside the container.
-> **Why:** modern embedded products increasingly separate "the base system" (kernel + bootloader + minimal rootfs, updated rarely) from "the application" (one or more containers, updated whenever a customer-facing change is needed). Containers give you reproducible app deployment, image-based updates, and the ability to roll back in seconds. The cost is some RAM and some complexity; the benefit is a deployment story that scales from one device to one million.
-> **Focus:** **the three kernel features that make containers work** — namespaces (process isolation), cgroups (resource limits), and overlayfs (storage). All three are in mainline Linux for years; you just need them turned on in `.config`.
+> **Why:** modern embedded products separate "the base system" (kernel + bootloader + minimal rootfs, updated rarely) from "the application" (one or more containers, updated whenever a customer-facing change is needed). Containers give you reproducible app deployment, image-based updates, and the ability to roll back in seconds. The cost is some RAM and some complexity; the benefit is a deployment story that scales from one device or a fleet of a million.
+> **Focus:** Three kernel features make containers work: namespaces (process isolation), cgroups (resource limits), and overlayfs (storage). All three have been in mainline Linux for years. You just need them turned on in `.config`.
 
 ## 35C.1  When containers make sense on embedded
 
@@ -36,7 +36,7 @@ A "container" is just a Linux process group with three things layered on:
 2. **Cgroups (control groups)** — resource limits per group: CPU, memory, IO. Enforced by the kernel.
 3. **Overlay filesystem** — the container's root is an overlayfs over the image's read-only layers + a writable upper. Same `overlayfs` from Chapter 35B.
 
-That's it. There is no "container runtime" magic — just a process with namespaces, cgroups, and a careful mount setup. **Docker, Podman, containerd, and CRI-O all do the same thing**; they differ in UI, daemons (or lack of), and ecosystem.
+There is no container-runtime magic. A container is a process with namespaces, cgroups, and a careful mount setup. Docker, Podman, containerd, and CRI-O all do the same thing. They differ in UI, daemons, and ecosystem.
 
 For embedded, **Podman** wins:
 
@@ -153,7 +153,7 @@ hi
 / # exit
 ```
 
-You just ran Alpine's apk inside a container running on Ubuntu (or BusyBox), all on top of the same kernel. The container thinks it's a complete Alpine system.
+You just ran Alpine's apk inside a container running on Ubuntu (or BusyBox), all on top of the same kernel. From inside, it looks like a complete Alpine system.
 
 ## 35C.6  Container that talks to GPIO
 

@@ -9,12 +9,12 @@ status: draft
 # Chapter 3 — Host environment setup
 
 > **What:** a Linux development host that can cross-compile for ARMv7-A, serve files over TFTP and NFS, talk to the board over serial and USB-OTG, and recover a bricked board.
-> **Why:** for the next sixty chapters, the host is your lever. A flaky host is the single most common time-sink in embedded Linux work — far more than buggy code.
-> **Focus:** the iteration loop. By the end of this chapter, "change a source file, see the change run on the board" must take under thirty seconds. If it takes longer, you will quietly stop iterating, and you will stop learning.
+> **Why:** for the next sixty chapters, the host is your lever. A flaky host wastes more of your time than any bug in your code.
+> **Focus:** the iteration loop. By the end of this chapter, the loop "change a file, see it run on the board" must take under thirty seconds. If it is slower, you will iterate less, and you will learn less.
 
 ## 3.1  Choosing the host
 
-The book assumes **native Ubuntu 22.04 LTS** running on bare-metal hardware. Other options work but cost you time in ways that vary from "annoying" to "showstopper":
+The book assumes **native Ubuntu 22.04 LTS** running on bare-metal hardware. Other options work but cost you time, sometimes a lot:
 
 | Host | Status | Notes |
 |------|--------|-------|
@@ -25,7 +25,7 @@ The book assumes **native Ubuntu 22.04 LTS** running on bare-metal hardware. Oth
 | Linux VM (VirtualBox/VMware) | Works | Slow builds; USB passthrough is fragile. |
 | macOS + Docker | Don't | Cross-compile inside Docker works, but USB-OTG and serial do not pass through cleanly. |
 
-If you are running Windows or macOS, the fastest path is to put Ubuntu on a USB-3 NVMe enclosure and boot from it. Dual-booting your daily-driver machine is the obvious alternative; the only thing that matters is that, at the end, when you plug the board into a USB port, `lsusb` on your host sees it without ceremony.
+If you are running Windows or macOS, the fastest path is to put Ubuntu on a USB-3 NVMe enclosure and boot from it. Dual-booting your daily machine is the obvious alternative. What matters is that when you plug the board into a USB port, `lsusb` sees it without trouble.
 
 The remainder of this book assumes Ubuntu 22.04. Commands shown with the `$` prompt run as your normal user; commands with `#` run as root via `sudo`.
 
@@ -46,7 +46,7 @@ $ tree -L 1
 └── src        # upstream sources: linux, u-boot, busybox, your bare-metal code
 ```
 
-Two opinions about this layout, both load-bearing for the rest of the book:
+Two rules about this layout. Both matter for the rest of the book:
 
 1. **Sources are read-only.** We never edit inside `src/u-boot/`. We patch and build out-of-tree into `build/u-boot/`. This is the only way to keep a clean diff against upstream and keep cross-chapter reproducibility honest.
 2. **`rootfs/` is the live NFS root.** Anything you copy into `rootfs/` is visible to the board after the next boot, with no flashing step. This is the central iteration trick of embedded Linux.
@@ -72,7 +72,7 @@ $ sudo apt install -y \
 
 What each pulls in, briefly:
 
-- **`build-essential`, `bison`, `flex`, `libssl-dev`, `libncurses-dev`** — what the kernel and U-Boot need to build. The first surprise for many people is that the *kernel* uses OpenSSL during build (for module signing).
+- **`build-essential`, `bison`, `flex`, `libssl-dev`, `libncurses-dev`** — what the kernel and U-Boot need to build. Surprise: the kernel needs OpenSSL during build (for module signing).
 - **`bc`** — really. The kernel build literally invokes `bc` for arithmetic.
 - **`device-tree-compiler`** — `dtc`. You'll use this in every chapter from Ch 27 on.
 - **`u-boot-tools`** — provides `mkimage`, `mkenvimage`, `dumpimage`, `mkeficapsule`.
@@ -131,7 +131,7 @@ We now have two toolchains:
 - `arm-linux-gnueabihf-gcc` — for code that runs *under* Linux on the target.
 - `arm-none-eabi-gcc` — for the bare-metal experiments where there is no OS.
 
-A common source of confusion: people use the `linux-gnueabihf` toolchain for bare metal and get baffled when their build pulls in libc. Use the right tool for the job.
+A common mistake: people use the `linux-gnueabihf` toolchain for bare metal and are surprised when libc gets pulled in. Use the bare-metal toolchain for bare metal.
 
 ### Pin the toolchain in your shell
 
@@ -188,7 +188,7 @@ stopbits are   : 1
 Terminal ready
 ```
 
-Quit with **Ctrl-A Ctrl-X**. Send Ctrl-C with **Ctrl-A Ctrl-C** (the leader sequence catches things picocom would otherwise intercept).
+Quit with Ctrl-A Ctrl-X. To send a real Ctrl-C to the board, press Ctrl-A then Ctrl-C — picocom uses Ctrl-A as its escape key.
 
 **Pitfall:** if you see garbage characters, the baud rate is wrong or the host's TX is fighting with the board's TX. Disconnect, double-check wiring, try `-b 57600` once to confirm.
 
@@ -209,7 +209,7 @@ When configuring any of these tools, the settings are the same we used for `pico
 
 The Linux kernel source tree is ~80,000 files. Tools that index it on a fast SSD beat ones that don't.
 
-- **Source Insight 4** (`sourceinsight.com`, commercial Windows) — extremely fast indexer, instant "Go to Definition," visual call graphs. Read-only for our purposes; popular in Chinese-language embedded communities.
+- **Source Insight 4** (`sourceinsight.com`, commercial Windows) — extremely fast indexer, instant "Go to Definition," visual call graphs. Read-only for our purposes. It is popular in Chinese-language embedded communities.
 - **VSCode + C/C++ extension** (Microsoft) — slower indexer but free, cross-platform, and you can edit. Use `compile_commands.json` from a kernel build so IntelliSense follows the right includes.
 - **`cscope` + `ctags`** in the terminal — old-school, instant, scriptable.
 - **`elixir.bootlin.com`** — kernel cross-reference in your browser, no install. Surprisingly capable.
@@ -325,7 +325,7 @@ sdc       8:32   1   7.5G  0 disk         ← this is the SD card
 └─sdc1    8:33   1   7.5G  0 part
 ```
 
-If you wipe the wrong block device you will lose your operating system. Look at the size. Look at the mount points. Then look again.
+If you wipe the wrong block device you will lose your operating system. Check the size and the mount points twice before running `dd`.
 
 A small helper script saves you from typos:
 
