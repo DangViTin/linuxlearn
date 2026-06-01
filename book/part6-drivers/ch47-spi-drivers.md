@@ -149,7 +149,7 @@ module_spi_driver(fastadc_driver);
 MODULE_LICENSE("GPL");
 ```
 
-Mirror image of the I²C driver from Ch 46. Same idioms: `module_spi_driver`, two match tables, `devm_kzalloc`, `dev_err_probe`.
+Mirror image of the I²C driver from Ch 46 — same idioms: `module_spi_driver`, two match tables, `devm_kzalloc`, `dev_err_probe`.
 
 ## 47.4  Transfers and messages
 
@@ -227,7 +227,7 @@ Like `/dev/i2c-N`, there's a user-space chardev for SPI: `/dev/spidev<bus>.<cs>`
 };
 ```
 
-Why `"rohm,dh2228fv"`? Because the kernel maintainers refuse to add `"spidev"` as a magic generic compatible (it's not a chip; it's a hack). The `dh2228fv` is one of several chip names "registered" to spidev as a workaround for development. For production, use the actual chip's compatible string with a real driver.
+Why `"rohm,dh2228fv"`? The kernel maintainers will not accept `"spidev"` as a generic compatible — spidev is not a chip, just a user-space access mechanism. The `dh2228fv` is one of several chip names "registered" to spidev as a workaround for development. For production, use the actual chip's compatible string with a real driver.
 
 > **Kernel warning since v4.15.** If you use this placeholder in a DT, `spidev_probe` prints `WARNING: Probing spidev with broken DT entry` and refuses to bind unless `CONFIG_SPI_SPIDEV` overrides are set. Modern best practice: either pick a real-chip compatible that already appears in `drivers/spi/spidev.c`'s `spidev_dt_ids[]` (e.g., `"semtech,sx1301"` for a known SPI radio), or write a proper DT overlay that adds a `compatible` your kernel build accepts. The cookbook chapters (Ch 98, 99, 101, 105, 106) use `rohm,dh2228fv` as shorthand; in production swap for the chip's real string + a tiny accepting driver, or build with the `spidev_compatible_array` patch.
 
@@ -289,9 +289,9 @@ Wrap with IIO (Ch 49) and you have an 8-channel ADC exposed via `/sys/bus/iio/de
 - **Wrong CS polarity.** If a chip wants active-high CS, the controller's default (active-low) won't drive it correctly. Use `spi-cs-high` in DT.
 - **CPOL/CPHA wrong.** Symptom: reads return 0xFF or junk. Cross-check the chip's datasheet *mode* against your DT. Mode 0 is most common; mode 3 next.
 - **Speed too high for layout.** Long traces, missing termination, no ground reference plane → garbage at 20 MHz that works fine at 1 MHz. Start slow, ramp up.
-- **Sending a single read transfer with `len` larger than your `rx_buf`.** Buffer overflow → kernel panic. The `len` is the SPI clock count; you need at least that many bytes in `rx_buf`.
+- **Sending a single read transfer with `len` larger than your `rx_buf`.** Buffer overflow → kernel panic. The `len` field is the SPI clock count, so you need at least that many bytes in `rx_buf`.
 - **Calling `spi_sync_transfer` from atomic context.** It sleeps. Use `spi_async` from atomic context, or defer to a workqueue.
-- **Native CS vs GPIO-CS subtleties.** The i.MX eCSPI native CS asserts/deasserts for each `spi_transfer`. If you need CS held across multiple `spi_transfer`s, either build them into one `spi_message` or use GPIO-CS via `cs-gpios` (which is held by software for the whole message).
+- **Native CS vs GPIO-CS subtleties.** The i.MX eCSPI native CS asserts and deasserts for *each* `spi_transfer`. To hold CS across multiple transfers, either (a) put them all in one `spi_message`, or (b) use GPIO-based CS via `cs-gpios` — software holds GPIO-CS for the whole message.
 - **`bits_per_word` != 8.** Most chips use 8-bit words. If you set 16, the controller packs two bytes per "word" — and the byte order may not be what you expect. Stay at 8 unless you have a reason.
 - **Forgetting `spi_setup` after changing mode/speed.** Changes to `spi->mode`, `spi->bits_per_word`, etc., don't take effect until you call `spi_setup`. Probe should always call it once.
 

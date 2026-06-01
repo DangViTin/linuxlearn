@@ -8,18 +8,18 @@ status: draft
 
 # Chapter 55I — Rust for Linux
 
-> **What:** the **Rust-for-Linux** project — Rust as a second-class citizen language inside the kernel since Linux 6.1. We cover the toolchain setup (rustc + bindgen + a specific Rust edition), what kernel APIs are *exposed* to Rust today, what kind of drivers can already be written, and how to compile a "hello world" kernel module in Rust.
-> **Why:** Rust's memory-safety guarantees apply at compile time. A whole class of C kernel bugs — use-after-free, double-free, data races on shared memory, integer overflows — become *unrepresentable* in safe Rust. The kernel community has accepted this as worth integrating because the security cost of these bug classes is colossal. As of 2026, Rust is still small in the kernel (drivers, no core subsystems) but growing.
+> **What:** the **Rust-for-Linux** project — Rust as a second supported language inside the kernel since Linux 6.1. We cover the toolchain setup (rustc + bindgen + a specific Rust edition), what kernel APIs are *exposed* to Rust today, what kind of drivers can already be written, and how to compile a "hello world" kernel module in Rust.
+> **Why:** Rust's memory-safety guarantees apply at compile time. A whole class of C kernel bugs becomes impossible to write in safe Rust: use-after-free, double-free, data races on shared memory, integer overflows. The kernel community has accepted this as worth integrating because these bug classes account for a large share of kernel CVEs. As of 2026, Rust is still small in the kernel (drivers, no core subsystems) but growing.
 > **Focus:** **the borrow checker, applied to kernel code**. The trade-off: more compile errors, fewer runtime errors. For a chapter on i.MX6ULL device drivers, the value is "you can do it for new drivers if you want, with caveats."
 
 ## 55I.1  Status as of late 2025 / early 2026
 
 - **In mainline**: since 6.1 (October 2022).
 - **Supported architectures**: x86_64, arm64, RISC-V, LoongArch64. **ARM32 (i.MX6ULL's architecture) is NOT yet supported.**
-- **What's written in Rust**: a small handful of drivers (NVMe, GPU, etc.). Not a wave.
+- **What's written in Rust**: a small handful of drivers (NVMe, GPU, etc.). Adoption is slow.
 - **What it takes**: nightly-ish Rust toolchain, bindgen, `CONFIG_RUST=y`.
 
-**For the i.MX6ULL specifically**: Rust isn't usable yet (ARM32 not supported). This chapter is about *the model*; you'd apply it on a different SoC (i.MX8M, Raspberry Pi 4, etc.) where Rust-for-Linux works today.
+**On the i.MX6ULL specifically**, Rust is not usable yet — ARM32 is not supported. This chapter is about *the model*; you'd apply it on a different SoC (i.MX8M, Raspberry Pi 4, etc.) where Rust-for-Linux works today.
 
 ## 55I.2  Toolchain
 
@@ -144,7 +144,7 @@ impl MyDevice<Init> {
 }
 ```
 
-The compiler refuses to call `.read()` on an uninitialised device. Classes of "did you forget to init?" bugs vanish.
+The compiler refuses to compile a call to `.read()` on an uninitialised device. The "did you forget to init?" bug class is no longer expressible.
 
 **Error handling via `Result`**:
 
@@ -159,7 +159,7 @@ fn read_register(reg: u32) -> Result<u32> {
 let val = read_register(0x40)?;     // `?` propagates errors automatically
 ```
 
-No more "did I forget to check this errno?" — the compiler insists.
+You cannot silently ignore an error — the compiler will not let you.
 
 ## 55I.5  What's *exposed* today (the limits)
 
@@ -191,7 +191,7 @@ The list grows monthly; check `rust/kernel/` in mainline.
 - Smaller community inside the kernel.
 - Tooling churn — Rust version requirements change with each kernel.
 - Toolchain disk cost (rustc + bindgen ~1.5 GB).
-- C interop requires `unsafe { }` blocks where you cross the boundary. Within those blocks, all the same C bugs are possible — Rust safety is contingent on *correctly written* unsafe code.
+- C interop requires `unsafe { }` blocks where you cross the boundary. Within those blocks, all the same C bugs are possible — Rust safety depends on the `unsafe` blocks being correct. Bugs inside `unsafe` are no different from C bugs.
 - More upfront design for the type system.
 
 **For an embedded project**: if you're writing a new driver for a chip that doesn't exist in mainline, and you control the build environment, Rust is worth considering on Rust-supported architectures. For maintaining 4.1 BSP code or anything on ARM32, not yet.

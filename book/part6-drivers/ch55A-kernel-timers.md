@@ -9,8 +9,8 @@ status: draft
 # Chapter 55A — Kernel timers and hrtimers
 
 > **What:** the kernel's two timer families — **timer_list** (jiffies-granular, ~1 ms on i.MX6ULL with HZ=1000) and **hrtimer** (high-resolution, nanosecond-granular). Used for "do X in N ms" patterns inside drivers — debouncing buttons, polling status, scheduling periodic samples.
-> **Why:** `msleep` and `mdelay` block the calling thread. Sometimes you need "fire a callback in 50 ms without blocking" — that's what these timers are for. They're foundational to many driver patterns: timeouts, periodic polling, throttling, scheduled deferred work.
-> **Focus:** **timer_list for ms granularity, hrtimer for µs/ns**. Pick the right one and the API choices follow.
+> **Why:** `msleep` and `mdelay` block the calling thread. Sometimes you need "fire a callback in 50 ms without blocking" — that's what these timers are for. Common driver patterns use them: timeouts, periodic polling, rate limiting, deferred work.
+> **Focus:** **timer_list for ms granularity, hrtimer for µs/ns**.
 
 ## 55A.1  timer_list
 
@@ -39,7 +39,7 @@ del_timer_sync(&my_timer);
 
 - **Granularity**: 1 jiffy ≈ 1 ms (HZ=1000).
 - **Context**: callback runs in softirq context (atomic). No sleeping, no `mutex_lock`, no `kmalloc(GFP_KERNEL)`.
-- **`mod_timer`**: re-schedules an existing timer to a new expiry; if not active, arms it.
+- **`mod_timer`**: re-schedules a running timer to a new expiry. If the timer is not active, it arms it.
 - **`del_timer_sync`**: deletes and waits for any in-flight callback to finish. Use in `remove`.
 
 Typical pattern — button debounce (Ch 45 lab):
@@ -61,7 +61,7 @@ static irqreturn_t button_irq(int irq, void *dev_id)
 }
 ```
 
-Each press triggers an IRQ, which re-arms the timer. If the button bounces, every bounce resets the timer; only after 20 ms of silence does the timer fire and report the press.
+Each press triggers an IRQ that re-arms the timer. If the button bounces, every bounce resets the timer. Only after 20 ms of silence does the timer fire and report the press.
 
 ## 55A.2  hrtimer
 
@@ -95,7 +95,7 @@ hrtimer_cancel(&my_hrtimer);
 
 - **Granularity**: nanoseconds, limited by hardware (i.MX6ULL's GPT has ~30 ns resolution).
 - **Context**: same — softirq, no sleeping.
-- **Periodic loops**: return `HRTIMER_RESTART` after `hrtimer_forward_now`. Drifts less than re-arming manually.
+- **Periodic loops**: return `HRTIMER_RESTART` after `hrtimer_forward_now`. It drifts less than recomputing `now + 1ms` each time.
 
 Common pattern — periodic sampling at 1 kHz:
 

@@ -9,8 +9,8 @@ status: draft
 # Chapter 110 — CAN deep dive
 
 > **What:** the deep follow-up to Ch 55C's FlexCAN intro. We compare CAN transceivers — **NXP TJA1051** (5 V classic CAN), **TJA1463** (CAN-FD with fast bit timing), **Microchip MCP2562** (5 V or 3.3 V flexible), plus the **MCP2515** SPI-CAN-controller for adding CAN to a board with no spare FlexCAN. We dig into the **CAN-FD** frame format and why arbitration vs data phase have different baud rates, **ISO-TP (ISO-15765-2)** for multi-frame transport (the basis of OBD-II / UDS diagnostics), **SocketCAN** advanced features (BCM = Broadcast Manager, J1939 daemon, CAN-XL preview), and an end-to-end **OBD-II diagnostic tool** that reads engine RPM, coolant temp, and DTCs from a real car.
-> **Why:** CAN is everywhere — every car since 2008 (US OBD-II mandate), most industrial automation, every drone autopilot, half the modern medical devices, every BLDC servo. Mainline Linux's SocketCAN is the best CAN stack on any OS: every interface looks like a network device, packets are skbs, you read/write via `sendto`/`recvfrom` on a `PF_CAN` socket. Build deep familiarity here and you become the team's go-to for vehicle/industrial integration.
-> **Focus:** **classic CAN is bit-stuffed differential bus with priority arbitration via CSMA/CR; CAN-FD adds a second bit rate during the data phase to squeeze 64 bytes through a 1 Mbps bus in ~120 µs**. The kernel handles bit-timing, error recovery, bus-off detection. The hard parts you write: ISO-TP segmentation for messages >8 bytes (every diagnostic command is one), filters to subset thousands of frames/second down to what your app cares about, and BCM cyclic-broadcast for periodic frames (heart-beats, control loops). Get the bit-timing right (sample point, SJW, prop+phase segments) or you'll see "CAN bus errors" that look like wiring problems but are firmware.
+> **Why:** CAN is everywhere — every car since 2008 (US OBD-II mandate), most industrial automation, every drone autopilot, half the modern medical devices, every BLDC servo. Mainline Linux's SocketCAN is the most complete CAN stack of any general-purpose OS: every interface looks like a network device, packets are skbs, you read/write via `sendto`/`recvfrom` on a `PF_CAN` socket. After this chapter you can take on most vehicle and industrial CAN integration work.
+> **Focus:** Classic CAN is a bit-stuffed differential bus with priority arbitration via CSMA/CR. CAN-FD adds a second, faster bit rate during the data phase. The result: 64 bytes through a 1 Mbps arbitration bus in about 120 µs. The kernel handles bit-timing, error recovery, bus-off detection. The hard parts you write: ISO-TP segmentation for messages >8 bytes (every diagnostic command is one), filters to subset thousands of frames/second down to what your app cares about, and BCM cyclic-broadcast for periodic frames (heart-beats, control loops). Get the bit timing right (sample point, SJW, prop and phase segments). Otherwise you will see CAN bus errors that look like a wiring fault but are caused by configuration.
 > **Tooling.** This chapter uses `can-utils` (full suite), `libsocketcan`, optional `python-can`.
 > - **Ubuntu-base (target):** `apt install can-utils libsocketcan-dev python3-can`
 > - **Buildroot:** `BR2_PACKAGE_CAN_UTILS=y BR2_PACKAGE_LIBSOCKETCAN=y BR2_PACKAGE_PYTHON3_PYTHON_CAN=y`
@@ -41,7 +41,7 @@ status: draft
 ```
 
 - **Arbitration**: lower ID wins; loser backs off; winner continues uninterrupted. This is **CSMA/CR** (collision resolution, not avoidance).
-- **Dominant** = 0 (driven), **recessive** = 1 (idle). A dominant always overwrites a recessive → low-ID wins.
+- Dominant is logical 0 (actively driven). Recessive is logical 1 (idle). Dominant always overwrites recessive, so the lowest-numbered ID wins arbitration.
 - **Bit-stuffing**: 5 consecutive identical bits → insert opposite bit. Receiver removes it. Adds ~20 % overhead.
 - **CRC15**: protects the frame.
 - **ACK slot**: a single bit; receivers pull it dominant if they got the frame. Lack of ACK = error.
@@ -263,7 +263,7 @@ clk16m: clk16m {
 };
 ```
 
-After `modprobe mcp251x` you get `can1`, identical SocketCAN semantics to FlexCAN. Throughput limited by SPI: 10 MHz SPI handles 500 kbps CAN cleanly; tries to falter near 1 Mbps under load.
+After `modprobe mcp251x` you get `can1`, identical SocketCAN semantics to FlexCAN. Throughput limited by SPI: 10 MHz SPI handles 500 kbps CAN cleanly. Struggles near 1 Mbps under load.
 
 ## 110.10  OBD-II — talking to a real car
 
@@ -298,7 +298,7 @@ OBD-II mode/PID list:
 - 04 → clear DTCs
 - 09 02 → VIN
 
-You can build a complete car-diagnostics dashboard in 200 lines of C + a fast Linux box.
+About 200 lines of C and a Linux board are enough to build a complete OBD-II dashboard.
 
 ## 110.11  Lab
 
@@ -326,7 +326,7 @@ You can build a complete car-diagnostics dashboard in 200 lines of C + a fast Li
 - **`flexcan` driver vs CONFIG_CAN_CALC_BITTIMING.** Without CAN_CALC_BITTIMING in your kernel config, you must specify all timing parameters explicitly. Newer kernels enable it by default.
 - **ISO-TP block size = 0 (no flow control).** Some ECUs send STmin and BS=0 (means "send everything as fast as you can"). Your transmit loop may overwhelm slower receivers; the receiver's flow control says BS=1 — respect it.
 - **J1939 source address claims.** Multi-master J1939 requires arbitration of source addresses at startup; out-of-the-box examples may skip this and you get address conflicts on a real bus.
-- **CAN_RAW_LOOPBACK on by default.** Sent frames are echoed back to your own socket. Surprising when first writing code.
+- **CAN_RAW_LOOPBACK on by default.** Sent frames are echoed back to your own socket. This surprises people writing CAN code for the first time.
 
 ## 110.13  Going deeper
 

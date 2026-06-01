@@ -10,7 +10,7 @@ status: draft
 
 > **What:** putting **multiple Ethernet interfaces** on an i.MX6ULL. The SoC has two on-chip **FEC (Fast Ethernet Controller)** instances at 100 Mbps; we bring both up simultaneously as `eth0` and `eth1` with separate PHYs. For a third (or fourth) interface, we add **WIZnet W5500** (SPI Ethernet with hardware TCP/IP) or **Microchip ENC28J60** (older, slower, mainline-supported) as `spi-ethernet` chips. We then build typical multi-NIC scenarios: a **router** (eth0 WAN, eth1 LAN), a **bridge** (eth0+eth1 transparent L2), and an **isolated subnet** for industrial bus traffic (eth1 talks only to PLCs, eth0 to corporate network).
 > **Why:** any "edge gateway" product has 2+ Ethernet ports — one to the internet, one to a local industrial network — because mixing the two on a single physical port creates security and reliability problems. The i.MX6ULL is unusual in having two on-chip FECs (most SoCs in this class have one); this is a feature you should exploit. When you need a third interface (e.g., a separate management LAN, or a Modbus-TCP island), SPI Ethernet chips are the only way without an external switch — and they're easy on Linux thanks to mainline drivers.
-> **Focus:** **dual-MAC on one SoC means two PHYs, each with its own pin-mux + clock + interrupt; the kernel netdev model already isolates them so they look like two cards. The hard part is the bring-up: pinmux conflicts (FEC1 shares many pins with FEC2 + UART), separate PHY addresses on MDIO, and per-PHY interrupt routing**. For SPI Ethernet: the W5500 is *hardware TCP/IP* (you talk to it at the socket layer over SPI, not as a netdev) which is alien on Linux; mainline-friendly choices are ENC28J60 (slow, netdev-presenting) and TI's KSZ8851 / Davicom DM9051 (10/100, netdev, faster). We cover all three patterns.
+> **Focus:** Dual-MAC on one SoC means two PHYs. Each needs its own pinmux, reference clock, and IRQ. The kernel netdev model already isolates the two MACs — they look like two NICs. The hard part is the bring-up: pinmux conflicts (FEC1 shares many pins with FEC2 + UART), separate PHY addresses on MDIO, and per-PHY interrupt routing. The W5500 implements TCP/IP in hardware. You talk to it at the socket layer over SPI, not as a netdev. This does not fit the Linux netdev model. Mainline-friendly choices are ENC28J60 (slow, netdev-presenting) and TI's KSZ8851 / Davicom DM9051 (10/100, netdev, faster). We cover all three patterns.
 > **Tooling.** This chapter uses `iproute2`, `iperf3`, `tcpdump`, `ethtool`, optional `bridge-utils`.
 > - **Ubuntu-base (target):** `apt install iproute2 iperf3 tcpdump ethtool bridge-utils`
 > - **Buildroot:** `BR2_PACKAGE_IPROUTE2=y BR2_PACKAGE_IPERF3=y BR2_PACKAGE_TCPDUMP=y BR2_PACKAGE_ETHTOOL=y BR2_PACKAGE_BRIDGE_UTILS=y`
@@ -50,7 +50,7 @@ The reference Point Atom MINI board has only FEC1 wired (single Ethernet); to br
    ENET2_*   ────────────────  same as above, separate pins
 ```
 
-Critical: each PHY has a **strap-pin-set MDIO address** (typically 0, 1, 2, …). FEC1's PHY at address 0; FEC2's PHY at address 1. Both share the MDIO bus (MDC/MDIO can be shared on most designs), and FEC2 reads address-1's registers.
+Each PHY has an MDIO address set by strap pins (typically 0, 1, 2, …). Put FEC1's PHY at address 0 and FEC2's PHY at address 1. Both PHYs can share the same MDIO bus; the FEC reads the address that matches its `phy-handle` in the DT.
 
 DT for both FECs (excerpt from `arch/arm/boot/dts/nxp/imx/imx6ull-myboard.dts`):
 
@@ -129,7 +129,7 @@ EOF
 systemctl restart dnsmasq
 ```
 
-Done. Your i.MX6ULL is a router. Add `nftables` for modern filtering, or stick with `iptables` for familiarity.
+That is the full router setup. Add `nftables` for modern filtering, or stick with `iptables` for familiarity.
 
 ## 115.4  Bridge pattern — transparent L2 between eth0 + eth1
 
@@ -164,9 +164,9 @@ Compromise of corporate side doesn't expose PLCs. Compromise of PLC subnet doesn
 
 W5500 is unusual: it's not a netdev; it's a **hardware TCP/IP stack** with 8 sockets, accessed over SPI. You don't talk Ethernet frames to it — you `OPEN`, `CONNECT`, `SEND`, `RECV` at the TCP/UDP level.
 
-This is great for tiny MCUs but awkward on Linux. The mainline kernel does not have a W5500 driver in `drivers/net/`. There are out-of-tree drivers that wrap W5500 sockets as Linux `AF_INET` sockets, but they're niche.
+This makes W5500 awkward to use on Linux. The mainline kernel does not have a W5500 driver in `drivers/net/`. There are out-of-tree drivers that wrap W5500 sockets as Linux `AF_INET` sockets, but they're niche.
 
-**Practical Linux choice**: use W5500's sockets directly from user-space via SPI. Or — pick a different chip.
+The practical Linux approach: use W5500's sockets directly from user-space via SPI, or choose a different chip (DM9051, ENC28J60) that presents as a netdev.
 
 ## 115.7  Adding a third NIC via SPI — ENC28J60 / DM9051 (mainline netdev)
 
@@ -204,7 +204,7 @@ Throughput limits:
 - DM9051 SPI at 20 MHz: ~8 Mbps (SPI overhead dominates).
 - ENC28J60 SPI at 20 MHz: ~3 Mbps.
 
-DM9051 is fine for a 3rd "management interface" or a Modbus-TCP island bus. Don't expect it to handle real traffic.
+DM9051 is adequate for a management interface or a low-rate Modbus-TCP island. It is not suitable for primary high-bandwidth traffic.
 
 ## 115.8  How the FEC driver works
 

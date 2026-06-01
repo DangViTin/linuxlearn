@@ -9,8 +9,8 @@ status: draft
 # Chapter 96 — AT-command BLE modules
 
 > **What:** BLE modules that hide the entire Bluetooth stack behind a simple UART AT-command interface. **HM-10** (CC2540/CC2541-based), **HC-08**, **JDY-08** — you send `AT+...` strings over a UART, and the module handles advertising, connection, and a transparent serial data pipe to a connected phone. No BlueZ, no kernel BT stack, no GATT programming.
-> **Why:** for products that need "send a few bytes to/from a phone app" and nothing more, the AT-BLE module is dramatically simpler than the full HCI + BlueZ stack of Ch 95. The module *is* the Bluetooth stack; Linux just talks to a UART. The trade-off: you're limited to the module's fixed GATT profile (usually a single "transparent UART" characteristic), max ~few hundred bytes/sec, and a non-standard, vendor-specific command set.
-> **Focus:** **the module is a "BLE-to-serial cable"**. After configuration, anything you write to the UART appears in the phone app (via a notify characteristic), and anything the phone sends appears on the UART RX. It's a wireless serial port. Linux needs *zero* Bluetooth code — just open `/dev/ttymxc2` and read/write.
+> **Why:** for products that need "send a few bytes to/from a phone app" and nothing more, the AT-BLE module is dramatically simpler than the full HCI + BlueZ stack of Ch 95. The module is the Bluetooth stack. Linux only talks to a UART. The trade-off is real. You are stuck with the module's fixed GATT profile, usually a single "transparent UART" characteristic. Throughput tops out at a few hundred bytes per second. The AT command set is vendor-specific and non-standard.
+> **Focus:** the module behaves like a wireless serial cable. After configuration, anything you write to the UART appears in the phone app (via a notify characteristic), and anything the phone sends appears on the UART RX. It is a wireless serial port. Linux needs no Bluetooth code — just open `/dev/ttymxc2` and call `read`/`write`.
 > **Tooling.** This chapter uses Just a UART terminal: `picocom` or `minicom`.
 > - **Ubuntu-base (target):** `apt install picocom minicom`
 > - **Buildroot:** `BR2_PACKAGE_PICOCOM=y`
@@ -29,7 +29,7 @@ status: draft
 | Cloned variants | many (firmware varies!) | several | several |
 | Volume price | $3–6 (genuine), $1–2 (clone) | $1–2 | $1–2 |
 
-**The cloning problem**: "HM-10" modules are cloned five ways, with different firmware and *different AT command syntax*. A genuine HM-10 (from Jnhuamao) responds to one command set; clones may differ. Always verify the exact AT dialect of *your* module.
+**Clone variants are a real problem.** There are at least five different "HM-10" modules in the market, each with different firmware and different AT command syntax. A genuine HM-10 (from Jnhuamao) responds to one command set; clones may differ. Always verify the exact AT dialect of *your* module.
 
 **Pick guide:**
 - **HM-10 genuine**: best-documented, most-supported. Worth the premium for the known command set.
@@ -49,7 +49,7 @@ status: draft
 
 After a phone connects, the module enters **data mode**: every byte Linux writes to the UART is sent to the phone (as a GATT notification on the module's TX characteristic); every byte the phone writes (to the module's RX characteristic) appears on Linux's UART RX. It's literally a wireless UART cable.
 
-This is *the* reason to use an AT-BLE module: your application code is just serial I/O. No D-Bus, no GATT objects, no BlueZ daemon.
+This is the main reason to choose an AT-BLE module. Your application is plain serial I/O — no D-Bus, no GATT objects, no BlueZ daemon.
 
 ## 96.3  Configuration via AT commands
 
@@ -67,7 +67,7 @@ AT+RESET        → OK              (apply + reboot)
 AT+VERS?        → +VERS:HMSoft V540  (firmware version — tells you the clone variant)
 ```
 
-(Note: genuine HM-10 commands have *no* `\r\n` terminator and *no* `=` for sets in older firmware — e.g., `AT+NAMEMyDevice` not `AT+NAME=MyDevice`. Clones vary. The `AT+VERS?` response identifies your variant.)
+Caveat on syntax. The genuine HM-10 commands omit the `\r\n` terminator and the `=` sign for set commands in older firmware (e.g., `AT+NAMEMyDevice`, not `AT+NAME=MyDevice`). Clone command sets vary. Run `AT+VERS?` first — the version response identifies your variant.
 
 A configuration sequence from Linux:
 
@@ -102,9 +102,9 @@ if (n > 0 && strncmp(buf, "LED ON", 6) == 0)
     gpiod_set_value(led, 1);
 ```
 
-That's the entire integration — no Bluetooth code, just `read`/`write` on a UART. A phone app (e.g., "Serial Bluetooth Terminal" or "LightBlue") connects to the module's name, opens the transparent characteristic, and exchanges text.
+That is the whole integration. There is no Bluetooth code — just `read` and `write` on a UART. A phone app (e.g., "Serial Bluetooth Terminal" or "LightBlue") connects to the module's name, opens the transparent characteristic, and exchanges text.
 
-Compare to Ch 95's GATT server: ~250 lines of D-Bus code vs ~10 lines of serial I/O. The AT module trades capability for simplicity.
+Compare to Ch 95's GATT server: about 250 lines of D-Bus code versus ten lines of serial I/O. AT modules trade features for simplicity.
 
 ## 96.5  When AT-BLE is the right choice (and when it isn't)
 
@@ -122,7 +122,7 @@ Compare to Ch 95's GATT server: ~250 lines of D-Bus code vs ~10 lines of serial 
 - You need control over advertising, security/pairing, or connection parameters.
 - You're building a polished product where the phone app is a real app (not a serial terminal).
 
-For a real product with a custom phone app, the BlueZ GATT path (Ch 95) is better — it gives standard GATT the app can use cleanly. The AT module is for quick, simple, "wireless serial cable" use.
+For a real product with a custom phone app, the BlueZ GATT path (Ch 95) is better — it gives standard GATT the app can use cleanly. The AT module fits quick, simple "wireless serial cable" use cases.
 
 ## 96.6  Lab
 

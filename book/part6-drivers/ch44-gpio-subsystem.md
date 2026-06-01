@@ -10,7 +10,7 @@ status: draft
 
 > **What:** the two halves of Linux's pin handling — **pinctrl** (which decides what *function* a pin has — GPIO vs UART vs I²C, plus electrical properties: drive strength, pull-up, slew rate) and **gpiod** (the modern descriptor-based API for the pins that *do* end up as GPIOs: direction and value). By the end you can request a GPIO from DT, configure pull-up, drive it, watch it for IRQs — all without ever touching an MMIO register.
 > **Why:** every real driver eventually wants a GPIO. A reset pin on a peripheral chip. A power-enable on a regulator. A `data-ready` line from a sensor. Hard-coding the MMIO writes (as we did in Part II bare-metal) couples the driver to one specific SoC. The kernel's `gpiod_*` API gives you a portable, DT-described abstraction: "this driver wants the GPIO whose DT property is `reset-gpios`," and the gpiod subsystem figures out which bank, which pin, and which register to touch.
-> **Focus:** **the descriptor abstraction**. `struct gpio_desc *` hides the bank, the pin offset, the polarity (`ACTIVE_LOW`), and the SoC-specific register layout behind one opaque handle. Once you internalise that — and stop thinking in "GPIO numbers" — every GPIO-using driver in Linux reads the same way.
+> **Focus:** **the descriptor abstraction**. `struct gpio_desc *` hides the bank, the pin offset, the polarity (`ACTIVE_LOW`), and the SoC-specific register layout behind one opaque handle. Once you accept that — and stop thinking in "GPIO numbers" — every GPIO-using driver in Linux looks the same.
 
 ## 44.1  The two-step pin model
 
@@ -30,7 +30,7 @@ Picking *which* function the pin performs is **pin multiplexing** (pinmux). Sett
 
 Only *after* you've muxed a pin as GPIO does it become a GPIO. Then a separate API — the **gpiod** subsystem — handles its direction (input/output) and value (high/low).
 
-The two-step model is a Linux invariant:
+The two-step model is fixed across Linux:
 
 ```
    DT says:        pinctrl-0 = <&pinctrl_my_button>;
@@ -280,7 +280,7 @@ module_platform_driver(blinker_driver);
 MODULE_LICENSE("GPL");
 ```
 
-Build, load. Press the button: LED toggles. ~90 lines of driver, zero MMIO writes, fully portable to any SoC with a `compatible` Linux GPIO controller.
+Build, load, press the button: the LED toggles. About 90 lines, zero MMIO writes, portable to any SoC with a Linux GPIO driver.
 
 ## 44.6  User-space access — libgpiod
 
@@ -360,11 +360,11 @@ The driver code is *unchanged* — `devm_gpiod_get(&pdev->dev, "reset", ...)` wo
 
 ## 44.9  Pitfalls
 
-- **Forgetting the pinctrl group.** Pin is still in its default mux (e.g., UART). `gpiod_get` succeeds (the GPIO controller doesn't know the pin is muxed elsewhere) but the GPIO seems "stuck" — because reads/writes hit the GPIO register, but the IOMUX routes the pin to UART. Always declare a pinctrl group that muxes the pin as GPIO, and reference it from `pinctrl-0`.
+- **Forgetting the pinctrl group.** Pin is still in its default mux (for example, UART). `gpiod_get` succeeds — the GPIO controller has no idea the pin is muxed elsewhere. But the GPIO seems "stuck": reads and writes hit the GPIO register, while the IOMUX routes the pin to UART. Always declare a pinctrl group that muxes the pin as GPIO, and reference it from `pinctrl-0`.
 - **`GPIO_ACTIVE_LOW` confusion.** The kernel's logical "asserted" hides physical polarity. If you read raw via `/sys/class/gpio/`, you see physical level. If you read via `gpiod_get_value`, you see logical. Match your DT flag to your hardware schematic.
 - **Wrong bank phandle.** `<&gpio1 ...>` vs `<&gpio2 ...>` — typo costs you hours. `gpioinfo` is your friend after boot.
 - **Calling `gpiod_set_value` (atomic) on an I²C-backed GPIO.** Kernel BUG: "scheduling while atomic." Always use `_cansleep` unless you're 100 % sure the GPIO is direct (and even then, for new code, use `_cansleep` for portability).
-- **Hog vs driver-owned pin.** Don't hog a pin that a driver will claim; the driver's `pinctrl_select_state` will fail. Hog only "ownerless" pins.
+- **Hog vs driver-owned pin.** Don't hog a pin that a driver will claim. The driver's `pinctrl_select_state` will fail. Hog only ownerless pins.
 - **Using GPIO sysfs.** Old `/sys/class/gpio/export` interface is deprecated. Use `libgpiod` and `gpioset/gpioget/gpiomon` for user-space access. Sysfs may be missing entirely on newer kernels.
 - **Pin number arithmetic.** "GPIO1 IO19 = global GPIO number 19" is wrong in some places, right in others. Global numbers are legacy. The descriptor API doesn't care about numbers; just use the DT phandle + pin offset.
 - **Forgetting `MODULE_DEVICE_TABLE`.** Driver works manually, doesn't autoload. Easy to miss; always include it.

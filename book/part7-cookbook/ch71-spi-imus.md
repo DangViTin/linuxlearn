@@ -9,8 +9,8 @@ status: draft
 # Chapter 71 — SPI IMUs
 
 > **What:** three SPI inertial sensors at increasing complexity: **Analog Devices ADXL345** (3-axis accel only, the textbook case), **STMicro LSM6DSO** (6-axis with internal FIFO and finite-state-machine), **InvenSense ICM-42688** (6-axis, low-noise, large FIFO). For each: SPI command framing (R/W bit + register address), FIFO+watermark IRQ patterns, and a from-scratch ADXL345 SPI driver with FIFO support.
-> **Why:** beyond ~400 Hz per axis, I²C's 400 kHz × ~10 bits-per-byte budget is exhausted. SPI runs at 10+ MHz, so an ICM-42688 streaming all 6 axes at 8 kHz fits comfortably. SPI also gives **per-CS configuration** (different IMUs on the same bus with different speeds and CPOL/CPHA), making multi-IMU systems easy.
-> **Focus:** **the FIFO + watermark IRQ pattern**. Instead of getting an IRQ per sample (8000/s = unacceptable), configure the chip's internal FIFO with a watermark threshold. The chip IRQs only when N samples have accumulated; the driver drains them all in one SPI burst. The CPU wakes 100×/sec instead of 8000×/sec, while still capturing every sample.
+> **Why:** beyond ~400 Hz per axis, you run out of I²C bandwidth: 400 kHz divided by ~10 bits per byte does not leave room for many channels. SPI runs at 10+ MHz, so an ICM-42688 streaming all 6 axes at 8 kHz fits comfortably. SPI also gives **per-CS configuration** (different IMUs on the same bus with different speeds and CPOL/CPHA), which makes multi-IMU systems straightforward to wire.
+> **Focus:** **the FIFO + watermark IRQ pattern**. Instead of taking one IRQ per sample (8000/s, far too many), configure the chip's internal FIFO with a watermark threshold. The chip raises its IRQ only when N samples have accumulated. The driver then drains them in a single SPI burst. The CPU wakes 100×/sec instead of 8000×/sec, while still capturing every sample.
 
 ## 71.1  Chip comparison
 
@@ -203,7 +203,7 @@ static irqreturn_t adxl345_irq_handler(int irq, void *p)
 }
 ```
 
-Compare to the per-sample-IRQ alternative: at 800 Hz with watermark = 16, the IRQ fires 50× per second instead of 800× per second. CPU load drops 16-fold; data is identical.
+Compare to the per-sample-IRQ alternative: at 800 Hz with watermark = 16, the IRQ fires 50× per second instead of 800× per second. CPU load drops 16-fold, and the captured data is the same.
 
 ## 71.5  Writing an ADXL345 SPI driver from scratch (with FIFO + watermark IRQ)
 
@@ -497,7 +497,7 @@ LSM6DSO contains a **finite-state-machine engine** (FSM) and a **machine-learnin
 - **FSM**: a small bytecode language (~256 instructions, configurable). You write a state machine ("if x_accel > 0.5 g for 100 ms then z_accel > -0.5 g for 200 ms then trigger"). The chip runs it at the IMU sample rate and emits an IRQ on match. Detect "doorbell pressed" or "drone has crashed" with zero CPU.
 - **MLC**: a decision-tree classifier (8 trees, depth 8). Compiled from a Python tool with sample-labeled training data. Detect "walking vs running vs cycling" with ~90 % accuracy at < 1 % CPU.
 
-These are special; if you need them, the LSM6DSO is irreplaceable. Mainline support: `drivers/iio/imu/st_lsm6dsx/` includes FSM and MLC firmware-loading via the IIO config interface.
+These are special; when you need FSM or MLC, no other current-production part offers the same. Mainline support: `drivers/iio/imu/st_lsm6dsx/` includes FSM and MLC firmware-loading via the IIO config interface.
 
 For ordinary use (just sample at 1 kHz), LSM6DSO is a normal SPI IMU — same model as ADXL345 with more channels and a bigger FIFO.
 
@@ -507,7 +507,7 @@ ICM-42688 has the lowest accel noise floor in this category (60 µg/√Hz) — m
 
 Register-set is bank-organised (like ICM-20948). Mainline driver: `drivers/iio/imu/inv_icm42600/`.
 
-Distinguishing feature: **two SPI ports** — UI (Userspace Interface) for normal samples, AUX for an external magnetometer pass-through. The MPU9250's aux-bus idea but cleaner.
+Its distinguishing feature is two SPI ports — UI (Userspace Interface) for normal samples, AUX for an external magnetometer pass-through. The MPU9250's aux-bus idea but cleaner.
 
 ## 71.8  Now: the mainline drivers
 
@@ -551,7 +551,7 @@ Mainline drivers expose richer attributes than our from-scratch:
 - **SPI mode wrong.** ADXL345 is mode 3 (CPOL=1, CPHA=1). LSM6DSO is mode 0 or 3. ICM-42688 is mode 0. Each datasheet's "SPI timing" diagram tells you. Wrong mode → garbage reads.
 - **CS asserted across the wrong byte count.** Reading 6 bytes but the SPI controller deasserts CS after byte 1 → chip resets pointer and you re-read register 0x32 six times. Use a single `spi_message` with all transfers chained.
 - **R/W bit position.** Bit 7. MB bit at 6. Different per chip — ICM-42688 uses different bits. Read the datasheet's "SPI protocol" section.
-- **Endianness mismatch.** ADXL345 outputs *little-endian*; MPU6050 outputs *big-endian*. Easy to swap by accident.
+- **Endianness mismatch.** ADXL345 puts data out little-endian. MPU6050 puts it out big-endian. Easy to swap by accident.
 - **FIFO overrun.** If user-space drains too slowly, the FIFO overflows and you lose samples silently. Detect via the OVERRUN bit in INT_SOURCE (FIFO_STATUS for some chips).
 - **Self-test forgotten.** Each chip has a self-test mode (forces internal mechanical stimulation). Run on power-up to verify the chip is functional; ship products with this in startup self-check.
 - **Pull-ups on /CS during reset.** Some boards leave /CS floating during SoC reset; chip enters undefined state. Tie /CS HIGH at idle (10 kΩ to VCC or controller-default).

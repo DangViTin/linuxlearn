@@ -9,8 +9,8 @@ status: draft
 # Chapter 18C — Bare-metal RTC
 
 > **What:** access the **SNVS** (Secure Non-Volatile Storage) RTC on i.MX6ULL: set the wall-clock time, read it back at runtime, and watch it survive a deliberate main-power brown-out.
-> **Why:** every product that needs to know "what time is it" — log timestamps, scheduled actions, license expiration — relies on an RTC that stays alive across power cycles. SNVS is the only always-on domain on i.MX6ULL; we need to know how to talk to it.
-> **Focus:** the **separate power domain** mental model. SNVS has its own supply pin (`VDD_SNVS_IN`, usually wired to a coin-cell or a supercap), its own oscillator (32.768 kHz), its own counter, and its own clock gate. While the main SoC sleeps or browns out, SNVS keeps counting.
+> **Why:** Any product that needs to log timestamps, run scheduled actions, or check license expiration relies on an RTC that survives power cycles. SNVS is the only always-on domain on i.MX6ULL; we need to know how to talk to it.
+> **Focus:** the separate power domain. SNVS has its own supply pin (`VDD_SNVS_IN`, usually tied to a coin cell or supercap), its own 32.768 kHz oscillator, and its own counter. When the rest of the SoC sleeps or browns out, SNVS keeps counting.
 
 ## 18C.1  What the SNVS provides
 
@@ -53,7 +53,7 @@ SNVS base = `0x020CC000` (RM ch. 47).
 
 The actual counter ticks at **32 kHz**, but the architectural view splits it: bit 14 of `LPSRTCLR` increments at 2 Hz; treat **upper 32 bits of the 48-bit concatenation** as seconds.
 
-For the purposes of this chapter we use a simpler model: read `LPSRTCMR` and `LPSRTCLR`, concatenate as 48 bits, shift right by 15 to get seconds. (Why 15: the LSB of the 32 kHz counter is `1 / 2^15 second`.) Verify the exact bit layout against your RM revision.
+For the purposes of this chapter we use a simpler model: read `LPSRTCMR` and `LPSRTCLR`, concatenate as 48 bits, shift right by 15 to get seconds. (Why 15: 32768 = 2^15, so each tick is 1/2^15 of a second; shifting right by 15 divides ticks by 32768.) Verify the exact bit layout against your RM revision.
 
 ## 18C.4  Driver
 
@@ -105,7 +105,7 @@ void rtc_init(void)
 
 uint64_t rtc_get_seconds(void)
 {
-    /* Read twice and retake on rollover -- the high word can increment
+    /* Read twice and retry on rollover. The high word can increment
      * between our reads of low and high. */
     uint32_t hi1, hi2, lo;
     do {
@@ -203,7 +203,7 @@ int main(void)
 
 ## 18C.6  The brown-out demo
 
-This is the lab that makes SNVS feel real.
+Run this lab to see SNVS in action.
 
 1. Boot, set the wall clock, observe the counter ticking up.
 2. Power-cycle the board (just unplug VBUS; keep the coin cell installed).
@@ -214,7 +214,7 @@ The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, 
 ## 18C.7  Lab
 
 1. **Build and run §18C.5.** Confirm the counter advances at 1 Hz.
-2. **Brown-out test.** As described above. Don't expect millisecond accuracy across the power cycle — the read-after-power-on may report 1-2 seconds of slack due to internal SNVS startup.
+2. **Brown-out test.** As described above. Don't expect millisecond accuracy across the power cycle. The first read after power-on may show 1–2 seconds of slack while SNVS internals settle.
 3. **Boot counter.** Add a `boot_count = rtc_scratch_read(1); rtc_scratch_write(1, boot_count + 1);` to `main`. Print it at startup. Power-cycle 10 times; confirm it counts up.
 4. **Lose VBAT.** If your coin cell is removable, pop it out, power-cycle the main rail, observe the SNVS reset (boot_count back to 0, scratch RAM at `0xDEADBEEF` lost).
 5. **Wall-clock UNIX time.** Have the user enter `t=1716595200\n` over UART; call `rtc_set_seconds`. Then print the date in a real human-readable form (`gmtime`-style). This is a small but pleasant integration exercise.
@@ -236,6 +236,6 @@ The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, 
 
 ---
 
-**End of Part II inserted chapters.** Part II proper ends with Chapter 18; Chapters 18A–C are supplementary deep-dives, reading them in order is recommended but not required.
+End of Part II's inserted chapters. Part II proper ends with Chapter 18. Chapters 18A–C are supplementary deep-dives; read them in any order, or skip them entirely.
 
-> Next chapter: **Chapter 19 — U-Boot from source, first boot.** With the bare-metal foundation complete, we switch from "writing it all ourselves" to "reading a real bootloader that does the same things."
+> Next chapter: **Chapter 19 — U-Boot from source, first boot.** With the bare-metal foundation in place, we move from writing it ourselves to reading a real bootloader that does the same things.

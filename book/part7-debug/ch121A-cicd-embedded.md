@@ -8,9 +8,15 @@ status: draft
 
 # Chapter 121A — CI/CD for embedded Linux
 
-> **What:** **continuous integration** for embedded Linux — building U-Boot, kernel, rootfs on every commit; running smoke tests on **real hardware** in a board farm via a self-hosted CI runner with USB-OTG flashing; a **Labgrid**-style test harness; pass/fail signaling back to the PR. We use **GitHub Actions** (or **GitLab CI**) with a self-hosted runner that has USB connection to a Point Atom MINI; on every push, the runner does the Ch 121 build, flashes via `uuu`, watches serial for `=>` prompt + a sysfs check, captures the serial log, marks the PR pass/fail.
-> **Why:** any embedded product shipping updates beyond one engineer's laptop needs CI. The fundamental risk: someone merges a DT change that breaks boot; nobody notices until a customer tries to update; days of fire-fighting. With CI + real-hardware smoke tests on every PR, that bug is caught in 10 minutes. The cost is one $50 dev board + one Linux box + 4 hours setup. The savings — even on a 3-person team — pay back in the first month.
-> **Focus:** **the trick is that a normal cloud CI runner has no USB to your hardware; you self-host a runner on a Linux box that physically owns the board**. GitHub Actions / GitLab CI register the self-hosted runner; the runner does cross-builds, then drives the board via uuu + a serial terminal scripted in Python. A "smoke test" is small (boot, get prompt, run 3 sanity checks, capture log) but enormously valuable. Scale from one board to a farm of 10 via Labgrid (RPC framework for board control).
+> **What:** **continuous integration** for embedded Linux. The pieces:
+> - Build U-Boot, kernel, and rootfs on every commit.
+> - Run smoke tests on **real hardware** in a board farm via a self-hosted CI runner with USB-OTG flashing.
+> - Use a **Labgrid**-style test harness.
+> - Signal pass/fail back to the PR.
+>
+> We use **GitHub Actions** (or **GitLab CI**) with a self-hosted runner that has a USB connection to a Point Atom MINI. On every push, the runner does the Ch 121 build and flashes via `uuu`. It then watches serial for the `=>` prompt, runs a sysfs check, captures the log, and marks the PR pass or fail.
+> **Why:** any embedded product shipping updates from more than one developer benefits from CI. The risk is real: someone merges a DT change that breaks boot, nobody notices until a customer tries to update, and you spend days firefighting. With CI plus real-hardware smoke tests on every PR, that bug surfaces in ten minutes. The setup cost is small (a dev board, a Linux host, and a few hours) and pays back quickly.
+> **Focus:** a normal cloud CI runner has no USB connection to your board. To run hardware tests, self-host a runner on a Linux box that physically owns the board. GitHub Actions / GitLab CI register the self-hosted runner; the runner does cross-builds, then drives the board via uuu plus a serial terminal scripted in Python. A smoke test is small (boot, get prompt, run a few checks, capture the log) but catches most regressions. Scale from one board to a farm of 10 via Labgrid (RPC framework for board control).
 
 ## 121A.1  What "CI" means for embedded
 
@@ -20,7 +26,7 @@ Traditional cloud CI (Travis, Circle, GitHub Actions hosted runners):
 - Can run unit tests on x86 (QEMU is option).
 - **Cannot** verify the binary works on real silicon.
 
-For embedded, "it compiles" is necessary but not sufficient. The real value of CI is **catching regressions on actual hardware** — a DT change that compiles but breaks boot, an MMC driver edit that boots but corrupts the rootfs, a regulator change that boots but burns more power.
+For embedded, building cleanly isn't enough. The real value of CI is **catching regressions on actual hardware** — a DT change that compiles but breaks boot, an MMC driver edit that boots but corrupts the rootfs, a regulator change that boots but burns more power.
 
 The architecture:
 
@@ -342,7 +348,7 @@ When the board farm is offline or builds fail repeatedly:
 
 ## 121A.11  Pitfalls
 
-- **Self-hosted runner security.** A runner with checkout permissions can run arbitrary PR code. Don't allow forks to trigger your hardware runner without manual approval (`pull_request_target` is dangerous).
+- **Self-hosted runner security.** A runner with checkout permissions can run arbitrary PR code. Don't allow forks to trigger your hardware runner without manual approval. `pull_request_target` runs the workflow with write permissions on the target repo, which a forked PR can abuse.
 - **USB instability.** Long USB cables drop intermittently; uuu fails randomly. Use short, shielded cables; powered hubs.
 - **uuu version drift.** New SoCs need new uuu versions; pin to a known-good.
 - **Serial port conflicts.** Two tests grabbing /dev/ttyUSB0 simultaneously = chaos. Labgrid handles locking; ad-hoc scripts need flock.

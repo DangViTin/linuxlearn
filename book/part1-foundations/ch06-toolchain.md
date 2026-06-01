@@ -10,7 +10,7 @@ status: draft
 
 > **What:** the set of programs that turn your C and assembly source into a binary your i.MX6ULL will execute.
 > **Why:** every later chapter ends with "now build it." If "build" is a black box, every failure will be too.
-> **Focus:** **(a)** that `gcc` is a *driver* over half a dozen smaller tools; **(b)** that **ELF** is the universal container, and the linker decides where every byte ends up; **(c)** that the **ABI** is a contract between every function call across your program.
+> **Focus:** **(a)** that `gcc` is a *driver* over half a dozen smaller tools; **(b)** that **ELF** is the universal container, and the linker decides where every byte ends up; **(c)** that the **ABI** is the contract that every function call in your program follows.
 
 ## 6.1  `gcc` is not one program
 
@@ -42,7 +42,7 @@ Target: arm-linux-gnueabihf
 ...
 ```
 
-For embedded work, the steps that bite are #1 (include path mismatches), #5 (linker script and wrong sysroot), and the boundary between #3 and #5 (relocation types).
+For embedded work, the steps that bite are: step 1 (include path mismatches), step 5 (linker script and sysroot problems), and the boundary between step 3 and step 5 (wrong relocation types).
 
 ## 6.2  The binutils inventory
 
@@ -85,7 +85,7 @@ Disassembly of section .text:
   900018:   eafffffe    b   900018 <main+0xc>
 ```
 
-You can read your own machine code. This is non-negotiable for embedded work.
+You can read your own machine code. For embedded work, that skill is mandatory.
 
 ### `readelf -l` to see segments
 
@@ -105,7 +105,7 @@ Program Headers:
   ...
 ```
 
-Notice: the segment marked `INTERP` says the dynamic linker for this binary is `/lib/ld-linux-armhf.so.3`. *That* is what runs first when the kernel `exec`'s this file; only after it finishes loading shared libraries does control reach `main`.
+Notice: the segment marked `INTERP` says the dynamic linker for this binary is `/lib/ld-linux-armhf.so.3`. That is what runs first when the kernel `exec`s this file. Only after the dynamic linker finishes loading shared libraries does control reach `main`.
 
 For bare-metal output we will *not* have an INTERP segment. The ELF will be statically resolved and the entry point we set is what runs.
 
@@ -208,7 +208,7 @@ Linux on i.MX6ULL is universally hard-float in 2026. So is everything we build.
 
 ## 6.6  The C library, or its absence
 
-For bare-metal code in Part II, we want **no libc at all**. We will write our own `memcpy`, our own `printf`. The reason is the same reason we are doing this book: dependencies hide assumptions.
+For bare-metal code in Part II, we want **no libc at all**. We will write our own `memcpy`, our own `printf`. The reason is the same reason we wrote this book: dependencies hide assumptions.
 
 For Linux user-space code, we use a libc. Three options:
 
@@ -218,7 +218,7 @@ For Linux user-space code, we use a libc. Three options:
 | musl | ~30 KB | Tiny, MIT-licensed, fast cold-start. Increasingly default for embedded. |
 | uClibc-ng | ~50 KB | Maintained fork of uClibc. Still used in OpenWRT/Buildroot. |
 
-We will mostly use glibc (because the Ubuntu toolchain ships it) and switch to musl for one comparison build in Chapter 34.
+We will mostly use glibc because the Ubuntu toolchain ships it. In Chapter 34 we switch to musl once for comparison.
 
 ### What libc actually provides
 
@@ -231,11 +231,11 @@ A libc bundles:
 - **POSIX threads** (`pthread_*`) — sometimes a separate `libpthread.so`, sometimes folded in.
 - **Locale, time, network, etc.**
 
-When we write bare-metal code, *none of this is available*. There is no `malloc`. There is no `printf` (we write one). There is no `errno` (we set our own). This is liberating once you accept it.
+When we write bare-metal code, *none of this is available*. There is no `malloc`. There is no `printf` (we write one). There is no `errno` (we set our own). Once you accept that, working without libc is straightforward.
 
 ## 6.7  Make, in working depth
 
-`make` is older than most engineers reading this, but for the bare-metal projects in Part II — and for every kernel / U-Boot / Buildroot build later — it is the tool of record. This section is longer than it might first seem because every later chapter references it; once you have it, you do not need it again.
+`make` is older than most engineers reading this, but for the bare-metal projects in Part II — and for every kernel / U-Boot / Buildroot build later — it is the tool you will use. This section is longer than it looks. Every later chapter references it, but once you have it down, you do not need to revisit it.
 
 ### 6.7.1  Rule shape
 
@@ -245,7 +245,7 @@ target ...: prerequisite ...
 <TAB>command
 ```
 
-`make` builds the *target* by running the *command(s)* when (a) the target does not exist, or (b) any prerequisite is newer than the target. Commands **must** be indented with a literal `TAB` — spaces do not work; the first time you cut-and-paste a rule, this bites everyone.
+`make` builds the *target* by running the *command(s)* when (a) the target does not exist, or (b) any prerequisite is newer than the target. Commands **must** be indented with a literal `TAB` — spaces do not work. Every engineer hits this the first time they cut-and-paste a rule.
 
 ### 6.7.2  Variables: four flavors of assignment
 
@@ -272,7 +272,7 @@ name := there
 $(info $(greet))   # prints "hello world"   ← immediate expansion
 ```
 
-Use `:=` everywhere by default. The `=` form is occasionally necessary (recursive expansion of generated variables) but mostly a footgun.
+Use `:=` everywhere by default. The `=` form is occasionally necessary (recursive expansion of generated variables) but mostly a trap.
 
 ### 6.7.3  Pattern rules and automatic variables
 
@@ -391,7 +391,7 @@ clean:
 .PHONY: all clean
 ```
 
-Every flag in `CFLAGS` is load-bearing:
+Every flag in `CFLAGS` matters:
 
 - `-mcpu=cortex-a7` — generate code that uses Cortex-A7 features.
 - `-mfpu=neon-vfpv4 -mfloat-abi=hard` — match what the silicon supports and the ABI we picked.
@@ -426,7 +426,7 @@ $ arm-linux-gnueabihf-gcc -o hello-dyn  hello.c          ; ls -l hello-dyn
 $ arm-linux-gnueabihf-gcc -static -o hello-stc hello.c   ; ls -l hello-stc
 ```
 
-You will see something like 8 KB dynamic vs 600 KB static (glibc). With musl, static is ~30 KB.
+Expect roughly 8 KB dynamic vs 600 KB static with glibc, or ~30 KB static with musl.
 
 ## 6.9  ELF, in just enough depth
 

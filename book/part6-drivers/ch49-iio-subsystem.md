@@ -10,7 +10,7 @@ status: draft
 
 > **What:** **Industrial I/O** (IIO) — the kernel framework that everything sensor-related lives in. ADCs, DACs, temperature/humidity/pressure/light/proximity sensors, IMUs (accel + gyro + mag), color sensors, particulate-matter sensors, current sensors — all expose themselves through one consistent API: `/sys/bus/iio/devices/iio:deviceN/in_<type>_<index>_raw` for one-shot reads, `/dev/iio:deviceN` for streamed buffers.
 > **Why:** before IIO (~2011), every sensor driver invented its own sysfs layout. Reading an ADXL345 was completely different from reading an LIS3DH despite both being 3-axis accelerometers. IIO standardised the interface: every accelerometer reports `in_accel_x_raw` in the same units after `_scale` is applied. User-space tools (`iio-utils`, libiio, gnuplot wrappers) work generically. **Every chip in Part VII's sensor cookbook is an IIO driver.**
-> **Focus:** **channels, scale, and triggers**. A *channel* is one measurable thing (accel-x, temp, ADC-in-3). A *scale* converts raw value to engineering units. A *trigger* is what causes a coordinated sample to be taken (a timer, an IRQ, a sysfs poke). Get these three concepts right and IIO clicks.
+> **Focus:** **channels, scale, and triggers**. A *channel* is one measurable thing (accel-x, temp, ADC-in-3). A *scale* converts raw value to engineering units. A *trigger* is what causes a coordinated sample to be taken (a timer, an IRQ, a sysfs poke). Get those three concepts right and the rest of IIO follows.
 
 ## 49.1  Architecture
 
@@ -219,7 +219,7 @@ For high-rate sensors (IMU at 1 kHz, ADC at 100 kHz), per-sample sysfs reads are
 The orchestration:
 
 1. Driver registers a **buffer** (`devm_iio_kfifo_buffer_setup`).
-2. User-space writes to `scan_elements/in_*_en` to enable channels.
+2. User-space writes `1` to `scan_elements/in_<channel>_en` for each channel to enable (e.g., `in_accel_x_en`, `in_accel_y_en`).
 3. User-space writes `buffer/length` to set the kfifo depth.
 4. User-space binds a **trigger** via `trigger/current_trigger` — typically `hrtimer-N` (a kernel high-resolution timer firing at a set rate).
 5. User-space writes `buffer/enable = 1`.
@@ -238,7 +238,7 @@ The orchestration:
 
 Six bytes per sample (3 axes × 2 bytes), 100 samples per read, 10 reads. The trigger drives the cadence; the driver pushes; user-space drains.
 
-We'll meet triggers and buffers again in Ch 70/71 (IMUs) where they really earn their keep.
+We come back to triggers and buffers in Ch 70/71 (IMUs), where they become essential.
 
 ## 49.7  ADC drivers — a special case
 

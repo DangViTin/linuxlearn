@@ -9,8 +9,8 @@ status: draft
 # Chapter 16 — Timers — EPIT and GPT
 
 > **What:** a 1 ms tick from EPIT1 (interrupt-driven) and a free-running 32-bit counter from GPT1 (polled). Together they give us `tick_ms()`, `udelay()`, `mdelay()`, and a cycle-precise way to measure code.
-> **Why:** before we touch the MMU or write any real drivers, we need timing. Every scheduler, every protocol stack, every "wait at least N ns then check again" needs a primitive.
-> **Focus:** the **separation of concerns** — EPIT for periodic interrupts (the kernel's tick source), GPT for free-running time (the kernel's clocksource). Linux uses two devices for the same reason; understanding the split here makes Linux's `arch_timer` and `clocksource` framework familiar.
+> **Why:** Before we touch the MMU or write real drivers we need timing primitives. Schedulers, protocol stacks, and "wait at least N ns then check again" all need them.
+> **Focus:** We use two timers because Linux does: GPT as a free-running counter (clocksource), EPIT for periodic interrupts (tick source). Seeing the split here makes Linux's `arch_timer` and `clocksource` framework easier later.
 
 ## 16.1  Two timers, two jobs
 
@@ -85,11 +85,11 @@ void mdelay(uint32_t ms)
 
 A few notes:
 
-- **Prescaler of 65 ⇒ divider 66.** The field is "divisor - 1," yet another N+1 register. With 66 MHz IPG, dividing by 66 gives a 1 MHz timer — one tick = 1 µs. Convenient.
-- **`(gpt_now_us() - start) < us`** uses unsigned subtraction modulo 2^32. This correctly handles counter wraparound for delays shorter than 2^32 µs (~71 minutes). For longer delays, extend to 64-bit accumulation.
+- **Prescaler of 65 ⇒ divider 66.** The field is "divisor - 1," yet another N+1 register. With 66 MHz IPG, dividing by 66 gives a 1 MHz timer — one tick = 1 µs. Convenient: each tick equals 1 microsecond.
+- **`(gpt_now_us() - start) < us`** uses unsigned subtraction, which wraps cleanly modulo 2^32. This handles counter rollover correctly for any delay shorter than 2^32 µs (~71 min). For longer delays accumulate into a 64-bit value.
 - **`FRR = 1`** means "free-running" — the counter keeps going past output-compare matches; it does not auto-reload to zero. This is what makes it a clocksource rather than a tick source.
 
-The `udelay` is now precise to within a microsecond (limited by the spin-loop's reaction time, which on a 696 MHz core is sub-microsecond).
+`udelay` is now precise to within 1 microsecond. On a 696 MHz core the spin-loop reaction adds well under a microsecond.
 
 ## 16.3  EPIT — periodic interrupt
 
@@ -238,7 +238,7 @@ This is *cycle-precise* but reset on power-cycle. It tells you "how many cycles 
 
 `gpt_now_us()` is *time-precise* — microseconds always mean microseconds, regardless of how the ARM core has been reclocked. (Until you change MMDC/IPG clocks; the GPT divider then needs adjusting.)
 
-Use PMU for **how efficient is this code on this CPU**; use GPT for **how long does this real-time operation take**. They answer different questions.
+Use PMU to measure cycles (how efficient is the code on this CPU). Use GPT to measure wall time (how long the real-time operation took). They answer different questions.
 
 Example: profile our 4 MB memtest from Chapter 14:
 
@@ -265,8 +265,8 @@ A 4 MB write + 4 MB read on DDR3 at 396 MHz takes ~30 ms (≈ 250 MB/s). At 696 
 
 - **Wrong CCGR bit.** GPT1 is CG10; EPIT1 is CG6; both in CCGR1. Easy to confuse.
 - **Forgetting to W1C the status flag.** EPIT_SR bit 0 is set on compare; you must write 1 to clear it inside the ISR. Otherwise the interrupt re-fires immediately and you spin forever in IRQ context.
-- **Wrong prescaler register.** GPT_PR is "divisor minus 1". For 66 MHz → 1 MHz, write 65. Not 66.
-- **EPIT_LR vs EPIT_CMPR.** LR is the reload value; CMPR is the compare threshold (usually 0). Don't swap.
+- **Wrong prescaler register.** GPT_PR holds *divisor minus 1*. To go from 66 MHz to 1 MHz the divisor is 66, so we write 65.
+- **EPIT_LR vs EPIT_CMPR:** LR is the reload value, CMPR is the compare threshold (usually 0). Don't swap them.
 - **Drift from forgotten clock changes.** If you call `clocks_init` *after* `gpt_init`, the GPT prescaler is now wrong for the new IPG. Initialize clocks first, then timers.
 - **Reading `jiffies_ms` torn across an update.** 32-bit reads are single-instruction on ARMv7-A; safe. A 64-bit counter would need a lo/hi retry loop.
 

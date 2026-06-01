@@ -9,7 +9,7 @@ status: draft
 # Chapter 8 — Hardware bring-up checklist
 
 > **What:** the physical, hands-on first contact with the Point Atom MINI. By the end you have a board you trust, a serial connection that works, an SD-card workflow, and a tested recovery path.
-> **Why:** every later chapter assumes the hardware works. The cheapest place to discover a flaky cable or a wrong jumper is *now*, not at 1 a.m. in Chapter 14 when you cannot tell whether your DDR init or your wiring is the problem.
+> **Why:** every later chapter assumes the hardware works. The cheapest time to discover a flaky cable or wrong jumper is now. Not at 1 a.m. in Chapter 14, when you can't tell whether the DDR init or the wiring is broken.
 > **Focus:** the **recovery flow over USB-OTG**. Until you have done it once with a deliberately broken SD card, you will not believe it.
 
 ## 8.1  Unbox and inspect
@@ -65,9 +65,9 @@ $ dmesg | tail -5
 $ picocom -b 115200 /dev/ttyUSB0
 ```
 
-Power the board (USB-OTG cable into a wall adapter, or the board's dedicated power input if present). If the board has an SD card with a known-good Linux image on it, you should immediately see boot messages from U-Boot. If the SD card is empty or absent, you should see nothing — but the serial console should still be alive (just idle).
+Power the board (USB-OTG cable into a wall adapter, or the board's dedicated power input if present). If the board has an SD card with a known-good Linux image on it, you should immediately see boot messages from U-Boot. If the SD card is empty or absent, you should see nothing on the console. The console itself is still alive, just idle.
 
-To prove the serial is alive *without* anything booting on the board, short the dongle's TX to its RX (no board) and type — you should see your keystrokes echo. That confirms the host side.
+To prove the host side works without the board, short the dongle's TX to its RX (no board attached) and type. You should see your keystrokes echo back.
 
 ### Garbage characters?
 
@@ -93,13 +93,13 @@ $ lsusb | grep 15a2
 Bus 001 Device 008: ID 15a2:0080 Freescale SemiConductor Inc i.MX 6 SystemOnChip in RecoveryMode
 ```
 
-That VID:PID `15a2:0080` is the i.MX6ULL Boot ROM in SDP mode. If you see it, the recovery path works. **This is the most important sentence in this chapter.**
+That VID:PID `15a2:0080` is the i.MX6ULL Boot ROM in SDP mode. If you see it, the recovery path works. That line is the most important confirmation in this chapter — keep it.
 
 If you do not see it:
 
 1. Confirm the boot switch is in SDP position.
-2. Confirm the USB-OTG cable is OTG-capable (not all microUSB cables are). On Point Atom MINI, this is the "OTG" labelled port.
-3. Power-cycle the board with the switch in SDP from the start (some revisions only sample boot pins at POR).
+2. Confirm the USB-OTG cable is OTG-capable (not all microUSB cables are). On the Point Atom MINI, this is the port labelled "OTG".
+3. Power-cycle the board with the switch in SDP from the start (POR = power-on reset; some board revisions only sample the boot pins at that moment).
 
 Flip the switch back to **SD** when done.
 
@@ -206,7 +206,7 @@ Suitable adapters:
 
 Setup is deferred to Chapter 56, where we configure OpenOCD for both U-Boot and bare-metal debugging.
 
-For now, simply identify the header and confirm it is populated. If your board revision has unpopulated JTAG pads, you may need to solder a header. This is the cheapest hardware upgrade you can buy yourself for this book.
+For now, simply identify the header and confirm it is populated. If your board revision has unpopulated JTAG pads, you may need to solder a header. This is the cheapest hardware investment for this book.
 
 ## 8.8  Network connectivity
 

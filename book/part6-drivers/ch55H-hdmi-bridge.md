@@ -9,8 +9,8 @@ status: draft
 # Chapter 55H — RGB-to-HDMI bridge (sii902x)
 
 > **What:** the **Silicon Image SiI902x** family of RGB-parallel-to-HDMI transmitter chips, and the kernel's **DRM bridge** subsystem. The i.MX6ULL has no native HDMI; an SiI9022/SiI9024 chip on the LCDIF parallel output gives you HDMI. The mainline `sii902x.c` DRM bridge driver handles config and EDID parsing.
-> **Why:** any product that needs an external display (HMI, kiosk, signage) usually wants HDMI compatibility. SiI902x is a tiny, ~$2 chip that takes 24-bit RGB + HSYNC/VSYNC/PCLK and outputs HDMI 1.4 at up to 1080p60. Drops onto any i.MX6ULL board.
-> **Focus:** **the bridge concept**. A DRM "bridge" sits between a CRTC (LCDIF) and a connector (HDMI port). Linux's DRM framework chains bridges automatically; you describe the chain in DT and the driver activates appropriately.
+> **Why:** any product that needs an external display (HMI, kiosk, signage) usually wants HDMI compatibility. SiI902x is a small, low-cost (~$2) chip that takes 24-bit RGB + HSYNC/VSYNC/PCLK and outputs HDMI 1.4 at up to 1080p60. It works on any i.MX6ULL board with LCDIF pinmux available.
+> **Focus:** **the bridge concept**. A DRM "bridge" sits between a CRTC (LCDIF) and a connector (HDMI port). DRM chains bridges automatically. You describe the chain in DT and the driver does the rest.
 
 ## 55H.1  Hardware
 
@@ -75,7 +75,7 @@ hdmi_connector: hdmi-connector {
 };
 ```
 
-Three nodes form the graph: LCDIF → SiI902x → HDMI-connector. DRM bridge chain wires them.
+Three DT nodes form the graph: LCDIF, SiI902x, and the HDMI connector. The DRM bridge chain wires them together.
 
 ## 55H.3  How it works
 
@@ -105,7 +105,7 @@ Set a mode:
 [root@pa-mini:~]# modetest -M mxsfb -s 42:1920x1080
 ```
 
-But: i.MX6ULL's LCDIF clocks ceilings at ~80 MHz pixel clock. 1080p60 is 148.5 MHz; doesn't work. Practical max on i.MX6ULL via SiI902x is 720p (74.25 MHz). 480p, 576p, 720p all work.
+However, the i.MX6ULL LCDIF tops out at about 80 MHz pixel clock. 1080p60 is 148.5 MHz; doesn't work. Practical max on i.MX6ULL via SiI902x is 720p (74.25 MHz). 480p, 576p, 720p all work.
 
 ## 55H.4  Audio over HDMI
 
@@ -127,7 +127,7 @@ SiI902x also carries audio. With `#sound-dai-cells = <0>;`, the chip exposes an 
 - **DDC pull-ups missing.** EDID read fails. Schematic check.
 - **Pixel clock > 80 MHz.** LCDIF chokes. Stay ≤ 720p on i.MX6ULL.
 - **No frame-rate match.** Some monitors require specific timings; the EDID list filters out invalid ones but check the kernel debug output.
-- **Output looks blank but kernel says "modeset OK."** Often the HDMI receiver is using a different format than the bridge is sending. SiI902x defaults to RGB; some old TVs want YCbCr. Force RGB via property if needed.
+- **Modeset reports OK but the screen stays blank.** Often the HDMI sink is expecting a different pixel format than the bridge sends. SiI902x defaults to RGB; some old TVs want YCbCr. Force RGB via property if needed.
 
 ## 55H.7  Going deeper
 

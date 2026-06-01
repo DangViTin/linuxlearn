@@ -10,7 +10,7 @@ status: draft
 
 > **What:** small, working bare-metal drivers for I²C (read an EEPROM byte), SPI (read a flash JEDEC ID), and a tiny eLCDIF "draw a color bar." Plus a one-section reflection on what's left to do bare-metal vs what we move to U-Boot for.
 > **Why:** the rest of Part VI will teach these same peripherals inside Linux, where the abstractions are thicker. Touching the raw controllers here, once, makes the Linux drivers feel like simplifications rather than magic.
-> **Focus:** the **driver shape that repeats** — clock, IOMUX, register-init sequence, polled state machine, optional IRQ. Once you can write a peripheral driver bare-metal, the Linux equivalent is mostly bookkeeping.
+> **Focus:** the driver pattern that repeats: clock, IOMUX, register init, polled state machine, optional IRQ. After writing a few bare-metal drivers, the Linux equivalents look mostly like glue.
 
 ## 18.1  Why this chapter is optional
 
@@ -20,7 +20,7 @@ What this chapter buys you:
 
 - **Familiarity with the register shape** of three common peripherals before you meet them under Linux.
 - **A fall-back debugging skill** — if a Linux driver misbehaves, you can sometimes write a 50-line bare-metal stub to probe the hardware directly and isolate the issue.
-- **Confidence that the Linux abstractions are not hiding magic.** Every subsystem callback eventually pokes the registers in this chapter.
+- **Confidence that the Linux abstractions are not hiding anything you haven't seen.** Every subsystem callback eventually writes the registers in this chapter.
 
 Read it if you have the appetite. Skip it if you are eager to see U-Boot. After Chapter 18, three more supplementary chapters (**18A** Project organization, **18B** Button + beep, **18C** Bare-metal RTC) extend bare-metal coverage further — those are independent of each other and of Chapter 18; you can read any combination of them.
 
@@ -46,7 +46,7 @@ write {addr<<1 | 1} → ack? → set TXAK=1 (NAK after next byte) → read I2DR 
 read I2DR → STOP
 ```
 
-The "read I2DR" step is doubled because the first read latches the byte; the second returns it.
+The "read I2DR" step is doubled: the first read latches the byte, the second returns it.
 
 `i2c.c`:
 
@@ -151,7 +151,7 @@ ECSPI1 base = `0x02008000`. Registers (the ones we use):
 | `ECSPI_PERIODREG` | `+0x1C` | Inter-burst period |
 | `ECSPI_TESTREG` | `+0x20` | Loopback (testing) |
 
-We will *not* try to be efficient. We want correctness; we send and receive one byte at a time.
+We are not trying to be efficient. We want correctness, so we send and receive one byte at a time.
 
 ```c
 #define ECSPI1_BASE 0x02008000
@@ -248,7 +248,9 @@ void lcd_init_color_bars(void)
 }
 ```
 
-The full set of timing values runs to ~30 register writes for a typical 800×480 RGB panel. We do not include them inline; they are panel-specific. (Omitted here; panel-specific.)> **Cache caveat.** Because we enabled the D-cache in Chapter 17, our writes to `framebuffer` are cached. The eLCDIF DMA-reads from physical DRAM — it does **not** snoop the L1 cache. Result: the panel shows stale or partial data. Fix: either map the framebuffer as Device memory (slower writes) or `dcache_clean_range(framebuffer, sizeof(framebuffer))` after each frame update. The same issue under Linux is solved by allocating the framebuffer with `dma_alloc_coherent`, which gives you a non-cached mapping.
+A full set of timing values is about 30 register writes for a typical 800×480 RGB panel. They are panel-specific, so we omit them here.
+
+> **Cache caveat.** Because we enabled the D-cache in Chapter 17, our writes to `framebuffer` are cached. The eLCDIF DMA-reads from physical DRAM — it does **not** snoop the L1 cache. Result: the panel shows stale or partial data. Fix: either map the framebuffer as Device memory (slower writes), or call `dcache_clean_range(framebuffer, sizeof(framebuffer))` after each frame update. The same issue under Linux is solved by allocating the framebuffer with `dma_alloc_coherent`, which gives you a non-cached mapping.
 
 This is the kind of thing you only discover when you do it bare-metal.
 
@@ -265,7 +267,7 @@ Look back at the I²C, SPI, and (sketched) LCD drivers. The structure is the sam
 6. teardown()              // disable on shutdown (we usually skip on bare metal)
 ```
 
-Every peripheral in this book — and every Linux driver in Part VI — follows this shape. The Linux abstractions (`platform_driver`, `i2c_driver`, `spi_driver`) hide the boilerplate, but the underlying register choreography is identical. Touching it raw, once, removes the mystery.
+Every peripheral in this book, and every Linux driver in Part VI, follows this shape. The Linux abstractions (`platform_driver`, `i2c_driver`, `spi_driver`) hide the boilerplate, but the underlying register choreography is identical. Doing it raw once removes the mystery.
 
 ## 18.6  Why the required-path ends here
 
@@ -324,6 +326,6 @@ Pick at least one:
 
 **End of the required path through Part II.**
 
-You have written, by hand, a complete bare-metal stack from reset vector to interrupt-driven multi-peripheral execution out of DRAM with MMU and caches active. The ten chapters 9–18 of Part II are the most concentrated single block of low-level engineering in this book; they are also the chapter set you will reach for again when something deep goes wrong in Parts III–VII.
+You have written, by hand, a complete bare-metal stack from reset vector to interrupt-driven peripherals running from DRAM with MMU and caches on. Come back to Chapters 9–18 whenever something deep goes wrong in Parts III–VII.
 
-> **Next, choose:** read one or more of the supplementary chapters **18A** (Project organization), **18B** (Button + beep), **18C** (Bare-metal RTC) — or skip directly to **Part III, Chapter 19 — U-Boot, from source, first boot.** Now that you have done it the hard way, you get to see how the professionals package it.
+> **Next, choose:** read one or more of the supplementary chapters **18A** (Project organization), **18B** (Button + beep), **18C** (Bare-metal RTC) — or skip directly to **Part III, Chapter 19 — U-Boot, from source, first boot.** Next we read U-Boot and see how a production bootloader packages the same work.

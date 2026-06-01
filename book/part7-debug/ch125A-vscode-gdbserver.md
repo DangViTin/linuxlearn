@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 125A — VSCode + gdbserver remote-debug workflow
 
-> **What:** the **IDE-driven cross-debug workflow** for engineers who prefer Visual Studio Code over the gdb command line. **`gdbserver`** on the target; **`gdb-multiarch`** on the host; VSCode's C/C++ extension + `launch.json` joining them; `.vscode/c_cpp_properties.json` resolving headers from the cross-sysroot so "Go to Definition" works on both your app *and* kernel sources. Plus a sidebar on **Source Insight** for read-only kernel-source navigation (it's old but still the fastest tool for that one task).
-> **Why:** many readers come from microcontroller backgrounds where the IDE *is* the debugger (Keil, IAR, STM32CubeIDE). Asking them to learn `gdb` tui mode is a barrier they shouldn't have to clear. VSCode + the right config gives the same click-to-set-breakpoint experience cross-debugging a remote ARM target, while leaving the underlying gdb fully scriptable for when you do want the command line. The cost is one-time `launch.json` setup; the payoff is every subsequent debug session.
-> **Focus:** **VSCode's debug UI is a shell around gdb; the `launch.json` is its config; you tell it which gdb binary to use, what binary to debug, what host:port to connect gdbserver on, and where the source tree lives**. The trick is `c_cpp_properties.json`: point IntelliSense at the **target's** sysroot headers, not the host's; otherwise "Go to Definition" finds your laptop's `stdio.h` instead of the cross-compiled one. With both files right, IDE-style debug + perfect Go-to-Definition makes embedded debugging as productive as desktop development.
+> **What:** the **IDE-driven cross-debug workflow** for engineers who prefer Visual Studio Code over the gdb command line. **`gdbserver`** on the target; **`gdb-multiarch`** on the host; VSCode's C/C++ extension and `launch.json` tying them together; `.vscode/c_cpp_properties.json` resolving headers from the cross-sysroot so "Go to Definition" works on both your app *and* kernel sources. Plus a short note on Source Insight, an old commercial editor that's still the fastest tool for read-only kernel-source navigation.
+> **Why:** many readers come from microcontroller backgrounds where the IDE *is* the debugger (Keil, IAR, STM32CubeIDE). Forcing them to learn gdb's tui mode just to set a breakpoint is unnecessary. VSCode plus the right config gives the same click-to-set-breakpoint experience cross-debugging a remote ARM target, while leaving the underlying gdb fully scriptable for when you do want the command line. Setting up `launch.json` once pays back every debug session after.
+> **Focus:** VSCode's debug UI is a wrapper around gdb. `launch.json` configures it. You set: which gdb binary, which binary to debug, where gdbserver listens, and where the source tree lives. The non-obvious part is `c_cpp_properties.json`. It must point IntelliSense at the target's sysroot headers, not the host's. Otherwise "Go to Definition" finds your laptop's `stdio.h`, not the cross-compiled one. With both files right, IDE-style debug and accurate Go-to-Definition make embedded debug feel close to desktop.
 
 ## 125A.1  Target side — install gdbserver
 
@@ -22,7 +22,7 @@ apt install gdbserver
 # Static-linked is preferable so it works even with weird libc situations
 ```
 
-`gdbserver` is small (~100 KB statically linked); no debug-info needed on the target.
+`gdbserver` is small — about 100 KB statically linked — and needs no debug info on the target.
 
 ## 125A.2  Host side — VSCode + extensions
 
@@ -132,7 +132,7 @@ VSCode runs this task before launching debug; gdbserver is up; the debug session
 }
 ```
 
-With this, hover-over-symbol and "Go to Definition" find the target's headers, not your host's. Critical: without this, IntelliSense reports cross-compile-time errors that don't actually exist (because it thinks you're targeting x86 but ARM-only macros are not defined).
+With this, hover-over-symbol and "Go to Definition" find the target's headers, not your host's. Without this, IntelliSense reports errors that aren't real: it thinks you're compiling for x86, so ARM-only macros are undefined and code inside `#ifdef __arm__` looks dead.
 
 ## 125A.4  Debugging workflow
 

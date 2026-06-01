@@ -10,7 +10,7 @@ status: draft
 
 > **What:** a structural understanding of the CPU core inside the i.MX6ULL, expressed as differences from Cortex-M parts you already know.
 > **Why:** Linux exists *because* the A-profile cores have features the M-profile cores lack. If MMU, privilege levels, and the generic timer are vague, the kernel's boot sequence will be vague too.
-> **Focus:** the three concepts that justify the entire kernel — **privilege levels**, **the MMU**, and **banked registers / exception modes**. Internalize these and most kernel design choices follow.
+> **Focus:** the three concepts that justify the entire kernel: privilege levels, the MMU, and banked registers / exception modes. Get these and most kernel design choices follow.
 
 ## 4.1  Where the Cortex-A7 sits in the ARM lineup
 
@@ -19,9 +19,9 @@ ARM names its cores along two axes:
 - **Profile letter.** `A` for "Application" (smartphones, set-top boxes, embedded Linux), `R` for "Real-time" (storage controllers, automotive), `M` for "Microcontroller" (the Cortex-M0/M3/M4/M7/M33 you have worked with).
 - **Architecture version.** v6, v7, v8, v9. The version determines the instruction set and which features are present; the core implementation determines pipeline depth, cache topology, and clock ceiling.
 
-The i.MX6ULL contains a single **Cortex-A7** core, which implements **ARMv7-A** with the **VFPv4** floating-point unit and **NEON** SIMD. There is also a small **Cortex-M4** companion on i.MX6 *SoloX* and bigger family members — there is **no Cortex-M4** on i.MX6ULL. The single A7 is alone. The silicon's **architectural maximum** is **800 MHz** (industrial bin) or **900 MHz** (consumer/commercial bin) per the i.MX6ULL reference manual; most BSPs — including the Point Atom factory image — clock the part at **528 MHz** or **696 MHz** to stay in a more comfortable voltage / power / thermal envelope. We run at the BSP-default **696 MHz** throughout this book.
+The i.MX6ULL has one Cortex-A7 core with VFPv4 and NEON. Bigger i.MX6 parts (e.g. SoloX) also carry a Cortex-M4 companion. The i.MX6ULL does not — it is A7 only. The silicon's **architectural maximum** is **800 MHz** (industrial bin) or **900 MHz** (consumer/commercial bin) per the i.MX6ULL reference manual; most BSPs — including the Point Atom factory image — clock the part at **528 MHz** or **696 MHz** to stay in a more comfortable voltage / power / thermal envelope. We run at the BSP-default **696 MHz** throughout this book.
 
-Cortex-A7 is, by the standards of 2026, a slow core. It is in-order, dual-issue, with a short pipeline (8 stages). Its strength is power efficiency, silicon area, and *price*. It is also, for our purposes, **simpler to reason about** than its big-core siblings (A53/A72/A76), which is why we picked it.
+By 2026 standards Cortex-A7 is a slow core: in-order, dual-issue, 8-stage pipeline. Its strengths are power, area, and price. For our purposes it is also easier to reason about than the bigger A53/A72/A76 cores, which is why we picked it.
 
 ## 4.2  The features Cortex-M does not have
 
@@ -43,7 +43,7 @@ Stand a Cortex-M7 datasheet next to a Cortex-A7 TRM and the list of "things only
 | Atomic ops | LDREX/STREX (M7 onwards; M0/M0+ have none) | LDREX/STREX (same family) |
 | Instruction set | Thumb-2 only | ARM + Thumb-2, sometimes ThumbEE |
 
-Every row above explains *something* about Linux. The MMU exists so multiple processes can have private address spaces. Banked registers exist so taking an exception does not corrupt user-space state. The generic timer exists so the kernel does not have to argue with the bootloader over who programs the tick source. NEON exists so glibc's `memcpy` is fast. And so on.
+Every row above explains something about Linux. The MMU gives each process a private address space. Banked registers stop an exception from trashing user-mode state. The generic timer means the kernel does not fight the bootloader over the tick source. NEON makes glibc's `memcpy` fast.
 
 ## 4.3  Exception modes and banked registers
 
@@ -56,7 +56,7 @@ In Cortex-M, when an interrupt fires:
 3. Your ISR runs.
 4. `BX LR` (with the magic EXC_RETURN value in LR) tells the CPU to unstack and resume.
 
-In Cortex-A (ARMv7-A), there is no auto-stacking. Instead, the CPU has **nine processor modes**, each with its own banked copies of certain registers. When an exception fires, the CPU switches to the appropriate mode; the new mode's banked registers shadow the user-mode ones; *your handler is responsible* for saving anything else it wants to preserve.
+In Cortex-A (ARMv7-A) there is no auto-stacking. The CPU has **nine processor modes**, each with its own banked copies of certain registers. When an exception fires, the CPU switches to the right mode. The new mode's banked registers shadow the user-mode ones. Your handler must save anything else it wants to keep.
 
 ### The nine modes
 
@@ -93,7 +93,7 @@ The full banked-register layout, columns showing per-mode visibility:
 
 Total physical register count exposed by Cortex-A7: **34 general-purpose**, **8 status (CPSR + 7×SPSR)**, plus ELR_hyp — 43 registers, of which at most 18 are visible from any single mode.
 
-In other words, each exception mode has **its own stack pointer** and **its own link register**. When an IRQ fires, the CPU does not push anything; it simply switches to IRQ mode, and now `SP` refers to a different physical register than it did a microsecond ago. The IRQ handler runs with that IRQ-mode stack. To return, it copies `SPSR_irq` back into CPSR and `LR_irq` back into PC.
+In other words, each exception mode has **its own stack pointer** and **its own link register**. When an IRQ fires, the CPU does not push anything. It just switches to IRQ mode, and `SP` now points to a different physical register than it did one cycle earlier. The IRQ handler runs with that IRQ-mode stack. To return, it copies `SPSR_irq` back into CPSR and `LR_irq` back into PC.
 
 ### What this means in practice
 
@@ -110,7 +110,7 @@ irq_entry:
     rfeia   sp!                 @ return from exception
 ```
 
-The Cortex-M equivalent is nothing — the hardware did it for you. The A-profile design trades hardware simplicity (cheaper silicon) for software complexity (more careful entry/exit code). Linux's `entry-armv.S` is one large fortress of code dedicated to exactly this.
+The Cortex-M equivalent is nothing — the hardware did it for you. A-profile trades cheaper silicon for trickier entry/exit code. Linux's `entry-armv.S` is the file that handles all of it.
 
 ### PL0 vs PL1 vs PL2
 
@@ -126,7 +126,7 @@ Every system register, every cache maintenance instruction, every CP15 access re
 
 Linux runs user space in USR mode (PL0) and the kernel in SVC mode (PL1). The transition between them — what the kernel calls "userspace ↔ kernelspace" — is, mechanically, a mode switch triggered by an `svc` instruction or an interrupt.
 
-> **Focus.** When you read in a Linux kernel book that "syscall switches to kernel mode", what that *means*, on this hardware, is: an `svc` instruction triggered a Supervisor Call exception, which moved the CPU from USR mode (PL0) to SVC mode (PL1), banked LR and SP swapped to their SVC-mode copies, and the exception handler began running with full privileges. There is nothing magical about it. It is a normal exception, same family as IRQ.
+> **Focus.** When a Linux kernel book says "syscall switches to kernel mode", here is what happens on this hardware. An `svc` instruction triggers a Supervisor Call exception. The CPU moves from USR mode (PL0) to SVC mode (PL1). LR and SP swap to their SVC-mode copies, and the handler runs with full privileges. It is a normal exception, same family as IRQ.
 
 ## 4.4  The CPSR / SPSR program status registers
 
@@ -194,7 +194,7 @@ Each L1 / L2 entry also carries:
 
 The **TLB** caches recent walks. There is also an **ASID** (Address Space ID, 8 bits) that tags TLB entries so context switches do not need a full TLB flush.
 
-We will build, by hand, a minimal L1-only page table in Chapter 17. Once you have done that exercise, every kernel memory-management bug will be ten times easier to think about.
+We will build, by hand, a minimal L1-only page table in Chapter 17. Once you have done that exercise, kernel memory bugs are much easier to read.
 
 ### What the kernel does with this
 
@@ -212,7 +212,7 @@ Cortex-A7 has separate **L1 instruction** and **L1 data** caches (32 KB each, 4-
 
 Two things about A-profile caches that bite Cortex-M-trained engineers:
 
-1. **Caches are off at reset.** Just like Cortex-M, but unlike Cortex-M, you cannot easily run usefully fast without them. Enabling caches is one of the first things any A-profile bootloader does after MMU setup.
+1. **Caches are off at reset.** Same as Cortex-M. The difference is that on A-profile you cannot get useful performance without them. Enabling caches is one of the first things any A-profile bootloader does after MMU setup.
 2. **L1 caches are PIPT on Cortex-A7** (Physically Indexed, Physically Tagged — per the Cortex-A7 MPCore TRM, ARM DDI 0464). PIPT means no virtual-address aliasing for normal cache lines, so the painful VIPT-aliasing class of bugs that the earlier ARM cores (and Cortex-A9) had does not apply here. You still care about cache maintenance for DMA-coherent code (Chapter 51), but for ordinary access there is no aliasing to worry about. *(Some surface-level docs say Cortex-A7 L1-D is VIPT; the TRM is authoritative.)*
 
 Cache maintenance is done via **CP15** coprocessor instructions:
@@ -280,7 +280,7 @@ retry:
     bne     retry
 ```
 
-Cortex-M has the same instructions; the surprise on A-profile is that you must also use the right barrier afterwards if you need ordering against unrelated memory.
+Cortex-M has the same instructions. The surprise on A-profile is that you also need the right barrier afterwards if you want ordering against unrelated memory.
 
 ## 4.10  NEON and VFP
 
@@ -288,7 +288,7 @@ VFPv4 gives you 32 double-precision FP registers and the usual IEEE-754 operatio
 
 For kernel code, NEON/VFP are **disabled by default**. Touching them in kernel context requires `kernel_neon_begin()` / `kernel_neon_end()` — failing to do so corrupts user-space FP state on context switch. Most drivers never need NEON; some crypto and codec paths do.
 
-For user space, NEON is just there — `libc`'s `memcpy`, `memset`, `strcmp` use it. You will see it in `objdump -d` of any glibc binary.
+For user space, NEON is always available. `libc`'s `memcpy`, `memset`, and `strcmp` use it, and you will see it in any glibc `objdump -d`.
 
 ## 4.11  Differences between Cortex-A7 and the bigger A-cores
 
@@ -331,7 +331,7 @@ Bookmark each. We will refer to them often.
 
 ## 4.14  Going deeper
 
-- ARM DDI 0406 — *ARM Architecture Reference Manual, ARMv7-A/R*. The bible.
+- ARM DDI 0406 — *ARM Architecture Reference Manual, ARMv7-A/R*. The reference of last resort.
 - ARM DDI 0464 — *Cortex-A7 MPCore Technical Reference Manual*. The implementation specifics.
 - ARM IHI 0048B — *ARM Generic Interrupt Controller v2 Architecture Specification*.
 - ARM DEN 0013 — *Cortex-A Series Programmer's Guide*. The friendliest tutorial-style overview.

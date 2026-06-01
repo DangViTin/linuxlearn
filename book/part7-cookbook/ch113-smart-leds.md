@@ -10,7 +10,7 @@ status: draft
 
 > **What:** the **addressable RGB LED strip** — daisy-chained programmable pixels where each pixel is RGB (WS2812) or RGBW (SK6812) or has independent global brightness (APA102). We cover the timing-critical 800 kHz one-wire protocol of WS2812 + SK6812, why bit-banging from Linux fails without PREEMPT_RT, the three production-quality implementations on the i.MX6ULL — (1) **SPI + DMA encoding** (the workhorse), (2) **PWM + DMA** (alternative for boards with spare PWM), (3) **bit-bang under PREEMPT_RT** (only viable for short strips). Then APA102's clean SPI native protocol that sidesteps all the timing pain.
 > **Why:** every modern indicator strip, status display, mood-lighting product, holiday string light, LED ring around a Wi-Fi-enabled doorbell, automotive interior accent — all use these three families. Hundreds of pixels per meter, $0.05 per pixel at volume, the only daisy-chained interface that scales to 1000+ LEDs on a single data line. Yet driving them from Linux is "interesting" — the WS2812 wire protocol uses 350 ns and 800 ns pulses; Linux IRQ jitter is microseconds. Understanding the SPI + DMA trick lets you drive any-length strip at 30+ fps with < 5 % CPU.
-> **Focus:** **WS2812/SK6812 encode bits as pulse widths on a single wire: a "0" bit = 350 ns high + 800 ns low; a "1" bit = 800 ns high + 450 ns low; reset = 50+ µs low; one byte per channel × 3/4 channels × N LEDs all back-to-back**. Bit-banging from Linux user-space is hopeless (microsecond IRQ jitter > nanosecond timing budget). The trick: each WS2812 "bit" becomes 4 SPI bits at 3.2 MHz; a "0" is encoded as `1000`, a "1" as `1110`. The SPI bitstream becomes the WS2812 waveform after DMA pushes it out hands-off. APA102 is the escape hatch — separate clock + data lines, no timing constraints.
+> **Focus:** WS2812 and SK6812 encode bits as pulse widths on a single wire. A "0" bit is 350 ns high followed by 800 ns low. A "1" bit is 800 ns high followed by 450 ns low. A reset is 50 µs or more of low. Each LED takes 24 bits (3 channels × 8) — or 32 bits for RGBW — and the whole strip is one back-to-back stream. Bit-banging from Linux user-space does not work. The IRQ jitter is microseconds; the WS2812 timing budget is hundreds of nanoseconds. The trick: each WS2812 "bit" becomes 4 SPI bits at 3.2 MHz; a "0" is encoded as `1000`, a "1" as `1110`. The SPI bitstream becomes the WS2812 waveform after DMA pushes it out hands-off. APA102 is the escape hatch — separate clock + data lines, no timing constraints.
 > **Tooling.** This chapter uses `libgpiod` (`gpioset`) for hello-world; the SPI-DMA path uses raw `/dev/spidev`; optional `python3-spidev`.
 > - **Ubuntu-base (target):** `apt install gpiod libgpiod-dev python3-spidev`
 > - **Buildroot:** `BR2_PACKAGE_LIBGPIOD=y BR2_PACKAGE_PYTHON3_SPIDEV=y`
@@ -48,7 +48,7 @@ Each LED captures 24 bits of data (or 32 for RGBW), then forwards the rest down 
 
 A 100-LED strip = 2400 bits × 1.25 µs/bit = 3 ms transfer + 50 µs reset → max ~328 fps theoretical, but the data line settling and chip latch reduce this. 30 fps is comfortable for most apps.
 
-## 113.3  The SPI + DMA trick — gospel for embedded Linux
+## 113.3  The SPI + DMA pattern — the standard approach in embedded Linux
 
 Encode each WS2812 bit as 4 SPI bits at 3.2 MHz (312.5 ns per SPI bit):
 - WS2812 "0" = SPI `1000` → 312.5 ns high + 937.5 ns low ≈ within spec
@@ -101,7 +101,7 @@ static void send_strip(int spi_fd) {
 }
 ```
 
-Wire MOSI → strip's DIN. Use a 74AHCT125 buffer to convert 3.3 V MOSI to 5 V logic level (WS2812 expects 0.7 × VDD = 3.5 V "high" threshold; 3.3 V may or may not work depending on strip batch — buffer always).
+Wire MOSI to the strip's DIN. Always add a 74AHCT125 buffer to convert 3.3 V MOSI to 5 V. The WS2812 datasheet specifies VIH = 0.7 × VDD = 3.5 V; 3.3 V is below that. Some strip batches accept it; many do not. Buffer every time.
 
 Now you have 30+ fps RGB animations on a strip with ~3 % CPU. Add animation logic (rainbow shift, fade, audio-reactive) on top.
 
@@ -146,7 +146,7 @@ for (int led = 0; led < N_LEDS; led++) {
 
 `busy_wait_ns` is a tight `clock_gettime` loop. Works for 10–30 LEDs reliably; fails above ~50 (a single interrupt or migration jitter corrupts a bit, all subsequent LEDs latch the wrong data).
 
-**Don't ship this** — it's a demo trick, not a production approach. Use SPI + DMA.
+Do not ship this approach. It is useful as a demo only. Production designs should use SPI + DMA.
 
 ## 113.6  APA102 — the timing-painless alternative
 

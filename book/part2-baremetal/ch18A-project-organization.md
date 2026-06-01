@@ -9,8 +9,8 @@ status: draft
 # Chapter 18A — Project organization
 
 > **What:** refactor the monolithic single-file layout we used through Chapter 17 into a real project tree — `bsp/` folder with one subdirectory per peripheral, a single `imx6ull.h` containing all register definitions, and a top-level Makefile that builds and links everything cleanly.
-> **Why:** once a bare-metal project crosses ~500 lines and ~3 peripherals, the single-file layout costs more than it saves. Every new peripheral becomes a merge conflict with the one before it. Every register `#define` competes for namespace with every other. We pay this debt off now, before Part III's U-Boot work expects us to organize larger codebases.
-> **Focus:** **the BSP folder pattern** (one driver = one folder = one `.h` + one `.c`) and **`imx6ull.h` as a single source of truth** for register layout. Both are what the NXP SDK's `MCIMX6Y2.h` formalizes at the level of generated struct headers. We do the *manual* version so the *automated* version makes sense.
+> **Why:** once a bare-metal project crosses ~500 lines and ~3 peripherals, the single-file layout costs more than it saves. Every new peripheral becomes a merge conflict with the one before it. Every register `#define` competes for namespace with every other. We refactor now, before Part III's U-Boot work pushes us into larger codebases.
+> **Focus:** **the BSP folder pattern** (one driver = one folder = one `.h` + one `.c`) and `imx6ull.h` holds every register definition in one place. The NXP SDK's `MCIMX6Y2.h` does the same thing with auto-generated struct headers. We hand-write ours so the auto-generated version reads as a productivity tool, not a black box.
 
 ## 18A.1  The problem we are solving
 
@@ -24,7 +24,7 @@ Open the Chapter 16 code in your editor. You have:
 Two specific kinds of pain start to appear:
 
 1. **Header pollution.** `uart.c` defines `UART_UCR1`. `main.c` happens to define it again with a slightly different value (typo). Both compile. The behavior of the program depends on which `#define` `cpp` saw last.
-2. **Reuse friction.** You want to use the I²C driver from Chapter 18 in a new project. You have to copy `i2c.c`, *and* the relevant `#define`s from `main.c`, *and* the relevant CCM gate bit, *and* the IOMUX writes. Five files involved per peripheral.
+2. **Reuse friction.** To use the Chapter 18 I²C driver in a new project, you copy `i2c.c`, plus the relevant `#define`s from `main.c`, plus the CCM gate bit, plus the IOMUX writes. Five files involved per peripheral.
 
 The fix is structural: separate **what the hardware looks like** (one file: `imx6ull.h`) from **what each driver does** (one folder per peripheral). The NXP SDK does the same thing with auto-generated headers — we are reaching for the same structure by hand.
 
@@ -68,7 +68,7 @@ Conventions:
 - **`bsp_<peripheral>.c`** has the function bodies. Includes `imx6ull.h` for register addresses.
 - **`imx6ull.h`** is the *only* place that names registers. Every other file uses those names.
 
-That last rule is the load-bearing one.
+That last rule is the one that matters.
 
 ## 18A.3  Writing `imx6ull.h`
 
@@ -184,7 +184,7 @@ The file is long but mechanical. Section it by peripheral block:
 #endif /* __IMX6ULL_H__ */
 ```
 
-The full file is ~300 lines for our part-coverage so far. It is boring. It is also the most-used file in your project for the next decade if you keep using i.MX6ULL.
+The full file is ~300 lines for our part-coverage so far. It is boring. It is also the file you reach for most often on every i.MX6ULL project.
 
 ## 18A.4  A peripheral driver, refactored
 
@@ -288,9 +288,9 @@ For the LED-blink-with-IRQ-echo program we've been building, the refactor:
 - **Total LoC:** ~600 → ~620. (Header skeletons add ~20 lines.)
 - **Build time:** unchanged (it's still seconds).
 - **Time to add the next peripheral:** ~30 min in the monolithic layout (find the right place in main.c, avoid name collisions); ~10 min in the BSP layout (copy a template folder, edit two files).
-- **Mental load when re-reading the code 6 months later:** dramatically lower.
+- **Re-reading the code 6 months later:** much easier.
 
-The 30-vs-10-min number is what matters. Over the rest of Part II and the lifespan of the book's labs, the refactor pays back many times.
+The 30-vs-10-minute gap is the point. The refactor pays back over the rest of Part II and the lab work that follows.
 
 ## 18A.7  Sidebar — the NXP SDK alternative
 
@@ -331,7 +331,7 @@ Both compile to the same machine code. The struct version:
 - Plays nicely with debuggers: GDB displays `CCM` as a struct with named fields.
 - Hides the address. You can `printf("base = %p\r\n", CCM)` to recover it, but it's not in your face.
 
-Most production projects on NXP parts adopt this style by the time they have three peripherals. We do not — for *this* book — for the same reason we did not start with U-Boot in Chapter 9: when you can hand-roll it, the SDK becomes a productivity tool rather than a black box.
+Most production projects on NXP parts adopt the struct style by the time they have three peripherals. We do not — at least not in this book. The same reason applies as in Chapter 9: once you can hand-roll it, the SDK becomes a productivity tool instead of a black box.
 
 If you ship products with NXP parts, use the SDK headers in production. They are correct, kept in sync with silicon revisions, and save typos. Use the macro style in this book to *learn*; switch styles when you are ready to ship.
 

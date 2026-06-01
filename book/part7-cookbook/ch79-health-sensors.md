@@ -9,8 +9,8 @@ status: draft
 # Chapter 79 — Health sensors
 
 > **What:** **PPG** (photoplethysmography) sensors — Maxim **MAX30100** (the original) and **MAX30102** (the improved successor). Both: red + IR LED + photodiode + FIFO + I²C. They give you raw light-intensity samples from a finger (or earlobe, forehead); your code extracts **heart rate** and **SpO₂** (blood-oxygen saturation) from those samples. Protocol, FIFO mechanics, from-scratch IIO driver, and a sketch of the HR/SpO₂ extraction algorithm.
-> **Why:** "wellness" features (fitness bands, smart watches, baby monitors, medical IoT) all use PPG. The chip is cheap, the wiring trivial, and the principle elegant — but the *signal processing* is where the real work lives. This chapter covers the chip end-to-end and points at what user-space must do.
-> **Focus:** **the chip captures light intensity, you compute physiology**. Heart rate comes from counting peaks in the IR signal. SpO₂ comes from the ratio of red-AC/red-DC to IR-AC/IR-DC mapped through an empirical curve. The driver delivers raw 18-bit samples at 100 Hz; user-space filters, finds peaks, computes. Without good signal processing, the readings are garbage — and the chip can't fix bad processing.
+> **Why:** "wellness" features (fitness bands, smart watches, baby monitors, medical IoT) all use PPG. The chip is cheap, the wiring trivial, the principle is simple, but the work is in the signal processing on the host side. This chapter covers the chip end-to-end and points at what user-space must do.
+> **Focus:** The chip delivers light-intensity samples. Your code turns those samples into heart rate and SpO₂ — the chip cannot do this for you. Heart rate comes from counting peaks in the IR signal. SpO₂ comes from the ratio of red-AC/red-DC to IR-AC/IR-DC mapped through an empirical curve. The driver delivers raw 18-bit samples at 100 Hz; user-space filters, finds peaks, computes. Without good signal processing, the readings are unreliable. The chip cannot compensate for bad code on the host.
 
 ## 79.1  Chip comparison
 
@@ -34,9 +34,9 @@ status: draft
 
 ## 79.2  The physics — photoplethysmography
 
-Shine light into tissue. Some of it gets absorbed by blood; the rest reflects/scatters back to a photodiode. As your heart beats, the volume of blood in capillaries fluctuates → light absorption fluctuates → photodiode current fluctuates. That AC component is the **PPG signal**.
+Shine light into tissue. Some of it is absorbed by blood. The rest reflects or scatters back to a photodiode. As your heart beats, the volume of blood in capillaries fluctuates → light absorption fluctuates → photodiode current fluctuates. That AC component is the **PPG signal**.
 
-The signal is tiny — ~1 % of the DC level. The bulk of what hits the photodiode is the constant amount that gets through tissue. The pulsatile "AC" component is the interesting bit.
+The pulsatile signal is small — about 1 % of the DC level. Most of the light hitting the photodiode is the constant amount that passes through tissue without modulation. The pulsatile AC component is the signal we actually want.
 
 For **SpO₂**, you measure with two wavelengths:
 - **Red (660 nm)**: oxygenated hemoglobin absorbs *less* red light.
@@ -437,7 +437,7 @@ spo2 = 110 - 25 * R
 print(f"SpO2: {spo2:.1f}% (R-ratio {R:.3f})")
 ```
 
-That's the textbook approach. Real production systems add:
+That's the textbook approach. Production systems add:
 
 - **Motion artifact rejection** (accelerometer cross-correlation; gate readings during walking).
 - **Auto-gain** (adjust LED currents to keep DC within the ADC's sweet spot).

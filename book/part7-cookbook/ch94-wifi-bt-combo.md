@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 94 — WiFi+BT combo modules
 
-> **What:** modules that pack WiFi *and* Bluetooth into one chip sharing one 2.4 GHz antenna: **AP6212** (Broadcom BCM43438 — WiFi over SDIO + BT over UART), **RTL8723BS** (Realtek — WiFi over SDIO + BT over UART). The defining challenges: bringing up *two* radios on *one* chip over *two* different buses, and the **coexistence** problem — both radios fighting over the same 2.4 GHz band and the same antenna.
-> **Why:** most embedded products that want WiFi *also* want Bluetooth (BLE for phone-app provisioning, classic BT for audio). A combo module is cheaper and smaller than two separate chips, and it solves the coexistence problem in hardware (the chip arbitrates between its own radios). But bringing up both halves — WiFi on SDIO (Ch 91) *and* BT on UART — and getting them to coexist is more than twice the work of either alone.
-> **Focus:** **one chip, two buses, two subsystems, one antenna**. The WiFi half is SDIO + brcmfmac (Ch 91). The BT half is UART + the Bluetooth HCI subsystem + `btattach`/`hciattach`. They're independent driver stacks that happen to share silicon. The coexistence (PTA — Packet Traffic Arbitration) is internal to the chip but you must enable it and wire the BT_WAKE/WL_WAKE signals.
+> **What:** modules that combine WiFi and Bluetooth on one chip, sharing one 2.4 GHz antenna: **AP6212** (Broadcom BCM43438 — WiFi over SDIO + BT over UART), **RTL8723BS** (Realtek — WiFi over SDIO + BT over UART). Two challenges define the topic. First, you must bring up two radios on one chip over two different buses. Second, the coexistence problem: both radios share the same 2.4 GHz band and the same antenna.
+> **Why:** most embedded products that want WiFi *also* want Bluetooth (BLE for phone-app provisioning, classic BT for audio). A combo module is cheaper and smaller than two separate chips, and it solves the coexistence problem in hardware (the chip arbitrates between its own radios). Bringing up both halves takes more than twice the effort of either alone — WiFi on SDIO (Ch 91), BT on UART, then making them coexist.
+> **Focus:** one chip carries two radios on two buses. They share one antenna and are managed by two independent kernel subsystems. The WiFi half is SDIO + brcmfmac (Ch 91). The BT half is UART + the Bluetooth HCI subsystem + `btattach`/`hciattach`. The two stacks are independent. They share silicon, but nothing else in software. The coexistence (PTA — Packet Traffic Arbitration) is internal to the chip but you must enable it and wire the BT_WAKE/WL_WAKE signals.
 > **Tooling.** This chapter uses `wpa_supplicant`, `iw`, `bluez` (`bluetoothctl`, `hciattach`), combo firmware.
 > - **Ubuntu-base (target):** `apt install wpasupplicant iw bluez bluez-tools`
 > - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y BR2_PACKAGE_BLUEZ5_UTILS=y`
@@ -64,7 +64,7 @@ These are independent driver stacks. WiFi working doesn't mean BT works, and vic
 
 ## 94.3  The WiFi half (recap of Ch 91)
 
-Identical to Ch 91 — SDIO bring-up, pwrseq, 32 kHz clock, firmware + NVRAM, `brcmfmac`, `wlan0`. Nothing new. The combo module's WiFi is just an AP6212-WiFi as in Ch 91.
+Identical to Ch 91 — SDIO bring-up, pwrseq, 32 kHz clock, firmware + NVRAM, `brcmfmac`, `wlan0`. Nothing new — the combo module's WiFi is exactly the AP6212 case from Ch 91.
 
 ## 94.4  The BT half — Bluetooth over UART
 
@@ -161,9 +161,9 @@ But the serdev DT approach (above) is preferred — the BT comes up automaticall
 
 ## 94.5  Coexistence — the shared-antenna problem
 
-WiFi and BT both use 2.4 GHz, and the combo module has *one* antenna. If both radios transmit simultaneously, they interfere — WiFi throughput craters, BT audio stutters.
+WiFi and BT both use 2.4 GHz, and the combo module has *one* antenna. If both radios transmit simultaneously, they interfere. WiFi throughput collapses and BT audio stutters.
 
-The chip solves this internally with **PTA** (Packet Traffic Arbitration, also called coexistence or "coex"): a hardware arbiter that time-slices the radio between WiFi and BT, prioritizing based on packet type (BT audio is latency-sensitive → high priority; WiFi bulk data → can wait a few ms).
+The chip solves this internally with **PTA** (Packet Traffic Arbitration, also called coexistence or "coex"). PTA is a hardware arbiter that time-slices the radio between WiFi and BT, prioritising by packet type. BT audio is latency-sensitive and gets high priority. WiFi bulk data can wait a few ms.
 
 For the combo module (WiFi + BT on the *same* chip), PTA is internal — both radios are on one die, the arbiter is built in, and it "just works" once both halves are up. You don't wire external coex signals.
 
@@ -174,7 +174,7 @@ What you *do* manage:
 - Enabling coex in firmware (usually default-on for combo modules).
 - Antenna design: one antenna, one matching network, shared by both radios. The module datasheet specifies the antenna requirements.
 
-Observable effect: run iperf3 over WiFi while streaming BT audio. Without coex, both break. With coex (combo module), WiFi throughput drops modestly (the radio is time-shared) but both function. The drop is the "cost" of coexistence — typically 10–30 % WiFi throughput reduction during active BT.
+Observable effect: run iperf3 over WiFi while streaming BT audio. Without coex, both break. With coex (combo module), WiFi throughput drops modestly (the radio is time-shared) but both function. This drop is the cost of coexistence — typically 10 to 30 percent less WiFi throughput while BT is active.
 
 ## 94.6  Bringing up both — the order
 
@@ -183,7 +183,7 @@ Observable effect: run iperf3 over WiFi while streaming BT audio. Without coex, 
 3. **Shared resources**: both halves share the 32 kHz LPO clock (declare it once, reference from both pwrseq and the BT node) and often share power rails. The WL_REG_ON and BT_REG_ON are usually *separate* GPIOs — power each half independently.
 4. **Coexistence test**: run both simultaneously; confirm acceptable performance.
 
-Common mistake: getting WiFi working, declaring victory, shipping — then discovering BT was never wired up correctly. Test both, separately and together.
+A common mistake is to get WiFi working and assume the job is done. Then a field unit fails because the BT side was never wired correctly. Test both, separately and together.
 
 ## 94.7  Lab
 

@@ -9,7 +9,7 @@ status: draft
 # Chapter 55 — USB gadget
 
 > **What:** the **USB gadget** framework — turning the i.MX6ULL's USB OTG controller into a USB *device* (instead of a host). The mainline **ConfigFS** gadget interface lets user-space compose USB devices from "functions" (mass storage, serial, Ethernet, HID) without writing kernel code.
-> **Why:** every Android phone, Raspberry Pi Zero in USB-Pi mode, smart-meter that exposes its data via USB-serial — all run USB gadget. For embedded products: USB-as-device is how your board talks to a PC for debug, firmware update, or as a remote sensor.
+> **Why:** USB gadget runs on Android phones, Raspberry Pi Zero in USB-Pi mode, smart meters that expose data over USB-serial, and many other devices. For embedded products: USB-as-device is how your board talks to a PC for debug, firmware update, or as a remote sensor.
 > **Focus:** **functions composed into a configuration**. A gadget has one *configuration* with one or more *functions*. ConfigFS exposes this as a filesystem: `mkdir` a function, `echo` settings into its files, then bind to a UDC. No kernel code.
 
 ## 55.1  USB roles on i.MX6ULL
@@ -36,7 +36,7 @@ For "otg" mode you also wire the ID pin to a GPIO.
 
 ## 55.2  ConfigFS gadget overview
 
-ConfigFS is the modern way to compose a USB gadget. From userspace:
+ConfigFS is the current way to compose a USB gadget. From userspace:
 
 ```sh
 # Mount configfs
@@ -79,7 +79,7 @@ ls /sys/class/udc/                                  # find the udc name
 echo 2184000.usb > UDC
 ```
 
-Last line: writing the UDC name binds the gadget. Now plug a USB cable from the i.MX6ULL's OTG port to a PC; the PC sees a composite USB device with serial + Ethernet + mass storage.
+The last line binds the gadget by writing the UDC name. Plug a USB cable from the i.MX6ULL's OTG port into a PC. The PC sees a composite USB device with serial, Ethernet, and mass storage.
 
 ## 55.3  Common function types
 
@@ -180,7 +180,7 @@ For specialised use cases (e.g., a custom protocol over USB), you can write a ke
 - **Wrong VID/PID.** Windows binds drivers based on these. Wrong values → host loads wrong driver → device fails to enumerate.
 - **`mass_storage` backing file is too small / wrong format.** Host complains about corrupted filesystem.
 - **Two gadgets bound to one UDC.** Only one bind per UDC at a time. Disconnect first.
-- **ACM not appearing on Windows.** Windows needs an `.inf` driver hint for CDC-ACM. Linux/macOS hosts are fine.
+- **ACM not appearing on Windows.** Windows needs a `.inf` driver file before it will bind to CDC-ACM. Linux/macOS hosts are fine.
 
 ## 55.8  Going deeper
 

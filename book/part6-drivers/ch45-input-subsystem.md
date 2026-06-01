@@ -9,8 +9,8 @@ status: draft
 # Chapter 45 — Input subsystem
 
 > **What:** the **input subsystem** — the kernel framework that turns "a GPIO went low" or "an I²C read returned a touch coordinate" into a standardised event stream consumed by `evdev`, X11, Wayland, framebuffer toolkits, and command-line tools. We'll build a `gpio-keys` derivative — the canonical "GPIO as keyboard key" driver — and walk every byte from the IRQ handler to `evtest` reading `/dev/input/eventN`.
-> **Why:** every keyboard, mouse, touchscreen, joystick, accelerometer-as-tilt-sensor, rotary encoder, and IR remote control on a Linux box flows through the same input subsystem. Once you understand `input_register_device` and `input_event`, *every* input driver in the kernel looks familiar. The framework handles event multiplexing, queueing, sysfs/`evdev` integration, autorepeat, and userspace device-node creation — your driver just calls `input_report_key()` and `input_sync()`.
-> **Focus:** **type, code, value** — the three-element tuple that describes every input event. Once that triple makes sense (`EV_KEY` + `KEY_ENTER` + `1` = "Enter key was just pressed"), every input subsystem capability you'll meet — abs axes, relative motion, multi-touch slot protocol — is just a different combination of type/code/value.
+> **Why:** every input device on a Linux box — keyboard, mouse, touchscreen, joystick, IR remote — goes through the input subsystem. Once you understand `input_register_device` and `input_event`, *every* input driver in the kernel looks familiar. The framework handles event multiplexing, queueing, sysfs/`evdev` integration, autorepeat, and userspace device-node creation — your driver just calls `input_report_key()` and `input_sync()`.
+> **Focus:** **type, code, value** — the three-element tuple that describes every input event. Once that triple makes sense — `EV_KEY` + `KEY_ENTER` + `1` means "Enter was pressed" — the rest of the input subsystem (abs axes, relative motion, multi-touch slots) is just different combinations of type/code/value.
 
 ## 45.1  The picture
 
@@ -32,7 +32,7 @@ When you press a key on a USB keyboard:
    X11 / Wayland / your application: "Enter was pressed"
 ```
 
-The driver's only job is to call `input_report_*()` and `input_sync()`. The core handles queueing, multiplexing, and user-space delivery. **Your driver is upstream of the type/code/value protocol**; user-space is downstream. You don't talk to user-space directly.
+The driver's only job is to call `input_report_*()` and `input_sync()`. The core handles queueing, multiplexing, and user-space delivery. **Your driver feeds events into the type/code/value protocol**; the input core delivers them to user-space. You never talk to user-space directly.
 
 ## 45.2  Event types and codes
 
@@ -311,7 +311,7 @@ $ sudo cat /dev/input/event2 | hexdump -C
 - **Reporting an unsupported event.** If you `input_report_key(input, KEY_ENTER, 1)` but didn't `input_set_capability(..., EV_KEY, KEY_ENTER)`, the event is silently dropped. Always declare capabilities first.
 - **Not using `devm_input_allocate_device`.** Forgetting `input_free_device` in error paths leaks the device. `devm_` handles it.
 - **Calling `input_register_device` before setting capabilities.** Capabilities must be set *before* register. Order: alloc → set_capability → register.
-- **Allocating with `input_allocate_device` and registering separately, but the alloc/register can fail in different ways.** Standard `goto` cleanup applies.
+- **Mixing `input_allocate_device` with separate `input_register_device`.** Both can fail, at different points. Use standard `goto` cleanup, or just use `devm_input_allocate_device` to avoid the problem.
 - **Confusing absolute and relative axes.** Mice use `EV_REL` (delta motion); touchscreens use `EV_ABS` (absolute position). Mixing them gives weird user-space behavior.
 - **Multi-touch with single-touch protocol.** Don't try to emit `ABS_X` for multiple fingers — that's not how it works. Use the MT-B slot protocol (Ch 55G).
 - **Repeating events that haven't actually changed.** The core does *not* dedupe; every `input_report_key(..., 1)` followed by `input_sync` is one event. Polling a held button without state-tracking spams the queue.

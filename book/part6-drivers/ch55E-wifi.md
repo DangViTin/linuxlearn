@@ -9,7 +9,7 @@ status: draft
 # Chapter 55E — WiFi + wpa_supplicant
 
 > **What:** Linux's **WiFi stack** — `mac80211` (the kernel's 802.11 implementation), `cfg80211` (the configuration API), per-chip drivers (`brcmfmac`, `rtl8xxxu`, etc.), and the user-space **wpa_supplicant** that handles WPA2/WPA3 authentication. We focus on SDIO WiFi (AP6212 / RTL8189 on Point Atom-class boards) as the most common embedded case.
-> **Why:** WiFi is a vertical stack — driver, kernel WiFi core, supplicant, network manager. Get any layer wrong and "nothing works." Knowing the layers and how to debug each one turns "WiFi doesn't work" from a multi-day mystery into a methodical bring-up.
+> **Why:** WiFi is a vertical stack — driver, kernel WiFi core, supplicant, network manager. If any layer is wrong, nothing works. Knowing the layers and how to debug each one turns "WiFi doesn't work" from a multi-day debug into a methodical bring-up.
 > **Focus:** **firmware + nvram + supplicant**. The driver loads vendor firmware from `/lib/firmware/`, plus a per-board nvram (channel list, antennas, regulatory). wpa_supplicant handles the 4-way handshake. All three must be right.
 > **Tooling.** This chapter uses `wpa_supplicant`, `iw`, optional `hostapd`; chip firmware blob.
 > - **Ubuntu-base (target):** `apt install wpasupplicant iw hostapd firmware-realtek firmware-brcm80211`
@@ -78,7 +78,7 @@ wifi_pwrseq: wifi_pwrseq {
 };
 ```
 
-Three things:
+Three things to notice:
 - **SDIO bus configured** with `bus-width = 4`, no card-detect, `non-removable`.
 - **Power sequence** drives the WL_REG_ON reset GPIO high to enable the chip.
 - **`brcm,bcm4329-fmac`** matches the brcmfmac driver.
@@ -94,7 +94,7 @@ brcmfmac43430-sdio.txt           ← nvram (per-board calibration & config)
 
 The exact filename depends on chip ID. Find current names at <https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/brcm>.
 
-Without the nvram, the driver probes but WiFi doesn't enumerate channels correctly (or at all). The nvram is *per-board* — copying from a different board's image gives wrong antenna config, wrong regulatory, broken behavior. Always get the matching nvram from your board vendor.
+Without the nvram, the driver probes but channels do not enumerate correctly (or at all). The nvram is per-board. Copying from another board gives the wrong antenna config, the wrong regulatory domain, and broken behavior. Always get the matching nvram from your board vendor.
 
 ## 55E.4  Bring-up trace
 
@@ -183,7 +183,7 @@ network={
 - **Missing firmware.** Symptom: "Direct firmware load failed -2." Copy the right blob to `/lib/firmware/brcm/`.
 - **Wrong nvram.** WiFi enumerates but signal is terrible or country code wrong. Get vendor's nvram.
 - **MMC pwrseq not triggering.** Reset GPIO not toggled before SDIO init. Symptom: chip doesn't respond at all. Check the `mmc-pwrseq-simple` node.
-- **32 KHz clock missing.** Most BCM/Realtek modules need a 32 KHz LPO clock; if not wired/provided, sleep modes fail or chip is unreliable.
+- **32 KHz clock missing.** Most BCM and Realtek modules need a 32 kHz LPO clock. Without it, sleep modes fail and the chip becomes unreliable.
 - **regdb missing.** Kernel won't tune above channel 11 without a regulatory database loaded. Install `wireless-regdb`.
 - **WPA3 / SAE not supported by chip firmware.** Older AP6212 firmware lacks SAE. Upgrade firmware or fall back to WPA2.
 

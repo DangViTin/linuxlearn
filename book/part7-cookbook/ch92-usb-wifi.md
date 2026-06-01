@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 92 — USB WiFi
 
-> **What:** USB WiFi dongles — the plug-in alternative to soldered SDIO WiFi (Ch 91). Three chips compared: **Realtek RTL8188EUS** (the ubiquitous cheap dongle), **MediaTek MT7601** (common in $3 dongles), **Ralink RT5370** (older, very mainline-friendly). The defining theme: the **in-tree vs out-of-tree driver saga** — which dongles "just work" and which require a DKMS nightmare. Plus bandwidth contention with other USB devices on the i.MX6ULL's USB-2.0 bus.
-> **Why:** USB WiFi is the *fastest* way to add WiFi to a board that has a spare USB port — no SDIO bring-up, no NVRAM, no 32 kHz clock. The catch is driver support: some chips have excellent in-tree drivers, others need out-of-tree modules that break on every kernel upgrade. Choosing the right chip is the entire game.
-> **Focus:** **the chip you buy determines whether WiFi is a 5-minute job or a 5-day ordeal**. A `rtw88`- or `rt2800usb`-supported chip is plug-and-play. An RTL8188EUS needs the out-of-tree `rtl8188eus` driver, which you must rebuild for every kernel. This chapter is a buyer's guide as much as a driver guide.
+> **What:** USB WiFi dongles — the plug-in alternative to soldered SDIO WiFi (Ch 91). Three chips compared: **Realtek RTL8188EUS** (the ubiquitous cheap dongle), **MediaTek MT7601** (common in $3 dongles), **Ralink RT5370** (older, very mainline-friendly). The big theme here is in-tree versus out-of-tree drivers. Some dongles just work. Others need a constantly-rebuilt DKMS module. Plus bandwidth contention with other USB devices on the i.MX6ULL's USB-2.0 bus.
+> **Why:** USB WiFi is the *fastest* way to add WiFi to a board that has a spare USB port — no SDIO bring-up, no NVRAM, no 32 kHz clock. The catch is driver support: some chips have excellent in-tree drivers, others need out-of-tree modules that break on every kernel upgrade. Chip choice is most of the work.
+> **Focus:** the chip you buy determines whether bringing up WiFi takes five minutes or five days. A `rtw88`- or `rt2800usb`-supported chip is plug-and-play. An RTL8188EUS needs the out-of-tree `rtl8188eus` driver, which you must rebuild for every kernel. This chapter is a buyer's guide as much as a driver guide.
 > **Tooling.** This chapter uses `wpa_supplicant`, `iw`, chip firmware blob (Realtek/MediaTek/Ralink).
 > - **Ubuntu-base (target):** `apt install wpasupplicant iw firmware-realtek firmware-misc-nonfree`
 > - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y`
@@ -29,9 +29,9 @@ status: draft
 | Volume price | $2–4 | $3–5 | $3–5 |
 
 **The crucial column is "in-tree driver?":**
-- **RT5370** (`rt2800usb`): the gold standard. Mainline since forever, rock-solid, supports AP + monitor mode. **If you want zero hassle, buy an RT5370 dongle.**
+- **RT5370** (`rt2800usb`): the gold standard. Mainline since forever, rock-solid, supports AP + monitor mode. For the lowest-hassle path, buy an RT5370 dongle.
 - **MT7601** (`mt7601u`): in-tree, works well. Good second choice.
-- **RTL8188EUS**: the `r8188eu` staging driver works for basic STA mode (recent kernels), but AP/monitor mode + best performance needs the out-of-tree `rtl8188eus`. The most *common* dongle, the most *painful* driver.
+- **RTL8188EUS**: the `r8188eu` staging driver works for basic STA mode (recent kernels), but AP/monitor mode + best performance needs the out-of-tree `rtl8188eus`. The most common dongle, but the most painful driver.
 
 ## 92.2  The plug-and-play case (RT5370)
 
@@ -58,9 +58,9 @@ Plug in → `wlan0` appears. Firmware (`rt2870.bin`) is loaded automatically fro
 [root@pa-mini:~]# udhcpc -i wlan0
 ```
 
-Total bring-up: insert dongle, copy firmware (if not present), connect. Five minutes.
+Total bring-up is three steps. Insert the dongle. Copy the firmware if it is not present. Connect. About five minutes.
 
-**RT5370 / MT7601 use mac80211** (soft-MAC) — the kernel does the 802.11 MAC, the chip is a radio. This is why they integrate so cleanly: mac80211 + cfg80211 handle everything; the chip driver is a thin USB+radio shim.
+RT5370 and MT7601 are *soft-MAC* chips. They use mac80211: the kernel does the 802.11 MAC, the chip is just a radio. This is why integration is clean. mac80211 and cfg80211 handle the protocol work, and the chip driver is a thin USB-to-radio shim.
 
 ## 92.3  The painful case (RTL8188EUS)
 
@@ -166,14 +166,14 @@ This turns your i.MX6ULL into a WiFi hotspot — useful for "configure-the-devic
 ## 92.8  Pitfalls
 
 - **Buying RTL8188EUS expecting it to "just work."** The most common dongle, the most painful driver. For a product, prefer RT5370/MT7601.
-- **Out-of-tree driver + kernel upgrade.** Breaks. Pin the kernel, use DKMS with a compatible version, or switch chips.
+- **Out-of-tree driver + kernel upgrade.** Breaks. Pin the kernel, use DKMS with a compatible version, or — better — switch to an in-tree chip.
 - **Missing firmware.** `rt2800usb` needs `rt2870.bin`; `mt7601u` needs `mt7601u.bin`. Copy from linux-firmware. Symptom: chip detected, no `wlan0`.
 - **Bandwidth contention.** Camera + WiFi on one USB controller → both degrade. Spread across the two controllers.
 - **Bus-power limits.** Some dongles draw 400+ mA on TX. A weak VBUS rail browns out → disconnects. Ensure adequate USB power.
 - **Counterfeit chips.** A dongle sold as "RT5370" may contain an RTL8188 (or vice versa). Always `lsusb` to confirm the actual chip before committing a design.
 - **Monitor/AP mode on the wrong chip.** Not all chips/drivers support AP or monitor mode. Check before designing a feature around it.
 - **regdb / country code.** Same as SDIO — install `wireless-regdb` or you're limited to restrictive channels.
-- **Soldered USB-WiFi modules.** Some "USB WiFi" is a soldered module (not a dongle) — same driver story, but now you can't swap the chip if the driver is bad. Choose the chip even more carefully.
+- **Soldered USB-WiFi modules.** Some "USB WiFi" is a soldered-on module, not a removable dongle. The driver situation is the same, but now you cannot swap the chip if the driver turns out to be bad. Choose the chip even more carefully.
 
 ## 92.9  Going deeper
 

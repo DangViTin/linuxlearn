@@ -9,8 +9,8 @@ status: draft
 # Chapter 122A — BSP → mainline migration playbook
 
 > **What:** the **systematic procedure** for taking an inherited vendor BSP (NXP `linux-imx 4.1.15`, ST's `stm32mp1 4.19`, TI's `ti-linux-5.10`, …) and moving the product to a **mainline** Linux kernel that's supportable for the product's lifetime. We cover the patch inventory + classification, the subsystem-by-subsystem migration order (the safest path through the dependency graph), the test-coverage strategy, the parallel-tree maintenance during the migration, the upstreaming of recoverable bits, and the "do not migrate" decision criterion.
-> **Why:** you join a project; the existing kernel is Linux 4.1.15 from NXP's 2017 BSP; the product ships for 8 more years; security CVEs accumulate weekly; mainline is at 6.6+; and the BSP is *frozen* — no upstream updates because the vendor moved on. You're staring at a project-defining decision. This chapter is the playbook so it doesn't become a project-killing one.
-> **Focus:** **classify every vendor patch into mainline-merged (delete), mainline-equivalent (replace), still-needed (forward-port), or vendor-only (decide individually); migrate subsystem-by-subsystem in dependency order; maintain BOTH trees in parallel during the transition; CI on both**. The hardest bits aren't technical (`git rebase` does most of it); they're *cultural*: convincing management that 6 months of "no new features, just kernel work" pays back over the product's life. This chapter arms you with the data.
+> **Why:** you join a project; the existing kernel is Linux 4.1.15 from NXP's 2017 BSP; the product ships for 8 more years; security CVEs accumulate weekly; mainline is at 6.6+; and the BSP is *frozen* — no upstream updates because the vendor moved on. This is a project-defining decision. This chapter is the playbook for getting it right.
+> **Focus:** **classify every vendor patch into mainline-merged (delete), mainline-equivalent (replace), still-needed (forward-port), or vendor-only (decide individually); migrate subsystem-by-subsystem in dependency order; maintain BOTH trees in parallel during the transition; CI on both**. The hardest part isn't technical. `git rebase` handles most of the code work. The hardest part is cultural — convincing management that six months of kernel work, with no new features, pays back over the product's lifetime.
 
 ## 122A.1  Why migration is hard
 
@@ -21,19 +21,18 @@ A typical 2017-era NXP BSP:
 - ~2,000 are still-needed (drivers for chips mainline doesn't support)
 - ~1,500 are NXP-internal-only (vendor APIs, downstream UI hacks, broken HW workarounds)
 
-Plus:
-- Old toolchain (gcc 6.x) won't compile mainline kernel 6.6 cleanly. The kernel's hard minimum is gcc 5.1 (Documentation/process/changes.rst), but newer features and warnings require gcc 11+; most distros ship gcc 12+ for embedded cross-builds.
+Plus there's a toolchain problem. gcc 6.x won't compile a mainline 6.6 kernel cleanly. The kernel's hard minimum is gcc 5.1 (see `Documentation/process/changes.rst`), but newer features need gcc 11+. Most distros ship gcc 12+ for embedded cross-builds.
 - Old U-Boot 2017.04 doesn't speak modern FIT.
 - Old Buildroot/Yocto recipes pinned to old library versions.
-- Old GStreamer 1.10; mainline drivers use new V4L2 APIs.
+- Old GStreamer 1.10 doesn't speak to mainline V4L2 drivers, which now use newer APIs.
 
-The "easy" path — stay on 4.1.15 forever — leaves accumulated CVEs unfixed:
+Staying on 4.1.15 means accumulated CVEs go unfixed:
 - CVE-2017-1000405 (the "Huge Dirty COW" / Dirty COW THP race): patched in 4.1.51, missed in your 4.1.15.
 - CVE-2018-3639 (Spectre v4): no fix backported to your fork.
 - CVE-2021-4034 (Polkit pwnkit): irrelevant to kernel but kernel-related stack.
 - 2024+ CVEs: countless.
 
-The "hard" path — migrate to mainline 6.6+ LTS — buys:
+Migrating to mainline 6.6+ LTS buys:
 - 6 years of security maintenance from kernel.org.
 - Modern features (eBPF, io_uring, PREEMPT_RT, USB4, ...).
 - Predictable LTS cycle.
@@ -69,7 +68,7 @@ git log --grep "SXX" --oneline
 git log --diff-filter=A --all -- drivers/iio/light/sxx.c
 ```
 
-If mainline has it (committed by someone else after 2017): **delete the BSP patch**, use mainline's version.
+If mainline has it already (someone committed the same fix after 2017), delete the BSP patch and use the mainline version.
 
 If not: this is your **upstreaming opportunity** — extract the patch, clean it, submit to mainline (Ch 120A) so the next person doesn't have to.
 
@@ -165,7 +164,7 @@ CI on both:
 - Cross-build both kernels on every commit.
 - Run hardware smoke tests on both (need two boards or a board with a runtime-switchable boot image).
 
-Cutover: schedule a date when new customer shipments come on the mainline-port version. Existing customers can choose to update or stay on BSP.
+Plan the cutover. Pick a date. After that date, new customer shipments use the mainline-ported kernel. Existing customers can choose to update or stay on BSP.
 
 ## 122A.8  When NOT to migrate
 
@@ -226,7 +225,7 @@ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j$(nproc) zImage dtbs
 # Deprecate the BSP branch.
 ```
 
-For i.MX6ULL specifically: mainline support is *excellent* as of 6.6 — most BSP work was upstreamed during 2018–2023. Many migrations end up with ~50 forward-ported patches (board DTS + a couple of out-of-tree drivers). Months of work, not years.
+For i.MX6ULL specifically: mainline support is *excellent* as of 6.6 — most BSP work was upstreamed during 2018–2023. Many migrations end up with ~50 forward-ported patches (board DTS + a couple of out-of-tree drivers). Expect months of work, not years.
 
 ## 122A.10  Lab
 

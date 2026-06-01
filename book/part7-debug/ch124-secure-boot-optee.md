@@ -9,8 +9,16 @@ status: draft
 # Chapter 124 — Secure boot (HAB) and OP-TEE
 
 > **What:** **NXP HAB (High Assurance Boot)** — the SoC-enforced chain-of-trust that ensures only signed bootloaders/kernels run on production i.MX devices. Plus **TrustZone** and **OP-TEE** — the ARM-architectural Secure World and the most-used open-source TEE (Trusted Execution Environment). We walk: the cryptographic chain ROM → SRK fuses → CSF → signed U-Boot → signed kernel → dm-verity rootfs; NXP's **CST (Code Signing Tool)** for producing CSF files; the *key ceremony* (how to generate, store, and rotate signing keys); TrustZone primer (monitor mode, SMC calls, world switch); OP-TEE basics (Trusted Application lifecycle, REE↔TEE communication, TA development).
-> **Why:** any product that handles user data, payment credentials, certificate-based identity, or DRM content needs verified boot. Without it, an attacker who gets physical access can: replace U-Boot with one that dumps memory, boot a custom kernel that bypasses authentication, extract storage encryption keys. With HAB + dm-verity, even physical access leaves the device unbreakable (modulo silicon-level attacks). OP-TEE adds a runtime-isolated execution domain — Secure World keys, crypto operations, attestation primitives are inaccessible even to a fully-compromised Linux kernel.
-> **Focus:** **the chain is "the ROM checks U-Boot's signature against the SRK hash in eFuses; verified U-Boot checks the kernel + DT's signature; verified kernel mounts a dm-verity'd rootfs whose hash matches; the user app can use OP-TEE to access secrets that no part of Linux can read". Break any link → all subsequent links lose meaning. Get key management wrong (lose the private key, expose it) and you either brick the fleet or hand attackers full control. This chapter is short on the easy bits and long on the "you'll regret skipping this" bits.**
+> **Why:** verified boot is needed for any product handling user data, payment credentials, certificate-based identity, or DRM. Without it, an attacker with physical access can replace U-Boot, boot a custom kernel that bypasses authentication, or extract storage encryption keys. With HAB plus dm-verity, the device resists most physical-access attacks. Silicon-level attacks (decap, side-channel, fault injection) remain possible but require expensive equipment. OP-TEE adds a runtime-isolated execution domain — Secure World keys, crypto operations, attestation primitives are inaccessible even to a fully-compromised Linux kernel.
+> **Focus:** the chain works like this:
+> 1. The ROM checks U-Boot's signature against the SRK hash in eFuses.
+> 2. Verified U-Boot checks the kernel and DT signature.
+> 3. The verified kernel mounts a dm-verity'd rootfs whose hash matches.
+> 4. User apps can use OP-TEE to access secrets that no part of Linux can read.
+>
+> Break any link and all later links lose meaning.
+>
+> Key management is the part that bites: if you lose the private key you brick the fleet; if you expose it you hand attackers full control. This chapter is short on the easy bits and long on the parts you'll regret skipping.
 > **Tooling.** **Host:** `openssl` (preinstalled), NXP's **CST** (Code Signing Tool — downloaded from NXP after registration, non-redistributable). **Target:** OP-TEE client (`tee-supplicant`, `libteec`) — build from `OP-TEE/optee_os` + `OP-TEE/optee_client`, or use Buildroot's `BR2_PACKAGE_OPTEE_CLIENT=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 124.1  The threat model
@@ -79,7 +87,7 @@ Before any HAB, you generate **the keys**. This is a ritual, not a checkbox:
 6. **Signing**: production signing happens on the air-gapped machine; signed binaries go out via USB stick.
 7. **Rotation plan**: if SRK 1 is compromised, you can blow another fuse to revoke it; SRK 2 becomes active. **If all 4 are compromised, you must scrap the fleet** — the SoC will never trust new keys.
 
-For prototyping: simpler procedure (keys on your laptop, no HSM). For production: take the ceremony seriously. Lose the keys → cannot ship a single firmware update ever; the fleet is permanently frozen at whatever was last signed.
+For prototyping: simpler procedure (keys on your laptop, no HSM). For production: take the ceremony seriously. If you lose the keys, you can't ship firmware updates. Whatever was last signed is what the fleet runs forever.
 
 ## 124.4  Producing a signed U-Boot
 
@@ -381,7 +389,10 @@ int main(void) {
 
 Run; OP-TEE kernel side passes the request; the TA in Secure World prints "hello from secure world" to OP-TEE's serial log (which the kernel may or may not relay).
 
-Real TAs: key storage (the secret stays in Secure World; only operations like sign/verify are exposed), secure storage of credentials, attestation (proving to a server that "the firmware running here is what you expect").
+Real TAs include:
+- **Key storage** — the secret stays in Secure World; only operations like sign/verify are exposed.
+- **Secure storage of credentials** — passwords, tokens, certificates that survive a kernel compromise.
+- **Attestation** — proving to a server that the firmware running here is what the server expects.
 
 ## 124.11  Lab
 
@@ -398,7 +409,7 @@ Real TAs: key storage (the secret stays in Secure World; only operations like si
 
 ## 124.12  Pitfalls
 
-- **Lost SRK keys.** Cannot sign new firmware ever. Cannot OTA. The fleet is permanently bricked at whatever was last signed. Use HSMs; backup; document.
+- **Lost SRK keys.** You can't sign new firmware. Whatever was last signed is what the fleet runs from then on. Use HSMs; back up; document.
 - **Closing HAB on an untested binary.** Brick.
 - **Forgot to revoke an old SRK.** Compromised CSK can sign malicious firmware. Periodically rotate.
 - **Keys committed to git.** Even private repos leak. Audit your repos; `git-secrets` to scan.

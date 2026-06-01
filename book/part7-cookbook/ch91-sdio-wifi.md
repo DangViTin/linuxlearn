@@ -9,8 +9,8 @@ status: draft
 # Chapter 91 — SDIO WiFi
 
 > **What:** WiFi modules attached over the **SDIO** bus (the same physical interface as an SD card, repurposed for I/O). Three modules compared: **AP6212** (Broadcom BCM43438, on many i.MX boards), **RTL8189FTV** (Realtek), **SD8801** (Marvell/NXP). Builds on Ch 55E (the WiFi stack). For each: the SDIO bring-up sequence, firmware + NVRAM loading, and — since full-MAC WiFi drivers are 30k+ lines you won't write from scratch — a *trace of how a packet flows through the stack* and how to bring up the SDIO transport (the part that actually trips up every new board).
-> **Why:** SDIO WiFi is the standard embedded WiFi: soldered-down, low-cost, no USB port consumed. But it's also the hardest peripheral to bring up on a new board — the SDIO transport, the power sequence, the 32 kHz clock, the per-board NVRAM, and the firmware blob all have to be exactly right, and the failure mode is usually "nothing in dmesg." This chapter is mostly about the bring-up sequence and debugging.
-> **Focus:** **the WiFi chip is a full-MAC co-processor; the driver is a firmware-loader + a SDIO-packet shuttle**. The chip runs the entire 802.11 stack in its own firmware. The Linux driver (brcmfmac, etc.) loads that firmware over SDIO at boot, then ferries data packets and control commands back and forth. Bring-up = getting the SDIO bus working + getting the right firmware + NVRAM. After that, the chip does the WiFi.
+> **Why:** SDIO WiFi is the standard embedded WiFi: soldered-down, low-cost, no USB port consumed. It is also the hardest peripheral to bring up on a new board. Five things must be exactly right: the SDIO transport, the power sequence, the 32 kHz clock, the per-board NVRAM, and the firmware blob. When any one is wrong, the symptom is usually "nothing in dmesg." This chapter is mostly about the bring-up sequence and debugging.
+> **Focus:** the WiFi chip is a full-MAC co-processor. The Linux driver does two things only: it loads firmware, and it shuttles SDIO packets. The chip runs the entire 802.11 stack in its own firmware. The Linux driver (brcmfmac, etc.) loads that firmware over SDIO at boot, then ferries data packets and control commands back and forth. Bring-up is two jobs: get the SDIO bus working, then supply the right firmware and NVRAM. After that, the chip handles the actual WiFi.
 > **Tooling.** This chapter uses `wpa_supplicant`, `iw`, chip firmware blob (Cypress/Realtek/Marvell).
 > - **Ubuntu-base (target):** `apt install wpasupplicant iw firmware-brcm80211 firmware-realtek`
 > - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y`
@@ -35,11 +35,11 @@ status: draft
 - **RTL8189**: cheapest; but the driver is usually out-of-tree (DKMS pain — see Ch 92's lesson, applies here too).
 - **SD8801**: mainline `mwifiex`, decent; combo variants exist.
 
-**Strongly prefer modules with in-tree drivers** (AP6212/brcmfmac, SD8801/mwifiex). Out-of-tree drivers (most RTL8189 variants) are a maintenance burden — see §91.8.
+Strongly prefer modules with in-tree drivers — AP6212 with brcmfmac, SD8801 with mwifiex. Out-of-tree drivers (most RTL8189 variants) are a maintenance burden — see §91.8.
 
 ## 91.2  SDIO — SD card bus, repurposed
 
-SDIO uses the same physical bus and protocol as an SD card (Ch 66), but instead of "read/write blocks of storage," the device exposes **I/O functions** — registers and an interrupt. The WiFi chip is "SDIO function 1 (and 2)"; the host reads/writes its registers and data FIFOs over SDIO commands (CMD52 single-byte, CMD53 block).
+SDIO uses the same physical bus and protocol as an SD card (Ch 66). Instead of reading and writing storage blocks, the device exposes **I/O functions** — a set of registers and an interrupt line. The WiFi chip is "SDIO function 1 (and 2)"; the host reads/writes its registers and data FIFOs over SDIO commands (CMD52 single-byte, CMD53 block).
 
 ```
    i.MX6ULL uSDHC2 ──[SDIO 4-bit]──► AP6212
@@ -131,7 +131,7 @@ The five things that must all be right:
 4. **The chip node** with the right `compatible` and SDIO function `reg = <1>`.
 5. **Voltage rails** (`vmmc`, `vqmmc`).
 
-Miss any one and you get silence in dmesg.
+Miss any one of these and dmesg is silent.
 
 ## 91.5  Firmware + NVRAM
 
@@ -231,7 +231,7 @@ The Linux side stops at "write bytes to SDIO FIFO." Everything 802.11 happens in
 4. brcmfmac reads the results, converts to cfg80211 BSS entries, reports up.
 ```
 
-So brcmfmac is fundamentally: a firmware loader + an SDIO packet shuttle + a cfg80211↔Broadcom-command translator. ~15000 lines, but conceptually those three jobs.
+So brcmfmac is three things: a firmware loader, an SDIO packet shuttle, and a cfg80211-to-Broadcom command translator. The source is ~15000 lines, but conceptually it is those three jobs.
 
 ## 91.8  In-tree vs out-of-tree — a strong recommendation
 
@@ -242,7 +242,7 @@ Out-of-tree WiFi drivers are a recurring maintenance nightmare:
 - DKMS rebuilds them on kernel upgrade, but only if a matching version exists.
 - Quality varies wildly; many are vendor dumps with poor power management.
 
-**For a product, choose a module with an in-tree driver.** The $0.50 you save on an RTL8189 vs an AP6212 is dwarfed by the engineering cost of maintaining an out-of-tree driver across an 8-year product life. (Note: `rtw88` is bringing more Realtek parts in-tree — check current status.)
+**For a product, choose a module with an in-tree driver.** Saving $0.50 on an RTL8189 versus an AP6212 is nothing compared to the engineering cost of maintaining an out-of-tree driver for an 8-year product life. (Note: `rtw88` is bringing more Realtek parts in-tree — check current status.)
 
 ## 91.9  Lab
 

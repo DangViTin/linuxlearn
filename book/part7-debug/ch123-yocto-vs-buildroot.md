@@ -8,8 +8,15 @@ status: draft
 
 # Chapter 123 — Yocto vs Buildroot, an honest comparison
 
-> **What:** the **build-system decision** that defines your product's whole CI/release/maintenance story. **Buildroot** (the make-driven, "tightly-curated tree of packages" approach) vs **Yocto/OpenEmbedded** (the metadata-driven, "recipes + layers" approach). We walk through the mental model of each, build the same image with both side-by-side, compare reproducibility, build times, SDK production, multi-machine support, layer composition, and BSP integration. Then the honest verdict: when each wins, when each is a poor fit, when *neither* is right.
-> **Why:** every production embedded Linux team uses one (occasionally both). The choice has implications for years: hiring (Yocto skills are scarcer + more expensive than Buildroot), CI infrastructure (Yocto builds are slower + need more storage), how easy it is to onboard a new engineer (Buildroot is friendlier), how easy it is to maintain a fleet of variants (Yocto wins), how easy it is to debug a build problem (Buildroot wins). Choosing badly costs months down the road; choosing well saves them.
+> **What:** picking a build system shapes your product's CI, release, and maintenance flow for years. **Buildroot** (the make-driven, "tightly-curated tree of packages" approach) vs **Yocto/OpenEmbedded** (the metadata-driven, "recipes + layers" approach). We walk through the mental model of each, build the same image with both side-by-side, compare reproducibility, build times, SDK production, multi-machine support, layer composition, and BSP integration. Then a verdict on when each wins, when each is a poor fit, and when neither is right.
+> **Why:** most production embedded Linux teams use Buildroot or Yocto. Some use both. The choice affects:
+> - hiring (Yocto skills are scarcer and more expensive than Buildroot),
+> - CI infrastructure (Yocto builds are slower and need more storage),
+> - onboarding a new engineer (Buildroot is friendlier),
+> - maintaining a fleet of variants (Yocto wins),
+> - debugging a build problem (Buildroot wins).
+>
+> Choosing badly costs months; choosing well saves them.
 > **Focus:** **the mental model is different — Buildroot is "menuconfig builds a complete image"; Yocto is "metadata recipes are combined to produce many possible images." Buildroot scales by adding packages; Yocto scales by adding layers + machines + distros. For a single product with 1–3 variants, Buildroot wins. For a vendor BSP that serves dozens of customer products from one codebase, Yocto wins. Most teams overestimate their multi-variant complexity and end up with Yocto sledgehammers cracking Buildroot walnuts.**
 
 ## 123.1  Mental model side-by-side
@@ -49,7 +56,7 @@ ls output/images/
 # bzImage  rootfs.ext4  rootfs.tar  u-boot.bin
 ```
 
-That's *everything*: cross-toolchain (built or downloaded), U-Boot, kernel, rootfs with selected packages. One command, one tree, predictable output. To save your config:
+That's everything in one tree: cross-toolchain (built or downloaded), U-Boot, kernel, rootfs with the packages you picked. One command, predictable output. To save your config:
 
 ```sh
 make savedefconfig            # writes to configs/myboard_defconfig
@@ -234,9 +241,9 @@ For complex builds, Yocto's task graph (do_fetch, do_unpack, do_patch, do_config
 
 ## 123.8  Reproducible builds
 
-Buildroot is *quasi-reproducible*: pin Buildroot version + pin defconfig + pin host toolchain → likely identical output, but not guaranteed.
+Buildroot is mostly reproducible: pin Buildroot version + pin defconfig + pin host toolchain → likely identical output, but not guaranteed.
 
-Yocto with `BB_HASHSERVE` is *strongly reproducible*: builds keyed by input hash; the same inputs always produce bit-for-bit identical outputs. Important for security-audited products and regulatory compliance.
+Yocto with `BB_HASHSERVE` is strongly reproducible — same inputs always produce bit-for-bit identical outputs. Important for security-audited products and regulatory compliance.
 
 Both can be made fully reproducible with care; Yocto requires less effort.
 
@@ -292,7 +299,7 @@ For CI:
 - **License compliance forgotten.** GPL requires source distribution. Both tools can produce source tarballs; configure and store them.
 - **DISTRO != MACHINE.** Yocto's `DISTRO` (e.g., `poky`, `oe-core`, `mistral`) and `MACHINE` (e.g., `imx6ull-myboard`) are orthogonal. Mixing them up = surprising configurations.
 - **Building on macOS / Windows.** Both Buildroot and Yocto only support Linux build hosts well. Use a Linux VM or WSL2.
-- **Choosing Yocto for a 1-person project.** You spend 80 % of your time learning Yocto and 20 % on your product. Use Buildroot.
+- **Choosing Yocto for a 1-person project.** You'll spend more time on Yocto than on your product. Use Buildroot.
 
 ## 123.13  Going deeper
 

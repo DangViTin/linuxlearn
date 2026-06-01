@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 48 — PWM and RTC subsystems
 
-> **What:** two short and orthogonal subsystems combined here because each is small enough on its own and the patterns reinforce each other. **PWM** — the `pwm_*` API and the `pwm-backlight` / `pwm-fan` / `pwm-beeper` consumers. **RTC** — the `rtc_class` framework, sysfs `/sys/class/rtc/`, the `hwclock` user-space tool, and how an external RTC chip plugs into Linux's wall-clock time.
+> **What:** two short, unrelated subsystems combined here — each is small enough on its own, and the patterns reinforce each other. **PWM** — the `pwm_*` API and the `pwm-backlight` / `pwm-fan` / `pwm-beeper` consumers. **RTC** — the `rtc_class` framework, sysfs `/sys/class/rtc/`, the `hwclock` user-space tool, and how an external RTC chip plugs into Linux's wall-clock time.
 > **Why:** *backlight dimming, fan speed, audible beeper, servo control* all use PWM — and every product that doesn't have continuous network access needs an RTC to keep time across reboots. These are subsystems you'll touch on almost every embedded project; knowing the consumer-side API saves you from re-inventing it.
-> **Focus:** **consumer vs provider model**. PWM and RTC both expose two APIs: one for the *producer* (chip driver that owns the PWM controller or RTC silicon) and one for the *consumer* (driver/code that wants a PWM signal or a wall-clock read). You almost always write *consumers*; the SoC vendor wrote the producers. Knowing which side you're on tells you which API to look up.
+> **Focus:** **consumer vs provider model**. PWM and RTC both expose two APIs: one for the *producer* (chip driver that owns the PWM controller or RTC silicon) and one for the *consumer* (driver/code that wants a PWM signal or a wall-clock read). You almost always write *consumers*. The SoC vendor wrote the producers. Knowing which side you're on tells you which API to look up.
 
 ---
 
@@ -262,7 +262,7 @@ The core handles `/dev/rtcN` and `/sys/class/rtc/` for you.
                NTP service: active
 ```
 
-For a fleet product, you almost certainly want `chrony` or `systemd-timesyncd` running to sync system time to NTP, then write the RTC periodically (`-11` hook or systemd's `systemd-time-sync-target`).
+For a fleet product, run `chrony` or `systemd-timesyncd` to sync system time to NTP. Then write the RTC periodically — via systemd's `systemd-time-sync-target`, or an init `-11` hook.
 
 ### 48.2.6  Alarms for wake-from-suspend
 
@@ -295,7 +295,7 @@ This is the foundation of low-power data-logger products: sleep deeply, wake on 
 - **PWM stops when consumer driver unloads.** `pwm_put` (or `devm_*` cleanup) disables the PWM. If you want the signal to keep running after unload, that's a design choice you must explicitly handle.
 - **Multiple consumers fighting over one PWM.** Only one consumer per PWM. Verify with `/sys/class/pwm/pwmchipN/pwmN/`.
 - **RTC time-zone confusion.** RTC by convention stores UTC; some legacy systems store local time. `timedatectl set-local-rtc 0` to enforce UTC.
-- **No backup battery on SNVS_LP.** SoC's internal RTC loses time on power-loss without `VBAT`. Symptom: every reboot starts in 1970. Wire up a CR2032; if you can't, accept the limitation and sync via NTP at boot.
+- **No backup battery on SNVS_LP.** SoC's internal RTC loses time on power-loss without `VBAT`. Symptom: every reboot starts in 1970. Wire up a CR2032. If you cannot, accept the limit and sync via NTP at boot.
 - **Multiple RTCs, hctosys reads the wrong one.** `CONFIG_RTC_HCTOSYS_DEVICE="rtc0"` (default) picks the first registered. If you have both SoC RTC (registers first) and DS3231 (registers later, more accurate), you get the wrong one. Either rename via udev or change kernel config.
 - **DS3231 alarm-mask register quirk.** The alarm fires for the first match across multiple fields; misconfiguring the mask gives a once-per-second wake instead of once-per-day. Read the datasheet carefully.
 
@@ -305,7 +305,7 @@ This is the foundation of low-power data-logger products: sleep deeply, wake on 
 - **`Documentation/admin-guide/rtc.rst`** — RTC subsystem and `hwclock`.
 - **`drivers/pwm/pwm-imx27.c`** — i.MX PWM driver. Small and clean.
 - **`drivers/rtc/rtc-snvs.c`** — i.MX SNVS RTC driver.
-- **`drivers/rtc/rtc-ds1307.c`** — handles DS1307, DS1338, DS1340, DS3231, DS3232, MCP7940x — one driver for the whole family. A masterclass in handling chip-family variants.
+- **`drivers/rtc/rtc-ds1307.c`** — handles DS1307, DS1338, DS1340, DS3231, DS3232, MCP7940x — one driver for the whole family. A good reference for handling chip-family variants.
 - **`Documentation/devicetree/bindings/pwm/`** and **`/rtc/`** — DT bindings.
 
 > Next chapter: **Chapter 49 — IIO subsystem.** ADCs, DACs, light/temp/pressure/IMU sensors — they all live in IIO, the "Industrial I/O" subsystem. Once you internalise IIO, every sensor in Part VII's cookbook becomes "DT + driver registers channels + user-space reads /sys/bus/iio/devices/."

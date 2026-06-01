@@ -10,7 +10,7 @@ status: draft
 
 > **What:** the **UART-only cellular modem** — older or BOM-constrained designs where the modem has no USB, just a TTL UART. Modules: **SIMCom A7670C** (LTE Cat-1 UART, cheap), **SIMCom SIM7600 UART variant**, **Air724UG** (Chinese-domestic, LTE Cat-4 UART), **Quectel ML302** (Cat-1, UART + ECM). On Linux, you talk to it via `/dev/ttymxc*`, use **chat + pppd** for data, and AT commands for everything else (SMS, signal, OTA firmware update). No fancy QMI, no high speeds — just the AT command set + PPP framing + good UART discipline.
 > **Why:** USB host is expensive. A USB modem requires USB-OTG/host hardware on your SoC, a 5 V supply that can deliver 2.5 A peaks, ESD protection on D+/D-, and a USB connector or board-to-board. A UART modem is 4 wires (TX/RX/RTS/CTS) + a small 3.3/4 V buck. On a price-sensitive IoT product (alarm panel, vending machine, agricultural sensor), the UART path saves $5–10 BOM + a USB-host integration headache. The trade: max ~5 Mbps (versus 150 Mbps over USB-QMI), and you live with PPP overhead.
-> **Focus:** **PPP is a circa-1989 link protocol with HDLC framing, LCP negotiation, IPCP for IPv4 address, and pap/chap auth — and it still works on every modem ever made**. The kernel's `ppp_generic.ko` provides the netdev; `pppd` is the user-space brain that runs the LCP/IPCP state machines and a chat script that converses with the modem to bring up the channel. Master `pppd` + chat + an init.d script and you have a robust auto-reconnecting cellular link with no QMI/MBIM/RNDIS complexity.
+> **Focus:** PPP is a 1989-vintage link protocol. It uses HDLC framing, LCP for link negotiation, IPCP for IPv4 address assignment, and PAP/CHAP for authentication. It still works on every modem ever made. The kernel's `ppp_generic.ko` provides the netdev; `pppd` is the user-space brain that runs the LCP/IPCP state machines and a chat script that converses with the modem to bring up the channel. With `pppd`, a chat script, and an init.d (or systemd) supervisor, you have a robust auto-reconnecting cellular link with no QMI/MBIM/RNDIS complexity.
 > **Tooling.** This chapter uses `ppp` (`pppd`, `chat`); optional GSM mux via `ldattach` (`util-linux`).
 > - **Ubuntu-base (target):** `apt install ppp util-linux`
 > - **Buildroot:** `BR2_PACKAGE_PPP=y`
@@ -48,10 +48,10 @@ GPIO  ─┤ RESETn ├───────────────────
 
 Mandatory rules:
 
-1. **Hardware flow control (RTS/CTS) is non-negotiable** above 9600 baud. Most modules expect 115200 with flow control by default. Skip it = packets corrupted = PPP LCP timeouts = "modem doesn't work."
+1. **Above 9600 baud, hardware flow control is mandatory.** Most modules expect 115200 with flow control by default. Without it, the UART drops bytes, PPP LCP times out, and the modem looks broken.
 2. **VBAT, not VDD_3V3.** The modem's RF block runs from a 4 V (typ.) supply directly to the PA. The internal LDO drops to 3.3 V for logic, but the PA pulls from VBAT. Sourcing VBAT from a weak 3.3 V LDO instead of a buck = TX brownouts.
 3. **470 µF or larger bulk cap on VBAT.** TX is a 1.7 W burst at ~500 mA peak. The supply needs to hold that without sagging or PPP drops on every transmit.
-4. **PWRKEY pulse.** Modules are off after VBAT applied. Pulse PWRKEY low for ≥1 s (≥2 s on Air724) to power on. Some boards tie PWRKEY low through a resistor for auto-on; the cleaner pattern is GPIO control so the host can reset the modem.
+4. **PWRKEY pulse.** Modules are off after VBAT applied. Pulse PWRKEY low for at least 1 s to power on. The Air724 needs 2 s. Some boards tie PWRKEY low through a resistor for automatic power-on; GPIO control is cleaner because it lets the host reset the modem.
 5. **3.3 V vs 1.8 V UART logic.** Newer modules (LTE Cat-1bis) are 1.8 V. A direct 3.3 V tie kills the I/O. Level-shift if mismatched.
 
 ## 103.3  Powering on and the boot sequence
@@ -71,7 +71,7 @@ cat /dev/ttymxc3
 # *IPGetv4: 10.x.x.x
 ```
 
-These **URCs (Unsolicited Result Codes)** are the modem reporting boot progress. Don't talk to it before "SMS Ready" or you'll get spurious ERROR responses. The right pattern: spawn a reader thread that consumes the boot URCs, then enter AT command mode.
+These URCs (Unsolicited Result Codes) report boot progress. Do not send AT commands before "SMS Ready" — they will return spurious ERRORs. The right pattern: spawn a reader thread that consumes the boot URCs, then enter AT command mode.
 
 ## 103.4  PPP over UART, end-to-end
 
@@ -147,7 +147,7 @@ ppp_generic (netdev `ppp0`)              <- wraps PPP frames in skb, IP layer ta
 IP routing (decides next hop = ppp0)
 ```
 
-The clever part: `pppd` does protocol negotiation entirely in user space (LCP, IPCP packets are sent/received by writing/reading PPP frames through the /dev/ppp ioctl), but data path is fully kernel-side via the line discipline. Result: low CPU even on a Cortex-A7.
+Note the split: `pppd` does protocol negotiation entirely in user space (LCP, IPCP packets are sent/received by writing/reading PPP frames through the /dev/ppp ioctl), but the data path runs kernel-side via the line discipline. CPU stays low even on a Cortex-A7.
 
 If you want to peek at the bytes:
 
@@ -165,7 +165,7 @@ Two solutions:
 
 ### Option 1: pause PPP, send AT, resume
 
-Bring the link down, send AT, bring it back up. Crude but works for low-frequency queries.
+Bring the link down, send AT, bring it back up. Simple but works for low-frequency queries.
 
 ### Option 2: GSM 07.10 multiplexer (CMUX)
 
@@ -226,7 +226,7 @@ while true; do
 done
 ```
 
-Add `/etc/init.d/celld` or a systemd unit and the cellular link comes up at boot, recovers from any modem hang via PWRKEY power-cycle, and signals status via an LED. ~30 lines of shell that replace 200 lines of C in many vendor SDKs.
+Install as `/etc/init.d/celld` or a systemd unit. The link comes up at boot, recovers from any modem hang by power-cycling PWRKEY, and shows status on an LED. About 30 lines of shell, replacing several hundred lines of vendor C.
 
 ## 103.8  ECM mode — when the UART module has USB-style Ethernet
 

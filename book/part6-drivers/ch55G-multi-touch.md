@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 55G — Multi-touch (GT911)
 
-> **What:** the **MT-B** (slot-based multi-touch) protocol, the kernel's standard for reporting per-finger touch coordinates, and the **Goodix GT911** — the ubiquitous I²C capacitive touch controller that ships with most off-the-shelf RGB-parallel LCDs (ATK4384, ATK7016, ATK10261).
+> **What:** the **MT-B** (slot-based multi-touch) protocol, the kernel's standard for reporting per-finger touch coordinates, and the **Goodix GT911** — the common I²C capacitive touch controller that ships with most off-the-shelf RGB-parallel LCDs (ATK4384, ATK7016, ATK10261).
 > **Why:** for any product with a touch panel, this is the input. The mainline `goodix` driver covers GT911, GT9110, GT9271 and other variants; you usually just configure DT correctly. Calibration is rarely needed for capacitive (unlike resistive); the panel's coordinate frame is wired in DT.
-> **Focus:** **MT-B is slot-based**. Each tracked finger gets a *slot*; the driver reports per-slot position. Old code uses MT-A (sliding-window protocol); new code uses MT-B (cleaner, easier).
+> **Focus:** **MT-B is slot-based**. Each tracked finger gets a *slot*; the driver reports per-slot position. Older code uses MT-A. Current code uses MT-B.
 
 ## 55G.1  MT-B vs MT-A
 
@@ -57,7 +57,7 @@ Finger lift: write `ABS_MT_TRACKING_ID = -1` to that slot.
 ```
 
 Key properties:
-- **`reg = <0x5d>` or `<0x14>`** — GT911 has two I²C addresses; the IRQ pin level at reset selects. 0x5d when IRQ low, 0x14 when high.
+- **`reg = <0x5d>` or `<0x14>`** — the GT911 has two I²C addresses. The IRQ pin level at reset selects which: 0x5d when IRQ is low, 0x14 when IRQ is high.
 - **`reset-gpios`** — pulsed at probe.
 - **`touchscreen-size-x/y`** — physical resolution to report. Usually matches the LCD.
 - **`touchscreen-inverted-x/y`, `touchscreen-swapped-x-y`** — rotate/flip the touch coordinate frame to match the LCD orientation.
@@ -71,7 +71,7 @@ GT911 needs:
 - INT (touch-event interrupt; also doubles as I²C-address-select at reset).
 - RST.
 
-The order of bringing up RST and INT *during reset* selects the I²C address. The driver handles this dance.
+The driver bring-up sequence for RST and INT selects the I²C address. The driver handles this for you.
 
 ## 55G.4  Verify it works
 
@@ -112,7 +112,7 @@ If touch is "mirrored" or "rotated" relative to the visible LCD:
 - **Inverted Y** (top/bottom swapped): `touchscreen-inverted-y;`
 - **Swapped X-Y** (touched a horizontal line, axis is vertical): `touchscreen-swapped-x-y;`
 
-Try combinations until the touch matches the cursor on screen. For resistive touchscreens (XPT2046 etc.), this isn't enough — you need software calibration with `xinput_calibrator`, since the touch's reported value isn't linearly mapped to display pixels.
+Try combinations until the touch matches the cursor on screen. For resistive touchscreens (XPT2046 etc.), this isn't enough — you need software calibration with `xinput_calibrator`, since the touch values are not linearly mapped to display pixels.
 
 ## 55G.6  Firmware
 

@@ -8,9 +8,16 @@ status: draft
 
 # Chapter 123A — Yocto layer development in depth
 
-> **What:** the production-grade **Yocto layer design** pattern. We build a 3-layer stack: **`meta-mybsp`** (board + BSP — kernel + U-Boot + DT for `imx6ull-myboard`), **`meta-mybsp-mini`** (board variant — same SoC, smaller display), **`meta-mybsp-myapp`** (application layer — your in-house Qt app, MQTT daemon, OTA config). Plus a separate **distro layer** (`meta-mybsp-distro`) that pins package versions + DISTRO_FEATURES. We walk every meaningful concept: layer priorities, bbappend patterns, machine config, `IMAGE_FEATURES`/`DISTRO_FEATURES`, `wic` for image partitioning, `RAUC`/SWUpdate integration, and the `SRC_URI` cache so reproducible builds work offline.
-> **Why:** Ch 123 chose Yocto. Now the meat of the work is *writing layers properly*. A bad layer organization makes every change a hunt across the metadata tree; a good one isolates your product changes from upstream, makes variants trivial, and survives upstream layer updates. The pattern below is what production vendors use; it's the difference between "Yocto is awful" and "Yocto is the best build system in embedded Linux."
-> **Focus:** **layers stack like CSS — later layers override earlier ones via priority. Use bbappend to extend an upstream recipe; use a new bb for your own packages; use machine config for "this hardware needs these kernel modules"; use distro config for "this product line needs OpenSSL 3 + systemd"; use image recipes for "this final shipped image contains these packages"**. Get these separations right and a 5-machine, 3-distro, 10-app matrix becomes trivial. Mix them up (machine-specific stuff in distro config) and you build a tar pit.
+> **What:** the **Yocto layer design** that production vendors use. We build a 3-layer stack: **`meta-mybsp`** (board + BSP — kernel + U-Boot + DT for `imx6ull-myboard`), **`meta-mybsp-mini`** (board variant — same SoC, smaller display), **`meta-mybsp-myapp`** (application layer — your in-house Qt app, MQTT daemon, OTA config). Plus a separate **distro layer** (`meta-mybsp-distro`) that pins package versions + DISTRO_FEATURES. We walk every meaningful concept: layer priorities, bbappend patterns, machine config, `IMAGE_FEATURES`/`DISTRO_FEATURES`, `wic` for image partitioning, `RAUC`/SWUpdate integration, and the `SRC_URI` cache so reproducible builds work offline.
+> **Why:** Ch 123 chose Yocto. Now the meat of the work is *writing layers properly*. A bad layer organization makes every change a hunt across the metadata tree. A good one isolates your product from upstream, keeps variants simple, and survives upstream layer updates. Done well, Yocto becomes a tool you'd recommend. Done badly, it becomes the build system everyone hates.
+> **Focus:** layers stack like CSS — later layers override earlier ones via priority. The roles are:
+> - **bbappend** — extend an upstream recipe.
+> - **a new `.bb`** — your own packages.
+> - **machine config** — "this hardware needs these kernel modules."
+> - **distro config** — "this product line needs OpenSSL 3 + systemd."
+> - **image recipes** — "this final shipped image contains these packages."
+>
+> Get these separations right and a 5-machine, 3-distro, 10-app matrix becomes manageable. Mix them up (machine-specific stuff in distro config) and you build a tar pit.
 
 ## 123A.1  Layer anatomy
 
@@ -198,7 +205,7 @@ CONFIG_IIO_RFM69=y
 CONFIG_WIREGUARD=y
 ```
 
-BitBake applies the patch + the config fragment automatically. You haven't forked `meta-imx`'s kernel recipe — you've augmented it. Survives upstream layer updates cleanly.
+BitBake applies the patch and the config fragment automatically. You haven't forked `meta-imx`'s kernel recipe; you've augmented it. The change survives upstream layer updates.
 
 ## 123A.6  Distro vs machine vs image — separation of concerns
 
@@ -210,7 +217,7 @@ Distinguishing what goes where:
 | **MACHINE** | The hardware variant | "i.MX6ULL Cortex-A7 at 528 MHz with FEC × 2, no GPU" |
 | **IMAGE** | The shipped artifact | "myapp + ssh + chrony, no debug tools, 200 MB rootfs" |
 
-If you mix these — e.g., put a machine-specific kernel module in the distro config — you create surprises:
+If you mix these (for example, putting a machine-specific kernel module into the distro config) you create surprises:
 - A second machine's image gets that module unnecessarily.
 - Debugging "why does machine X have this kernel module" leads you on a wild goose chase.
 

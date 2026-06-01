@@ -9,8 +9,8 @@ status: draft
 # Chapter 108 — RS-485 + Modbus RTU
 
 > **What:** **RS-485** — the differential half-duplex serial bus that has carried industrial data since 1983, still ubiquitous in factories, building automation, solar inverters, and HVAC. We compare **MAX485** (5 V, 5 Mbps, the canonical chip), **SP3485** (3.3 V, 10 Mbps), **ADM2483** (isolated, for noisy environments), **MAX13487** (auto-direction — eliminates the GPIO control headache). On Linux, we wire RS-485 to a UART, enable the kernel's RS-485 mode (`SER_RS485_ENABLED`), and use **`libmodbus`** to implement a **Modbus RTU** master/slave talking to real inverters, energy meters, and PLCs.
-> **Why:** every industrial site has Modbus RTU. Solar inverters, energy meters, BMS systems, irrigation controllers, VFDs (variable-frequency drives), even building HVAC — they all expose data over Modbus RTU on RS-485. Your i.MX6ULL becomes the data collector / gateway, polling 5–50 devices and bridging to MQTT/cloud. RS-485 is unglamorous but irreplaceable; learning it opens an enormous market (industrial IoT) that pure-WiFi/Ethernet devices can't touch.
-> **Focus:** **RS-485 is half-duplex differential signaling on a 2-wire bus; you must control the line driver direction (TX or RX) at sub-bit-time precision, and Modbus framing depends on inter-character timeouts that vary with baud rate**. The kernel's RS-485 ioctl handles DE/RE control automatically *if* your UART supports it; otherwise you bit-bang via a GPIO with sub-microsecond latency requirements that are hard on a non-RT Linux. Auto-direction transceivers (MAX13487) solve this in hardware. Termination (120 Ω at each bus end), biasing (fail-safe to known idle state), and ground reference (a multi-meter check across grounds is mandatory before connecting devices powered from different sources) are the three things that break a working bench setup when you deploy it.
+> **Why:** every industrial site has Modbus RTU. Solar inverters, energy meters, BMS systems, irrigation controllers, VFDs (variable-frequency drives), even building HVAC — they all expose data over Modbus RTU on RS-485. Your i.MX6ULL becomes the data collector / gateway, polling 5–50 devices and bridging to MQTT/cloud. RS-485 is everywhere in industrial systems. Knowing it gives you access to the industrial IoT market that pure-WiFi devices cannot reach.
+> **Focus:** RS-485 is half-duplex differential signalling on a two-wire bus. You must switch the driver between TX and RX with sub-bit-time precision. On top of that, Modbus RTU detects frames by inter-character timeouts that scale with baud rate. The kernel's RS-485 ioctl handles DE/RE control automatically *if* your UART supports it; otherwise you bit-bang via a GPIO with sub-microsecond latency requirements that are hard on a non-RT Linux. Auto-direction transceivers (MAX13487) solve this in hardware. Three things break a bench setup when you deploy it on a real factory floor. Termination — 120 Ω at each end of the bus. Biasing — fail-safe pull-ups so the idle line is a known logic level. Ground reference — measure the voltage between grounds before connecting devices powered from different supplies.
 > **Tooling.** This chapter uses `libmodbus5` + dev headers (C), or `pymodbus` (Python); optional `modpoll` CLI tester.
 > - **Ubuntu-base (target):** `apt install libmodbus5 libmodbus-dev python3-pymodbus`
 > - **Buildroot:** `BR2_PACKAGE_LIBMODBUS=y BR2_PACKAGE_PYTHON3_PYMODBUS=y`
@@ -40,7 +40,7 @@ Cable lengths:
 - 1200 m at 100 kbps
 - Up to 4 km at 9600 (the Modbus default)
 
-Topology: **daisy-chain only** (no star, no T-stubs > 30 cm). Termination at both physical ends.
+Topology: daisy-chain only. No star or branch wiring. Spurs from the main bus must be shorter than 30 cm. Terminate both physical ends.
 
 ```
    [Master] ───── stub ─── ┬ ────────── ┬ ─── stub ─── [Slave 3]
@@ -64,7 +64,7 @@ Topology: **daisy-chain only** (no star, no T-stubs > 30 cm). Termination at bot
 
 **Pick guide:**
 - **MAX485 / SP3485** — bench testing, simple single-board projects. Manual DE/RE control via GPIO.
-- **MAX13487** — production, especially on Linux where sub-bit-time DE control is hard. Auto-direction = "wire it up and forget."
+- **MAX13487** — recommended for production. Auto-direction removes the timing-critical DE/RE control.
 - **ADM2483** — when your bus has 24 V power devices, motors nearby, long outdoor runs. Isolation prevents ground loops from blowing up the SoC.
 
 ## 108.3  Wiring RS-485 to the i.MX6ULL
@@ -159,7 +159,7 @@ Frame separation by **inter-character timeout**:
 - Inter-character (within frame): < 1.5 char-times
 - Inter-frame: ≥ 3.5 char-times
 
-At 9600 baud, 1 char = 11 bits / 9600 = 1.146 ms; 3.5 char = 4 ms idle to detect end-of-frame.
+At 9600 baud, one 11-bit character takes 1.146 ms. The 3.5-character inter-frame gap is therefore about 4 ms — that is the idle time after which a receiver declares end-of-frame.
 
 This is where Linux can struggle: the kernel buffers UART data; user-space sees it in chunks; reconstructing the precise inter-character gaps requires the kernel to timestamp byte arrivals. `libmodbus` handles this with `select()` + read-timeout heuristics; it works fine at ≤ 38400.
 
@@ -227,7 +227,7 @@ while True:
     time.sleep(5)
 ```
 
-30 seconds of Python, ~$15 of hardware, you have your inverter on Home Assistant / Grafana.
+About 30 lines of Python and $15 of hardware put the inverter on Home Assistant or Grafana.
 
 ## 108.8  Modbus slave — make your i.MX6ULL a peripheral
 
@@ -260,7 +260,7 @@ Now your i.MX6ULL is slave 5 on the bus; any master can poll it for sensor data.
 4. **Multi-slave bus.** Add 3+ devices to the same bus with unique addresses (1, 2, 3). Round-robin poll them; verify no collisions.
 5. **Termination test.** Remove the 120 Ω termination. Long cable (10+ m). Watch for CRC errors. Add termination back; verify clean.
 6. **Bias test.** Disconnect master. Without bias resistors, the bus floats and slaves see random noise as start-bits. Add bias; bus stays idle-high.
-7. **Auto-direction.** Replace MAX485 with MAX13487. Confirm communication works without DE GPIO. Try at 115200 — auto-direction's main benefit.
+7. **Auto-direction.** Replace MAX485 with MAX13487. Confirm communication works without DE GPIO. Try at 115200 — this is auto-direction's main benefit.
 8. **Slave mode.** Implement a Modbus slave on the i.MX6ULL exposing 16 registers; have a separate master poll it.
 9. **MQTT gateway.** Bridge the inverter data through MQTT (use the worked example). Plumb to Grafana for a 24-hour solar production chart.
 10. **Long-cable test.** Run 100 m of CAT5 between two boards; baud test at 9600/19200/38400/115200; note where errors start.

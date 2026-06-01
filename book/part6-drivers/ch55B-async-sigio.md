@@ -96,7 +96,7 @@ int main(void)
 }
 ```
 
-Three steps: install signal handler → `F_SETOWN` declares who gets the signal → `F_SETFL | O_ASYNC` enables it.
+Three steps. First, install the signal handler. Second, `F_SETOWN` tells the kernel which process gets the signal. Third, `F_SETFL | O_ASYNC` enables delivery.
 
 ## 55B.3  When to use SIGIO (and when not to)
 
@@ -110,7 +110,7 @@ Three steps: install signal handler → `F_SETOWN` declares who gets the signal 
 - You can use `poll()` / `select()` / `epoll` instead — those are more efficient and don't have signal-handler restrictions.
 - You need to know *which* fd fired (SIGIO carries the band but not the fd unless you use `F_SETSIG` for realtime signals with `siginfo`).
 
-For modern code, `poll()` / `epoll` are preferred for everything. SIGIO is a "good to know it exists" mechanism more than a "use this often" mechanism.
+For modern code, `poll()` / `epoll` are preferred for everything. SIGIO is worth knowing about, but rarely the right tool today.
 
 ## 55B.4  Lab
 
@@ -123,12 +123,12 @@ For modern code, `poll()` / `epoll` are preferred for everything. SIGIO is a "go
 - **Signal handler doing too much.** Signal handlers run in arbitrary context; only async-signal-safe functions allowed. Set a flag; do real work in the main loop.
 - **Forgetting `F_SETOWN`.** Without it, the kernel doesn't know who to signal.
 - **Race: signal arrives before sigaction installed.** Install handler before opening the device.
-- **Signal merging.** If your driver fires SIGIO twice before user-space handles either, only one delivery happens. User-space must drain whatever was queued, not just respond to "one event."
+- **Signal merging.** If your driver fires SIGIO twice before user-space handles either, only one delivery happens. User-space must drain everything that was queued, not just handle one event.
 - **`fasync_helper(-1, ...)` not called in release.** Stale fasync entry; later signals go to a dead pid.
 
 ## 55B.6  Going deeper
 
-- **`Documentation/admin-guide/cgroup-v2.rst`** (no, just kidding) — the relevant kernel docs are sparse; use LDD3 Chapter 6 and `man 2 fcntl`.
+- The relevant kernel docs are sparse — see LDD3 Chapter 6 and `man 2 fcntl` instead.
 - **`drivers/char/`** — many older char drivers use SIGIO.
 - **`kernel/signal.c`**, **`fs/fcntl.c`** — implementation.
 

@@ -9,8 +9,8 @@ status: draft
 # Chapter 109 — LIN bus
 
 > **What:** **LIN (Local Interconnect Network)** — a single-wire, master/slave serial bus used in cars for low-cost peripherals where CAN is overkill (door modules, seat motors, mirror controls, HVAC fans, rain sensors, parking sensors). Three transceivers: **NXP TJA1020** (legacy 12 V), **TJA1027** (3.3/5 V LIN 2.x), **Microchip MCP2003B** (similar). On Linux there is no native LIN subsystem, so we drive it from a UART with custom break + parity handling, build a master node and a slave responder in C, and demonstrate talking to a real automotive LIN node (HVAC blower controller from a junkyard).
-> **Why:** if you're integrating with automotive systems — retrofit modules, OBD diagnostic tools, custom dashboards, EV conversion kits — you'll meet LIN. Cars use 100+ LIN slaves; CAN buses delegate "is the user pressing the seat-heat button" to a LIN sub-bus underneath. LIN is also creeping into industrial actuator buses (HVAC valves, building blinds) for the same reason: $0.40 per node + 1-wire bus is unbeatable for "dumb" peripherals. Linux's lack of native support means you write the framing yourself, which is a great UART exercise.
-> **Focus:** **LIN is UART + a "break" pulse + an 8-bit "sync" byte + a 6-bit "PID" + 1–8 data bytes + 8-bit checksum, all run by a single master broadcasting schedules; slaves never speak unprompted**. The break signal (≥13 dominant bits = ~1.4 ms low at 9600 LIN-baud) is *not* a normal UART feature — you either generate it with `tcsendbreak()` or by toggling baud rate momentarily. The protocol is dirt simple; the trap is getting the timing right on a non-deterministic Linux UART.
+> **Why:** if you're integrating with automotive systems — retrofit modules, OBD diagnostic tools, custom dashboards, EV conversion kits — you'll meet LIN. Cars use 100+ LIN slaves; CAN buses delegate "is the user pressing the seat-heat button" to a LIN sub-bus underneath. LIN is also spreading into industrial actuator buses (HVAC valves, building blinds). At about $0.40 per node and one wire, it is the cheapest option for simple peripherals. Linux has no native LIN subsystem; you write the framing yourself. This is also a useful UART exercise.
+> **Focus:** A LIN frame is: a UART start, a 'break' pulse, an 0x55 sync byte, a 6-bit Protected Identifier (PID) byte, one to eight data bytes, and a checksum byte. A single master schedules every frame. Slaves never transmit on their own. The break signal (≥13 dominant bits = ~1.4 ms low at 9600 LIN-baud) is *not* a normal UART feature — you either generate it with `tcsendbreak()` or by toggling baud rate momentarily. The protocol is simple. The trap is getting the timing right on a non-deterministic Linux UART.
 
 ## 109.1  LIN at a glance vs CAN, RS-485
 
@@ -72,7 +72,7 @@ GPIO  ─┤ EN     ├───────────────────
        └────────┘                              └───────────┘
 ```
 
-The LIN bus is **a single wire pulled up to 12 V (or 7–18 V in practice)**, with each node yanking it low to transmit. Idle = recessive = 12 V; dominant = ~0 V. The master provides a 1 kΩ pull-up (slaves use 30 kΩ pull-up). The TJA1027 handles the level translation between the 12 V LIN domain and the 3.3 V UART domain.
+The LIN bus is a single wire pulled up to 12 V (typically 7–18 V in practice). Each node pulls the wire low to transmit. Idle = recessive = 12 V; dominant = ~0 V. The master provides a 1 kΩ pull-up (slaves use 30 kΩ pull-up). The TJA1027 handles the level translation between the 12 V LIN domain and the 3.3 V UART domain.
 
 ## 109.4  Generating a LIN break + frame from a UART
 
@@ -103,7 +103,7 @@ tcsetattr(fd, TCSANOW, &t);
 
 ### Trick 3 — bit-bang with GPIO
 
-For the most reliable timing, switch the TX pin to GPIO momentarily, pulse it low for the calculated time, switch back. Robust but ugly.
+For the most reliable timing, switch the TX pin to GPIO momentarily, pulse it low for the calculated time, switch back. Reliable but messy.
 
 ### Trick 4 — i.MX UART SEND_BREAK bit
 
@@ -236,11 +236,11 @@ for (;;) {
 }
 ```
 
-Detecting the break from user-space is the awkward part on Linux — there's no clean API. Practical patterns:
+Detecting the break from user-space is hard on Linux; there is no dedicated API. Practical patterns:
 - Look for a UART framing error followed by 0x00 byte (the break appears as 0x00 with a framing error flag).
 - Poll `ioctl(fd, TIOCGICOUNT, &counts)` for `brk++` since last call.
 
-Both work, neither is elegant. A proper LIN slave belongs on an MCU.
+Both methods work but neither is clean. For real products, run the LIN slave on a dedicated MCU.
 
 ## 109.7  LIN sleep + wake
 
@@ -260,11 +260,11 @@ Junkyard a VW/Audi HVAC blower controller (~$15). Pinout:
 - GND
 - LIN
 
-Pull-up 1 kΩ from LIN to 12 V (you're the master). Wire to your TJA1027. The blower controller's slave ID for "set fan speed" is typically `0x20` (vendor-specific; reverse-engineering via LIN-bus traffic dumps from forums).
+Pull-up 1 kΩ from LIN to 12 V (you're the master). Wire to your TJA1027. The blower controller's slave ID for "set fan speed" is typically `0x20`. The exact ID is vendor-specific; you find it by capturing bus traffic and matching commands to behaviour.
 
 Send: ID 0x20, data `[speed_0..255, 0x00, 0x00, ..., 0x00]` (8 bytes total for VW). The fan should spin proportional to speed.
 
-You've now controlled an automotive comfort actuator from Linux. The same pattern works for door-lock modules, mirror-fold motors, sunroof tilt — all LIN slaves.
+At this point you have driven an automotive comfort actuator from Linux. The same pattern works for door-lock modules, mirror-fold motors, sunroof tilt — all LIN slaves.
 
 ## 109.9  Lab
 

@@ -9,8 +9,8 @@ status: draft
 # Chapter 70 — I²C IMUs
 
 > **What:** three I²C inertial measurement units, dissected: **InvenSense MPU6050** (6-axis, the classic), **MPU9250** (9-axis with an AK8963 magnetometer hiding inside via I²C-master mode), **ICM-20948** (modern 9-axis, replaced MPU9250). For each: register map, the sampling-rate trade-offs, the IIO **trigger + buffer** mechanism for high-rate capture, and a from-scratch MPU6050 driver including IIO buffer support.
-> **Why:** IMUs are everywhere — drones, e-scooters, VR headsets, fitness wearables, industrial vibration monitors. They're also the canonical IIO example of *high-rate buffered capture*: a 1 kHz IMU produces 6–9 measurements per sample, and one sysfs read per sample isn't going to work. The IIO trigger/buffer framework is the answer, and once you understand it you can use it for any high-rate sensor.
-> **Focus:** **trigger + buffer is the path to thousands of samples per second**. A `trigger` (timer or IRQ) tells the driver "now"; the driver atomically samples *all enabled channels*; pushes the coordinated sample into a kfifo; user-space drains the kfifo from `/dev/iio:deviceN`. The whole pipeline is asynchronous and survives microsecond jitter.
+> **Why:** IMUs are everywhere — drones, e-scooters, VR headsets, fitness wearables, industrial vibration monitors. They're also the canonical IIO example of *high-rate buffered capture*: a 1 kHz IMU produces 6–9 measurements per sample, and one sysfs read per sample isn't going to work. The IIO trigger/buffer framework is the answer. Once you understand it, the same pattern works for any high-rate sensor.
+> **Focus:** **Trigger + buffer is how IIO scales to thousands of samples per second.** A `trigger` (timer or IRQ) tells the driver "now"; the driver atomically samples *all enabled channels*; pushes the coordinated sample into a kfifo; user-space drains the kfifo from `/dev/iio:deviceN`. The whole pipeline is asynchronous and survives microsecond jitter.
 
 ## 70.1  Chip comparison
 
@@ -38,7 +38,7 @@ status: draft
 
 A 6-axis IMU (accel + gyro) can compute **orientation drift-free in roll and pitch** by sensing gravity. But it has *no absolute reference for yaw* — rotate around the vertical axis and the gyro integration drifts seconds-of-arc per second.
 
-Adding a magnetometer gives an Earth-field reference: the chip measures the geomagnetic vector (~50 µT, pointing roughly north + downward). Combined with the accel's gravity vector, the fusion algorithm can pin all three rotational axes. The result: **drift-free orientation in all three axes**.
+Adding a magnetometer gives an Earth-field reference: the chip measures the geomagnetic vector (~50 µT, pointing roughly north + downward). Combined with the accel's gravity vector, the fusion algorithm can lock down all three rotation angles — roll, pitch, *and* yaw. The result: **drift-free orientation in all three axes**.
 
 For drones, AR/VR, robotic-arm control: 9-axis is mandatory. For tap-detection, fall-detection, vibration logging: 6-axis is enough.
 
@@ -96,7 +96,7 @@ Bring-up sequence:
 
 ## 70.4  IIO trigger + buffer — the high-rate model
 
-For a 1 kHz IMU, a one-sample-per-sysfs-read loop hits the syscall path 1000 times per second per axis. That's ~30 µs per sysfs read × 6 axes × 1000 Hz = 18 % of one CPU just on the syscall overhead. Untenable.
+For a 1 kHz IMU, a one-sample-per-sysfs-read loop crosses the syscall boundary 1000 times per second per axis. That's ~30 µs per sysfs read × 6 axes × 1000 Hz = 18 % of one CPU just on the syscall overhead. Not workable.
 
 The IIO solution: **triggers** + **buffers**.
 
@@ -263,7 +263,7 @@ static const struct iio_chan_spec inv_mpu_channels[] = {
 };
 ```
 
-`scan_index` is the in-buffer position. `scan_type` tells user-space "16-bit signed, big-endian." `IIO_CHAN_SOFT_TIMESTAMP(0)` adds a 64-bit timestamp per sample — invaluable for time-aligned analysis.
+`scan_index` is the in-buffer position. `scan_type` tells user-space "16-bit signed, big-endian." `IIO_CHAN_SOFT_TIMESTAMP(0)` adds a 64-bit timestamp per sample — essential when you need to time-align across sensors.
 
 ### The trigger handler
 
@@ -308,7 +308,7 @@ When the data-ready trigger is bound:
 3. Primary handler returns `IRQ_WAKE_THREAD`; the trigger framework schedules the trigger handler (above) as a kernel thread.
 4. Thread runs at SCHED_FIFO priority, drains FIFO, pushes to buffer.
 
-So even at 1 kHz, the CPU only wakes once per sample — and only briefly. Compare to `read()` polling: 30 µs per syscall × 6 channels = 180 µs of CPU per sample (18 %). With trigger+buffer: maybe 5 µs per sample (0.5 %).
+At 1 kHz the CPU wakes once per sample for a few microseconds. Compare to `read()` polling, which is 30 µs per syscall and 6 channels = 180 µs per sample, or 18 % of one CPU. Trigger+buffer is closer to 5 µs per sample, around 0.5 %.
 
 ## 70.6  Writing an MPU6050 driver from scratch (with buffer support)
 
@@ -603,7 +603,7 @@ echo 1 > /sys/bus/iio/devices/iio:device0/buffer/enable
 dd if=/dev/iio:device0 of=imu.bin bs=20 count=5000
 ```
 
-5000 atomic samples — accel + gyro + 64-bit timestamp — captured in 5 seconds. User-space can FFT for vibration analysis, or feed to a Madgwick filter for real-time orientation.
+Five thousand atomic samples — accel, gyro, and 64-bit timestamp — captured in 5 seconds. From here, user-space can FFT for vibration analysis or feed a Madgwick filter for orientation.
 
 What we got, ~350 lines:
 - Sysfs INFO_RAW per-axis reads.
@@ -694,7 +694,7 @@ Run once per IMU sample (1 kHz). `beta` tunes the trust-gyro-vs-trust-accel bala
 
 For yaw, add magnetometer; the algorithm extends to "Madgwick AHRS."
 
-This is *user-space* math, not driver math. The driver's job is to deliver clean samples; the application owns the fusion.
+Fusion belongs in user-space, not in the driver. The driver delivers clean samples; the application turns them into orientation.
 
 ## 70.11  Lab
 

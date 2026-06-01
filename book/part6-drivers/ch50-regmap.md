@@ -10,7 +10,7 @@ status: draft
 
 > **What:** **regmap** — the register-access layer that sits between your driver and the bus (I²C, SPI, MMIO, or a custom one). You describe the chip's register layout once; regmap gives you `regmap_read(rm, reg, &val)` and `regmap_write(rm, reg, val)` that just work, with optional caching, locking, debugging, and bulk transfers all handled for you.
 > **Why:** before regmap (~2011), every driver duplicated the same boilerplate: an I²C wrapper, an SPI wrapper, register-cache invalidation, byte-swap dances, mutex protection. The same 40 lines were copy-pasted across hundreds of drivers, with subtle bugs each time. Regmap factored it out. A modern driver — especially an audio codec or PMIC with hundreds of registers — uses regmap exclusively and is half as long as it would have been pre-regmap.
-> **Focus:** **declare-then-use**. You provide a `regmap_config` describing your chip's registers (bit widths, ranges, which are volatile vs cached, which are read-only) and a one-call regmap_init for your bus. From there every register access goes through the same two functions. Get the config right and the rest is mechanical.
+> **Focus:** **declare-then-use**. You provide a `regmap_config` describing your chip's registers (bit widths, ranges, which are volatile vs cached, which are read-only) and a one-call regmap_init for your bus. From there every register access goes through the same two functions. Get the config right and the rest is bookkeeping.
 
 ## 50.1  Why regmap exists
 
@@ -44,7 +44,7 @@ static int my_i2c_write(struct my_priv *p, u8 reg, u8 val)
 - Bit-field helpers to modify a single bit of a register.
 - Endianness handling for chips with mixed-width registers.
 
-That's a hundred lines of identical-feeling code. Regmap factors it all out. You declare *what your chip looks like*; regmap handles *how to talk to it*.
+That is a hundred lines of identical-looking code. Regmap factors it out: declare *what your chip looks like*, and regmap handles *how to talk to it*.
 
 ## 50.2  The minimal regmap
 
@@ -96,7 +96,7 @@ For MMIO (a memory-mapped peripheral on the SoC):
 regmap = devm_regmap_init_mmio(&pdev->dev, base, &my_regmap_config);
 ```
 
-The rest of the driver — `regmap_read`, `regmap_write`, `regmap_update_bits` — is *identical*. The driver becomes bus-agnostic.
+The rest of the driver — `regmap_read`, `regmap_write`, `regmap_update_bits` — is *identical*. The driver no longer cares which bus it sits on.
 
 ## 50.3  Variations of the config
 
@@ -157,7 +157,7 @@ static const struct regmap_config my_regmap_config = {
 };
 ```
 
-With `cache_type = REGCACHE_RBTREE`, regmap caches all non-volatile, non-read-only registers in a red-black tree. A `regmap_read` of a cached register returns the cached value instantly; only volatile registers hit the bus. A `regmap_write` updates the cache *and* the bus; if power is restored after suspend, `regcache_sync(regmap)` flushes the cache back to the chip.
+With `cache_type = REGCACHE_RBTREE`, regmap caches every non-volatile, non-read-only register in a red-black tree. A `regmap_read` of a cached register returns the cached value instantly. Only volatile registers hit the bus. A `regmap_write` updates both the cache and the bus. After resume from suspend, `regcache_sync(regmap)` flushes the cache back to the chip.
 
 This last point — `regcache_sync` — is a huge win for power management. After resume, instead of re-reading every config register, the driver calls `regcache_sync` and regmap replays only the registers whose cached value differs from defaults.
 
@@ -283,7 +283,7 @@ static int mysensor_probe(struct i2c_client *client, ...)
 }
 ```
 
-Maybe 200 lines total. The same chip, hand-written without regmap and without IIO, would be 600+. The frameworks are leverage.
+Around 200 lines total. The same chip without regmap or IIO would be 600+. The frameworks save you that code.
 
 ## 50.6  Debug: /sys/kernel/debug/regmap
 
@@ -310,7 +310,7 @@ F4: 27
 
 `registers` dumps the cached or read register values. `cache_only = 1` makes subsequent regmap accesses return cached values without touching the bus (useful for debugging "what does my driver *think* the chip looks like?"). `cache_bypass = 1` forces every access to the bus (useful for "is the bus actually working?").
 
-For interactive driver debugging during bring-up, this is invaluable.
+For interactive driver debugging during bring-up, this is the tool you reach for.
 
 ## 50.7  Lab
 

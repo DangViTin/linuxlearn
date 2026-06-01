@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 55C — CAN bus (SocketCAN + FlexCAN)
 
-> **What:** **SocketCAN** — Linux's elegant abstraction that exposes a CAN interface as a network device (`can0`) and CAN frames as `struct sockaddr_can` / `struct can_frame` over a normal socket. The **FlexCAN** driver covers i.MX6ULL's 2 FlexCAN controllers; user-space speaks the socket API. By the end you can `cansend can0 123#DEADBEEF` and watch the frame on a scope.
+> **What:** **SocketCAN** — Linux's abstraction that exposes a CAN interface as a network device (`can0`) and CAN frames as `struct sockaddr_can` / `struct can_frame` over a normal socket. The **FlexCAN** driver covers i.MX6ULL's 2 FlexCAN controllers; user-space speaks the socket API. By the end you can `cansend can0 123#DEADBEEF` and watch the frame on a scope.
 > **Why:** CAN is the dominant bus in automotive and a strong second in industrial automation. The SocketCAN abstraction means you write CAN apps with `socket()` / `sendto()` / `recvmsg()` — same APIs as TCP/UDP. No proprietary library; tools work across all CAN hardware on Linux.
-> **Focus:** **CAN-as-network-device**. Once `can0` is "up," everything is generic — Wireshark, tcpdump-equivalent (`candump`), `iproute2` configuration, even SO_TIMESTAMP for nanosecond-accurate receive timestamps.
+> **Focus:** **CAN looks like a network device.** Once `can0` is "up," everything is generic — Wireshark, tcpdump-equivalent (`candump`), `iproute2` configuration, even SO_TIMESTAMP for nanosecond-accurate receive timestamps.
 > **Tooling.** This chapter uses `can-utils` + `iproute2` (`ip link set canX type can ...`).
 > - **Ubuntu-base (target):** `apt install can-utils iproute2`
 > - **Buildroot:** `BR2_PACKAGE_CAN_UTILS=y BR2_PACKAGE_IPROUTE2=y`
@@ -124,7 +124,7 @@ rfilter[1].can_mask = 0x700;     /* match 0x200–0x2FF */
 setsockopt(sock, SOL_CAN_RAW, CAN_RAW_FILTER, &rfilter, sizeof(rfilter));
 ```
 
-The kernel filters in software (or hardware where possible — FlexCAN has MB filtering). High-throughput receivers should always set filters; otherwise every frame on the bus arrives at every socket.
+The kernel filters in software, or in hardware where the controller supports it. FlexCAN has message-buffer (MB) filtering. High-throughput receivers should always set filters. Otherwise, every frame on the bus is delivered to every socket.
 
 ## 55C.5  Higher protocols
 
@@ -174,7 +174,7 @@ Or do it manually with `ip link set can0 down; ip link set can0 up;` after sorti
 
 ## 55C.8  Pitfalls
 
-- **Missing/wrong terminations.** Without 60 Ω at each end, signal integrity collapses. Single-node bench setups: just stick a single 120 Ω resistor across CAN_H/CAN_L and live with reduced robustness.
+- **Missing/wrong terminations.** Without 120 Ω termination at each end of the bus (60 Ω total), signal integrity collapses. For a single-node bench setup, put one 120 Ω resistor across CAN_H/CAN_L. Robustness is lower but it works.
 - **Wrong bitrate on one end.** Symptom: all frames error. Both sides must agree.
 - **CAN_TX/RX swapped at transceiver.** Symptom: no transmit. Verify schematic.
 - **No transceiver supply.** Many transceivers need their own VCC; without it, no signaling.
@@ -185,7 +185,7 @@ Or do it manually with `ip link set can0 down; ip link set can0 up;` after sorti
 
 - **`Documentation/networking/can.rst`** — SocketCAN documentation.
 - **`drivers/net/can/flexcan.c`** — i.MX FlexCAN driver.
-- **`can-utils`** — `cansend`, `candump`, `cangen`, `canbusload`, `isotpdump`. Indispensable.
+- **`can-utils`** — `cansend`, `candump`, `cangen`, `canbusload`, `isotpdump`. Required.
 - **`linux/can/isotp.h`**, **`linux/can/j1939.h`** — higher-protocol headers.
 - **OpenXC** project — open-source automotive data over CAN.
 

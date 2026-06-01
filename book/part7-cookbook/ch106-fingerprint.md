@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 106 — Fingerprint sensors
 
-> **What:** **standalone fingerprint modules** that do the imaging + matching internally and expose a UART command protocol. **Grow R503** (capacitive, ring-LED indicator, the modern favorite), **FPM10A / AS608** (optical, classic, cheap), **GT-521F** (capacitive, larger sensor area). Plus the kernel **`libfprint`** path for USB fingerprint scanners (laptop-style). On the i.MX6ULL we wire R503 to UART, walk the proprietary 9-byte command framing protocol, enroll a template, perform a 1:N match, store templates in flash, and integrate with PAM for "password + fingerprint" 2-factor login.
-> **Why:** Fingerprint is the dominant biometric for low-friction access control (vs face: privacy issues, harder to enroll; vs iris: $$$). UART modules are *self-contained matchers* — you don't deal with raw image processing, template extraction, or the messy algorithms. You enroll, you match, you get a yes/no + template ID. Perfect for: smart-lock products, time-and-attendance kiosks, equipment-checkout terminals, secure-area entry. On Linux, plug the module's UART into the i.MX6ULL, write a 300-line driver, and you have biometric auth.
-> **Focus:** **modules are stateful — they remember which template ID is enrolled in which slot, and protocol commands operate on that state**. Enrollment is a 3-step dance: capture image 1 → capture image 2 → combine into template → store at chosen ID. Matching is one command: capture → compare to all stored → return ID + score. The framing protocol is trivial (header + length + cmd + data + checksum), but the **state model** (which template is at slot N, what happens if you re-enroll into an occupied slot, how power-cycle affects state) trips most integrations.
+> **What:** **standalone fingerprint modules** that do the imaging + matching internally and expose a UART command protocol. **Grow R503** (capacitive, ring-LED indicator, the modern favorite), **FPM10A / AS608** (optical, classic, cheap), **GT-521F** (capacitive, larger sensor area). This chapter also covers the libfprint path for USB fingerprint scanners — the laptop-style readers. On the i.MX6ULL we wire R503 to UART, walk the proprietary 9-byte command framing protocol, enroll a template, perform a 1:N match, store templates in flash, and integrate with PAM for "password + fingerprint" 2-factor login.
+> **Why:** Fingerprint is the dominant biometric for low-friction access control. Face recognition has privacy and enrolment problems; iris is expensive. UART modules are *self-contained matchers* — you don't deal with raw image processing, template extraction, or the messy algorithms. You enroll, you match, you get a yes/no + template ID. Common applications: smart locks, time-and-attendance kiosks, equipment-checkout terminals, secure-area entry. On Linux, plug the module's UART into the i.MX6ULL, write a 300-line driver, and you have biometric auth.
+> **Focus:** modules are stateful — they remember which template ID is enrolled in which slot, and protocol commands operate on that state. Enrollment is a three-step sequence: capture image 1, capture image 2, combine into template, store at chosen ID. Matching is one command: capture, compare to all stored, return ID + score. The framing protocol is trivial (header + length + cmd + data + checksum), but the **state model** (which template is at slot N, what happens if you re-enroll into an occupied slot, how power-cycle affects state) is where most integrations fail.
 > **Tooling.** This chapter uses Just a UART terminal (`picocom`); the PAM 2FA lab needs `libpam-dev` to build a custom PAM module.
 > - **Ubuntu-base (target):** `apt install picocom libpam0g-dev`
 > - **Buildroot:** `BR2_PACKAGE_PICOCOM=y BR2_PACKAGE_LINUX_PAM=y`
@@ -33,7 +33,7 @@ status: draft
 | Form factor | round button | flat sensor + PCB | flat module |
 
 **Pick guide:**
-- **R503** — for any consumer-facing product. The capacitive sensor is dirt/wet-tolerant; the LED ring gives user feedback (red = denied, green = approved, blue = scanning). It's the "premium feel" choice.
+- **R503** — for any consumer-facing product. The capacitive sensor is dirt/wet-tolerant; the LED ring gives user feedback (red = denied, green = approved, blue = scanning). Choose the R503 when the product needs a polished user experience.
 - **AS608** — when BOM matters and the form factor allows an optical sensor (which can't get wet). Bigger storage (1000 templates) than R503.
 - **GT-521F** — for cases where you need a flat panel sensor (door reader behind a 1 mm glass).
 
@@ -127,7 +127,7 @@ Key commands:
    7. Store(slot=N)           ← persist to flash at slot N
 ```
 
-The double-capture is for robustness — fingerprints don't sample identically each time; the union improves matching tolerance. Some implementations capture 3 times for even better quality (look for FPM10A's `Enroll` shortcut command that does it all in one).
+Double-capture improves robustness. Fingerprints do not sample identically each time, so the union of two captures gives better matching tolerance. Some implementations capture 3 times for even better quality (look for FPM10A's `Enroll` shortcut command that does it all in one).
 
 If GenChar returns "too few features," the user's finger was wet, dirty, or off-center; retry.
 

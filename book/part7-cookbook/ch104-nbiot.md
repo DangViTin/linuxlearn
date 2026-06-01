@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 104 — NB-IoT / Cat-M1
 
-> **What:** the **low-power-cellular** subset of LTE — **NB-IoT (Cat-NB1/NB2)** and **LTE-M (Cat-M1)**. Modules: **Quectel BC95-G** (NB-IoT only, ~$8), **Quectel BC26** (NB-IoT + GNSS), **SimCom SIM7080G** (NB-IoT + Cat-M1, multi-region). We cover the PHY differences from LTE Cat-1+, the **PSM (Power Saving Mode)** and **eDRX (extended DRX)** features that make a 19 Ah Li-SOCl2 cell last 10 years, the AT command set, MQTT/CoAP profiles tailored for low data rates, and an end-to-end battery-powered sensor that hits 10 mA average over a 1-uplink-per-hour cycle.
+> **What:** the **low-power-cellular** subset of LTE — **NB-IoT (Cat-NB1/NB2)** and **LTE-M (Cat-M1)**. Modules: **Quectel BC95-G** (NB-IoT only, ~$8), **Quectel BC26** (NB-IoT + GNSS), **SimCom SIM7080G** (NB-IoT + Cat-M1, multi-region). We cover the PHY differences from LTE Cat-1+, the PSM and eDRX features that let a 19 Ah Li-SOCl2 cell run a sensor for up to ten years, the AT command set, MQTT/CoAP profiles tailored for low data rates, and an end-to-end battery-powered sensor that hits 10 mA average over a 1-uplink-per-hour cycle.
 > **Why:** standard LTE (Ch 102/103) wakes the radio, registers, transmits, idles — total energy per uplink ~5 Joules. NB-IoT/Cat-M1, with PSM, parks the radio in "deep sleep" between uplinks while keeping its network registration alive. The result: ~1 J per uplink → years of battery life. This is the technology behind smart water meters, GPS livestock trackers, vending-machine telemetry, and rural emergency call-boxes. If your product needs cellular + battery for years (not days), this is the only path.
-> **Focus:** **PSM is the killer feature; eDRX is the secondary lever. Use PSM aggressively or your battery life numbers are fiction**. The wake-cycle: TX → wait for downlink ACK → enter PSM, radio off, modem off-but-registered. Network keeps the IP/PDP/security context. Next wake (timer or external GPIO): instant resume, no re-registration. The 19 Ah → 10 year math depends on TX every hour at 50 bytes and PSM at <5 µA between. Get the AT commands right or you regress to 100 mA always-on and miss the spec by 1000×.
+> **Focus:** PSM is the primary power saver; eDRX is a smaller secondary saving. Use PSM correctly or your battery life estimate is wrong by orders of magnitude. The cycle is: TX, wait for the downlink ACK, then enter PSM. The radio and modem are off, but the network still considers the device registered (IP, PDP context, and security keys are kept). On the next wake — by timer or external GPIO — the device resumes immediately, with no re-registration. The 19 Ah → 10 year math depends on TX every hour at 50 bytes and PSM at <5 µA between. If the AT commands are wrong, the modem stays at 100 mA always-on. Battery life drops by a factor of 1000.
 
 ## 104.1  NB-IoT vs LTE-M vs LTE Cat-1
 
@@ -105,7 +105,7 @@ echo 'AT+NSOCL=0' > /dev/ttymxc3
 # Modem auto-enters PSM 4 s later
 ```
 
-The `+NSOST` command takes hex-encoded payload — annoying but simple. For larger payloads use `+NMGS` (Network Message Send) which queues a transmission for the next radio wake.
+The `+NSOST` command takes hex-encoded payload — verbose but simple. For larger payloads use `+NMGS` (Network Message Send) which queues a transmission for the next radio wake.
 
 ## 104.4  Cat-M1 on the SIM7080G
 
@@ -156,12 +156,12 @@ Per-cycle energy:
 | **Per year** | | | **413 mAh** |
 | **Battery life at 19 Ah usable** | | | **~46 years** (but limited by self-discharge & temperature) |
 
-Realistic constraints knock this to **8–12 years**:
+Real-world constraints reduce this to **8–12 years**:
 - LSH20 self-discharge ~1 %/year = ~190 mAh/year baseline.
 - Cold-temperature operation derates capacity 30 % at –20 °C.
 - Network re-registration after every TAU can cost 200+ mAh/year of extra time-on-air.
 
-Still: 10 years on one D-cell with no maintenance. The technology is real; the engineering is **religiously enforcing PSM duty cycle**.
+Ten years on one D-cell with no maintenance is achievable. The engineering is enforcing PSM duty cycle on every wake.
 
 ## 104.6  Lab
 

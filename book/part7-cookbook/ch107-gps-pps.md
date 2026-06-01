@@ -13,8 +13,8 @@ status: draft
 > 1. **Position** for asset tracking, geo-fencing, fleet management, anti-theft.
 > 2. **Time** — GPS atomic-clock-derived time, sub-µs precise, traceable to UTC. Telco basestations, financial exchanges, distributed databases (Spanner, CockroachDB), and any time-sensitive logging system uses GPS-disciplined clocks. A $5 chip + $20 antenna = stratum-1 NTP, no internet required.
 >
-> The technique generalizes — *any* time-domain measurement on Linux (audio sync between two boards, distributed scientific instruments, oscilloscope-on-IP) gets much easier with a real PPS time source.
-> **Focus:** **NMEA gives you the wall-clock seconds but is laggy and jittery (~50–500 ms after the second); PPS is the actual nanosecond-accurate edge**. A naïve "set the clock from `$GPRMC`" gets you to ±100 ms. PPS-disciplined (kernel timestamps the GPIO edge with hardware-clock precision; chrony combines the slow-but-labelled NMEA with the fast-but-unlabelled PPS edge) gets you to ±100 ns. Understanding the PPS plumbing — pin → kernel `pps_gpio` driver → /dev/pps0 → chrony's refclock — is what separates "GPS time sync" from "real GPS time sync."
+> The same PPS technique works for any time-domain measurement on Linux: synchronised audio between boards, distributed instruments, IP-connected oscilloscopes.
+> **Focus:** NMEA reports the wall-clock second, but it arrives 50–500 ms after the actual second. PPS is the nanosecond-accurate edge. A naïve "set the clock from `$GPRMC`" gets you to ±100 ms. With PPS, the kernel timestamps each GPIO edge using the hardware clock. Chrony combines two streams: NMEA, which is slow but tells you *which* second this is; PPS, which is fast but does not name the second. Together they reach ±100 ns. The PPS path is the key: GPS pin → kernel `pps_gpio` driver → `/dev/pps0` → chrony refclock. Get this right and you have sub-microsecond GPS time. Skip the PPS and you have NMEA-only ±100 ms.
 > **Tooling.** This chapter uses `gpsd` + `gpsd-clients` (`gpspipe`, `cgps`, `gpsmon`), `chrony`, `pps-tools` (`ppstest`).
 > - **Ubuntu-base (target):** `apt install gpsd gpsd-clients chrony pps-tools`
 > - **Buildroot:** `BR2_PACKAGE_GPSD=y BR2_PACKAGE_CHRONY=y BR2_PACKAGE_PPS_TOOLS=y`
@@ -40,7 +40,7 @@ status: draft
 | Cost (module + antenna) | $8–15 | $10–18 | $40–60 | $5–8 |
 
 **Pick guide:**
-- **NEO-8M** — workhorse for most projects. Multi-constellation = better urban coverage, faster TTFF (time to first fix). Well-documented + UBX binary.
+- **NEO-8M** — the common choice for most projects. Multi-constellation = better urban coverage, faster TTFF (time to first fix). Well-documented + UBX binary.
 - **NEO-9M** — when you need < 1 m accuracy, RAW pseudorange data (RTK-able with a base station), or lowest power.
 - **ATGM336H** — when BOM matters more than UBX support. Cheap, NMEA-only.
 
@@ -90,7 +90,7 @@ Classes:
 - `0x06` CFG (configuration — port baud, message rates, GNSS selection)
 - `0x0A` MON (monitor — HW status, jamming, RF antenna)
 
-The killer message: `UBX-NAV-PVT` (Position, Velocity, Time — class 0x01, id 0x07, 92 bytes). One frame per fix, contains the iTOW (integer time of week, ms), year/month/day/hour/min/sec, lat/lon/h, velocity, accuracy estimates, fix type, # satellites. Replaces 5+ NMEA sentences.
+The single most useful message: `UBX-NAV-PVT` (Position, Velocity, Time — class 0x01, id 0x07, 92 bytes). One frame per fix, contains the iTOW (integer time of week, ms), year/month/day/hour/min/sec, lat/lon/h, velocity, accuracy estimates, fix type, # satellites. Replaces 5+ NMEA sentences.
 
 The setup command to enable NAV-PVT at 1 Hz only:
 
@@ -99,7 +99,7 @@ B5 62 06 01 08 00 01 07 00 01 00 00 00 00 18 E1
        ↑ CFG-MSG       ↑ NAV-PVT, rate=1 on UART
 ```
 
-Switching to UBX-only at startup reduces UART traffic 5× and gives you nanosecond-precise per-message timing. The `u-center` Windows tool (or `ubxtool` in Linux's `gpsd` package) is invaluable for crafting these.
+Switching to UBX-only at startup reduces UART traffic 5× and gives you nanosecond-precise per-message timing. Use `u-center` on Windows or `ubxtool` from `gpsd-clients` to build these CFG messages.
 
 ## 107.4  PPS — the sub-microsecond signal
 
@@ -213,7 +213,7 @@ chronyc sources
 # ^* mygpsbox.local              1   6   377    25    +12µs[  +15µs] +/-  410µs
 ```
 
-You just built a stratum-1 NTP server with $20 of parts.
+Total parts cost is about $20. The result is a stratum-1 NTP server.
 
 ## 107.7  From scratch — UBX parser in C
 
@@ -306,7 +306,7 @@ Run this; you'll see each fix printed with the exact GPS-derived UTC time it was
 - **NMEA checksum bytes flipped.** No flow control + heavy bus traffic = bit flips. Always verify the checksum and discard bad sentences.
 - **Multi-constellation overrides single-constellation in NMEA.** GNRMC, GNGGA replace GPRMC, GPGGA. Parsers must accept both prefixes.
 - **u-blox jamming detection.** The MON-RF message reports interference; if jamming is detected (drone show, military jammer, RF leak), the module may report no fix. Don't blame the antenna without checking MON-RF.
-- **GNSS time vs UTC leap seconds.** GPS time is leap-second-free; UTC isn't. Old or unprogrammed modules may emit times off by 18 s after a leap second. Use the `LeapSeconds` field if exposed.
+- **GNSS time vs UTC leap seconds.** GPS time has no leap seconds; UTC does. Old or unprogrammed modules may emit times off by 18 s after a leap second. Use the `LeapSeconds` field if exposed.
 - **TPS regulator + GPS together = noise.** Switching regulators inject noise on the GPS antenna's RF input. Use an LDO close to the antenna, or shield the regulator.
 
 ## 107.10  Going deeper

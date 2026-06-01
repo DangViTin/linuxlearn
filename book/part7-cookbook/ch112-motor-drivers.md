@@ -9,8 +9,8 @@ status: draft
 # Chapter 112 — Stepper & DC motor drivers
 
 > **What:** the four motor-driver families: **stepper** (DRV8825, A4988 — basic step/dir; TMC2209 — silent stallGuard UART config), **DC brush** (BTS7960 — 43 A H-bridge), **BLDC** (DRV8302 — trapezoidal / sinusoidal / FOC), and **servo** (PWM-controlled hobby servos). On the i.MX6ULL we drive a stepper via PWM-step + GPIO-dir, configure TMC2209's RMS current and microstepping over UART, run a closed-loop velocity on a brushed motor with PWM + encoder feedback (Ch 111), and drive a BLDC with trapezoidal commutation. Emphasis on the **electrical safety + thermal limits** that are easy to overlook and fatal to ignore.
-> **Why:** any product that *moves* needs one of these. 3D printers (steppers), automated blinds (DC), drone ESCs (BLDC), CNC mills (everything), conveyor belts, robotic arms, automated valves — motor control is its own discipline. Linux makes the *control* easy (Cortex-A7 has plenty of MIPS for PID); the hard parts are the silicon-protection details, the EMI from chopping inductive currents, and the mechanical resonance of the load. Get these wrong and the result ranges from "motor whines" to "MOSFET explodes."
-> **Focus:** **steppers need precise step-rate generation (PWM); DC motors need PWM + H-bridge + current feedback; BLDC needs commutation (rotor-position-aware switching of 3 half-bridges)**. The kernel's PWM framework (Ch 48) handles step generation for steppers. For DC/BLDC closed-loop, you'll bolt together: encoder (Ch 111) + PID + PWM + current sense (INA226 from Ch 75). For absolute-torque or smooth-low-RPM BLDC, you need FOC (Field-Oriented Control) which most engineers offload to a dedicated MCU (e.g., SimpleFOC on STM32) because Linux's jitter exceeds the 10 kHz current-loop budget.
+> **Why:** any product that *moves* needs one of these. 3D printers (steppers), automated blinds (DC), drone ESCs (BLDC), CNC mills (everything), conveyor belts, robotic arms, automated valves — motor control is its own discipline. Linux makes the *control* easy (Cortex-A7 has plenty of MIPS for PID); the hard parts are the silicon-protection details, the EMI from chopping inductive currents, and the mechanical resonance of the load. Get these wrong and the result ranges from an audible whine to a destroyed MOSFET.
+> **Focus:** Steppers need precise step-rate generation, usually from a PWM. DC motors need a PWM and an H-bridge, with current feedback for control. BLDC motors need commutation — switching three half-bridges in sync with rotor position. The kernel's PWM framework (Ch 48) handles step generation for steppers. For DC/BLDC closed-loop, you'll bolt together: encoder (Ch 111) + PID + PWM + current sense (INA226 from Ch 75). For absolute torque control or smooth low-RPM behaviour, you need FOC (Field-Oriented Control). The current loop runs at 10 kHz or higher, which exceeds Linux's scheduling jitter. Most engineers offload FOC to a dedicated MCU — SimpleFOC on STM32 is the open-source standard.
 
 ## 112.1  Driver type pick-guide
 
@@ -80,11 +80,11 @@ for (int hz = 100; hz <= 5000; hz += 100) {
 }
 ```
 
-For coordinated multi-axis motion (CNC, 3D printer) this isn't enough — you need a lookahead planner (Marlin, Klipper architecture). Klipper runs the motion planner on Linux and offloads the step-generation to an STM32 over USB serial; this is the canonical "Linux + MCU" split for serious CNC.
+For coordinated multi-axis motion (CNC, 3D printer) this isn't enough — you need a lookahead planner (Marlin, Klipper architecture). Klipper runs the motion planner on Linux and offloads step generation to an STM32 over USB serial. This split is the dominant pattern for high-end CNC and 3D printing.
 
 ## 112.4  TMC2209 — UART configuration for silent stepping
 
-TMC2209 (Trinamic) is the modern silent stepper driver. Same step/dir interface as DRV8825, but a **UART configuration interface** lets you set:
+TMC2209 (Trinamic) is the current common choice for silent stepper drivers. Same step/dir interface as DRV8825, but a **UART configuration interface** lets you set:
 - Microstepping (up to 1/256, smooth interpolation)
 - RMS current (in mA, very precise)
 - stealthChop (silent voltage-mode chop) vs spreadCycle (fast current-mode chop)
@@ -114,7 +114,7 @@ struct tmc_write {
 tmc_write(addr=0, IHOLD_IRUN, (HOLD_CURRENT << 0) | (RUN_CURRENT << 8) | (IHOLDDELAY << 16));
 ```
 
-The TMC2209 datasheet (1MB PDF, very readable) walks every register. Once configured, the motor is whisper-quiet — a 3D printer goes from "rocket launch" to "fridge hum."
+The TMC2209 datasheet (1MB PDF, very readable) walks every register. Once configured, the motor is near-silent. A 3D printer with TMC2209 drivers is roughly the volume of a fridge fan.
 
 ## 112.5  DC brushed motor — H-bridge + PWM
 
@@ -175,7 +175,7 @@ To know rotor position:
 
 DRV8302 (TI) is the gate driver for 3 half-bridges + provides current-sense amplifiers. You add 6 N-FETs and you have a BLDC ESC. The MCU (or Linux) runs commutation logic.
 
-For Linux: the **timing is too tight for closed-loop control** at full speed. A BLDC at 10,000 RPM with 14 magnetic poles cycles 14 × 10,000 / 60 = 2,333 commutations/s. Each must be timed within ~50 µs or torque ripple shows. Linux's interrupt jitter > 100 µs.
+For Linux: the **timing is too tight for closed-loop control** at full speed. A BLDC at 10,000 RPM with 14 magnetic poles cycles 14 × 10,000 / 60 = 2,333 commutations/s. Each commutation must hit within ~50 µs of the right rotor angle, or torque ripple becomes audible. Linux interrupt jitter is typically > 100 µs.
 
 **Solution**: offload commutation to a dedicated MCU. Use **SimpleFOC** (Arduino-based, STM32) or **ODrive** (a dedicated BLDC controller). Linux supervises (sends target speed via UART or USB); MCU does the kHz current loop.
 

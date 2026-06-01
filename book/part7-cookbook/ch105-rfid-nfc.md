@@ -9,8 +9,8 @@ status: draft
 # Chapter 105 — RFID / NFC
 
 > **What:** **13.56 MHz HF RFID and NFC** — the technology behind contactless access cards, transit passes, phone Wallet, and "tap-to-pair." Three chips compared: **NXP MFRC522** (the ubiquitous Arduino-clone SPI/I²C/UART, ISO 14443A only), **NXP PN532** (more capable: 14443A/B + FeliCa, NFC initiator and target), **ST25R3911** (longer read range, high-end). On the i.MX6ULL we read tag UIDs over SPI, authenticate a Mifare Classic 1K block, walk the kernel `pn533` driver as the canonical mainline NFC stack reference, write a 200-line user-space MFRC522 driver from scratch, then bring up `libnfc` + `neard` for high-level NFC.
-> **Why:** Access control is one of the most common embedded Linux applications — door readers, time-and-attendance kiosks, equipment-rental lockers, EV-charger user identification. NFC tagging extends to smart-home pairing (Tap to Wi-Fi), industrial asset tracking, and consumer-product authenticity verification. The chips are cheap (MFRC522 modules are $1), the standards are real, the security is half-broken (Mifare Classic was cracked in 2008), and the kernel actually has an NFC subsystem (`net/nfc/`) most engineers don't know about.
-> **Focus:** **RFID/NFC at 13.56 MHz is inductive coupling — the reader's antenna creates a magnetic field at 13.56 MHz, which powers the tag's IC AND carries data via load modulation**. The "register dance" with the reader chip is mostly: configure carrier ON, set framing (Miller-encoded for tag→reader, Manchester for reader→tag), issue protocol-level commands (REQA, ATQA, ANTICOLL, SELECT, AUTH, READ_BLOCK), parse responses. Antenna matching is critical — a 5 mm misalignment between the reference design's antenna loop and yours = 30 % less read range.
+> **Why:** Access control is one of the most common embedded Linux applications — door readers, time-and-attendance kiosks, equipment-rental lockers, EV-charger user identification. NFC tagging extends to smart-home pairing (Tap to Wi-Fi), industrial asset tracking, and consumer-product authenticity verification. The chips are cheap (MFRC522 modules cost about $1). The standards are real. The security is half-broken — Mifare Classic was cracked in 2008. And Linux has an NFC subsystem (`net/nfc/`) that most engineers do not know exists.
+> **Focus:** At 13.56 MHz, RFID and NFC use inductive coupling. The reader's antenna generates a magnetic field. That field powers the tag's IC, and the tag sends data back by modulating its load on the field. The reader chip uses a fixed sequence of register writes: configure carrier ON, set framing (Miller-encoded for tag→reader, Manchester for reader→tag), issue protocol-level commands (REQA, ATQA, ANTICOLL, SELECT, AUTH, READ_BLOCK), parse responses. Antenna matching is critical — a 5 mm misalignment between the reference design's antenna loop and yours = 30 % less read range.
 > **Tooling.** This chapter uses `libnfc-bin` (`nfc-list`, `nfc-mfultralight`), `neard`; offensive-research only: `mfoc`, `mfcuk`.
 > - **Ubuntu-base (target):** `apt install libnfc-bin libnfc-dev neard`
 > - **Buildroot:** `BR2_PACKAGE_LIBNFC=y BR2_PACKAGE_NEARD=y`
@@ -31,7 +31,7 @@ status: draft
 | Cost (module) | $1–3 | $5–10 | $15–25 |
 
 **Pick guide:**
-- **MFRC522** — door reader, asset tracker, anything that just needs a UID + Mifare R/W. Cheap and good enough for 90 % of jobs.
+- **MFRC522** — door reader, asset tracker, anything that just needs a UID + Mifare R/W. Cheap and adequate for most access-control work.
 - **PN532** — when you need NFC P2P (handover, peer transfer), phone-emulation, or FeliCa support. Mainline kernel driver exists.
 - **ST25R3911** — when you need range (10 cm+), ISO 15693 (long-range industrial RFID), high reliability.
 
@@ -61,7 +61,7 @@ Two halves: reader and tag.
    └────────────────────────────────────────────────────┘
 ```
 
-The tag is **passive** — no battery. The reader's field both powers the tag's chip and carries communication. Tag→reader is **load modulation** at 847.5 kHz subcarrier (Type A); reader→tag is direct ASK modulation at 100 % or 10 %.
+The tag is **passive** — no battery. The reader's field both powers the tag's chip and carries communication. Tag-to-reader uses load modulation with an 847.5 kHz subcarrier (Type A). Reader-to-tag uses direct ASK modulation, at either 100 % or 10 % depth.
 
 The communication frames the **ISO 14443 anticollision and select protocol**:
 
@@ -134,7 +134,7 @@ GPIO  ─┤ RESETn ├───────────────────
        └────────┘                              └──────────┘
 ```
 
-The antenna is the critical part. A bad-design module gets 1 cm read range; the cheap-but-correct modules (the green "RC522" boards with the small ferrite antenna trace) get 3–5 cm. Don't try to wind your own without an impedance analyzer — buy a module.
+The antenna is the critical part. A bad-design module gets 1 cm read range; the cheap-but-correct modules (the green "RC522" boards with the small ferrite antenna trace) get 3–5 cm. Do not wind your own antenna unless you have an impedance analyser. Buy a tuned module instead.
 
 ## 105.5  How the kernel pn533 driver works
 
@@ -191,7 +191,7 @@ nfctool list             # via libnfc
 neardctl tags            # via neard
 ```
 
-This is the "proper" Linux path. Most projects skip it for simplicity and use libnfc directly on `/dev/spidev` or the MFRC522 user-space drivers below.
+This is the "proper" Linux path. Most projects skip the kernel NFC stack. They use `libnfc` directly against `/dev/spidev`, or one of the MFRC522 user-space drivers shown below.
 
 ## 105.6  From scratch — user-space MFRC522 driver
 
@@ -359,7 +359,7 @@ That's the entire reader: ~150 lines for the core, ~50 for SPI/GPIO setup. Add C
 What the framework hides:
 - The MFRC522's transceive command does both TX and RX in one go using its FIFO.
 - The 7-bit short frame for REQA is configured via BitFramingReg before the transceive — easy to forget.
-- The BCC byte after the 4-byte UID is a sanity check; modules that get this wrong are quietly broken.
+- The BCC byte after the 4-byte UID is a sanity check; modules that compute BCC wrong report a passing read but with corrupt UIDs.
 - The HALT command must be sent before the next REQA, or the tag won't respond again (it's already "active").
 
 ## 105.7  Mifare Classic security — broken but still used

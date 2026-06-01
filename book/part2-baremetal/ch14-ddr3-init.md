@@ -9,18 +9,18 @@ status: draft
 # Chapter 14 — DDR3 initialization with MMDC
 
 > **What:** code that takes the Point Atom MINI's DDR3 chip from "powered on but uninitialized" to "512 MiB of usable memory at `0x80000000`," by hand. Then code that copies itself from OCRAM to DRAM and continues running from DRAM.
-> **Why:** until this works, your bare-metal world is 100 KB. After it works, it is 512 MiB. More fundamentally: every dev board you have ever used had someone solve this problem for you in a vendor BSP. Solving it once yourself collapses several "magic" layers down to "I know what those registers do."
-> **Focus:** the **JEDEC initialization sequence** for DDR3 — universal — and the **MMDC register groups** that implement it — i.MX-specific. Understanding both means you can port to a different DRAM part or different SoC without panic.
+> **Why:** until this works, your bare-metal world is 100 KB. After it works, it is 512 MiB. More fundamentally: every dev board you have ever used had someone solve this problem for you in a vendor BSP. Solving it once removes the "magic" from a layer you will otherwise trust forever.
+> **Focus:** The JEDEC DDR3 init sequence is universal across vendors. The MMDC register groups are i.MX-specific. Know both, and you can port to a different DRAM part or a different SoC.
 
 ## 14.1  This chapter takes time
 
-Set an afternoon aside. This is the most complex bring-up step in the book. The number of values that must be exactly right is large; the diagnostic for "wrong value" is usually "DRAM doesn't work." When DRAM doesn't work, you cannot `printf` from DRAM, cannot load test patterns into DRAM, cannot do much.
+Set an afternoon aside. This is the most complex bring-up step in the book. The number of values that must be exactly right is large; the only diagnostic for a wrong value is "DRAM doesn't work." When DRAM doesn't work, you cannot `printf` from it, load test patterns into it, or do much else.
 
 We will keep the entire chapter in **OCRAM** until the very last section, where DRAM works and we relocate to it.
 
 ## 14.1a  RAM/ROM/SRAM/SDRAM/DDR — the lineage
 
-If you have only ever worked with SRAM (on Cortex-M parts with built-in 64 KB-2 MB SRAM) or with the bus-controller view of SDRAM, here is the family tree in 60 seconds:
+Most Cortex-M parts have 64 KB to 2 MB of built-in SRAM, and many SoCs expose SDRAM through a bus controller. Here is the rest of the family tree in 60 seconds:
 
 - **SRAM** — Static RAM. Six-transistor cell per bit. Fast (~5 ns access), low-power-when-idle, but expensive per bit. A 1 MB SRAM costs more than 32 MB of SDRAM. Used for CPU caches and small on-chip memories (like the i.MX6ULL's 128 KB OCRAM).
 - **SDRAM** — Synchronous Dynamic RAM. One-capacitor cell per bit; must be **refreshed** every 64 ms or the charge bleeds away. Synchronous = clocked. Cheaper than SRAM but slower and needs refresh logic. The classic "PC100" / "PC133" memory of the late 1990s.
@@ -59,7 +59,7 @@ The controller schedules these operations subject to **timing parameters**:
 
 These come from the **chip's datasheet**. You cannot guess them; you must look them up.
 
-DDR datasheets often summarize three of the most-cited timings as a triple **"CL-tRCD-tRP"** (in clock cycles). A "13-13-13 DDR3-1600" part means CL = 13 clocks, tRCD = 13 clocks, tRP = 13 clocks at a 1600 MT/s rate. Tighter (smaller) numbers are better; for our 400 MHz cell clock (= 2.5 ns per cycle), 13 clocks = 32.5 ns of latency.
+Datasheets often summarize three of the most-cited timings as a triple, **"CL-tRCD-tRP"**, in clock cycles. A "13-13-13 DDR3-1600" part has CL = tRCD = tRP = 13 clocks at 1600 MT/s. Smaller numbers are better. At our 400 MHz cell clock (2.5 ns per cycle), 13 clocks = 32.5 ns of latency.
 
 The Point Atom boards use Nanya DDR3L parts (verified):
 
@@ -72,11 +72,11 @@ Both are 16-bit-wide, 8-bank, with row × column = 14 × 10 (256 MiB part) or 15
 
 For other vendors' parts in the same density and rate class (Micron MT41K, ISSI IS43TR, Samsung K4B), the timings are within ±10% and the controller config is essentially identical. Verify against your specific chip's datasheet before powering up.
 
-> **The first thing you do in this chapter is open your specific DDR chip's datasheet.** If you guess timings, the DRAM may "kind of work" — pass a 1 MB memtest, fail at 16 MB — which is the worst kind of bug. Look up your part. Write the timings down. They feed every register value below.
+> **Open your DDR chip's datasheet first.** Guessed timings produce the worst class of bug: the DRAM passes a 1 MB memtest and fails at 16 MB. Look up your part. Write the timings down. They feed every register value below.
 
 ## 14.3  Two chips, one bus — channels, ranks, banks
 
-The MMDC controller on i.MX6ULL is **16 bits wide**. The Point Atom MINI uses **two ×8 DDR3 chips in parallel** to form a 16-bit bus. (Some variants use a single ×16 chip; same idea.) Both chips receive the same address and command; one drives bus bits [7:0], the other [15:8].
+The MMDC controller on i.MX6ULL is **16 bits wide**. The Point Atom MINI uses **two ×8 DDR3 chips in parallel** to form a 16-bit bus. (Some variants use a single ×16 chip; same idea.) Both chips receive the same address and command. One drives bus bits [7:0]; the other drives [15:8].
 
 A "rank" is a set of chips that share a Chip Select. The MINI has **1 rank**. (Larger boards might have 2 ranks on the same channel; a CS0/CS1 pair selects between them.) Each chip has 8 internal banks; the controller can have up to 8 banks open at once (interleaved).
 
@@ -122,7 +122,7 @@ MMDC base = `0x021B0000` (MMDC0; only one channel on i.MX6ULL). The registers fa
 
 There are more. Don't memorize them; learn the *groups*.
 
-The order in which we write these matters less than you'd think, with one important exception: **MDSCR (the command register)** is how we send DDR3 commands to the chip (load mode register, ZQ cal, refresh, etc.). It must be used at specific points in the sequence; otherwise it is one register among many.
+The write order for most of these matters less than you'd think. The exception is **MDSCR**, the command register. We use MDSCR to send DDR3 commands (load mode register, ZQ cal, refresh, etc.), and it must be written at specific points in the init sequence.
 
 ## 14.5  IOMUX before MMDC
 
@@ -409,7 +409,7 @@ If the memtest is non-zero: your calibration is wrong (most likely), or your IOM
 
 ## 14.10  Copying ourselves to DRAM
 
-Now the trick. Right now we are executing from OCRAM at `0x009xxxxx`. DRAM works. We want to copy the *entire* image to DRAM at `0x80100000` (1 MB into DRAM, for headroom) and jump to it.
+Now relocate. Right now we are executing from OCRAM at `0x009xxxxx`. DRAM works. We want to copy the *entire* image to DRAM at `0x80100000` (1 MB into DRAM, for headroom) and jump to it.
 
 The mechanics:
 
@@ -551,12 +551,12 @@ This is the central lab of Part II.
 
 ## 14.15  Pitfalls
 
-- **Trusting copied calibration values.** They were calibrated on someone else's board. Use them as a starting point; re-validate.
+- **Trusting copied calibration values.** They were calibrated on someone else's board. Use them as a starting point and re-validate on yours.
 - **IOMUX not configured.** The MMDC pads default to weak drive after reset. Signals look correct on a scope but cross-talk causes occasional bit errors. Configure pads first.
 - **Wrong MR0 CAS latency.** Symptom: memtest fails immediately. The chip and the controller must agree on CL. CL=11 on chip = `MR0[6:4,2] = 0b1110_1`; CL=11 in MMDC's MDCFG1.tRL field = different encoding.
 - **MMDC clock mismatch.** Timings in MDCFG0/1/2 are converted to cycles using the *current* MMDC clock. If you change MMDC clock after MMDC init, the timings are no longer correct.
 - **Forgetting to disable MDSCR config mode.** After MR sets, write 0 to MDSCR to leave config mode. Otherwise reads/writes are interpreted as MMDC commands.
-- **Heating the chip in a way that destroys it.** Hairdryers are fine. Heat guns are not. Be careful in the temperature lab.
+- **Heating the chip in a way that destroys it.** A hairdryer is fine for the temperature lab; a heat gun is too hot and can destroy the chip.
 - **Not power-cycling after a failed bring-up.** A partially-initialized MMDC can produce stuck states. When in doubt, power off, count to 5, power on.
 
 ## 14.16  Going deeper

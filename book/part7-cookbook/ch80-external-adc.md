@@ -9,8 +9,8 @@ status: draft
 # Chapter 80 — External ADCs
 
 > **What:** four external analog-to-digital converters spanning the price/precision spectrum: **TI ADS1115** (16-bit, I²C, programmable-gain, 4-channel), **TI ADS1256** (24-bit, SPI, ultra-low-noise, 8-channel), **Microchip MCP3008** (10-bit, SPI, cheap, 8-channel), **Analog Devices AD7606** (16-bit, 8-channel *simultaneous-sampling*). For each: protocol, the IIO ADC channel model, and a from-scratch ADS1115 IIO driver. Plus ratiometric measurement (load cells, RTDs) — the trick that cancels reference-voltage error.
-> **Why:** the i.MX6ULL's internal ADCs (two 12-bit SAR blocks, each multiplexing up to 10 pins, ~1 MS/s aggregate) are ±a few LSB noisy and share the SoC's noisy power rails. For precision measurement — a load-cell scale, a 4-20 mA industrial loop, a thermocouple, simultaneous 3-phase power sampling — you need an external ADC with a clean reference, more bits, or true simultaneity. Knowing which external ADC fits saves you from chasing noise in a design that was doomed at the silicon level.
-> **Focus:** **bits, speed, channels, and simultaneity are independent axes**. ADS1115 = high-bit, slow, multiplexed. MCP3008 = low-bit, medium-speed, cheap. ADS1256 = very-high-bit, low-noise, slow. AD7606 = high-bit, fast, *simultaneous* (all channels sampled at the same instant — critical for phase measurement). Pick by which axis your application stresses.
+> **Why:** the i.MX6ULL's internal ADCs (two 12-bit SAR blocks, each multiplexing up to 10 pins, ~1 MS/s aggregate) are ±a few LSB noisy and share the SoC's noisy power rails. For precision measurement — a load-cell scale, a 4-20 mA industrial loop, a thermocouple, simultaneous 3-phase power sampling — you need an external ADC with a clean reference, more bits, or true simultaneity. Knowing which external ADC fits saves you from chasing noise that the silicon will never let you remove.
+> **Focus:** Bits, speed, channels, and simultaneity are independent design axes. **ADS1115** is high-bit, slow, and multiplexed. **MCP3008** is low-bit, medium-speed, and cheap. **ADS1256** is very-high-bit, low-noise, and slow. **AD7606** is high-bit, fast, and *simultaneous* (all channels sampled at the same instant — critical for phase measurement). Pick by which axis matters most for your application.
 
 ## 80.1  Chip comparison
 
@@ -29,7 +29,7 @@ status: draft
 
 **Pick guide:**
 - **MCP3008**: cheapest 8-channel; 10-bit is fine for "read a potentiometer / light sensor / battery divider."
-- **ADS1115**: 16-bit, PGA, I²C — the everyday precision choice. Load cells, 4-20 mA loops.
+- **ADS1115**: 16-bit, PGA, I²C — the standard precision choice. Load cells, 4-20 mA loops.
 - **ADS1256**: 24-bit, lowest noise — strain gauges, lab instruments, weigh scales needing sub-gram resolution.
 - **AD7606**: when channels must sample *at the same instant* — 3-phase power analysis, vibration with multiple accelerometers, phase-sensitive detection.
 
@@ -43,7 +43,7 @@ The i.MX6ULL has **2 ADC blocks** (ADC1, ADC2), each a 12-bit SAR with up to 10 
 - **No PGA**: can't amplify a small signal before conversion.
 - **No simultaneity within a block**: SAR ADCs mux; channels on the same ADC are sampled at different instants.
 
-An external ADC with a clean reference, a PGA, and more bits transforms what's measurable. The cost is a chip + an I²C/SPI transaction per sample.
+An external ADC with a clean reference, a PGA, and more bits lets you see signals the SoC's internal ADC cannot. The cost is a chip + an I²C/SPI transaction per sample.
 
 ## 80.3  Protocol — ADS1115
 
@@ -74,7 +74,7 @@ To take a single-shot conversion of channel 0 (AIN0 vs GND):
    For PGA ±2.048 V: voltage = raw × 2.048 / 32768 = raw × 62.5 µV.
 ```
 
-Each register is 16-bit, **big-endian** on the wire. The MUX field selects which input pair; you re-write Config to switch channels (one conversion at a time — it's multiplexed).
+Each register is 16 bits, big-endian on the wire. The MUX field selects which input pair. To switch channels you re-write Config — the chip handles one conversion at a time, since it is multiplexed.
 
 The PGA is the killer feature: ±0.256 V full-scale range gives 7.8 µV/LSB — read a thermocouple directly.
 
@@ -340,7 +340,7 @@ DT:
 
 ## 80.7  ADS1256 — 24-bit, low-noise
 
-ADS1256 is the precision SPI ADC: 24-bit, programmable gain to 64×, 30 kSPS max, but with a beautiful noise floor (~22 ENOB at low data rates). For a load cell measuring a few-mV signal, this is the chip.
+ADS1256 is the precision SPI ADC: 24-bit, programmable gain to 64×, 30 kSPS max, but with an excellent noise floor (~22 ENOB at low data rates). For a load cell measuring a few-mV signal, this is the chip.
 
 Protocol: SPI commands (RDATA, WREG, RREG, SYNC), a register set for gain/rate/mux, and a DRDY pin that goes low when a conversion is ready. The mainline driver is `drivers/iio/adc/ti-ads1256.c` (recent kernels) or out-of-tree variants.
 
@@ -362,7 +362,7 @@ The mainline driver `drivers/iio/adc/ad7606.c` uses a GPIO for CONVST, a GPIO IR
 
 ## 80.9  Ratiometric measurement — the noise-cancellation trick
 
-For sensors that are *resistive dividers excited by the ADC's reference* — load cells, RTDs, potentiometers — there's a beautiful trick: make the measurement *ratiometric*.
+For sensors that are *resistive dividers excited by the ADC's reference* — load cells, RTDs, potentiometers — there's a useful trick: make the measurement *ratiometric*.
 
 A load cell is a Wheatstone bridge. Excite it with voltage Vexc; the output is `Vout = Vexc × (sensitivity × load)`. If you also use Vexc as the ADC's reference, then:
 
@@ -370,7 +370,7 @@ A load cell is a Wheatstone bridge. Excite it with voltage Vexc; the output is `
 ADC_reading = Vout / Vref = Vout / Vexc = sensitivity × load
 ```
 
-The Vexc *cancels*. Any noise or drift in the excitation voltage cancels too — the reading depends only on the load, not on the absolute excitation. This is why precision scales use ratiometric ADCs (ADS1256, HX711): the reference and the bridge excitation are the same rail.
+The Vexc *cancels*. Any noise or drift in the excitation voltage also cancels. The reading depends only on the load, not on the absolute excitation. This is why precision scales use ratiometric ADCs (ADS1256, HX711): the reference and the bridge excitation are the same rail.
 
 To do this: wire the ADC's REF+ / REF− to the same rail that excites the bridge. In DT, the `vref-supply` points at the excitation regulator. The ADC's `scale` becomes meaningless in absolute volts but the *ratio* is rock-stable.
 
@@ -386,7 +386,7 @@ To do this: wire the ADC's REF+ / REF− to the same rail that excites the bridg
 
 ## 80.11  Pitfalls
 
-- **ADS1115 OS-bit polarity confusion.** In single-shot: writing OS=1 *starts* a conversion; reading OS=1 means *idle/done*, OS=0 means *converting*. Easy to get backwards. Check the datasheet's "Operational Status" description carefully (it's counterintuitive).
+- **ADS1115 OS-bit polarity confusion.** In single-shot: writing OS=1 *starts* a conversion; reading OS=1 means *idle/done*, OS=0 means *converting*. Easy to get backwards. The datasheet's "Operational Status" description is counterintuitive — read it carefully.
 - **PGA range vs input voltage.** If your signal exceeds the PGA range, the reading clips at ±32767. ADS1115's ±0.256 V range clips anything above 256 mV. Pick the range to fit your signal with margin.
 - **Input above VDD.** ADS1115 inputs must be within GND−0.3 V to VDD+0.3 V. A 5 V signal into a 3.3 V-powered ADS1115 damages it. Use a divider.
 - **Ratiometric misunderstanding.** Ratiometric works only when the sensor is excited *by the same reference*. A 4-20 mA loop is *not* ratiometric (it's a current source); use absolute reference there.

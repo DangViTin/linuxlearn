@@ -9,8 +9,8 @@ status: draft
 # Chapter 17 — MMU and caches
 
 > **What:** build a first-level page table by hand, map our peripherals as Device memory and our RAM as Normal Cacheable, switch on the MMU and both caches, and measure the speed-up.
-> **Why:** the MMU and caches are the only remaining "magic" between us and Linux. Once you can turn them on yourself, every kernel page-table operation looks like a variation on what you just did.
-> **Focus:** the **short-descriptor format** — a 4096-entry first-level table that maps the 4 GiB address space in 1 MiB sections, with per-section permissions and memory attributes. This is the only translation format we need; LPAE (3 levels, 40-bit PA) is overkill for our 512 MiB DRAM.
+> **Why:** The MMU and caches are the last hardware blocks Linux abstracts from you. Turn them on once by hand and every kernel page-table operation looks like a variation on this.
+> **Focus:** the short-descriptor format: a 4096-entry first-level table covering 4 GiB in 1 MiB sections, with per-section permissions and memory attributes. LPAE (3 levels, 40-bit PA) is overkill for our 512 MiB DRAM.
 
 ## 17.1  What we are not doing
 
@@ -196,9 +196,9 @@ void mmu_enable(void)
 
 A few notes:
 
-- **`__attribute__((aligned(16384)))`** ensures the table starts at a 16 KiB boundary, which TTBR requires. If you skip this, the high bits of the table base address get truncated and your MMU points at garbage.
+- **`__attribute__((aligned(16384)))`** ensures the table starts at a 16 KiB boundary, which TTBR requires. Skip it and TTBR drops the low 14 bits silently, leaving your MMU pointing at garbage.
 - **`DACR = 0x55555555`** sets every domain to "client," which means accesses respect AP bits. The other valid value is "manager" (`0xFFFFFFFF`), which ignores AP entirely. Linux uses client; we follow.
-- **Order matters at enable time.** Invalidate caches *before* enabling them, otherwise stale lines from before-MMU contaminate the cache.
+- **Order matters at enable time.** Invalidate the caches *before* enabling them. Otherwise pre-MMU stale lines stay valid and corrupt your data.
 - **The set/way D-cache invalidate** in `invalidate_dcache_all` uses the Cortex-A7 cache geometry: 32 KB L1-D, 4-way set-associative, 64-byte lines → **128 sets**, 4 ways. On a different CPU, look up the geometry from `CCSIDR`.
 
 ## 17.4  Calling `mmu_enable()`
@@ -239,7 +239,7 @@ MMU on.
 After MMU: memtest 4 MB took 4100 us
 ```
 
-Roughly an 8× speedup on the memtest. The exact ratio depends on access pattern; sequential memcpy can hit 10–15× with both caches on.
+Roughly an 8× speedup on the memtest. The exact ratio depends on the access pattern. Sequential memcpy can hit 10–15× with both caches on.
 
 ## 17.5  What just happened
 
@@ -307,7 +307,7 @@ If you accidentally map a peripheral region as Normal Cacheable:
 - Reads return cached values. Status-register polling spins forever on stale data.
 - Memory ordering is relaxed. Writes can be reordered relative to each other.
 
-This is one of the most insidious bugs in low-level code. Symptom: code works on a board where MMU is off, breaks the moment caches are on. Cause: a peripheral region was wrongly marked cacheable.
+This is one of the hardest bugs to diagnose in low-level code. Symptoms: it works with MMU off and breaks when caches turn on. Cause: a peripheral region was wrongly marked cacheable.
 
 Our `mmu_build_table()` defaults *every* unrecognized region to Device, which is the safe choice. We only explicitly mark RAM as Normal. This is the inverse of what some books suggest ("mark everything Normal and explicitly mark peripherals Device"). Our way is harder to misconfigure.
 
@@ -338,7 +338,7 @@ Run this before and after `mmu_enable()`. Typical results on Cortex-A7 @ 696 MHz
 | No MMU, no caches | ~120 million | ~25 |
 | MMU on, caches on | ~12 million | ~250 |
 
-The 10× factor is real and is the reason Linux insists on having caches before doing anything useful.
+The 10× difference is why Linux brings caches up early in arch_setup.
 
 ## 17.9  Lab
 

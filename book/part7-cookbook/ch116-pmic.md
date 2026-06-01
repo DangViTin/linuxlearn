@@ -10,7 +10,7 @@ status: draft
 
 > **What:** **Power Management ICs** — single-chip power solutions that replace the half-dozen discrete LDOs and buck converters around an SoC. We cover **NXP PCA9450** (the i.MX-recommended PMIC for i.MX8M; also used on some i.MX6 designs), **NXP PF8200** (industrial), **Rohm BD71850MWV** (compact, integrated for i.MX6/8 cores). On the i.MX6ULL we walk the I²C register map of a typical PMIC, configure voltage rails for SoC + DDR + I/O via the kernel **regulator framework**, integrate with **DVFS** (Ch 51B), and measure the power savings from PMIC-coordinated voltage scaling vs always-on discrete LDOs.
 > **Why:** every i.MX6ULL design has 4–6 voltage rails: 3.3 V (I/O), 1.35 V (DDR3), 1.275 V (SoC core), 2.5 V (analog), 1.8 V (some I/O), 5 V (USB). Discrete LDOs work but: (a) bring-up sequencing is tricky (DDR before SoC core, etc.), (b) no central control for sleep, (c) BOM = 6+ chips. A PMIC consolidates these into 1 chip with I²C control, programmable voltages, ramp-rate control, sequencing, and per-rail enable for runtime power management. For products that ship in volume or need real sleep/wake, a PMIC isn't optional — it's the only practical path.
-> **Focus:** **the regulator framework treats every rail as a "supply"; drivers declare their consumer-supply relationships in DT; the kernel computes the power-on order and ensures voltages are stable before any consumer probes**. The PMIC driver translates "set supply VDDARM to 1.275 V" into the right I²C writes. DVFS uses this: when cpufreq drops to 396 MHz, it calls `regulator_set_voltage(VDDARM, 1.150 V)` first, saving ~30 % of core power. Get the **boot-sequence races** wrong (kernel starts the FEC before its PHY's 1.8 V rail is stable → PHY doesn't probe), and you'll chase ghost bugs forever.
+> **Focus:** The regulator framework treats every rail as a "supply". Drivers declare their consumer-supply relationship in the DT. The kernel computes the power-on order from the dependency graph, and waits for each rail to stabilise before letting consumers probe. The PMIC driver translates "set supply VDDARM to 1.275 V" into the right I²C writes. DVFS uses this: when cpufreq drops to 396 MHz, it calls `regulator_set_voltage(VDDARM, 1.150 V)` first, saving ~30 % of core power. If you get the boot-sequence wrong — for example the kernel starts the FEC before its PHY's 1.8 V rail is stable — you will see PHY probe failures that look random.
 
 ## 116.1  Discrete vs PMIC
 
@@ -25,7 +25,7 @@ status: draft
 | Sleep modes | external GPIOs + LDOs | per-rail sleep states + global low-power mode |
 | Fault detection | per-LDO PG pin | unified PMIC FAULT line |
 
-PMICs win on every axis once your board has >3 rails or needs real power management. Discrete remains common only for ultra-low-cost designs or where you want zero-quiescent on a battery rail (some PMICs have annoying 50 µA quiescent).
+PMICs are better in every dimension once a board has more than three rails or needs runtime power management. Discrete LDOs remain common only for the cheapest designs, or for battery rails where the PMIC's ~50 µA quiescent is too high.
 
 ## 116.2  Anatomy of a typical PMIC (PCA9450)
 
@@ -139,9 +139,9 @@ cat /sys/kernel/debug/regulator/regulator_summary
 # VDD_ARM                            1   1      0  1275mV     0mA   600mV  1650mV
 ```
 
-Beautiful introspection — see exactly which consumer holds which rail enabled.
+The regulator summary makes the power tree visible: you can see exactly which consumer keeps each rail enabled.
 
-## 116.4  Power-up sequencing — the silent killer
+## 116.4  Power-up sequencing — the most subtle bring-up trap
 
 i.MX6ULL has a required power-up sequence:
 1. VDD_SNVS (always-on RTC domain) — must be first
@@ -153,7 +153,7 @@ i.MX6ULL has a required power-up sequence:
 
 If you violate this, behavior ranges from "doesn't boot" to "boots but crashes intermittently" to "silicon damage." The PMIC's programmable sequencer enforces this in hardware — set PWRON_DELAY registers per rail and the PMIC powers them in the right order at the right intervals.
 
-For Linux runtime: the regulator framework's `regulator_enable()` walks dependencies. Mark each rail with `regulator-boot-on` if the kernel inherits an already-on rail; mark with `regulator-always-on` if it must never disable.
+At runtime, `regulator_enable()` walks the supply dependency graph and powers parent supplies first. Mark each rail with `regulator-boot-on` if the kernel inherits an already-on rail; mark with `regulator-always-on` if it must never disable.
 
 ## 116.5  DVFS — coordinated voltage and frequency scaling
 
@@ -219,7 +219,7 @@ if (pmic->sleep_mode) {
 
 On wake: PMIC's wake pin (typically tied to an i.MX EXTRBOOT or PMIC's WAKE_IN) brings the PMIC back to active state, which restores all rails to their pre-sleep values, in the correct sequence. Linux resumes.
 
-Without PMIC: each rail must be enabled by a separate GPIO with separate timing; the suspend driver becomes ugly. With PMIC: 1 line of code.
+Without a PMIC, each rail needs its own GPIO with its own timing; the suspend driver grows complex. With a PMIC, suspend is one I²C transaction.
 
 ## 116.7  From scratch — minimal PMIC interaction over I²C
 

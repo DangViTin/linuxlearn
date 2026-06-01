@@ -9,19 +9,19 @@ status: draft
 # Chapter 5 — A tour of the i.MX6ULL SoC
 
 > **What:** a top-down map of the chip — what blocks are inside it, where they live in memory, how they are clocked, and how their pins are routed.
-> **Why:** every later chapter will name a peripheral. You should be able to find that peripheral on the die-block diagram, locate its register base, identify its clock root and gate bit, and learn what pin it appears on — within minutes.
-> **Focus:** the **memory map**, the **clock tree at one level of detail**, and the **IOMUX pattern**. These three structures repeat across every NXP i.MX SoC; the names change, the shapes do not.
+> **Why:** every later chapter will name a peripheral. For each one you should be able to find it on the block diagram, locate its register base, find its clock root and gate bit, and know what pin it lands on. All of that in a few minutes.
+> **Focus:** the **memory map**, the **clock tree at one level of detail**, and the **IOMUX pattern**. These three structures repeat across every NXP i.MX SoC. The names change, the shapes do not.
 
 ## 5.1  What is the i.MX6ULL
 
-NXP positions the i.MX6ULL ("Ultra-Low-Layer") at the bottom of the i.MX6 family: single Cortex-A7 core, no GPU, no VPU, no PCIe — but full peripheral set (Ethernet, USB, LCD, CSI camera, SAI audio, eMMC, NAND, QSPI, plus 8 UARTs and 4 I²C/SPI). It targets cost-sensitive Linux applications: industrial HMI, point-of-sale, smart metering, simple gateway boxes. The board you have in front of you was designed for exactly this market.
+NXP positions the i.MX6ULL ("Ultra-Low-Layer") at the bottom of the i.MX6 family. One Cortex-A7 core, no GPU, no VPU, no PCIe. The peripheral set is still full: Ethernet, USB, LCD, CSI camera, SAI audio, eMMC, NAND, QSPI, 8 UARTs, and 4 I²C/SPI. It is aimed at cost-sensitive Linux applications such as industrial HMI, point-of-sale, smart metering, and simple gateways. The board you have in front of you was designed for exactly this market.
 
 Key parameters of the part variant used on Point Atom MINI:
 
 - **Core:** 1 × Cortex-A7 @ 528 / 696 MHz
 - **L1 cache:** 32 KB I + 32 KB D
 - **L2 cache:** 128 KB unified, integrated inside the Cortex-A7 MPCore (no external PL310 controller)
-- **On-chip memory:** 128 KB **OCRAM** at `0x00900000` (the most useful 128 KB on the chip) + a separate 96 KB **Boot ROM** at `0x00000000` (mask-programmed by NXP). There is **no TCM** — TCM is a Cortex-M / Cortex-R concept; A-profile cores rely on L1/L2 caches instead.
+- **On-chip memory:** 128 KB **OCRAM** at `0x00900000` (the most useful 128 KB on the chip) plus a separate 96 KB **Boot ROM** at `0x00000000` (mask-programmed by NXP). There is **no TCM**. TCM is a Cortex-M / Cortex-R concept; A-profile cores use L1/L2 caches instead.
 - **DRAM:** 16-bit LPDDR2/DDR3L/DDR3 controller (MMDC), up to ~ 1 GB
 - **Boot media:** SD/MMC, eMMC, NAND, SPI-NOR, QSPI, parallel NOR, USB (recovery)
 - **Process:** 28 nm
@@ -56,16 +56,16 @@ The **bus matrix** connects everything. Initiators (the core, DMA engines, USB, 
 
 ## 5.3  System memory map
 
-The i.MX6ULL exposes a 4 GB physical address space. Most of it is unused; the rest is divided into regions whose function does not change. Memorize this table — it is the geography of the chip.
+The i.MX6ULL exposes a 4 GB physical address space. Most of it is unused; the rest is divided into regions whose function does not change. Memorize this table. It is the geography of the chip.
 
 | Region | Base | Size | What's there |
 |--------|------|------|--------------|
 | **Boot ROM** | `0x00000000` | 96 KB | NXP's mask-programmed boot code (see Ch 7) |
 | Caches debug | `0x00018000` | 16 KB | (alias of ROM in normal modes) |
 | **Boot ROM alias** | `0x00100000` | 96 KB | Same ROM, second alias used after high-vectors |
-| **OCRAM** | `0x00900000` | 128 KB | On-chip SRAM — the most useful 128 KB on the chip |
+| **OCRAM** | `0x00900000` | 128 KB | On-chip SRAM |
 | GIC distributor | `0x00A01000` | 4 KB | (and CPU interface at `0x00A02000`) |
-| External PL310 L2 controller | (absent) | — | i.MX6ULL's 128 KB L2 is integrated in the MPCore block, not a separate PL310 |
+| External PL310 L2 controller | (absent) | — | i.MX6ULL's 128 KB L2 is integrated in the MPCore block, not a separate PL310 (present on bigger i.MX6 parts; absent here) |
 | **AIPS-1** | `0x02000000` | 1 MB | IP slaves group 1: SDMA, GPIOs, UARTs, IOMUXC |
 | **AIPS-2** | `0x02100000` | 1 MB | IP slaves group 2: USB, MMDC, CCM, ANATOP, SNVS, EPIT, GPT |
 | **AIPS-3** | `0x02200000` | 1 MB | IP slaves group 3 (smaller; CAAM, SJC, etc.) |
@@ -75,7 +75,7 @@ The i.MX6ULL exposes a 4 GB physical address space. Most of it is unused; the re
 
 A few things worth committing to long-term memory:
 
-1. **The DRAM aperture begins at `0x80000000`.** Every U-Boot script you will read sets `loadaddr=0x80800000` or similar. That magic number is "DRAM base + 8 MB". The kernel by convention loads ~8 MB into DRAM so its decompressed image (which lives below the load address) has somewhere to go.
+1. **The DRAM aperture starts at `0x80000000`.** Every U-Boot script you will read sets `loadaddr=0x80800000` or similar. That is just "DRAM base + 8 MB". The kernel image is loaded at that offset because the compressed image decompresses downward into the space below it.
 2. **OCRAM at `0x00900000`** is where the Boot ROM places your SPL and where bare-metal images live before DRAM is up. 128 KB is enough for a substantial bootloader stage.
 3. **All peripherals live in AIPS-1 / AIPS-2 / AIPS-3.** A register address like `0x020C4000` (CCM) tells you it's in AIPS-2 (`0x021xxxxx` range) just by inspection. This is a useful debugging shortcut.
 
@@ -83,7 +83,7 @@ The reference manual has the full map in Chapter 2 ("Memory Maps"). Print that t
 
 ## 5.4  OCRAM and the boot footprint
 
-Of the 128 KB OCRAM at `0x00900000`–`0x0091FFFF`, the Boot ROM uses a portion **while executing the boot sequence** for its own working area (exception vectors at the low end; MMU table, stack, and bookkeeping near the top). Per the i.MX6ULL Reference Manual (§8, Figure 8-3 "OCRAM Memory Map During Boot"):
+The Boot ROM uses part of OCRAM (`0x00900000`–`0x0091FFFF`) while it is running the boot sequence. The low end holds exception vectors; the top end holds the MMU table, stack, and ROM bookkeeping. Per the i.MX6ULL Reference Manual (§8, Figure 8-3 "OCRAM Memory Map During Boot"):
 
 - **`0x00900000`–`0x009001FF`** — exception-vector region used by the Boot ROM (low ~0.5 KB).
 - **`0x00900200`–`0x00906FFF`** — also reserved for ROM bookkeeping (the practical "do not write here while the ROM may still be involved" zone).
@@ -149,7 +149,7 @@ In bare-metal code you'll typically write `11`. In production you'd write `01` t
 
 The mapping of peripheral to CCGR bit lives in the reference manual's CCM chapter, Table 18-5. You will visit that table dozens of times during this book.
 
-**Pitfall #1 of all NXP work:** forgetting to enable a peripheral's clock gate. Symptom: the peripheral's registers read as zero (or garbage, depending on bus behavior), and writes have no effect. Always check the gate first.
+**The most common NXP bring-up pitfall:** forgetting to enable a peripheral's clock gate. Symptom: the peripheral's registers read as zero (or garbage, depending on bus behavior), and writes have no effect. Always check the gate first.
 
 ## 5.6  IOMUX — the universal multiplexer
 
@@ -171,7 +171,7 @@ The **IOMUXC** (IO Multiplexer Controller) block contains, for every pin:
 
 - A **MUX_CTL** register selecting which ALT (and a few other bits — SION, "Software Input On", which forces the pad's input buffer on even when output-driven).
 - A **PAD_CTL** register controlling drive strength, slew rate, pull-up/down, hysteresis, open-drain.
-- Sometimes a **SELECT_INPUT** register on the consuming peripheral side (because many peripherals can be routed to multiple pins, so the *peripheral* must say which pin to listen to — a "daisy chain", in NXP's language).
+- Sometimes a **SELECT_INPUT** register on the consuming peripheral side (because many peripherals can be routed to multiple pins, so the *peripheral* must say which pin to listen to — a "daisy chain", in NXP's language). NXP calls this a "daisy chain" because the input signal arrives via a chain of pad → pin mux → peripheral input selector.
 
 A complete pin setup is therefore *two* writes (sometimes three):
 
@@ -183,7 +183,7 @@ IOMUXC_SW_PAD_CTL_PAD_GPIO1_IO04 = 0xB0B1; /* 50 MHz, pull-up 100k, fast slew */
 
 The constant `0xB0B1` is the typical "pull-up, 100 kΩ, 50 MHz slew" stanza you'll see copy-pasted across NXP example code. We will decode every bit of that value when we configure pins in Chapter 9.
 
-> **Focus.** IOMUX setup is the second-most common bring-up bug after "forgot the clock gate." If a peripheral seems clocked but produces nothing on the pin, IOMUX is wrong. If a peripheral seems clocked but reads `0xFFFFFFFF` from an external chip on I²C, IOMUX (or SION) is wrong.
+> **Focus.** IOMUX setup is the next most common bring-up bug after a missing clock gate. If a peripheral seems clocked but produces nothing on the pin, IOMUX is wrong. If a peripheral seems clocked but reads `0xFFFFFFFF` from an external chip on I²C, IOMUX (or SION) is wrong.
 
 The IOMUX tables fill ~300 pages of the reference manual. You will not read them all. You *will* spend a lot of time grep-ping them for a pin you care about.
 
@@ -290,7 +290,7 @@ The reference manual (IMX6ULLRM) is 5191 pages in rev 1. Reading it cover-to-cov
 
 Print the table of contents (the first 30 pages of the PDF) and have it physically next to you. PDF search is fast but linear scrolling beats it for "where is the GPT interrupt acknowledgement register?"
 
-The "Programming Guide" in each peripheral chapter is usually wrong about something. When in doubt, trust the register descriptions; they are machine-generated from the silicon.
+The "Programming Guide" at the front of each peripheral chapter often gets one detail wrong. When in doubt, trust the register descriptions — those are machine-generated from the silicon.
 
 ## 5.11  Lab
 

@@ -10,7 +10,7 @@ status: draft
 
 > **What:** code that takes the i.MX6ULL from its 396 MHz reset default to 696 MHz, with explicit configuration of the bus clocks. By the end we can read back, from registers, exactly what the chip is running at and verify with a hardware measurement.
 > **Why:** every later chapter (DDR especially) depends on knowing the bus clocks precisely. The Boot ROM leaves clocks in a known but conservative state; we must own them before we trust their values in initialization tables.
-> **Focus:** the **four-layer clock tree** from Chapter 5 made concrete — XTAL → PLL → root mux+divider → CCGR gate. Each peripheral hangs off one root clock; each root clock hangs off one PLL. Once you can trace a peripheral's frequency through these four hops, you can predict and debug any clocking issue.
+> **Focus:** the four-layer clock tree from Chapter 5: XTAL → PLL → root mux+divider → CCGR gate. Each peripheral hangs off one root clock; each root clock hangs off one PLL. Trace a frequency through these four hops and most clock bugs become obvious.
 
 ## 13.1  What we want to set up
 
@@ -25,7 +25,7 @@ By the end of this chapter, the clock tree looks like:
 | UART | 80 MHz | PLL3 (480 MHz) ÷ 6 |
 | MMDC (DDR) | 396 MHz | PLL2 (528 MHz) PFD or direct |
 
-This matches what U-Boot will set up in Chapter 19. We are running U-Boot's preamble by hand.
+This matches what U-Boot will set up in Chapter 19.
 
 ## 13.2  The ANATOP block — PLLs and PFDs
 
@@ -42,7 +42,7 @@ PLLs live in **ANATOP** (Analog Top), base address `0x020C8000`. Each PLL has it
 | `ANATOP_PLL_VIDEO` | `+0x0A0` | PLL5 |
 | `ANATOP_PLL_ENET` | `+0x0E0` | PLL6 |
 
-Each PLL has `SET` (`+0x4`), `CLR` (`+0x8`), and `TOG` (`+0xC`) sibling addresses that let you set/clear/toggle bits atomically without read-modify-write. We will use the main offset and OR/AND values when clarity matters more than atomicity (there is no concurrency on bare-metal yet).
+Each PLL also has three sibling addresses: `SET` (`+0x4`), `CLR` (`+0x8`), and `TOG` (`+0xC`). Writing to them sets, clears, or toggles bits atomically (no read-modify-write needed). We will use the main offset and OR/AND values when clarity matters more than atomicity (there is no concurrency on bare-metal yet).
 
 ### PLL1 (ARM PLL)
 
@@ -57,7 +57,7 @@ The PLL1 register has these bit fields:
 | 16 | BYPASS | 1 = output is the bypass clock, not the PLL |
 | 31 | LOCK | Read-only; 1 = PLL has acquired lock |
 
-For 696 MHz: we want `24 × DIV / 2 = 696`, so DIV = 58. The encoding "DIV_SELECT" is the *raw divider value*, so we write 58.
+For 696 MHz: we want `24 × DIV / 2 = 696`, so DIV = 58. DIV_SELECT is the raw divider value, so we write 58 directly.
 
 ### PLL2 (System PLL)
 
@@ -105,7 +105,7 @@ The flow when you change a divider:
 2. **Wait for `CCM_CDHIPR` to clear** the corresponding "busy" bit. The hardware needs a few cycles to switch.
 3. *Then* the new clock is in effect.
 
-If you don't wait, subsequent reads/writes can race the clock change. Symptom: works on the 5th run, fails on the 6th.
+If you skip the wait, the next reads or writes can race the clock change. Symptom: the program works on the 5th run, fails on the 6th.
 
 ## 13.4  The bring-up code
 
@@ -333,7 +333,7 @@ The Boot ROM leaves the chip at ARM = 396 MHz already (PLL1 at 792 MHz, divided)
 
 ## 13.6  Verifying with hardware
 
-Software-reads-software-writes is the easiest check to lie to itself. For confidence, measure.
+A read-back of what you just wrote can lie to itself. For confidence, measure the clock externally.
 
 ### Quick check: blink rate
 
@@ -374,7 +374,7 @@ uint32_t t1 = pmu_ccnt();
 printf("loop took %u cycles\r\n", t1 - t0);
 ```
 
-At 696 MHz a million-iteration empty loop should take ~5 million cycles (roughly 7 ns per iteration on a Cortex-A7). At 396 MHz, the same loop count takes the same *cycles* — but with a slower clock, the wall-time it consumes is longer. The number of cycles is therefore the most precise measurement of clock changes.
+At 696 MHz a million-iteration empty loop takes ~5 million cycles (~7 ns per iteration). At 396 MHz the loop takes the same number of cycles, but each cycle is longer, so the wall-clock time doubles. The number of cycles is therefore the most precise measurement of clock changes.
 
 ### Hardware check: scope a GPIO
 
@@ -386,7 +386,7 @@ for (;;) {
 }
 ```
 
-The frequency of the resulting square wave is determined by (CPU clock / 5 instructions per iteration). Scope it. With ARM at 696 MHz and 5 cycles per iteration → ~70 MHz toggle, which the scope and the GPIO drive strength will not produce cleanly; you'll see a degraded waveform but the *period* is measurable. The same loop at 396 MHz produces 40 MHz. A 2× change in frequency between the two builds is the proof.
+The frequency of the resulting square wave is determined by (CPU clock / 5 instructions per iteration). Scope it. With ARM at 696 MHz and 5 cycles per iteration → ~70 MHz toggle. The scope and the GPIO drive strength cannot reproduce that cleanly. You see a degraded waveform, but the period is still measurable. The same loop at 396 MHz produces 40 MHz. A 2× change in frequency between the two builds is the proof.
 
 ## 13.7  Why we set up clocks before DDR
 
@@ -422,4 +422,4 @@ So this chapter and Chapter 14 are coupled: get clocks right here, and DDR init 
 - **U-Boot source: `arch/arm/mach-imx/mx6/clock.c`**. Read after this chapter. Note how it does the same operations with a much larger configuration table.
 - **Linux source: `drivers/clk/imx/clk-imx6ul.c`** — the kernel's clock framework view of the same tree. The same hardware, viewed through a much higher abstraction.
 
-> Next chapter: **Chapter 14 — DDR3 initialization with MMDC.** This is the longest chapter in the bare-metal Part. Block out an afternoon. The reward is 512 MB of usable DRAM and the engineering insight that distinguishes you from someone who only ever uses eval kits.
+> Next chapter: **Chapter 14 — DDR3 initialization with MMDC.** This is the longest chapter in the bare-metal Part. Block out an afternoon. The reward is 512 MB of usable DRAM and the experience that separates you from someone who only uses vendor eval kits.

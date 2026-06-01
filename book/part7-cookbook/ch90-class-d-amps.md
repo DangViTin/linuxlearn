@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 90 — Digital class-D amplifiers
 
-> **What:** "audio output without a codec" — chips that take I²S directly and drive a speaker (class-D amp) or headphones (DAC), with no ADC, no mic, no analog input mixing. Three chips: **TI MAX98357A** (pure I²S → 3.2 W speaker, *no control interface at all*), **TI TAS5805M** (I²C-controlled DSP class-D amp), **TI PCM5102A** (I²S → headphone DAC, no control). For each: the ASoC component model for a control-less or simply-controlled device, and from-scratch drivers (the MAX98357A is almost comically simple; the TAS5805M shows DSP-coefficient loading).
-> **Why:** for *playback-only* products — a Bluetooth speaker, a voice-announcement system, a doorbell chime, a kiosk that plays sounds — you don't need a full codec (Ch 89). You need to turn I²S into sound. These chips do exactly that, cheaper and simpler. The MAX98357A in particular needs *zero* configuration — wire I²S, pick L/R/mono via a resistor, done.
-> **Focus:** **an amp-without-control is the simplest ASoC component possible**. The MAX98357A driver is ~100 lines and has no registers — it's a DAPM widget (the amp) + a DAI (the I²S sink) + maybe an enable GPIO. The TAS5805M adds I²C control + a DSP that needs a coefficient blob loaded. The spectrum from "dumb amp" to "smart DSP amp" maps cleanly to driver complexity.
+> **What:** "audio output without a codec." These chips take I²S directly and drive a speaker (class-D amp) or headphones (DAC). They have no ADC, no mic input, and no input mixer — just a digital-in, analog-out path. Three chips: **TI MAX98357A** (pure I²S → 3.2 W speaker, *no control interface at all*), **TI TAS5805M** (I²C-controlled DSP class-D amp), **TI PCM5102A** (I²S → headphone DAC, no control). For each: the ASoC component model for a control-less or simply-controlled device, and from-scratch drivers. The MAX98357A driver is extremely short. The TAS5805M shows DSP-coefficient loading.
+> **Why:** for *playback-only* products — a Bluetooth speaker, a voice-announcement system, a doorbell chime, a kiosk that plays sounds — a full codec (Ch 89) is overkill. All you need is to turn I²S into sound. These chips do exactly that, cheaper and simpler. The MAX98357A needs zero configuration. Wire I²S, pick L/R/mono with a resistor, and it plays.
+> **Focus:** an amp without a control bus is the simplest ASoC component you can write. The MAX98357A driver is ~100 lines and has no registers — it's a DAPM widget (the amp) + a DAI (the I²S sink) + maybe an enable GPIO. The TAS5805M adds I²C control + a DSP that needs a coefficient blob loaded. Driver complexity tracks chip capability — dumb amp short, DSP amp long.
 > **Tooling.** This chapter uses `alsa-utils`, `i2c-tools`.
 > - **Ubuntu-base (target):** `apt install alsa-utils i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_I2C_TOOLS=y`
@@ -37,17 +37,17 @@ status: draft
 
 ## 90.2  MAX98357A — the zero-config amp
 
-The MAX98357A is the minimalist's dream. It has **no I²C, no SPI, no registers**. Configuration is via *hardware pins*:
+The MAX98357A is as simple as it gets. It has **no I²C, no SPI, no registers**. Configuration is via *hardware pins*:
 
 - **SD_MODE pin**: tied via a resistor to select left channel / right channel / (L+R)/2 average / shutdown. (A resistor divider on one pin encodes 4 states.)
 - **GAIN_SLOT pin**: sets amp gain (3/6/9/12/15 dB) and which I²S slot to use.
 
-Wire I²S (BCLK, LRCLK, DIN), power, speaker — and it plays. The "driver" just needs to:
+Wire up I²S (BCLK, LRCLK, DIN), power, and a speaker. It plays. The "driver" just needs to:
 1. Declare a DAI (the I²S sink).
 2. Declare a DAPM widget (the amp output).
 3. Optionally manage an enable/shutdown GPIO.
 
-That's it. No register access because there are no registers.
+There is no register access in the driver because the chip has no registers.
 
 ## 90.3  Writing a MAX98357A-style driver from scratch
 
@@ -177,9 +177,9 @@ card 0: imxspk [imx-spk], device 0: ...
 [root@pa-mini:~]# aplay test.wav     # plays through the speaker
 ```
 
-~100 lines. The DAPM `OUT_DRV_E` widget's event callback toggles the SD_MODE GPIO when the route activates (amp on during playback, off when idle — saving power). That's the only "logic" in the driver.
+~100 lines. The `OUT_DRV_E` widget's event callback toggles the SD_MODE GPIO with the route. The amp is on during playback and off when idle, saving power. That is the only "logic" in the driver.
 
-The mainline `max98357a.c` is similar (~150 lines) — adds the GAIN gpio and a small refinement, but it's the same shape. This is the *simplest possible ASoC component*.
+The mainline `max98357a.c` is similar (~150 lines) — adds the GAIN gpio and a small refinement, but it's the same shape. This is the floor of ASoC complexity.
 
 ## 90.4  PCM5102A — same idea, headphone DAC
 
@@ -189,13 +189,13 @@ In fact, many such control-less DACs/amps don't need a *custom* driver at all �
 
 ## 90.5  TAS5805M — the DSP amp
 
-The TAS5805M is the opposite extreme: a 2×23 W stereo class-D amp with an **on-chip DSP** offering:
+The TAS5805M sits at the other end. It is a 2×23 W stereo class-D amp with an **on-chip DSP** that provides:
 - Parametric EQ (15 biquads per channel).
 - Dynamic range control (compression/limiting).
 - Bass boost / loudness.
 - Crossover filters (for biamped speakers).
 
-All configured over I²C. The DSP runs a *coefficient set* — you compute biquad coefficients (e.g., from a target frequency response) and load them into the chip's coefficient RAM.
+All of this is configured over I²C. The DSP runs a *coefficient set*. You compute biquad coefficients (for example, from a target frequency response) and load them into the chip's coefficient RAM.
 
 ### The configuration model
 
@@ -237,7 +237,7 @@ The blob is your speaker tuning. A from-scratch TAS5805M driver would: regmap fo
 
 ### Designing the DSP config
 
-The interesting part for a product: you measure your speaker's frequency response (with a calibrated mic), design a corrective EQ in PPC3, and export the blob. The TAS5805M then *fixes the speaker's acoustic flaws in hardware* — a $5 speaker can sound like a $50 one with good DSP tuning. This is why class-D DSP amps dominate smart speakers.
+The interesting part for a product: you measure your speaker's frequency response (with a calibrated mic), design a corrective EQ in PPC3, and export the blob. The TAS5805M then *fixes the speaker's acoustic flaws in hardware*. Good DSP tuning makes a $5 speaker sound much better than its physical parts deserve. This is why DSP class-D amps are standard in smart speakers.
 
 ## 90.6  The Bluetooth-speaker product pattern
 
@@ -251,7 +251,7 @@ A common product: a Bluetooth speaker on i.MX6ULL.
 - PCM goes to ALSA → the SAI → I²S.
 - The TAS5805M's DSP applies EQ + limiting, drives the speaker.
 
-The i.MX6ULL does the Bluetooth + decode; the TAS5805M does the analog + acoustic tuning. No full codec needed (playback only). This is the canonical "amp without a codec" use case.
+The i.MX6ULL does the Bluetooth + decode; the TAS5805M does the analog + acoustic tuning. No full codec needed (playback only). This is the standard "amp without a codec" product pattern.
 
 ## 90.7  Lab
 

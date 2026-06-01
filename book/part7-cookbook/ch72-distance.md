@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 72 — Distance & proximity sensors
 
-> **What:** three radically different "how far away is that object" sensors: **STMicro VL53L0X** (I²C, laser time-of-flight, mm precision, requires firmware-blob upload at probe), **HC-SR04** (GPIO, ultrasonic, the bane of Linux's preemption), **Sharp GP2Y0A** (analog IR, ADC-fed). For each: physics, protocol, the mainline driver, and a from-scratch driver for VL53L0X (the most interesting case) plus an honest discussion of why HC-SR04 is hard on Linux.
-> **Why:** distance sensing is in every robot, every parking assist, every smart-lighting fixture. The three classes cover the practical price/accuracy spectrum: $0.50 IR analog → $3 ultrasonic → $8 ToF laser. Knowing the trade-offs lets you pick correctly and not promise customers ranging accuracy you can't deliver.
-> **Focus:** **time-of-flight is electronics; ultrasonic is physics; IR is photometry**. ToF measures photon round-trip directly (mm-accurate, fast, expensive). Ultrasonic measures sound round-trip (cm-accurate, slow, cheap). IR measures reflected intensity then maps to a non-linear curve (poor accuracy, very cheap). Each driver's complexity reflects this hierarchy.
+> **What:** three radically different "how far away is that object" sensors: **STMicro VL53L0X** (I²C, laser time-of-flight, mm precision, requires firmware-blob upload at probe), **HC-SR04** (GPIO, ultrasonic, famously hard to time accurately under Linux), **Sharp GP2Y0A** (analog IR, ADC-fed). For each: physics, protocol, the mainline driver, and a from-scratch driver for VL53L0X (the most interesting case) plus a clear-eyed look at why HC-SR04 is hard on Linux.
+> **Why:** distance sensing is in every robot, every parking assist, every smart-lighting fixture. The three classes cover the practical price/accuracy spectrum: $0.50 IR analog → $3 ultrasonic → $8 ToF laser. Knowing the trade-offs lets you pick correctly and not promise users a ranging accuracy you cannot actually deliver.
+> **Focus:** Time-of-flight measures with electronics. Ultrasonic measures with sound. IR measures with reflected brightness. Three different physics. ToF measures photon round-trip directly (mm-accurate, fast, expensive). Ultrasonic measures sound round-trip (cm-accurate, slow, cheap). IR measures reflected intensity then maps to a non-linear curve (poor accuracy, very cheap). Each driver's complexity tracks the physics.
 
 ## 72.1  Sensor comparison
 
@@ -37,7 +37,7 @@ status: draft
 
 A pulsed 940 nm VCSEL (vertical-cavity surface-emitting laser) emits ~10 ns pulses; a Single-Photon Avalanche Diode (SPAD) array detects returning photons. The chip times the round-trip with picosecond resolution → distance = c × t / 2.
 
-Range = 2 m at indoor light, drops to ~0.6 m in direct sunlight (940 nm ambient noise dominates). Accurate, fast, but more complex than the alternatives.
+Range is 2 m in indoor light. In direct sunlight it drops to ~0.6 m because 940 nm ambient noise dominates. The chip is accurate and fast, but more complex than the alternatives.
 
 ### HC-SR04 — Ultrasonic
 
@@ -53,7 +53,7 @@ Non-linear output curve (output voltage *not* monotonic with distance — has a 
 
 ## 72.3  Protocol — VL53L0X
 
-VL53L0X is *the chip with a firmware blob*. Unlike most I²C devices that have a fixed register-set behavior, VL53L0X needs to be initialized by uploading **160 separate register writes** at probe — calibration constants, internal-state-machine setup, and tuning parameters. STMicro's API ships these as a long list in their reference code; the kernel driver embeds them too.
+VL53L0X is unusual: it needs a long initial register-write sequence — effectively a firmware blob — uploaded at every probe. Unlike most I²C devices that have a fixed register-set behavior, VL53L0X needs to be initialized by uploading **160 separate register writes** at probe — calibration constants, internal-state-machine setup, and tuning parameters. STMicro's API ships these as a long list in their reference code; the kernel driver embeds them too.
 
 Register map (just the headlines):
 
@@ -193,7 +193,7 @@ static int vl53l0x_read_proximity(struct vl53l0x_data *data, int *val)
 }
 ```
 
-The "magic" of the driver is mostly the tuning-blob loop. The actual measurement is a single-shot trigger, busy-poll, read 2 bytes.
+What looks complex in the driver is mostly the tuning-blob loop. The actual measurement is a single-shot trigger, busy-poll, read 2 bytes.
 
 ## 72.5  Writing a VL53L0X driver from scratch
 
@@ -455,9 +455,9 @@ static int sr04_measure(struct sr04 *s, int *out_cm)
 }
 ```
 
-Note the **two busy-wait loops** in the kernel. This burns a CPU during the ~25 ms measurement. With PREEMPT_RT and a SCHED_FIFO priority, accuracy improves; without, it's still ±2 cm in the typical case.
+The kernel busy-waits in two loops here. That keeps one CPU pinned for the full ~25 ms measurement. With PREEMPT_RT and a SCHED_FIFO priority, accuracy improves; without, it's still ±2 cm in the typical case.
 
-**Bottom line:** don't ship HC-SR04 connected to Linux GPIO. Either use a co-processor or pick a different sensor.
+In short: do not ship products with HC-SR04 wired directly to Linux GPIO. Either use a co-processor or pick a different sensor.
 
 ## 72.7  GP2Y0A — analog needs an ADC
 
@@ -512,7 +512,7 @@ For multi-chip setups (3 VL53L0X looking forward/left/right), the chips share I�
 ## 72.10  Pitfalls
 
 - **VL53L0X under sunlight.** Range collapses to ~60 cm. If outdoor use is required, pick ultrasonic.
-- **VL53L0X behind glass.** The chip's own emitter reflects off the inner glass surface; "0 mm" reading forever. Mount with a recessed window or angled cover.
+- **VL53L0X behind glass.** The chip's emitter reflects off the inner surface of the glass, and you read 0 mm forever. Use a recessed window or tilt the cover slightly.
 - **VL53L0X minimum range.** Below 30 mm, readings are nonsense. Don't trust them.
 - **HC-SR04 narrow targets.** Sound wave is ~25° cone; a thin pole reflects little — readings drop out. Hold a flat board for testing.
 - **HC-SR04 echo from the floor.** In open setups, the floor reflects ultrasound; you read floor distance, not target. Angle the sensor slightly upward.

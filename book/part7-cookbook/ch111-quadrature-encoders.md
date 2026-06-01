@@ -10,7 +10,7 @@ status: draft
 
 > **What:** **quadrature incremental encoders** (optical or magnetic — two phase-shifted square waves), **mechanical rotary encoders** (knob-style, low-res), and **absolute magnetic encoders** (AS5048A from Ch 74, here used as a position sensor not a sensor-out). Three implementations on the i.MX6ULL: (a) software quadrature decode via two GPIO IRQs (works ≤ ~10 kHz pulse rate), (b) hardware quadrature via the i.MX **XBAR + ENC** peripheral (works up to ~1 MHz pulse rate but needs the optional ENC IP block), (c) `rotary_encoder` kernel driver for low-rate user-interface knobs. Plus the IIO `angl` channel pattern for absolute encoders.
 > **Why:** every closed-loop motor needs position feedback; every UI knob needs decoding. The i.MX6ULL has a strong NXP-BSP-only ENC peripheral that mainline Linux doesn't fully expose — so on a mainline kernel, you either do software decode (cheap, slow), use the partial mainline driver if it exists for your variant, or bridge to an external decoder IC. Understanding the four implementation tiers (software IRQ, hardware decoder, dedicated chip, sysfs `rotary_encoder` driver) lets you pick correctly for your use case.
-> **Focus:** **quadrature decoding is "two channels 90° out of phase; the leading channel tells direction"**. A is high then B goes high = forward; B high then A high = backward. Four edges per full A+B cycle = 4× resolution multiplication. Mechanical encoders bounce horribly (5+ ms of noise per click) and need debouncing; optical encoders are clean but expensive; magnetic encoders are the middle ground.
+> **Focus:** Quadrature decoding works on two channels that are 90° out of phase. The leading channel tells you the direction of rotation. A is high then B goes high = forward; B high then A high = backward. Four edges per full A+B cycle = 4× resolution multiplication. Mechanical encoders bounce badly — 5 ms or more of noise per click — and need debouncing. Optical encoders are clean but expensive. Magnetic encoders are the middle ground.
 
 ## 111.1  Encoder types
 
@@ -78,7 +78,7 @@ static void encoder_irq_handler(void) {
 }
 ```
 
-Both channels' rising + falling edges call this; it handles all 12 valid transitions and silently zeros the 4 invalid (missed-edge) transitions.
+Both channels call this on rising and falling edges. The 12 valid transitions produce ±1; the 4 invalid transitions (where both bits changed at once = missed edge) produce 0.
 
 ## 111.3  Software decode in user-space (libgpiod)
 
@@ -222,7 +222,7 @@ cat /sys/bus/iio/devices/iio:device0/in_angl0_scale
 # 0.000383   (radians per count: 2π / 16384)
 ```
 
-For position control, absolute beats incremental every time — no homing, no missed-count drift, instant boot-up state. The trade: cost ($5 vs $0.50) and harder mounting (needs precisely-placed magnet on the shaft).
+For position control, absolute encoders are better in nearly every case — no homing, no missed-count drift, instant boot-up state. The trade: cost ($5 vs $0.50) and harder mounting (needs precisely-placed magnet on the shaft).
 
 ## 111.8  Closed-loop motor control — the velocity-feedback example
 
@@ -253,7 +253,7 @@ for (;;) {
 }
 ```
 
-100 Hz loop is plenty for a brushed motor (much slower mechanical dynamics). PWM drives the H-bridge from Ch 112.
+A 100 Hz control loop is adequate for a brushed motor. Mechanical dynamics are much slower than that. PWM drives the H-bridge from Ch 112.
 
 ## 111.9  Lab
 
@@ -264,7 +264,7 @@ for (;;) {
 5. **AS5048A absolute.** Wire AS5048A; verify IIO `in_angl0_raw` tracks shaft rotation. Verify boot-up reads the correct angle without homing.
 6. **Velocity closed loop.** Combine the velocity loop with the DC motor driver from Ch 112 (BTS7960). Tune Kp, Ki for stable 1000 RPM.
 7. **Position closed loop.** Same loop, but track a target angle. Test for steady-state error; add an integrator if needed.
-8. **Direction-detection robustness.** Spin the encoder back-and-forth rapidly; verify the count is consistent and direction is right. Software bug? Look at the QDEC_TABLE.
+8. **Direction-detection robustness.** Spin the encoder back-and-forth rapidly; verify the count is consistent and direction is right. If counts are wrong, check the QDEC_TABLE.
 
 ## 111.10  Pitfalls
 
@@ -274,7 +274,7 @@ for (;;) {
 - **Reversed A/B.** Direction is wrong. Swap two wires in software or DT.
 - **Index pulse double-trigger.** Z is often longer than one count's worth of time; trigger on its rising edge only, or you'll home twice per revolution.
 - **Encoder loses counts on power loss.** Incremental encoders need re-homing after every boot. Use absolute encoders (AS5048A) or a homing routine.
-- **Software qdec scheduled but missed under load.** A user-space loop on a busy Linux box loses edges when the scheduler holds it. RT priority (`chrt -f 99`) or move to a kernel module.
+- **User-space decode misses edges under CPU load.** A user-space loop on a busy Linux box loses edges when the scheduler holds it. RT priority (`chrt -f 99`) or move to a kernel module.
 - **AS5048A magnet alignment.** The magnet must be on the shaft axis (radially polarized, diametric) within ±0.5 mm; misalignment → non-linear angle errors of several degrees.
 - **Index of LS7366R registers wrong.** MDR0 vs MDR1; common mistake. Default values don't enable filters → noisy signals cause false counts.
 

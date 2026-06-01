@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 75 — Current & power monitoring
 
-> **What:** three I²C high-side current/voltage monitors from Texas Instruments: **INA219** (12-bit, the classic), **INA226** (16-bit, modern, programmable averaging), **INA3221** (3-channel, simultaneous-sample 3-rail monitor). For each: physics, register map, the *calibration register* that everyone gets wrong, and a from-scratch INA219 driver. Plus the **hwmon** subsystem — the sibling of IIO that current monitors usually live in.
+> **What:** three I²C high-side current/voltage monitors from Texas Instruments: **INA219** (12-bit, the classic), **INA226** (16-bit, modern, programmable averaging), **INA3221** (3-channel, simultaneous-sample 3-rail monitor). For each: physics, register map, the *calibration register* that is the most common bug, and a from-scratch INA219 driver. Plus the **hwmon** subsystem — the sibling of IIO that current monitors usually live in.
 > **Why:** every device that draws power benefits from knowing how much. Production telemetry (per-rail consumption logged to fleet management), fault detection (overcurrent → shutdown), low-power optimisation (which subsystem ate the budget?), battery-life prediction. INA219 in particular costs $1.50 and lets you watch any 0–26 V rail at 1 mA resolution.
-> **Focus:** **the shunt converts current to voltage; the chip converts voltage to digital, then divides by shunt to recover current**. Get the shunt size right (low enough to not waste power; high enough to get good resolution) and program the calibration register to match — the chip then reports current directly in amperes. Forget the calibration register and you read garbage scaled by an unknown factor.
+> **Focus:** The shunt converts current to voltage. The chip's ADC converts voltage to a count. The calibration register tells the chip the shunt's value, so the chip can report current directly. Get the shunt size right (low enough to not waste power; high enough to get good resolution) and program the calibration register to match — the chip then reports current directly in amperes. Without the calibration register, the Current and Power registers read zero (or numbers in unknown units, depending on the chip).
 
 ## 75.1  Chip comparison
 
@@ -121,7 +121,7 @@ Write 16384 (0x4000) to register 0x05. Now `Current_register` reads in units of 
 
 The fixed `4096` and `0.04096` and `2048` (for power) come from the ADC's internal scaling — they're not adjustable, they're physical constants of the chip's design. The Calibration register is just a multiplier that maps "raw shunt voltage" to "current in your units."
 
-This is the part everyone gets wrong. Without programming Calibration:
+This is the part most people miss on the first try. Without programming Calibration:
 
 - The Shunt Voltage register *does* work — it reads in 10 µV units regardless.
 - The Bus Voltage register works.
@@ -497,7 +497,7 @@ Both expose sensor readings via sysfs. Conventions and audience differ:
 | Multi-axis sensors | awkward (would need many channels) | first-class (X/Y/Z modifiers) |
 | Naming | `in*_input`, `curr*_input` | `in_<type>_<modifier>_raw` |
 
-**Current monitors → hwmon**. IMUs, ADCs, environmental sensors → IIO. Some chips have both drivers (legacy + modern). Don't enable both.
+Current monitors live in hwmon. IMUs, ADCs, and environmental sensors live in IIO. A few chips have both drivers — pick one in your kernel config and disable the other.
 
 ## 75.7  INA226 — improved sibling
 
@@ -563,7 +563,7 @@ Result: `/sys/class/hwmon/hwmon0/in*_label`, `in*_input`, `curr*_input` × 3 cha
 - **Shunt too small.** 1 mΩ shunt + 100 mA load = 100 µV shunt voltage = 10 LSB on INA219 = 5–10 LSB of noise. Get a bigger shunt or use INA226.
 - **Shunt too big.** 1 Ω shunt + 1 A load = 1 W dissipated in the resistor. Resistor heats, drift, power waste.
 - **Bus voltage > 26 V.** INA219's max bus voltage. Higher = damage. INA226 goes to 36 V; even higher needs different chips (INA138, INA260).
-- **Common-mode voltage limit.** Both INA pins must be within the chip's input range. For a high-side shunt on a 24 V rail, V+ and V− are both around 24 V — INA219 spec'd to 26 V, fine. On a 36 V rail, use INA226.
+- **Common-mode voltage limit.** Both INA pins must sit within the chip's input range. On a high-side shunt at 24 V, V+ and V- are both close to 24 V. INA219 is rated up to 26 V, so that is fine. On a 36 V rail, use INA226.
 - **PWM-controlled load measurement.** Switching loads at kHz rates produce ripple that the INA's slow ADC averages — you get the mean current, not peak. For peak measurement, use a faster current-sense amplifier + scope.
 - **DC blocking on dynamic loads.** If your "current monitor" is reading near zero and you're sure load is drawing power, check if there's a series capacitor isolating DC — capacitor blocks DC current entirely; the shunt-amplifier reads zero.
 - **Mismatched A0/A1 strapping in DT vs hardware.** DT says `reg = <0x40>` but board pinned to 0x44. Silent failure.

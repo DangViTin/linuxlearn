@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 114 — Beepers, relays, SSRs
 
-> **What:** the **discrete actuators** that don't fit anywhere else but appear in every product: **passive piezo buzzers** (need PWM to make sound), **active buzzers** (fixed-frequency, GPIO on/off), **mechanical relays** (5 V or 12 V coils driving 240 V AC contacts), **MOSFETs** (DC switching, fast, no contact wear), and **SSRs (Solid State Relays)** (AC switching, opto-isolated, zero-cross, the production-grade choice for mains-load control). On the i.MX6ULL we drive each with the matching kernel framework (PWM for passive, GPIO for the rest), wire the protection circuits (flyback diodes, snubbers, isolation), and build a 4-channel home automation relay board controlled via MQTT.
-> **Why:** real products *do things* — beep on user action, switch a pump, turn on a heater, energize a solenoid valve, ring a bell. Each actuator has a different electrical personality and different safety pitfalls. Get them wrong and you damage the driver, miss a debounce, energize an AC load while the relay's contact is half-open (arcing → contact welding → can't turn off → fire). This chapter is short but covers the engineering details that make the difference between "the demo works" and "we shipped this for 5 years and it never fails."
-> **Focus:** **for inductive loads (relays, solenoids, motors) you MUST have a flyback diode; for AC loads you MUST have isolation; for zero-cross AC switching you MUST use a zero-cross SSR or you'll arc, generate harmonics, and burn contacts**. The Linux side is trivial — sysfs PWM or GPIO. The electrical-engineering side is most of the work.
+> **What:** the **discrete actuators** that fall outside the main subsystems but appear in every product: **passive piezo buzzers** (need PWM to make sound), **active buzzers** (fixed-frequency, GPIO on/off), **mechanical relays** (5 V or 12 V coils driving 240 V AC contacts), **MOSFETs** (DC switching, fast, no contact wear), and **SSRs (Solid State Relays)** (AC switching, opto-isolated, zero-cross, the production-grade choice for mains-load control). On the i.MX6ULL we drive each with the matching kernel framework (PWM for passive, GPIO for the rest), wire the protection circuits (flyback diodes, snubbers, isolation), and build a 4-channel home automation relay board controlled via MQTT.
+> **Why:** real products take physical actions: beep on user input, switch a pump, turn on a heater, drive a solenoid valve, ring a bell. Each actuator has different electrical requirements and different safety pitfalls. Get them wrong and you damage the driver, miss a debounce, energize an AC load while the relay's contact is half-open (arcing → contact welding → can't turn off → fire). This chapter is short but covers the engineering details that separate a demo from a five-year shipping product.
+> **Focus:** three non-negotiable rules for the actuators in this chapter. Inductive loads (relays, solenoids, motors) need a flyback diode. AC loads need isolation. Zero-cross AC switching needs a zero-cross SSR; non-zero-cross switching arcs, generates harmonics, and burns contacts. The Linux side is trivial — sysfs PWM or GPIO. The electrical-engineering side is most of the work.
 
 ## 114.1  Buzzers — passive vs active
 
@@ -168,7 +168,7 @@ Live AC kills. Working with mains:
 8. **Voltmeter before touching.** After unplugging, verify no voltage. Capacitors hold charge.
 9. **Certification for products.** UL (US), CE (EU), CCC (China) require safety testing of any mains-load product before sale.
 
-This chapter cannot replace a proper electrical-safety class. *Know what you're doing or hire someone who does.*
+This chapter cannot replace a proper electrical-safety class. Get a qualified electrician to review your design if you are not one.
 
 ## 114.6  Worked example — 4-channel home-automation relay board
 
@@ -211,7 +211,7 @@ c.connect('localhost')
 c.loop_forever()
 ```
 
-40 lines. Drop into systemd. From any phone with Home Assistant: tap "Living Room Lamp" → MQTT → relay clicks → lamp on.
+About 40 lines. Install as a systemd unit. Open Home Assistant on a phone, tap "Living Room Lamp", and the relay clicks the lamp on via MQTT.
 
 ## 114.7  Lab
 
@@ -226,7 +226,7 @@ c.loop_forever()
 
 ## 114.8  Pitfalls
 
-- **No flyback diode on relay coil.** BJT and SoC are slowly killed by repeated back-EMF spikes.
+- **No flyback diode on relay coil.** Repeated back-EMF spikes will eventually damage the BJT and SoC.
 - **GPIO direct-driving a relay coil.** Coil draws 30 mA at 5 V (= 150 mW); GPIO typically tolerates 20 mA max. Burn-out symptom: GPIO works once, then never again.
 - **Cheap SSR with rated current.** Fotek SSR-40DA rated "40 A" — actually good for ~25 A continuous and only with a real heatsink. De-rate aggressively.
 - **Zero-cross SSR with inductive load.** Motors lag; zero-cross switching at voltage-zero is at current-peak for inductive load → contact stress. For inductive loads use random-fire SSR.
@@ -237,7 +237,7 @@ c.loop_forever()
 - **SSR on the AC neutral.** Same problem; SSR must be on live.
 - **No fuses.** A failed driver shorts the load; without a fuse, the wiring becomes the fuse.
 - **Inadequate creepage / clearance.** PCB tracks carrying mains must be ≥4 mm apart with no solder bridges. Use a real PCB house with mains-safety design rules.
-- **Treating "off" SSR as "isolated."** SSR leakage is 1–5 mA. Enough to make an LED glow faintly, or — for service — to give a small shock. Pull the plug for service.
+- **Treating an off SSR as electrically isolated.** SSR leakage is 1–5 mA. Enough to make an LED glow faintly, or — for service — to give a small shock. Pull the plug for service.
 
 ## 114.9  Going deeper
 

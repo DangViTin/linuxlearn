@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 88 — USB UVC cameras
 
-> **What:** USB webcams — the standardized **UVC** (USB Video Class) devices that the kernel's `uvcvideo` driver supports out of the box. Unlike the parallel-CSI sensors of Ch 87 (which need a custom driver per sensor), a UVC camera is class-compliant: plug it in, `/dev/video0` appears, no driver work. We cover the UVC protocol model, why it "just works," USB-2.0 bandwidth budgeting (the real constraint on i.MX6ULL), MJPEG vs YUYV vs H.264 modes, and the practical gotchas.
+> **What:** USB webcams — the standardized **UVC** (USB Video Class) devices that the kernel's `uvcvideo` driver supports out of the box. Unlike the parallel-CSI sensors in Ch 87, a UVC camera is class-compliant. Plug it in, `/dev/video0` appears, and there is no driver to write. We cover the UVC protocol model, why it "just works," USB-2.0 bandwidth budgeting (the real constraint on i.MX6ULL), MJPEG vs YUYV vs H.264 modes, and the practical gotchas.
 > **Why:** for many products, a USB webcam is the *easiest* camera — no sensor bring-up, no register tables, no CSI timing. The trade-off is USB bandwidth and the fact that the camera's quality is whatever the webcam vendor shipped. Knowing the bandwidth math tells you what resolution/frame-rate is achievable on the i.MX6ULL's USB-2.0 host.
-> **Focus:** **UVC is a class driver — the protocol is standardized, so one driver handles all cameras**. The complexity isn't in a per-device driver (there isn't one); it's in *bandwidth budgeting* and *format selection*. A USB-2.0 bus is ~480 Mbps theoretical, ~320 Mbps practical. Uncompressed 1080p30 needs ~750 Mbps — impossible. MJPEG-compressed 1080p30 fits. Understanding this is the whole game.
+> **Focus:** UVC is a class driver. The protocol is standardized, so one kernel driver covers every UVC camera. The hard part is no longer per-device driver code. It is bandwidth budgeting and format selection. A USB-2.0 bus is ~480 Mbps theoretical, ~320 Mbps practical. Uncompressed 1080p30 needs ~750 Mbps — impossible. MJPEG-compressed 1080p30 fits. Get the bandwidth math right and the rest is easy.
 > **Tooling.** This chapter uses `v4l-utils`, `gstreamer1.0-tools` + plugins, `ffmpeg`.
 > - **Ubuntu-base (target):** `apt install v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad ffmpeg`
 > - **Buildroot:** `BR2_PACKAGE_V4L_UTILS=y BR2_PACKAGE_GSTREAMER1=y BR2_PACKAGE_FFMPEG=y`
@@ -28,7 +28,7 @@ status: draft
 | Cost | sensor module $2–10 | webcam $10–50 |
 | Power | ~100 mW | ~500 mW – 2.5 W (USB powered) |
 
-The killer advantage of UVC: **the camera does the compression**. A UVC camera with hardware MJPEG/H.264 offloads encoding from the i.MX6ULL (which has no VPU). This makes UVC *better* than CSI for the i.MX6ULL in many cases — the webcam's silicon encodes, the SoC just receives compressed frames.
+The big advantage of UVC: the camera does the compression. A UVC camera with hardware MJPEG/H.264 offloads encoding from the i.MX6ULL (which has no VPU). For the i.MX6ULL, this often makes UVC the better choice. The webcam's silicon does the encoding, and the SoC only has to receive the compressed bytes.
 
 ## 88.2  The UVC protocol model
 
@@ -42,11 +42,11 @@ The camera advertises its capabilities in **descriptors** read at enumeration:
 - Per-format supported frame sizes.
 - Per-frame-size supported frame intervals (frame rates).
 
-The `uvcvideo` driver parses these descriptors and exposes them through V4L2 — exactly the same `/dev/video0` interface as a CSI camera. From the application's view, a UVC camera and a CSI camera are *identical* (both V4L2 video devices); only the bring-up differs.
+The `uvcvideo` driver parses these descriptors and exposes them through V4L2 — exactly the same `/dev/video0` interface as a CSI camera. From the application's view, a UVC camera and a CSI camera are identical. Both are V4L2 video devices. Only the bring-up differs.
 
 ### Isochronous vs bulk transfers
 
-UVC streams video over USB **isochronous** transfers — guaranteed bandwidth, no retransmission (a dropped frame is just dropped). The camera reserves a slice of each USB frame's bandwidth. This is why a UVC camera "claims" bandwidth on enumeration; plugging two high-res cameras into one USB-2.0 bus can fail because the combined isochronous bandwidth exceeds the bus.
+UVC video runs over USB **isochronous** transfers. These guarantee bandwidth but never retransmit — a dropped microframe is simply lost. The camera reserves a slice of each USB frame's bandwidth. This is why a UVC camera "claims" bandwidth on enumeration; plugging two high-res cameras into one USB-2.0 bus can fail because the combined isochronous bandwidth exceeds the bus.
 
 Some cameras support **bulk** transfers (used by a few MJPEG cameras) — best-effort, retransmitted, but no bandwidth guarantee.
 
@@ -179,7 +179,7 @@ The inverse: making the i.MX6ULL *appear* as a webcam to a host PC (Ch 55's USB 
 - **Two bandwidth-heavy USB devices on one controller.** Camera + WiFi/Ethernet contend. Spread across the i.MX6ULL's two USB controllers.
 - **`uvcvideo` quirks.** Some cameras need quirk flags (`uvcvideo.quirks=`). `dmesg` hints at enumeration issues. The `uvcvideo` source has a quirks table for known-bad cameras.
 - **Frame drops on isochronous.** Isochronous has no retransmission; a missed USB microframe = a dropped/corrupt frame. Under heavy system load, frames drop silently. PREEMPT_RT (Ch 52A) helps for deterministic capture.
-- **MJPEG isn't a video codec.** It's per-frame JPEG — no inter-frame compression. 10:1 typical, not the 100:1 of H.264. For bandwidth-critical streaming, prefer an H.264 UVC camera.
+- **MJPEG is not a true video codec.** It is per-frame JPEG with no compression between frames. Typical ratio is 10:1, against H.264's 100:1. For bandwidth-critical streams, pick an H.264 UVC camera.
 
 ## 88.10  Going deeper
 

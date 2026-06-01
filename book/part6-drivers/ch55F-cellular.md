@@ -9,8 +9,8 @@ status: draft
 # Chapter 55F — Cellular modems
 
 > **What:** integrating a 4G/LTE modem with embedded Linux. The two big paths: **USB modems** with QMI/MBIM/RNDIS data interfaces (Quectel EC20/EC25, SimCom SIM7600), and **UART AT-command modems** with PPP (older parts and NB-IoT chips). The user-space orchestrator is **ModemManager**, supplemented by `qmicli` / `mbimcli` or, for AT modems, raw chat scripts.
-> **Why:** every IoT device that ships without WiFi+wired backhaul has a cellular modem. Bringing one up correctly the first time saves weeks of customer-side debugging.
-> **Focus:** **picking the data mode**. EC25 alone exposes 4 USB modes (RNDIS, ECM, QMI, MBIM) — pick wrong and nothing works. QMI is the modern industry-standard for Linux; default to that unless you have a specific reason.
+> **Why:** every IoT device that ships without WiFi+wired backhaul has a cellular modem. Getting the bring-up right early avoids weeks of customer-side debugging.
+> **Focus:** **picking the data mode**. The EC25 alone exposes four USB modes: RNDIS, ECM, QMI, MBIM. The wrong choice produces no working interface. QMI is the standard mode for Linux today. Use it unless you have a specific reason not to.
 > **Tooling.** This chapter uses `ppp` (`pppd`, `chat`), `ModemManager` (`mmcli`), `libqmi-utils` (`qmicli`).
 > - **Ubuntu-base (target):** `apt install ppp modemmanager libqmi-utils`
 > - **Buildroot:** `BR2_PACKAGE_PPP=y BR2_PACKAGE_MODEM_MANAGER=y BR2_PACKAGE_LIBQMI=y`
@@ -18,7 +18,7 @@ status: draft
 
 ## 55F.1  Hardware connection
 
-USB modems plug into a USB host port (i.MX6ULL USB OTG configured as host). They draw 1–2 A during TX bursts — your power supply must handle it. Bench testing failures are almost always power.
+USB modems plug into a USB host port (i.MX6ULL USB OTG configured as host). They draw 1–2 A during TX bursts — your power supply must handle it. Most bench-test failures are power-related.
 
 UART modems wire to a UART (typically 115200 baud + flow control). Plus an "enable" GPIO and a "status" GPIO.
 
@@ -103,7 +103,7 @@ If you don't want ModemManager:
 [root@pa-mini:~]# udhcpc -i wwan0
 ```
 
-Manual is fragile. ModemManager is the way.
+Manual setup is fragile. Use ModemManager when you can.
 
 ## 55F.5  UART AT-command modem (e.g., A7670C)
 
@@ -158,7 +158,7 @@ PPP is slow (~10 Mbit/s max) and adds latency. Use only for old modems without U
 1. **Plug in an EC25.** Verify `lsusb`, `ttyUSB*`, `wwan0`, `cdc-wdm0` all appear.
 2. **ModemManager connect.** `mmcli --simple-connect`; verify `ip` is up, ping works.
 3. **AT-command echo.** Open `/dev/ttyUSB2`, send `AT`, get `OK`. Try `AT+CSQ`, `AT+QSPN`.
-4. **SMS send.** `mmcli --modem=0 --messaging-create-sms="text='hello',number='+...'`; `--send`. (Cost: ~$0.05.)
+4. **SMS send.** `mmcli --modem=0 --messaging-create-sms="text='hello',number='+...'`; `--send`. (SMS cost is around $0.05 per message on most carriers.)
 5. **Failover to WiFi.** Write a script that periodically pings the gateway; switch routes if cellular fails.
 6. **Power consumption.** Measure idle vs RX vs TX-burst current. Plan your battery accordingly.
 

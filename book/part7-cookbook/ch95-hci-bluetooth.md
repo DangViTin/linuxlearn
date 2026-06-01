@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 95 — HCI Bluetooth over UART/USB
 
-> **What:** dedicated Bluetooth controllers and the Linux Bluetooth stack (**BlueZ**). Three controllers compared: **Nordic nRF52** (with Zephyr HCI firmware, UART), **Broadcom BCM4343** (UART), **CSR8510/Realtek RTL8761** (USB dongle). We cover the **HCI protocol** in depth, the BlueZ architecture, and — since you don't write the HCI controller (it's the chip's firmware) — building a **BLE GATT peripheral** in user-space via BlueZ's D-Bus API (the meaningful "build it yourself" part).
-> **Why:** Bluetooth is how embedded products talk to phones — BLE for "configure-my-device-from-an-app" provisioning, GATT for sensor data, classic BT for audio. Ch 94 brought up the combo-module BT half; this chapter goes deep on the protocol and on *building a GATT service* — the part you actually write. Understanding HCI demystifies the whole stack; building a GATT peripheral is the practical skill.
-> **Focus:** **the controller runs the BT link layer; you build the GATT application**. The chip's firmware is the "controller" (radio, link layer, encryption). BlueZ is the "host" (L2CAP, GATT, SMP). Your code is the "application" — a GATT server exposing characteristics. You don't touch HCI directly; you define services and BlueZ handles the rest. The from-scratch deliverable is a GATT peripheral, written against BlueZ's D-Bus API.
+> **What:** dedicated Bluetooth controllers and the Linux Bluetooth stack (**BlueZ**). Three controllers compared: **Nordic nRF52** (with Zephyr HCI firmware, UART), **Broadcom BCM4343** (UART), **CSR8510/Realtek RTL8761** (USB dongle). We cover the **HCI protocol** in depth and the BlueZ architecture. You will not write the HCI controller — that lives in the chip's firmware. What you do build is a **BLE GATT peripheral**, in user-space, through BlueZ's D-Bus API.
+> **Why:** Bluetooth is how embedded products talk to phones — BLE for "configure-my-device-from-an-app" provisioning, GATT for sensor data, classic BT for audio. Ch 94 brought up the combo-module BT half; this chapter goes deep on the protocol and on *building a GATT service* — the part you actually write. Understanding HCI makes the rest of the stack feel less magical. Building a GATT peripheral is the practical skill.
+> **Focus:** the controller (chip firmware) runs the BT link layer. You build the GATT application on top. The chip's firmware is the "controller" (radio, link layer, encryption). BlueZ is the "host" (L2CAP, GATT, SMP). Your code is the "application" layer. It is a GATT server that exposes characteristics. You do not touch HCI directly. You define services, and BlueZ handles the rest. The from-scratch deliverable is a GATT peripheral, written against BlueZ's D-Bus API.
 > **Tooling.** This chapter uses `bluez` (`bluetoothctl`, `btmon`, `btmgmt`, `hciattach`), Python `dbus` for the GATT-server example.
 > - **Ubuntu-base (target):** `apt install bluez bluez-tools python3-dbus`
 > - **Buildroot:** `BR2_PACKAGE_BLUEZ5_UTILS=y BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y BR2_PACKAGE_PYTHON3_DBUS=y`
@@ -36,7 +36,7 @@ status: draft
 
 ## 95.2  The HCI protocol
 
-**HCI** (Host Controller Interface) is the standardized boundary between the *host* (Linux + BlueZ) and the *controller* (the BT chip). It's a packet protocol with four packet types:
+**HCI** (Host Controller Interface) is the standardised boundary between two halves of any Bluetooth system: the *host* (Linux plus BlueZ) and the *controller* (the BT chip). HCI is a packet protocol. It defines four packet types:
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
@@ -64,7 +64,7 @@ An event packet:
 
 Over UART, these packets are framed with the **H4** protocol (just the type byte prefix, no checksum — relies on UART reliability) or **H5/3-wire** (adds sequence numbers + CRC + retransmission for unreliable UARTs).
 
-You rarely send raw HCI — BlueZ does. But understanding it lets you read `btmon` traces (which decode every HCI packet) and debug.
+You rarely send raw HCI yourself. BlueZ does it for you. Knowing the format lets you read `btmon` traces and debug.
 
 ## 95.3  The BlueZ architecture
 
@@ -246,15 +246,15 @@ if __name__ == '__main__':
     GLib.MainLoop().run()
 ```
 
-(The full example needs the service-object + advertisement-object registration boilerplate — ~250 lines total. BlueZ ships a complete `example-gatt-server` in `test/` that you adapt.)
+The full example needs the service-object and advertisement-object registration boilerplate — about 250 lines in total. BlueZ ships `example-gatt-server` in `test/` and most production code starts from that.
 
-What this gives you: a phone running the **nRF Connect** app (or your own app) discovers "Environmental Sensing," reads the temperature, and subscribes to notifications — getting a push every 2 seconds. This is the canonical "BLE sensor that talks to a phone app" pattern.
+What this gives you: a phone running the **nRF Connect** app (or your own app) discovers "Environmental Sensing," reads the temperature, and subscribes to notifications — getting a push every 2 seconds. This is the standard pattern: a BLE sensor talking to a phone app.
 
 Wire the `update_temp()` to a real BME280 (Ch 67) and you have a working BLE environmental sensor.
 
 ### The C / production path
 
-For a real product, write the GATT server in C against **sd-bus** (systemd) or **GDBus** (GLib), or use BlueZ's `gdbus` C helpers. The structure mirrors the Python: define the service + characteristics as D-Bus objects, register with `org.bluez`, handle ReadValue/WriteValue/StartNotify. More code, but no Python runtime + better performance.
+For a real product, write the GATT server in C against **sd-bus** (systemd) or **GDBus** (GLib), or use BlueZ's `gdbus` C helpers. The structure mirrors the Python: define the service + characteristics as D-Bus objects, register with `org.bluez`, handle ReadValue/WriteValue/StartNotify. More code, but no Python runtime and better performance.
 
 ## 95.7  GAP — advertising + the connection flow
 
@@ -266,7 +266,7 @@ Before GATT, a BLE peripheral **advertises**: it broadcasts small packets ("I ex
    → GATT discovery → read/subscribe characteristics
 ```
 
-BlueZ's `LEAdvertisingManager1` D-Bus interface controls advertising; you register an advertisement object specifying the name, service UUIDs, and any manufacturer-specific data. The example-gatt-server includes this.
+BlueZ exposes a `LEAdvertisingManager1` D-Bus interface that controls advertising. You register an advertisement object with the name, service UUIDs, and any manufacturer-specific data. The example-gatt-server includes this.
 
 ## 95.8  Lab
 

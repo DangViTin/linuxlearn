@@ -9,8 +9,8 @@ status: draft
 # Chapter 54B — V4L2 + GStreamer
 
 > **What:** the **V4L2** (Video for Linux 2) subsystem — the kernel framework that abstracts video capture and output devices behind `/dev/videoN` — and **GStreamer**, the user-space pipeline framework that consumes V4L2 frames. We focus on the i.MX6ULL's **CSI** (Camera Serial Interface) for parallel cameras (OV5640, OV7725, GC2145), the only camera interface on this SoC.
-> **Why:** every IP camera, dashcam, smart-doorbell, machine-vision product runs this stack. The complexity comes from V4L2's flexibility: sub-devices (the sensor, the CSI, the IPU) compose into pipelines that can be configured at runtime. Mastering the pipeline mental model unlocks the entire imaging stack.
-> **Focus:** **the V4L2 subdev graph + GStreamer's `v4l2src`**. The kernel exposes the capture pipeline as a graph of sub-devices; GStreamer's `v4l2src` element grabs frames from `/dev/video0`. Everything else is image processing.
+> **Why:** every IP camera, dashcam, smart-doorbell, machine-vision product runs this stack. The complexity comes from V4L2's flexibility: sub-devices (the sensor, the CSI, the IPU) compose into pipelines that can be configured at runtime. Once the pipeline model clicks, the rest of the imaging stack reads easily.
+> **Focus:** **the V4L2 subdev graph + GStreamer's `v4l2src`**. The kernel exposes the capture pipeline as a graph of sub-devices; GStreamer's `v4l2src` element grabs frames from `/dev/video0`. After that, the rest is image processing.
 > **Tooling.** This chapter uses `v4l-utils` + `gstreamer1.0-tools` + base/good/bad plugins.
 > - **Ubuntu-base (target):** `apt install v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad`
 > - **Buildroot:** `BR2_PACKAGE_V4L_UTILS=y BR2_PACKAGE_GSTREAMER1=y BR2_PACKAGE_GST1_PLUGINS_BASE=y BR2_PACKAGE_GST1_PLUGINS_GOOD=y BR2_PACKAGE_GST1_PLUGINS_BAD=y`
@@ -41,7 +41,7 @@ status: draft
    DMA → DDR                                       I²C control
 ```
 
-A V4L2 *device* is what user-space opens (`/dev/video0`). It's connected to *sub-devices* — the sensor (OV5640) and the CSI bridge (i.MX CSI/ISI) — via a **media graph**. The user-space configures both the format (resolution, pixelformat) at the video device and the format at each subdev.
+A V4L2 *device* is what user-space opens (`/dev/video0`). It connects to *sub-devices* — the sensor (OV5640) and the CSI bridge (i.MX CSI/ISI) — through a **media graph**. User-space sets the format (resolution, pixelformat) on both the video device and on each subdev.
 
 ## 54B.2  Device tree
 
@@ -136,7 +136,7 @@ while (1) {
 
 For everyday work, use **libv4l2** or **GStreamer**, which wrap this.
 
-## 54B.4  GStreamer 30 seconds
+## 54B.4  GStreamer in 30 seconds
 
 GStreamer is a *pipeline* engine: elements connected with `!` pipes form a data flow.
 
@@ -181,7 +181,7 @@ i.MX6ULL has no GPU/VPU, so video encoding is software (slow). Useful up to ~5�
 [root@pa-mini:~]# v4l2-ctl --set-ctrl=exposure_absolute=300
 ```
 
-The sensor driver (ov5640) exposes a stack of controls; user-space tunes them. Auto-exposure / auto-white-balance work surprisingly well for general use.
+The sensor driver (ov5640) exposes a stack of controls; user-space tunes them. Auto-exposure and auto-white-balance are good enough for general use.
 
 ## 54B.6  Lab
 
@@ -199,7 +199,7 @@ The sensor driver (ov5640) exposes a stack of controls; user-space tunes them. A
 - **Pixel format mismatch.** Sensor outputs YUYV, but you request RGB. GStreamer can convert, but it costs CPU.
 - **Buffer underrun.** 4 buffers minimum for smooth capture; fewer cause dropped frames.
 - **Concurrent open.** Only one user-space client per `/dev/video0`. Either GStreamer or your custom app, not both.
-- **Frame size > VPU/memory budget.** 5 MP at 30 fps requires ~140 MB/s memory bandwidth — pushes i.MX6ULL hard.
+- **Frame size > VPU/memory budget.** 5 MP at 30 fps needs about 140 MB/s of memory bandwidth. This is close to the i.MX6ULL's practical limit.
 
 ## 54B.8  Going deeper
 

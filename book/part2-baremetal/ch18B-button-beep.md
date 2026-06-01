@@ -9,8 +9,8 @@ status: draft
 # Chapter 18B — Button input and beep
 
 > **What:** read a GPIO input with software debouncing, then drive a passive buzzer at an audible frequency from a polled GPIO toggle loop. Two new peripherals; both built on the GPIO and timer primitives we already own.
-> **Why:** every product accepts input and emits feedback. Until now, our only input was UART and our only output was an LED. Adding a button and a buzzer rounds out the minimal HMI vocabulary, and forces us to confront **debouncing**, which is one of those topics every embedded engineer needs to nail down once.
-> **Focus:** the **debounce decision** — when to spin-debounce, when to use a timer, when to do it in hardware. The right answer depends on what else the CPU is supposed to be doing, and we will see all three approaches.
+> **Why:** every product accepts input and emits feedback. Until now, our only input was UART and our only output was an LED. Adding a button and a buzzer completes the minimal HMI vocabulary, and forces us to handle **debouncing** — a topic every embedded engineer should learn once and then trust.
+> **Focus:** the debounce decision: spin-debounce, timer-debounce, or hardware-debounce. The right one depends on what else the CPU has to do; we will see all three.
 
 ## 18B.1  The hardware on the Point Atom MINI
 
@@ -19,7 +19,7 @@ From the Point Atom MINI / ALPHA schematics (the wiring is identical between the
 - **KEY0** — a normally-open momentary tactile switch wired between the **UART1_CTS_B** pad (which in ALT5 becomes **GPIO1_IO18**) and **GND**. The pin sits high through an external 10 kΩ pull-up. Pressed: low; released: high. **Active-low.**
 - **BEEP** — a passive piezo buzzer driven through a **PNP transistor (Q1, 8550-class)** whose base is controlled by the **SNVS_TAMPER1** pad (ALT5 = **GPIO5_IO01**). When GPIO5_IO01 = **0**, the PNP turns on, the buzzer's positive terminal sees 3V3, and the buzzer beeps. When GPIO5_IO01 = **1**, the PNP is off and the buzzer is silent. **Active-low** at the GPIO. The buzzer itself is *passive* (no internal oscillator) — you must toggle GPIO5_IO01 at the audible frequency to produce a tone.
 
-Why active-low via a transistor? The buzzer draws more current than a bare GPIO can sink without risking the SoC's IO drive specs. The PNP is a small driver stage that lets us sink/source the buzzer's coil current via the 3V3 rail rather than directly through the SoC.
+Why active-low via a transistor? A piezo buzzer needs more current than a bare GPIO is rated to drive. The PNP sources the load current from 3V3, and the GPIO only sinks the small base current needed to switch the PNP on.
 
 For the rest of this chapter:
 
@@ -33,7 +33,7 @@ Pad addresses (from RM IOMUXC chapter):
 - `IOMUXC_SNVS_SW_MUX_CTL_PAD_SNVS_TAMPER1` (for BEEP — note the `SNVS_` prefix; SNVS-domain pads live in a separate IOMUXC bank)
 - `IOMUXC_SNVS_SW_PAD_CTL_PAD_SNVS_TAMPER1`
 
-GPIO5 is in the **SNVS domain**, with base `0x020AC000`. Its clock gate is in a different CCGR bit than GPIO1's. Always cross-check the RM table for "GPIO5 is in the SNVS domain" — this is one of the i.MX6ULL's idiosyncrasies and the source of the "I clocked the wrong GPIO bank" debugging story every i.MX6ULL engineer has told once.
+GPIO5 sits in the SNVS power domain, with base `0x020AC000`. Its clock gate is in a different CCGR bit than GPIO1's. Cross-check the RM table when you bring it up — clocking the wrong GPIO bank is the classic i.MX6ULL bug.
 
 ## 18B.2  Button driver — polled with software debounce
 
@@ -45,7 +45,7 @@ if ((GPIO_DR(GPIO1_BASE) & (1 << 18)) == 0) {
 }
 ```
 
-…works once. The problem: **switch bounce**. When the mechanical contacts close, they bounce — make-break-make-break for typically 1–10 ms. A polled read can sample mid-bounce and report "pressed → released → pressed" several times for a single physical press.
+works once. Then bounce ruins it. When the mechanical contacts close, they bounce — make-break-make-break for typically 1–10 ms. A polled read can sample mid-bounce and report "pressed → released → pressed" several times for a single physical press.
 
 The classical fix in 1980s firmware was a 20 ms hardware RC filter on the input. We do it in software instead:
 
@@ -54,7 +54,7 @@ int key_read_debounced(void)
 {
     /* Sample, wait, sample again; return 1 only if both samples match. */
     int s1 = (GPIO_DR(GPIO1_BASE) & (1 << 18)) ? 0 : 1;
-    mdelay(20);  /* 20 ms is overkill; tactile switches usually < 5 ms */
+    mdelay(20);  /* 20 ms is overkill; tactile switches usually settle in under 5 ms */
     int s2 = (GPIO_DR(GPIO1_BASE) & (1 << 18)) ? 0 : 1;
     return (s1 == s2) ? s1 : -1;   /* -1 = bouncing */
 }
@@ -88,7 +88,7 @@ void key_tick(void)
 }
 ```
 
-This pattern is the basis of every modern keypad-scan implementation. The 80 ms validation window is conservative; tune to 30 ms (3 ticks) for snappier response if your switch is good quality.
+This pattern is the basis of most modern keypad-scan implementations. The 80 ms validation window is conservative; tune to 30 ms (3 ticks) for snappier response if your switch is good quality.
 
 ### Best (for production): hardware debouncing + interrupt
 
@@ -96,7 +96,7 @@ A Schmitt-trigger gate + RC filter on the input gives clean edges and lets you u
 
 ## 18B.3  Buzzer — a square wave on GPIO5_IO01 (active-low via PNP)
 
-A passive piezo emits sound at the frequency of the applied square wave. A 1 kHz tone is well within human hearing; 4 kHz is shrill; 200 Hz is a low buzz.
+A passive piezo emits sound at the frequency of the applied square wave. A 1 kHz tone is comfortable, 4 kHz is shrill, 200 Hz is a low buzz.
 
 Because BEEP is driven through an active-low PNP transistor, the polarities below look "inverted" — but a square wave is symmetric, so the *toggling* still produces sound at the right frequency. The only place polarity matters is at idle (the buzzer must be **silent** when we are not playing a tone, which means GPIO5_IO01 = **1**).
 
@@ -130,9 +130,9 @@ void beep_tone(uint32_t hz, uint32_t ms)
 }
 ```
 
-`beep_tone(1000, 200)` — a 1 kHz tone for 200 ms. Annoying but unambiguous.
+`beep_tone(1000, 200)` — a 1 kHz tone for 200 ms. Loud enough to verify by ear.
 
-A small but real bug to watch for: if you forget the final `GPIO_DR |= bit`, you may exit `beep_tone` with the PNP on and the buzzer stuck mid-cycle, drawing power and emitting a click. The explicit silencing line is not decoration.
+A small but real bug to watch for: if you forget the final `GPIO_DR |= bit`, you may exit `beep_tone` with the PNP on and the buzzer stuck mid-cycle, drawing power and emitting a click. Without that final write, the PNP can stay on and the buzzer clicks.
 
 ### Why not just a GPIO toggle in a tight loop?
 

@@ -10,7 +10,7 @@ status: draft
 
 > **What:** the **block** layer — `gendisk`, request queues, `blk-mq` (multi-queue block), bio. Most embedded systems consume block devices (eMMC, SD card via MMC subsystem; raw NAND via MTD+UBI). Occasionally you need to *write* one — typically a RAM disk, a loop-style virtual device, or a translation layer over a custom storage chip.
 > **Why:** less common to write than char drivers, but worth knowing because (a) the request-queue model differs significantly from "byte stream" and (b) understanding block lets you debug performance of any storage layer above (filesystem latency, fsync behavior).
-> **Focus:** **bio is the universal request**. Userspace's `read(fd, ..., 4096)` becomes one or more `struct bio`s queued to a `gendisk`. Drivers either submit one I/O per bio or batch into hardware-specific request structures.
+> **Focus:** **bio is the universal request**. A user-space `read(fd, ..., 4096)` becomes one or more `struct bio`s submitted to a `gendisk`. Drivers either submit one I/O per bio or batch into hardware-specific request structures.
 
 ## 55D.1  The path from `read()` to your driver
 
@@ -28,7 +28,7 @@ status: draft
    hardware
 ```
 
-`bio` describes: which device, what direction (read/write), what sector range, and a vector of memory buffers. Drivers can either process bio-at-a-time or convert to hardware-native request structures.
+`bio` describes: which device, what direction (read/write), what sector range, and a vector of memory buffers. Drivers can process bios one at a time, or convert them to hardware-native request structures.
 
 ## 55D.2  Minimal: RAM disk
 
@@ -126,11 +126,9 @@ After `insmod`:
 [root@pa-mini:~]# mount /dev/myram0 /mnt
 ```
 
-A real RAM-backed block device, mountable like any disk.
-
 ## 55D.3  Real block drivers — what's added
 
-The minimal ramdisk skips many features. Production block drivers add:
+The ramdisk above is minimal. Production block drivers add:
 
 - **DISCARD / TRIM** (`BLK_STS_OK` on `REQ_OP_DISCARD`) — letting the device free unused sectors. eMMCs and SSDs care.
 - **FLUSH** (`REQ_OP_FLUSH`) — ensure writes are durable. Critical for ACID-style apps.
@@ -165,8 +163,8 @@ For comparison, an eMMC HS200 hits ~120 MB/s sequential, ~10k IOPS random. NAND 
 ## 55D.6  Pitfalls
 
 - **Forgetting to `blk_mq_start_request`.** Driver does work, calls `end_request`, but the request was never marked started — corrupted statistics, possible deadlock.
-- **Block-aligned constraint violations.** Modern kernels require sector-aligned bios; smaller-than-sector requests get split. Honor `bvec` offsets.
-- **Holding spinlocks across long memcpy.** Block layer expects fast queue_rq returns. Defer long work to a workqueue.
+- **Block-aligned constraint violations.** Modern kernels require sector-aligned bios. Requests smaller than a sector get split. Honor `bvec` offsets.
+- **Holding spinlocks across long memcpy.** `queue_rq` is expected to return quickly. Defer long work to a workqueue.
 - **`mkfs.ext4` complaints about a tiny disk.** Some FS minimums apply (~8 MB for ext4 with default settings).
 - **Unloading while disk is mounted.** Kernel panics. Always `umount` before `rmmod`.
 

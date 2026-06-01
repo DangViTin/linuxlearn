@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 73 — Magnetometer / compass
 
-> **What:** three I²C magnetometers: **Honeywell HMC5883L** (legacy classic, EOL but ubiquitous on hobbyist boards), **QST QMC5883L** (cheap clone with quirky register-set differences), **Memsic MMC5983MA** (modern low-noise). Plus the most important non-driver content of the chapter: **hard-iron and soft-iron calibration** — the universal "my compass points 23° wrong" problem and how to fix it.
-> **Why:** any product that needs to know which way it's facing — drone, robot vacuum, AR headset, GPS-assisted navigation — needs a magnetometer. The math is simple; the *calibration* is what separates a useful compass from a useless one. Most engineers ship without calibration and wonder why their bearing is off — sometimes they blame the IMU.
-> **Focus:** **calibration happens in user-space, but the driver must enable it**. The driver reports raw `µT × scale`; user-space collects samples, fits an ellipsoid model, computes hard-iron (offset) and soft-iron (skew matrix). After applying the correction, raw 3-axis readings become Earth-magnetic-field vectors with < 1° error. Without calibration: 10–30° error is typical, depending on what's mounted near the sensor.
+> **What:** three I²C magnetometers: **Honeywell HMC5883L** (legacy classic, EOL but ubiquitous on hobbyist boards), **QST QMC5883L** (cheap clone with quirky register-set differences), **Memsic MMC5983MA** (modern low-noise). Most of this chapter is not driver code. It is calibration: **hard-iron and soft-iron calibration** — the universal "my compass points 23° wrong" problem and how to fix it.
+> **Why:** any product that needs to know which way it's facing — drone, robot vacuum, AR headset, GPS-assisted navigation — needs a magnetometer. The math is simple; the *calibration* is what separates a useful compass from a useless one. Many products ship without calibration; their compass is off by 10–30°, and the IMU often gets blamed.
+> **Focus:** Calibration runs in user-space; the driver's job is to deliver raw X/Y/Z in stable, scaled units. The driver reports raw `µT × scale`; user-space collects samples, fits an ellipsoid model, computes hard-iron (offset) and soft-iron (skew matrix). After applying the correction, raw 3-axis readings become Earth-magnetic-field vectors with < 1° error. Without calibration: 10–30° error is typical, depending on what's mounted near the sensor.
 
 ## 73.1  Chip comparison
 
@@ -26,7 +26,7 @@ status: draft
 | Lifecycle | EOL since 2018 | active (cheap China supply) | active |
 | Volume price | $4–6 (eBay clones $1) | $0.50–1.50 | $4–6 |
 
-**Trap**: HMC5883L's name is on every $1 eBay "HMC5883L" breakout. Those modules are *QMC5883L*. The pinout is similar; the protocol is different. If your "HMC5883L" doesn't probe at 0x1E, try QMC5883L at 0x0D.
+Watch for this: every $1 eBay "HMC5883L" breakout is actually a *QMC5883L*. The pinout is similar; the protocol is different. If your "HMC5883L" doesn't probe at 0x1E, try QMC5883L at 0x0D.
 
 **Pick guide:**
 - **HMC5883L** for legacy maintenance only.
@@ -47,7 +47,7 @@ If you take the chip out of the box and read raw, the data lies on a *3D ellipso
 
 Calibrated reading = A × (raw − b). The radius of the resulting sphere equals the magnitude of Earth's field (~50 µT) at your location. Heading angle from the X/Y components is then accurate to ~1°.
 
-Without calibration: heading error of 10–30°, completely unusable for navigation.
+Without calibration: heading error of 10–30°, wrong enough to be useless for navigation.
 
 ## 73.3  Protocol — HMC5883L
 
@@ -75,7 +75,7 @@ Each measurement read is 6 bytes back-to-back; note the **X/Z/Y order** (HMC's i
 
 ## 73.4  Protocol — QMC5883L (different!)
 
-QMC5883L uses a *different* register layout despite the similar-looking name and pinout. The killer differences:
+QMC5883L uses a *different* register layout despite the similar-looking name and pinout. The differences that matter:
 
 | Reg | QMC | HMC |
 |-----|-----|-----|
@@ -87,7 +87,7 @@ QMC5883L uses a *different* register layout despite the similar-looking name and
 | Period (refresh) | 0x0B | none |
 | I²C address | 0x0D | 0x1E |
 
-Mode bits in QMC's control register are also different. **You cannot drive a QMC5883L with HMC5883L code; the chip will appear inert.** This is the #1 reason "my $1 HMC5883L doesn't work" — it's not an HMC5883L.
+Mode bits in QMC's control register are also different. HMC5883L code does not work on a QMC5883L — the chip will simply not respond. This is the #1 reason "my $1 HMC5883L doesn't work" — it's not an HMC5883L.
 
 QMC bring-up:
 
@@ -303,9 +303,9 @@ Test:
 -38.6      ← "compass says 38.6° west of north"... but it's wrong because no calibration
 ```
 
-## 73.7  Calibration — the part everyone skips
+## 73.7  Calibration — the part most products skip
 
-A user-space calibration script collects samples while you slowly rotate the sensor in all 3D orientations (cover an imaginary sphere). The samples will fit on an ellipsoid; you compute:
+A user-space calibration script collects samples while you slowly rotate the sensor in all 3D orientations (cover an imaginary sphere). The samples fall on an ellipsoid. From the ellipsoid you compute two things:
 
 1. The **offset** (center of the ellipsoid) — hard-iron correction.
 2. The **3x3 matrix** to rotate-and-scale the ellipsoid into a sphere — soft-iron correction.
@@ -407,7 +407,7 @@ Plus buffered capture via trigger (Ch 70) for high-rate logging.
 - **Mistaking QMC5883L for HMC5883L.** #1 hobbyist trap. If it doesn't respond at 0x1E, try 0x0D.
 - **No calibration.** Heading off by 10–30°. Calibrate, every time, in-place.
 - **Calibration baked into firmware but environment changed.** A magnetometer on a robot calibrated on workbench, then mounted near a motor: recalibrate on the robot.
-- **Tilt unaccounted for.** XY-only heading assumes the sensor is level. For real attitude-aware compass, use tilt-compensation: combine with accel to project the magnetic vector onto the horizontal plane.
+- **XY-only heading assumes the sensor is held level.** If the device can tilt, combine the magnetometer with the accelerometer and project the magnetic vector onto the horizontal plane. This is "tilt compensation" and it is mandatory for any device a user holds in their hand.
 - **Buck converters within 5 cm.** Switching power supplies emit strong RF magnetic noise. Magnetometer reads garbage. Layout: keep mag far from switchers, or filter heavily.
 - **Iron rich PCB substrate.** Cheap PCBs sometimes have ferromagnetic impurities. Affects calibration repeatability across boards.
 - **Phone case magnets.** A 30-cm gap to a magnet still measures 100s of µT. Test your product in its real-world envelope.

@@ -9,8 +9,22 @@ status: draft
 # Chapter 125 — Field updates
 
 > **What:** **over-the-air (OTA) firmware update** systems for shipped embedded Linux products. Three options compared: **RAUC** (Robust Auto-Update Client — German rail-grade, simple, well-fit Yocto), **SWUpdate** (Toradex-originated, flexible, complex), **Mender** (commercial-style with hosted backend; also self-host). Each implements **A/B partitioning** + atomic update + rollback. We design a complete OTA flow: build → sign → host → device pulls + verifies + installs → reboots into new partition → marks "good" if boot completes → fall-back to other partition if not.
-> **Why:** no shipping product survives without updates. Bug fixes, security patches, new features — all delivered after the box leaves your hand. The risk: a botched update bricks 10,000 devices. The mitigation: atomic A/B updates + rollback on boot failure. Get the OTA architecture right and you ship one update per week, customers love you. Get it wrong and one bad update wipes out a quarter's revenue.
-> **Focus:** **A/B is the universal pattern: two rootfs partitions; the running kernel mounts one; an update writes to the other; bootloader switches to the new one on next reboot; if the new one fails to boot to a "we're good" marker within a deadline, bootloader reverts to the old one**. The complexity is everywhere else: who hosts the update bundle? how is it signed (Ch 124's keys)? how does the device know an update is available? what if the user's WiFi drops mid-download? how do you stage rollouts (10 % → 50 % → 100 %)? these systems handle all of that.
+> **Why:** most shipping products need a way to deliver updates. Bug fixes, security patches, new features — all delivered after the box leaves your hand. The risk: a botched update bricks 10,000 devices. The mitigation: atomic A/B updates + rollback on boot failure. Get the OTA architecture right and you can ship updates weekly. Get it wrong and one bad update can disable thousands of devices in the field.
+> **Focus:** A/B is the standard pattern:
+> - two rootfs partitions;
+> - the running kernel mounts one;
+> - an update writes to the other;
+> - the bootloader switches to the new one on next reboot;
+> - if the new one fails to reach a "we're good" marker within a deadline, the bootloader reverts to the old one.
+>
+> The complexity is everywhere else. The open questions are:
+> - Who hosts the update bundle?
+> - How is it signed (Ch 124's keys)?
+> - How does the device know an update is available?
+> - What if the user's WiFi drops mid-download?
+> - How do you stage rollouts (10 % → 50 % → 100 %)?
+>
+> These systems address all of them.
 > **Tooling.** This chapter uses `rauc` *or* `swupdate` *or* `mender-client` (pick one), plus `casync` for delta-update chunking.
 > - **Ubuntu-base (target):** `apt install rauc casync  # or: swupdate, or mender-client`
 > - **Buildroot:** `BR2_PACKAGE_RAUC=y BR2_PACKAGE_CASYNC=y  # or BR2_PACKAGE_SWUPDATE=y / BR2_PACKAGE_MENDER=y`
@@ -63,7 +77,7 @@ The bootloader knows: "current slot = A or B". Read from env var. Update flow:
 2. Set env var: "next boot = B; previous = A".
 3. Reboot.
 4. U-Boot reads env; boots B's kernel.
-5. After Linux comes up to a known-good state (a service reaches "active"), it signals "boot succeeded" via env var.
+5. Once Linux reaches a known-good state — a specific service reports active — it signals boot success via a U-Boot environment variable.
 6. If step 5 doesn't happen within N seconds, U-Boot reverts to A on next power-cycle (watchdog auto-reset).
 
 ## 125.3  RAUC end-to-end
@@ -189,7 +203,7 @@ You build the "device polling" daemon yourself; RAUC provides the install primit
 
 For staged rollouts: serve different `latest.json` to different device IDs (canary 10 %, then 50 %, then 100 %).
 
-For privacy: device authenticates via client TLS cert (each device has a unique cert provisioned at manufacturing time); server checks per-device permissions.
+For privacy, each device authenticates with its own client TLS certificate, provisioned at manufacturing time. The server checks per-device permissions.
 
 ## 125.5  Delta updates with casync
 

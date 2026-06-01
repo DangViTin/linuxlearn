@@ -9,8 +9,8 @@ status: draft
 # Chapter 46 — I²C drivers
 
 > **What:** the Linux **I²C subsystem** — `i2c_adapter` (the controller, which we don't write), `i2c_client` (one chip on the bus), `i2c_driver` (the per-chip driver), `i2c_msg` (one transaction). By the end you'll have a driver that probes when a DT node says `compatible = "your,chip"`, talks to it with `i2c_transfer`, and exposes it via chardev or sysfs.
-> **Why:** I²C is the workhorse bus of embedded: temp sensors, EEPROMs, GPIO expanders, RTCs, audio codecs, touch controllers, PMICs, battery gauges — half of Part VII's cookbook chapters are I²C devices. The Linux I²C model is a *clean* example of the bus/driver/device split first introduced in Ch 39 — and every I²C driver looks the same once you know the shape.
-> **Focus:** **i2c_msg is the universal transaction**. `i2c_transfer(adapter, msgs, count)` sends a sequence of `i2c_msg` structs; each is one read or write, and adjacent ones share the bus without a STOP between them. Master this primitive and you can drive *any* I²C chip — write-then-read, repeated-start, 10-bit addressing, SMBus quirks.
+> **Why:** I²C is the most common slow bus in embedded systems: temp sensors, EEPROMs, GPIO expanders, RTCs, audio codecs, touch controllers, PMICs, battery gauges — half of Part VII's cookbook chapters are I²C devices. The Linux I²C model is a *clean* example of the bus/driver/device split first introduced in Ch 39 — and every I²C driver looks the same once you know the shape.
+> **Focus:** **i2c_msg is the universal transaction**. `i2c_transfer(adapter, msgs, count)` sends a sequence of `i2c_msg` structs; each is one read or write, and adjacent ones share the bus without a STOP between them. Get this primitive right and you can talk to any I²C chip: write-then-read, repeated-start, 10-bit addressing, SMBus quirks.
 > **Tooling.** This chapter uses `i2c-tools` (`i2cdetect`, `i2cdump`, `i2cset`, `i2cget`).
 > - **Ubuntu-base (target):** `apt install i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_I2C_TOOLS=y`
@@ -45,7 +45,7 @@ When the kernel parses DT, it sees:
 };
 ```
 
-…and creates an `i2c_client` with `addr = 0x76`, `name = "bme280"`. When your `i2c_driver` registers, the I²C core walks all clients on all adapters, matches `compatible` to your `of_match_table`, and calls your `probe()`.
+…and creates an `i2c_client` with `addr = 0x76`, `name = "bme280"`. When your `i2c_driver` registers, the I²C core walks every client on every adapter. For each one whose `compatible` is in your `of_match_table`, it calls your `probe()`.
 
 ## 46.2  Device tree for I²C
 
@@ -160,7 +160,7 @@ Key things to notice:
 
 **`i2c_set_clientdata` / `i2c_get_clientdata`** — store and retrieve your private struct pointer on the client. Used to find the priv struct from later callbacks.
 
-**Two match tables** — `i2c_device_id` for non-DT systems (the `id_table`) *and* `of_device_id` for DT. Modern systems use DT, but the i2c_device_id is the historical fallback; you include both for forward/backward portability.
+**Two match tables** — `i2c_device_id` for non-DT systems (the `id_table`) *and* `of_device_id` for DT. Modern systems use DT. The `i2c_device_id` is the historical fallback. Include both for portability.
 
 **`MODULE_DEVICE_TABLE(i2c, mychip_id)`** — exposes the table to depmod so the right module autoloads when an I²C device with that name is detected.
 
@@ -394,7 +394,7 @@ Install the `i2c-tools` package and you get `i2cdetect`, `i2cget`, `i2cset`, `i2
                                         ← write 0xAB to AT24 address 0
 ```
 
-Caveat: if a kernel driver has *bound* to a device, i2c-tools won't let you talk to it (you'd race with the driver). Use `-y -f` to force, but only for known-safe testing.
+If a kernel driver has already bound to the device, `i2c-tools` will refuse to touch it (you would race the driver). Pass `-y -f` to override — only for known-safe testing.
 
 ## 46.8  Lab
 

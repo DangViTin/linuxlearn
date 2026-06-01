@@ -10,7 +10,7 @@ status: draft
 
 > **What:** digital MEMS microphones — the chips that replaced analog electret mics in everything from phones to wearables. We focus on **I²S** mics (TDK InvenSense **INMP441**, TDK **ICS-43434**) and contrast with **PDM** mics. Plus the ASoC machine-driver pattern needed to wire one to the i.MX6ULL SAI, since this is one case where you really do write a small "machine driver" but not a chip driver.
 > **Why:** every smart speaker, voice-assistant, voice-controlled IoT device, dashcam, drone for FAA-broadcast — they all have one or more digital microphones. The mic outputs already-digitized PCM (or PDM); no separate ADC or codec required. The driver structure is unusual: there's no codec chip with registers, just a simple I²S DAI. The ASoC `simple-card` machine driver handles this exact pattern.
-> **Focus:** **a digital MEMS mic is "an I²S DAI with no control interface"**. It samples audio internally, outputs PCM on SD when WS/LR-clock + BCLK are running. From Linux's perspective it's just a slave of the SAI. Once you can wire SAI → mic in DT via `simple-audio-card` and capture with `arecord`, you have a working audio-input pipeline.
+> **Focus:** A digital MEMS mic is, from Linux's view, an I²S DAI without any control interface — clocks in, samples out. It samples audio internally, outputs PCM on SD when WS/LR-clock + BCLK are running. To the SAI driver, the mic is just an I²S slave. Wire SAI to the mic in DT via `simple-audio-card`, then `arecord` captures the audio. That is the whole audio-input pipeline.
 > **Tooling.** This chapter uses `alsa-utils` (`arecord`, `aplay`), `i2c-tools`.
 > - **Ubuntu-base (target):** `apt install alsa-utils i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_I2C_TOOLS=y`
@@ -150,7 +150,7 @@ Listen back on the host machine: it'll be quiet (single mic, low input) but spee
 
 ## 78.5  How the SAI + DMA + ALSA pipeline works
 
-This is the part worth understanding even when you don't write the drivers:
+Worth understanding even when you do not write the drivers yourself:
 
 1. **SAI** is the i.MX's I²S peripheral. The mainline `fsl_sai.c` driver:
    - Configures BCLK and LRCLK from a parent clock (the PLL4_AUDIO_DIV in our DT, at 24.576 MHz — exactly 512 × 48 kHz, a "perfect" rate for audio).
@@ -199,9 +199,9 @@ static int my_probe(struct platform_device *pdev)
 }
 ```
 
-70 lines — same shape as Ch 53's WM8960 machine driver but simpler (no codec controls, no DAPM widgets, no jack detection).
+Roughly 70 lines. Same shape as Ch 53's WM8960 machine driver, only without the codec controls, DAPM widgets, and jack-detection.
 
-For most cases: **don't write this**. Use `simple-audio-card` in DT.
+For most cases: Most projects do not need a custom machine driver. Use `simple-audio-card` in DT.
 
 ## 78.7  Stereo with two mics
 
@@ -223,7 +223,7 @@ DT: change `simple-audio-card,routing` to declare two channels; the kernel doesn
 [root@pa-mini:~]# arecord -D plughw:0,0 -f S32_LE -r 48000 -c 2 -d 5 stereo.wav
 ```
 
-Plays back in stereo on the host.
+The captured file plays back in stereo on the host.
 
 ## 78.8  Lab
 
@@ -238,7 +238,7 @@ Plays back in stereo on the host.
 
 ## 78.9  Pitfalls
 
-- **Wrong format.** INMP441 outputs 24-bit MSB-first I²S. Configure for S32_LE in ALSA; the 24 bits go in the upper bits of the 32-bit container. S24_LE *may* work depending on ASoC version.
+- **Wrong format.** INMP441 outputs 24-bit MSB-first I²S. Configure for S32_LE in ALSA. The 24 audio bits sit in the high 24 bits of the 32-bit slot; the bottom 8 bits are zero. S24_LE *may* work depending on ASoC version.
 - **MCLK not provided.** Some I²S mics need an MCLK in addition to BCLK + LRCLK. INMP441 does *not*; ICS-43434 also doesn't. But other I²S codecs do. Verify against datasheet.
 - **Master/slave mismatch.** Both SoC and mic configured as slaves → no clock generated. INMP441 is always a slave (chip can't generate clocks).
 - **WS polarity wrong.** Some chips expect LRCLK = HIGH for left; others use LOW. `simple-audio-card,format = "i2s"` defaults to "left = LOW" (LJ vs I²S subtly differ).

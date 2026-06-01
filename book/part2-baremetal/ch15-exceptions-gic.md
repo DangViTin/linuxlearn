@@ -9,8 +9,8 @@ status: draft
 # Chapter 15 — Exceptions and the GIC
 
 > **What:** install a real ARMv7-A exception vector table, configure the GIC v2 distributor and CPU interface, route the UART1 interrupt to the core, and write an ISR that echoes received characters.
-> **Why:** every kernel, every RTOS, and most useful bare-metal programs are interrupt-driven. The polling we have used so far works for hello-world; it falls apart the moment more than one peripheral needs attention.
-> **Focus:** the **two-stage IRQ flow** — the GIC routes to the CPU; the CPU vectors to your handler; the handler reads the GIC for the IRQ ID, dispatches, writes EOI. Once you can draw this without looking, every other A-profile system makes sense.
+> **Why:** every kernel, every RTOS, and most useful bare-metal programs are interrupt-driven. Polling works for hello-world. It falls apart the moment more than one peripheral needs attention.
+> **Focus:** the two-stage IRQ flow: the GIC routes the IRQ to the CPU, the CPU vectors to your handler, and the handler reads the GIC for the IRQ ID, dispatches, and writes EOI. Internalize this diagram and every A-profile system feels familiar.
 
 ## 15.1  What is different from Cortex-M
 
@@ -28,7 +28,7 @@ In Cortex-A7:
 - The vector table is an array of *branch instructions*, not function pointers.
 - Return is an explicit `rfeia sp!` or equivalent.
 
-The trade-off: A-profile gives you more flexibility (you can split handlers across modes, share register banks, etc.) at the cost of writing more boilerplate. Linux's `arch/arm/kernel/entry-armv.S` is several hundred lines of this boilerplate, all of it correct, all of it terrifying the first time you read it.
+The trade-off: A-profile gives you more flexibility (you can split handlers across modes, share register banks, etc.) at the cost of writing more boilerplate. Linux's `arch/arm/kernel/entry-armv.S` is several hundred lines of the same pattern. Correct, but intimidating to read the first time.
 
 We will write a smaller version. The pattern is identical.
 
@@ -108,9 +108,9 @@ irq_entry:
      *   r0..r12   = whatever was running
      */
 
-    sub     lr, lr, #4              @ adjust LR_irq to point at the *interrupted*
-                                    @ instruction (so RFE re-executes it... no, it
-                                    @ resumes correctly with this -4 fixup)
+    sub     lr, lr, #4              @ LR_irq = PC_interrupted + 4 on IRQ entry.
+                                    @ Subtract 4 so RFE resumes at the interrupted
+                                    @ instruction.
 
     /* Save the interrupted state to the IRQ-mode stack as a "return frame". */
     srsdb   sp!, #0x12              @ store LR_irq and SPSR_irq to IRQ stack
@@ -132,8 +132,8 @@ irq_entry:
 
 What is happening:
 
-- **The `ldr pc, =sym` form** rather than `b sym` is used because `b` has a ±32 MB range, and our handler labels are far away in flash/DRAM. `ldr pc, =sym` is the universal far-branch idiom on ARM.
-- **`sub lr, lr, #4`** before `srsdb`. The CPU put `PC_interrupted + 4` in `LR_irq`. The IRQ exception model has an architectural offset of 4 for IRQ (4 for IRQ, 8 for prefetch abort, 0 for SVC, etc., per RM table). Subtracting 4 gives us the correct address to return to.
+- **The `ldr pc, =sym` form** rather than `b sym` is used because `b` has a ±32 MB range, and our handler labels are far away in flash/DRAM. `ldr pc, =sym` is the standard ARM idiom for a far branch.
+- **`sub lr, lr, #4`** before `srsdb`. The CPU put `PC_interrupted + 4` in `LR_irq`. ARM defines a fixed return offset per exception: 4 for IRQ, 4 for prefetch abort, 8 for data abort, 0 for SVC. For IRQ we subtract 4 to land back on the interrupted instruction.
 - **`srsdb sp!, #0x12`** stores `{LR, SPSR}` to the IRQ-mode stack pointer. Mode 0x12 = IRQ. The `db` (decrement-before) and `!` (writeback) make it a stack push.
 - **`cpsid i, #0x13`** switches to SVC mode and masks IRQs (which were already masked, but explicit). After this, we are on the SVC-mode stack.
 - **`push {r0-r3, r12, lr}`** saves the caller-saved registers AAPCS expects us to preserve across the C function call.

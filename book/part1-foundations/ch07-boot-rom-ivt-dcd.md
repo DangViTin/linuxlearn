@@ -23,7 +23,7 @@ status: draft
 
 ## 7.1  What the Boot ROM is
 
-The Boot ROM is a 96 KB block of code burned into the silicon at fabrication. It lives at physical address `0x00000000` (and is aliased to `0x00100000`). You did not write it. NXP wrote it. It runs first, at every power-on and every reset, on every i.MX6ULL ever made.
+The Boot ROM is a 96 KB block of code burned into the silicon at fabrication. It lives at physical address `0x00000000` (and is aliased to `0x00100000`). You did not write it. NXP wrote it. It runs first at every power-on and every reset, on every i.MX6ULL ever shipped.
 
 Its sole job is to load some other code (your bootloader, or your bare-metal image) into RAM and jump to it. Everything you ever do on this chip happens after the Boot ROM has finished its work.
 
@@ -39,7 +39,7 @@ From POR_B rising to your `_start` executing, the i.MX6ULL Boot ROM performs rou
 
 1. **Internal initialization.** Set up the watchdog, the ROM's own stack at the top of OCRAM, and a few CCM defaults.
 2. **Sample boot fuses + boot pins.**
-   - Read `OCOTP_CFG5[BT_FUSE_SEL]`. If set, the boot device comes from fuses (`OCOTP_CFG4`). If clear, it comes from the **BOOT_MODE[1:0]** pins (`BOOT_MODE0`, `BOOT_MODE1`) and the **BOOT_CFG** pins.
+   - The ROM reads `OCOTP_CFG5[BT_FUSE_SEL]`. If that bit is set, the boot device is taken from the fuses in `OCOTP_CFG4`. If clear, it comes from the BOOT_MODE[1:0] pins together with the BOOT_CFG pins.
 3. **Determine boot mode.**
    - `BOOT_MODE` = 0b00 → Boot from fuses (rare on dev boards).
    - `BOOT_MODE` = 0b01 → **Serial Downloader (SDP)** — wait for a host to push code over USB-OTG or UART. This is the recovery mode.
@@ -79,7 +79,7 @@ The IVT is **32 bytes**, eight 32-bit words. Lay it out explicitly:
 A few observations.
 
 - **The `header` byte sequence `0xD1 0x00 0x20 0x40`** is the magic the ROM looks for. If you write the wrong byte order at offset 0, the ROM rejects the image with no diagnostic. You will see this byte pattern at offset `0x400` of every bootable SD card in this book.
-- **The `self` field is load-bearing.** It is the IVT's own physical address. The ROM compares `self` against where it actually loaded the image and uses the difference to relocate `entry`, `dcd`, and `boot_data` if necessary. Getting `self` wrong is the #1 way to brick an otherwise correct image.
+- **The `self` field is load-bearing.** It is the IVT's own physical address. The ROM compares `self` against where it actually loaded the image and uses the difference to relocate `entry`, `dcd`, and `boot_data` if necessary. Getting `self` wrong is the most common way to brick an otherwise correct image.
 - **All addresses in the IVT are absolute physical addresses**, not file offsets. The ROM understands that the image was at file offset `X` but ends up in OCRAM (or DRAM, post-DCD) at address `Y`, and it adjusts.
 
 ### A worked example
@@ -116,11 +116,11 @@ BootData is **12 bytes**:
 
 ## 7.5  The DCD — Device Configuration Data
 
-This is the cleverest, least-documented, and most useful part of i.MX boot.
+The DCD is one of the more clever and least-documented parts of i.MX boot.
 
 The DCD is a list of operations the Boot ROM will perform on your behalf *before* loading your image. Its purpose is to bring up hardware that you cannot bring up yourself yet — most importantly, the **DDR controller**, so that the ROM can load your image into DRAM rather than the cramped OCRAM.
 
-A DCD entry is a small instruction in a tiny one-byte-opcode language:
+Each DCD entry is one instruction in a small, one-byte-opcode language:
 
 | Opcode | Name | Description |
 |--------|------|-------------|
@@ -163,7 +163,7 @@ Sixteen bytes of data, four bytes of overhead. A real DCD for DDR3 initializatio
 
 You could, in principle, do all of this in your own startup code instead of in DCD. People do. Two reasons to use DCD anyway:
 
-1. **You may need DRAM up *before* your image is loaded.** If your image is bigger than OCRAM (128 KB), the only way to use it is for the ROM to load it into DRAM. The ROM cannot load into DRAM unless DDR is initialized. The ROM cannot initialize DDR unless someone tells it what values to write. The DCD is how you tell it.
+1. **You may need DRAM up *before* your image is loaded.** If your image is bigger than OCRAM (128 KB), the only way to use it is for the ROM to load it into DRAM. The ROM can only load into DRAM after DDR is initialized, and the ROM cannot initialize DDR on its own. The DCD is the script you hand it that does that initialization.
 2. **Some peripherals need very early init.** Bringing up clocks to specific peripherals before your code runs can simplify SPL.
 
 For a small bare-metal image that runs purely from OCRAM, you don't need a DCD. Your IVT can leave the DCD pointer as zero and bring up DDR yourself. We will do exactly that in Chapter 14 to keep things honest. The image we build in Chapter 11 also has no DCD — it's small enough to fit in OCRAM.
@@ -202,7 +202,7 @@ In SDP mode the ROM accepts a small command set:
 
 Your `uuu` or `imx_usb_loader` tool wraps these into a friendly script. Under the hood it is `WRITE_FILE` to push an IMX image to RAM, then `JUMP_ADDRESS` to the loaded IVT.
 
-This is your recovery path. Burn the procedure into muscle memory: a board that boots into SDP mode is **not bricked**, no matter what is on its flash.
+This is your recovery path. Drill this procedure until it is automatic. A board that boots into SDP mode is **not bricked**, whatever is on its flash.
 
 ## 7.7  The .imx image format
 
@@ -262,7 +262,7 @@ At offset `0x0400` you should see the IVT magic `D1 00 20 40`. Decode the next w
 - `80 00 78 80` → boot_data = `0x80780080`
 - `00 14 78 80` → self = `0x80781400`
 
-Wait — those don't make sense together. Actually they do: this is a U-Boot image meant to be loaded to `0x80700000` (DRAM), and the byte order is little-endian. With a little practice you read these in your head. We'll do exactly this for our own image in Chapter 11.
+These look inconsistent at first glance. They aren't, once you remember that the byte order is little-endian and the image is meant to be loaded at `0x80700000` in DRAM. With a little practice you read these in your head. We'll do exactly this for our own image in Chapter 11.
 
 ## 7.10  Lab
 

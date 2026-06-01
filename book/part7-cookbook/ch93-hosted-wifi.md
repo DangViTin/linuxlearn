@@ -10,7 +10,7 @@ status: draft
 
 > **What:** offloading WiFi to an **ESP32** (or ESP8266) co-processor connected over SPI or UART. Two architectures: **esp-hosted** (the ESP runs firmware that makes Linux see a normal `wlan0` — full network-stack integration), and **AT-command mode** (the ESP runs the TCP/IP stack itself; Linux talks to it like a modem). For each: the architecture, the bring-up, and how the host-side driver shuttles data.
 > **Why:** sometimes the SoC has no SDIO and no spare USB (or you want to add WiFi to an existing design without changing the SoC). An ESP32 is a $2 WiFi+BT co-processor you connect over a couple of GPIOs. It's also the answer for *MCU + Linux co-existence* designs, and for adding WiFi to legacy SoCs that predate good WiFi support. The trade-off: lower throughput than SDIO/USB, and you now have *two* firmwares to manage.
-> **Focus:** **two fundamentally different offload models**. esp-hosted: the ESP is a *dumb radio* — Linux runs the IP stack, the ESP just moves 802.11 frames (Linux sees `wlan0`, runs wpa_supplicant, full control). AT-command: the ESP is a *smart modem* — it runs its own TCP/IP, Linux sends `AT+CIPSTART` and gets a socket-like abstraction (simple, but limited and non-standard). Picking between them shapes everything.
+> **Focus:** two very different offload models. esp-hosted treats the ESP as a *dumb radio*. Linux runs the IP stack and just sends 802.11 frames through the ESP. From Linux's view there is a normal `wlan0` with wpa_supplicant on top. AT-command treats the ESP as a *smart modem*. The ESP runs its own TCP/IP stack and Linux speaks `AT+CIPSTART` to open sockets. Simple, but limited and non-standard. The choice between them shapes the rest of the design.
 > **Tooling.** This chapter uses `wpa_supplicant`, `iw`, the `esp-hosted` kernel module + firmware on the ESP.
 > - **Ubuntu-base (target):** `apt install wpasupplicant iw`
 > - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y`
@@ -26,9 +26,9 @@ status: draft
 | Want WiFi + BT in one cheap part | ESP32 has both |
 | Strict EMC / certification | the ESP module is pre-certified (FCC/CE) — saves you RF certification |
 
-The last point is underrated: an ESP32 *module* (not bare chip) ships with FCC/CE/IC modular certification. Bolt it on, and your product inherits the RF certification — no expensive antenna-certification of your own design. This alone justifies hosted WiFi for low-volume products.
+One often-missed advantage: an ESP32 *module* (not the bare chip) ships with FCC/CE/IC modular certification. If you mount the module without changing the antenna, your product inherits the certification. You skip an expensive antenna-certification step. For low-volume products, this alone can justify hosted WiFi.
 
-The cost: throughput tops out around 20 Mbps (SPI) or much less (UART), vs 30–50 Mbps for SDIO/USB. And you maintain the ESP firmware in addition to the Linux side.
+The cost: throughput tops out around 20 Mbps (SPI) or much less (UART), vs 30–50 Mbps for SDIO/USB. You also maintain the ESP firmware on top of the Linux side.
 
 ## 93.2  The two architectures
 
@@ -49,7 +49,7 @@ The cost: throughput tops out around 20 Mbps (SPI) or much less (UART), vs 30–
 
 Linux sees a normal `wlan0`. wpa_supplicant runs on Linux. The ESP is a transport — it moves frames and relays cfg80211 commands. This is the "proper" integration: standard tools, standard behavior, the ESP's own IP stack is *not* used.
 
-esp-hosted also relays Bluetooth (HCI over the same transport) — so one ESP32 gives Linux both `wlan0` and an `hci0`.
+esp-hosted also relays Bluetooth, sending HCI over the same transport. So one ESP32 gives Linux both `wlan0` and `hci0`.
 
 ### AT-command: ESP as a smart modem
 
@@ -76,8 +76,8 @@ The ESP runs the entire network stack; Linux just orchestrates via AT strings. S
 
 ### Choosing
 
-- **esp-hosted**: when you want WiFi to behave like real WiFi — standard tools, multiple sockets, Linux's IP stack, TLS via OpenSSL, etc. The right choice for a real product. Requires the esp-hosted firmware + the Linux driver.
-- **AT-command**: when you want dead-simple, a few connections, and don't mind a non-standard interface. Common in quick prototypes and MCU-style code. Avoid for anything that needs the Linux network ecosystem.
+- **esp-hosted**: when you want WiFi to behave like real WiFi — standard tools, multiple sockets, Linux's IP stack, TLS via OpenSSL, etc. It is the right choice for production. You need both the esp-hosted firmware on the ESP and the matching Linux driver.
+- **AT-command**: when you want dead-simple, a few connections, and don't mind a non-standard interface. AT-command mode is common in quick prototypes and in MCU-style code. Avoid it for any product that needs Linux's network ecosystem (sockets, TLS, multiple connections, NetworkManager).
 
 ## 93.3  esp-hosted bring-up (SPI transport)
 
@@ -178,9 +178,9 @@ static const struct net_device_ops esp_netdev_ops = {
 };
 ```
 
-The ESP's transport protocol multiplexes: WiFi-STA frames, WiFi-AP frames, BT-HCI packets, and control commands all flow over the same SPI link, distinguished by an `if_type` field in the header. The driver demuxes received packets to the right interface (`espsta0`, `hci0`, etc.).
+The ESP's transport protocol multiplexes several streams over the same SPI link: WiFi-STA frames, WiFi-AP frames, BT-HCI packets, and control commands. An `if_type` field in the header distinguishes them. The driver demuxes received packets to the right interface (`espsta0`, `hci0`, etc.).
 
-Control (scan, connect) goes through a separate control path — the driver sends "control request" packets (a protobuf-encoded command) and the ESP firmware executes them, mimicking cfg80211 ops. So `wpa_supplicant`'s nl80211 scan request → cfg80211 → the esp driver's `.scan` → a control packet to the ESP → the ESP scans → results come back → reported up. Same shape as brcmfmac (Ch 91), but the transport is the esp-hosted SPI protocol instead of SDIO.
+Control (scan, connect) goes through a separate control path — the driver sends "control request" packets (a protobuf-encoded command) and the ESP firmware executes them, mimicking cfg80211 ops. So `wpa_supplicant`'s nl80211 scan request → cfg80211 → the esp driver's `.scan` → a control packet to the ESP → the ESP scans → results come back → reported up. The structure mirrors brcmfmac (Ch 91). Only the transport changes — the esp-hosted SPI protocol instead of SDIO.
 
 ## 93.5  AT-command mode
 
@@ -205,7 +205,7 @@ write(fd, "GET / HTTP/1.0\r\n\r\n", 18);
 
 This is *user-space* code talking to a UART — no kernel driver at all (just the standard UART tty). It's the same pattern as a cellular AT modem (Ch 103). Simple, but: parsing AT responses is fiddly, only ~5 simultaneous connections, no TLS unless the firmware supports it, no integration with Linux sockets.
 
-For a kernel-integrated AT-mode (making it look like a network interface), `drivers/net/ppp/` + a chat script can layer PPP over the AT link — but esp-hosted is the better path if you want a real `wlan0`.
+If you want AT-mode to look like a network interface, the kernel's PPP driver (`drivers/net/ppp/`) plus a chat script can layer PPP over the AT link. esp-hosted is still the better choice for a real `wlan0`, though.
 
 ## 93.6  esp-hosted vs AT — decision table
 

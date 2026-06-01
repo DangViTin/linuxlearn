@@ -9,8 +9,8 @@ status: draft
 # Chapter 74 — Hall-effect & rotary position sensors
 
 > **What:** three Hall-effect-based position sensors at different abstraction levels: **AMS AS5048A** (SPI, 14-bit absolute rotary, "magnet-on-axis" encoder), **Allegro A1324** (analog linear Hall sensor), **Infineon TLE5012B** (SPI, high-rate, dual-die for safety-critical motor control). For each: physics, protocol, mainline driver, plus a from-scratch SPI driver for AS5048A.
-> **Why:** measuring rotary position without mechanical contact is the foundation of brushless motor control, robotic joints, throttle position sensors, steering angle, knob inputs on appliances. Hall-on-magnet replaces optical encoders for lower cost, infinite life (no slip-rings or photo-emitter aging), and tolerance to oil/dust.
-> **Focus:** **the magnet matters as much as the chip**. AS5048 needs a *diametrically magnetised* 2-pole magnet, axially mounted, 0.5–3 mm above the chip die. Wrong magnet, wrong distance, wrong polarisation = the chip reports nonsense or a low-resolution mess. Most "AS5048 doesn't work" reports trace to magnet selection.
+> **Why:** measuring rotary position without mechanical contact is the foundation of brushless motor control, robotic joints, throttle position sensors, steering angle, knob inputs on appliances. Hall-on-magnet sensors replace optical encoders. They cost less, last longer (no slip-rings, no aging photo-emitters), and tolerate oil and dust.
+> **Focus:** **The magnet matters as much as the chip — get it wrong and the chip reads garbage.** AS5048 needs a *diametrically magnetised* 2-pole magnet, axially mounted, 0.5–3 mm above the chip die. Wrong magnet, wrong distance, wrong polarisation = the chip reports nonsense or a low-resolution mess. Most "AS5048 doesn't work" threads online trace back to the wrong magnet.
 
 ## 74.1  Sensor comparison
 
@@ -27,7 +27,7 @@ status: draft
 | Volume price | $3–6 | $0.50–1.50 | $7–12 |
 
 **Pick guide:**
-- **AS5048A**: general motor control, joystick/knob, robotics. Default choice.
+- **AS5048A**: general motor control, joystick/knob, robotics. The general-purpose choice.
 - **A1324**: simple "is metal nearby?" or linear-distance from a magnet. ADC-based.
 - **TLE5012B**: automotive / safety-rated motor control. Has redundancy.
 
@@ -54,7 +54,7 @@ AS5048A uses SPI with a peculiar **command-then-result** sequence. Each SPI fram
    bits 13:0: register address (or data)
 ```
 
-You send a *command frame* this transaction; the *response* comes in the *next* transaction.
+You send a *command frame* in the current transaction. The matching *response* arrives in the next transaction.
 
 To read the angle register (0x3FFF):
 
@@ -314,7 +314,7 @@ myas5048a spi3.0: AS5048 magnitude: 5482 (typical 5000-6000 with good magnet)
 4.71239    ← 270° = 3π/2 rad ≈ 4.71
 ```
 
-Driver is ~150 lines. The 14-bit absolute angle is now in IIO, ready for any consumer.
+Driver is ~150 lines. The 14-bit absolute angle is in IIO, ready for any application that needs it.
 
 ## 74.5  A1324 — analog linear Hall
 
@@ -371,13 +371,13 @@ After load: `/sys/bus/iio/devices/iio:device0/in_angl_raw` plus `_scale` for con
 
 - **Wrong magnet.** Axial magnetisation = chip sees constant field, no rotation signal. Diametric is mandatory.
 - **Magnet off-axis.** Even 0.5 mm off-axis adds significant non-linearity (>1° error). Mechanical fixturing matters.
-- **Magnet too close.** Chip saturates; angle clamps or wraps. Datasheet specifies 1–3 mm typical.
+- **Magnet too close.** Chip saturates; angle clamps or wraps. The datasheet specifies a typical air gap of 1–3 mm.
 - **Magnet too far / weak.** Magnitude register low; angle is noisy. Use a stronger magnet or move closer.
 - **SPI mode wrong.** AS5048A is mode 1 (CPOL=0, CPHA=1). Mode 0 returns 0xFFFF every read.
 - **Forgetting the two-frame protocol.** A read result is in the *next* frame. First read returns junk; second returns the answer.
 - **Parity ignored on critical applications.** The chip can return bad data due to bus noise; parity is your sanity check. Always validate in safety-critical code.
 - **Magnetic interference from motor.** If the AS5048 is on the motor's shaft, motor magnets/coils may bleed through. Use shielding or magnetic isolation.
-- **Hot-plug/start-up race**. The chip needs ~10 ms to start up after VCC. Reading earlier returns junk. Mainline driver handles this; from-scratch must too.
+- **Hot-plug / start-up race.** The chip needs about 10 ms after VCC rises. A read earlier returns junk. The mainline driver handles this delay; the from-scratch driver must too.
 
 ## 74.10  Going deeper
 

@@ -9,8 +9,8 @@ status: draft
 # Chapter 76 — Battery fuel gauge + charger
 
 > **What:** the three pieces of a battery-powered embedded product: a **fuel gauge** that tracks state-of-charge (Maxim MAX17048 — I²C, "ModelGauge" algorithm), a **charger** that manages the CC/CV cycle (TI TP4056 — analog, simple; or TI BQ24074 — I²C-configurable, path-managed), and the **`power_supply_class`** framework that ties them into Linux. For each: physics, protocol, mainline driver, plus a from-scratch MAX17048 driver implementing the `power_supply` provider model.
-> **Why:** any battery-powered product needs to report "percent full" to the user *honestly*. The naive approach — voltage divider into ADC, lookup table — is wrong: Li-ion voltage doesn't track SoC linearly, and load voltage drops badly bias the reading. A fuel gauge chip does the right thing: integrates current (coulomb counting) or models the cell (impedance tracking) to get sub-2 % SoC accuracy. Plus a charger that knows when to terminate.
-> **Focus:** **`power_supply_class` is how kernel and user-space cooperate on battery state**. Drivers register as `power_supply` providers; user-space (UPower, systemd-battery-monitor, your custom app) reads from `/sys/class/power_supply/`. Same shape for laptop batteries, e-bike packs, phones, embedded devices.
+> **Why:** any battery-powered product needs to report "percent full" to the user accurately. The naive approach — voltage divider into ADC, lookup table — is wrong: Li-ion voltage doesn't track SoC linearly, and load voltage drops badly bias the reading. A fuel gauge chip does the right thing: integrates current (coulomb counting) or models the cell (impedance tracking) to get sub-2 % SoC accuracy. Plus a charger that knows when to terminate.
+> **Focus:** The kernel exposes battery state to user-space through `power_supply_class`, the same framework used by laptops, phones, and embedded boards. Drivers register as `power_supply` providers; user-space (UPower, systemd-battery-monitor, your custom app) reads from `/sys/class/power_supply/`. Same shape for laptop batteries, e-bike packs, phones, embedded devices.
 
 ## 76.1  Chip comparison
 
@@ -29,7 +29,7 @@ status: draft
 **Pick guide:**
 - **MAX17048**: lowest-cost real fuel gauge. Use unless you need coulomb-counting precision.
 - **TP4056**: cheap charger; fine for "low-power device that mostly runs from battery." No power-path = device loses power when battery dies, even with USB plugged.
-- **BQ24074**: production-quality charger with power-path. Device stays on with input even when battery is removed; charger negotiates input current. The right choice for a real product.
+- **BQ24074**: production-quality charger with power-path. Device stays on with input even when battery is removed; charger negotiates input current. The standard choice for production-grade hardware.
 
 A complete battery system typically combines a charger + a gauge: TP4056 + MAX17048 is the cheap stack; BQ24074 + MAX17048 is the production stack.
 
@@ -38,14 +38,14 @@ A complete battery system typically combines a charger + a gauge: TP4056 + MAX17
 A naïve "voltage → %" approach fails for two reasons:
 
 1. **Voltage isn't linear with SoC.** A Li-ion cell goes 4.2 V (100 %) → 3.7 V (50 %) → 3.4 V (10 %) → 3.0 V (cutoff). The middle plateau is flat — a small voltage range covers most of the capacity.
-2. **Voltage drops under load.** The cell's internal resistance (50–500 mΩ depending on age and chemistry) causes voltage to drop by `I × R_internal`. A 500 mA load on a 100 mΩ cell drops the measured voltage by 50 mV — equivalent to ~5 % SoC on the plateau. Read at the wrong moment, you tell the user 60 % when actual is 65 %.
+2. **Voltage drops under load.** The cell's internal resistance (50–500 mΩ depending on age and chemistry) causes voltage to drop by `I × R_internal`. A 500 mA load on a 100 mΩ cell drops the measured voltage by 50 mV — equivalent to ~5 % SoC on the plateau. If you read while a high-current load is active, you may tell the user 60 % when the resting SoC is actually 65 %.
 
 Two real-world approaches:
 
 - **Coulomb counting** (TI BQ27xxx, MAX17042). Measure current with a shunt; integrate over time; subtract from a known-full capacity. Pros: accurate. Cons: needs full charge cycle to calibrate; drift over time as full capacity changes with age.
 - **Impedance tracking / ModelGauge** (MAX17048). Build an internal model of the cell's V/I/T/SoC relationship; use measured V and I (in MAX17048's case, just V — it estimates I from V swings) to look up SoC. Pros: no shunt needed; no full-charge required to calibrate. Cons: needs a per-chemistry pre-loaded model.
 
-MAX17048's claim to fame: 23 µA standby, no shunt, factory-loaded "typical Li-ion" model, "good enough for most products" SoC.
+MAX17048's main selling point: 23 µA standby current, no shunt resistor required, a factory-loaded "typical Li-ion" model, and SoC accurate enough for most consumer products.
 
 ## 76.3  Protocol — MAX17048
 
@@ -123,7 +123,7 @@ battery   ac
 Discharging
 ```
 
-Standardised. Phones, laptops, IoT — all use this.
+The naming is standardised across phones, laptops, and embedded boards.
 
 ## 76.5  Writing a MAX17048 power_supply driver from scratch
 
@@ -375,7 +375,7 @@ BQ24074 adds:
 - **Dynamic Power-Path Management (DPPM)**: monitors input voltage. If input collapses below the threshold (overloaded USB port), the chip reduces charge current to keep the load alive.
 - **Configurable via I²C**: programmed charge current, termination voltage, safety timer.
 
-Use BQ24074 for: any product where the user expects the device to power up immediately when plugged in (and the battery isn't presumed alive).
+Pick BQ24074 for any product that must come up the moment a USB cable is plugged in, regardless of whether the battery is alive.
 
 Mainline driver: `drivers/power/supply/bq24190_charger.c` covers the BQ241xx family. DT:
 
@@ -426,7 +426,7 @@ else:
         print(f"On battery: {battery_capacity}%")
 ```
 
-In product UI, do *time-averaged* SoC display — instantaneous readings can wobble ±1 % under varying load. EMA with τ = 30 s smooths the indicator.
+In product UI, do *time-averaged* SoC display — instantaneous readings vary by ±1 % when the load is unsteady. EMA with τ = 30 s smooths the indicator.
 
 ## 76.9  Lab
 
