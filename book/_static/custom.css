@@ -162,6 +162,23 @@ button.copybtn:hover {
 }
 .content blockquote p { margin: 0.35em 0; }
 
+/* Markdown source like
+ *     > **What:** ...
+ *     > **Why:**  ...
+ *     > **Focus:** ...
+ * collapses into a single <p> with three inline <strong>s (CommonMark joins
+ * adjacent blockquote lines with soft breaks). Insert a real newline before
+ * every <strong> after the first so each labeled segment lives on its own
+ * line — without touching any markdown file. */
+.content blockquote p strong:nth-of-type(n+2)::before {
+  content: "\A";
+  white-space: pre;
+}
+/* A touch of vertical breathing room between the labeled lines. */
+.content blockquote p strong:nth-of-type(n+2) {
+  margin-top: 0.25em;
+}
+
 /* ---------------------------------------------------------------------------
  * Sidebars: independent scrolling.
  *
@@ -319,20 +336,24 @@ button.copybtn:hover {
     transition: transform 0.25s ease;
   }
 
-  /* Reserve space for the fixed drawer — push .main right by sidebar width. */
-  .page > .main,
-  .main {
-    margin-left: var(--sidebar-width);
-    transition: margin-left 0.25s ease;
+  /* Reserve space for the fixed drawer via padding on the flex *container*
+   * (.page), NOT margin on the flex item (.main). A flex item with flex: 1
+   * keeps min-width: auto, so margin-left doesn't shrink it — it just pushes
+   * the full-width box rightward and overflows the viewport horizontally.
+   * Padding on the container correctly reduces the content area available
+   * to children, with no overflow. */
+  .page {
+    padding-left: var(--sidebar-width);
+    box-sizing: border-box;
+    transition: padding-left 0.25s ease;
   }
 
-  /* Sidebar hidden: slide off-screen, main reclaims the space. */
+  /* Sidebar hidden: slide off-screen, content reclaims the space. */
   body.sidebar-hidden .sidebar-drawer {
     transform: translateX(-100%);
   }
-  body.sidebar-hidden .page > .main,
-  body.sidebar-hidden .main {
-    margin-left: 0;
+  body.sidebar-hidden .page {
+    padding-left: 0;
   }
 
   /* Floating toggle button — top-left of the viewport, always above the
