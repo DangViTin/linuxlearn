@@ -292,27 +292,47 @@ button.copybtn:hover {
 }
 
 /* ---------------------------------------------------------------------------
- * Desktop sidebar toggle.
+ * Desktop layout — sidebar is a fixed-position pane with its own scroll.
  *
- * The drawer is a flex item with width derived from --sidebar-width. To make
- * the content actually expand when the sidebar is hidden (not just cover the
- * empty slot), we collapse the drawer's width to 0 with overflow hidden.
- * `margin-left` alone on a flex item leaves the slot reserved — that was the
- * reason the previous implementation looked broken on desktop.
+ * Why fixed instead of Furo's default sticky:
+ *   The body is the page's main scroll container. With sticky, scrolling the
+ *   body can still propagate to the sidebar (scroll chaining, sticky-ancestor
+ *   quirks) and the inner sidebar-scroll can reset on each page load because
+ *   it sits inside the same overall scroll viewport. Locking the drawer with
+ *   `position: fixed; height: 100vh; overflow-y: auto` makes the two panes
+ *   completely independent: the body scrolls the content, the drawer scrolls
+ *   the TOC, neither can move the other.
+ *
+ * Hide mechanism: slide the fixed drawer off-screen with `translateX(-100%)`
+ * and drop the content's left margin to 0.
  * ------------------------------------------------------------------------- */
 @media (min-width: 67em) {
   .sidebar-drawer {
-    overflow: hidden;
-    transition: width 0.25s ease, min-width 0.25s ease,
-                flex-basis 0.25s ease, padding 0.25s ease,
-                border-color 0.25s ease;
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-width);
+    height: 100vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: 10;
+    transition: transform 0.25s ease;
   }
+
+  /* Reserve space for the fixed drawer — push .main right by sidebar width. */
+  .page > .main,
+  .main {
+    margin-left: var(--sidebar-width);
+    transition: margin-left 0.25s ease;
+  }
+
+  /* Sidebar hidden: slide off-screen, main reclaims the space. */
   body.sidebar-hidden .sidebar-drawer {
-    width: 0 !important;
-    min-width: 0 !important;
-    flex-basis: 0 !important;
-    padding: 0;
-    border-right-color: transparent;
+    transform: translateX(-100%);
+  }
+  body.sidebar-hidden .page > .main,
+  body.sidebar-hidden .main {
+    margin-left: 0;
   }
 
   /* Floating toggle button — top-left of the viewport, always above the

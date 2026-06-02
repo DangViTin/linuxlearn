@@ -184,9 +184,13 @@
 
     // Also restore after a tick — Furo / other scripts sometimes adjust
     // the sidebar layout post-DOMContentLoaded (e.g. expanding the current
-    // section), which can clobber our scrollTop. Re-apply after that.
+    // section or scrolling the current item into view), which can clobber
+    // our scrollTop. Re-apply at several points to win the race.
     requestAnimationFrame(restoreSidebarScroll);
     setTimeout(restoreSidebarScroll, 0);
+    setTimeout(restoreSidebarScroll, 100);
+    setTimeout(restoreSidebarScroll, 300);
+    window.addEventListener("load", restoreSidebarScroll);
   }
 
   if (document.readyState === "loading") {
