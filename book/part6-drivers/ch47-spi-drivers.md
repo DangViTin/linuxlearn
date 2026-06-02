@@ -9,7 +9,9 @@ status: draft
 # Chapter 47 — SPI drivers
 
 > **What:** the Linux **SPI subsystem** — `spi_master` (the controller, again written by the SoC vendor), `spi_device` (one chip on a chip-select), `spi_driver` (the per-chip code), `spi_message` (a sequence of transfers). Same shape as I²C but with full-duplex transactions and per-CS independent configuration (mode, speed, word size).
+>
 > **Why:** SPI carries the high-bandwidth peripherals — NOR flash, LCDs, fast ADCs, IMUs at >1 kHz, Ethernet PHYs over SPI (W5500, ENC28J60), CAN controllers over SPI (MCP2515). Speeds from 1 MHz to 50 MHz are common, vs I²C's 100–400 kHz. The Linux model lets each chip-select have its own mode and clock without the driver caring about the controller's specifics.
+>
 > **Focus:** **`spi_message` is a list of `spi_transfer`s, executed back-to-back without releasing CS unless you ask**. Mastering this lets you build any chip's command sequence — "write 1 cmd byte, then read 4 data bytes, holding CS through both" is just a two-transfer message.
 
 ## 47.1  How SPI differs from I²C

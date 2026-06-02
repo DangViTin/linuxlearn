@@ -9,7 +9,9 @@ status: draft
 # Chapter 20 — U-Boot SPL: the missing link
 
 > **What:** the **SPL** (Secondary Program Loader) — the first stage of the two-stage U-Boot — explained in enough detail that you can read its source and modify it for a custom board.
+>
 > **Why:** The i.MX6ULL OCRAM is 128 KB at `0x00900000`. The Boot ROM reserves the bottom ~28 KB (`0x00900000–0x00906FFF`) for its own scratch space. That leaves a ~68 KB window for SPL (`0x00907000–0x0091FFFF`). Full U-Boot is ~600 KB and does not fit. SPL is the small first-stage program that bridges the gap: it brings up DRAM, loads full U-Boot into DRAM, and jumps to it. Mechanically, SPL is the production version of Chapters 11–14.
+>
 > **Focus:** the **size constraint** as a design pressure. NXP's `mx6ull_14x14_evk_defconfig` caps `CONFIG_SPL_MAX_SIZE` near **64 KB** with a small reserve; treat that as your ceiling. Every feature pays for itself in bytes. Understanding what SPL chooses to include and what it skips is how you understand what is and isn't expected to work in the first 100 ms of a board's life.
 
 ## 20.1  Why two stages

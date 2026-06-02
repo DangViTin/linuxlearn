@@ -9,12 +9,15 @@ status: draft
 # Chapter 107 — GPS / GNSS + PPS
 
 > **What:** **GNSS receivers** (GPS + GLONASS + BeiDou + Galileo) and the **PPS (Pulse-Per-Second)** time-discipline signal. We compare **u-blox NEO-6M** (legacy, GPS-only), **NEO-8M** (multi-constellation), **NEO-9M** (concurrent multi-band, lower power, GNSS RAW data), and the cheap **ATGM336H** (BeiDou+GPS+GLONASS). On Linux, we parse **NMEA-0183**, decode u-blox's binary **UBX** protocol, bring up **gpsd** as the central daemon, and wire the **PPS GPIO** to **chrony** for sub-microsecond NTP — turning a $5 receiver into a **stratum-1 time server**.
+>
 > **Why:** GPS receivers do two things, both critical for embedded products:
 > 1. **Position** for asset tracking, geo-fencing, fleet management, anti-theft.
 > 2. **Time** — GPS atomic-clock-derived time, sub-µs precise, traceable to UTC. Telco basestations, financial exchanges, distributed databases (Spanner, CockroachDB), and any time-sensitive logging system uses GPS-disciplined clocks. A $5 chip + $20 antenna = stratum-1 NTP, no internet required.
 >
 > The same PPS technique works for any time-domain measurement on Linux: synchronised audio between boards, distributed instruments, IP-connected oscilloscopes.
+>
 > **Focus:** NMEA reports the wall-clock second, but it arrives 50–500 ms after the actual second. PPS is the nanosecond-accurate edge. A naïve "set the clock from `$GPRMC`" gets you to ±100 ms. With PPS, the kernel timestamps each GPIO edge using the hardware clock. Chrony combines two streams: NMEA, which is slow but tells you *which* second this is; PPS, which is fast but does not name the second. Together they reach ±100 ns. The PPS path is the key: GPS pin → kernel `pps_gpio` driver → `/dev/pps0` → chrony refclock. Get this right and you have sub-microsecond GPS time. Skip the PPS and you have NMEA-only ±100 ms.
+>
 > **Tooling.** This chapter uses `gpsd` + `gpsd-clients` (`gpspipe`, `cgps`, `gpsmon`), `chrony`, `pps-tools` (`ppstest`).
 > - **Ubuntu-base (target):** `apt install gpsd gpsd-clients chrony pps-tools`
 > - **Buildroot:** `BR2_PACKAGE_GPSD=y BR2_PACKAGE_CHRONY=y BR2_PACKAGE_PPS_TOOLS=y`

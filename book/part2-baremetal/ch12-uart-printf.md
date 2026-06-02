@@ -9,7 +9,9 @@ status: draft
 # Chapter 12 — UART driver and `printf`
 
 > **What:** a polled UART1 driver and a tiny `printf` clone that uses it. By the end of the chapter your bare-metal program can say `Hello, world!` instead of blink.
+>
 > **Why:** debugging bare-metal without `printf` is doable but slow. Adding text output changes everything. Every later chapter in Part II uses `printf` freely.
+>
 > **Focus:** the **UART baud-divisor formula** and the **status-register polling loop**. Both repeat across most UART implementations. After this chapter you will recognize them anywhere.
 
 ## 12.1  Which UART, and on which pins

@@ -9,8 +9,11 @@ status: draft
 # Chapter 93 — Hosted WiFi via ESP32 / ESP8266
 
 > **What:** offloading WiFi to an **ESP32** (or ESP8266) co-processor connected over SPI or UART. Two architectures: **esp-hosted** (the ESP runs firmware that makes Linux see a normal `wlan0` — full network-stack integration), and **AT-command mode** (the ESP runs the TCP/IP stack itself; Linux talks to it like a modem). For each: the architecture, the bring-up, and how the host-side driver shuttles data.
+>
 > **Why:** sometimes the SoC has no SDIO and no spare USB (or you want to add WiFi to an existing design without changing the SoC). An ESP32 is a $2 WiFi+BT co-processor you connect over a couple of GPIOs. It's also the answer for *MCU + Linux co-existence* designs, and for adding WiFi to legacy SoCs that predate good WiFi support. The trade-off: lower throughput than SDIO/USB, and you now have *two* firmwares to manage.
+>
 > **Focus:** two very different offload models. esp-hosted treats the ESP as a *dumb radio*. Linux runs the IP stack and just sends 802.11 frames through the ESP. From Linux's view there is a normal `wlan0` with wpa_supplicant on top. AT-command treats the ESP as a *smart modem*. The ESP runs its own TCP/IP stack and Linux speaks `AT+CIPSTART` to open sockets. Simple, but limited and non-standard. The choice between them shapes the rest of the design.
+>
 > **Tooling.** This chapter uses `wpa_supplicant`, `iw`, the `esp-hosted` kernel module + firmware on the ESP.
 > - **Ubuntu-base (target):** `apt install wpasupplicant iw`
 > - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y`

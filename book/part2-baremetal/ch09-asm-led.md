@@ -9,7 +9,9 @@ status: draft
 # Chapter 9 — First LED, pure assembly
 
 > **What:** code that blinks an LED on the Point Atom MINI. No C. No libc. No bootloader. ~25 lines of ARM assembly, < 1 KB image, loaded into OCRAM by the Boot ROM over USB-OTG.
+>
 > **Why:** This is the moment you really own the chip. Higher layers exist to make hard things easy, but you can only judge them if you have done it the hard way once.
+>
 > **Focus:** the **three-write pattern** that brings up any GPIO on any i.MX SoC — `CCGR` (clock), `IOMUXC` (pin), `GPIO_GDIR + GPIO_DR` (use). Memorize it. We use it for every peripheral in the book.
 
 ## 9.1  What we are about to build

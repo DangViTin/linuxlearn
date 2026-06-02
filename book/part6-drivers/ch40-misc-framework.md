@@ -9,7 +9,9 @@ status: draft
 # Chapter 40 — The misc framework
 
 > **What:** `miscdevice` — a one-call shortcut that turns 80 lines of "allocate major, register cdev, create class, create device" boilerplate into 10 lines. Use it for simple character devices that don't fit a standard subsystem.
+>
 > **Why:** the Ch 37–38 pattern (alloc_chrdev_region + cdev_init + cdev_add + class_create + device_create) is correct but verbose. The misc framework is the kernel's pre-canned version. Many real drivers — `/dev/watchdog`, `/dev/hwrng`, `/dev/rfkill`, `/dev/btrfs-control`, `/dev/loop-control` — use it. Knowing when to use it saves you the chardev boilerplate.
+>
 > **Focus:** **misc is just chardev with shared major 10**. There's no new mechanism — the kernel reserves major 10 for "miscellaneous" devices and the misc framework hands out minor numbers within that major. Your driver provides just minor + name + fops; the rest is done for you.
 
 ## 40.1  When to use misc (and when not to)

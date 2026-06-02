@@ -9,7 +9,9 @@ status: draft
 # Chapter 18C — Bare-metal RTC
 
 > **What:** access the **SNVS** (Secure Non-Volatile Storage) RTC on i.MX6ULL: set the wall-clock time, read it back at runtime, and watch it survive a deliberate main-power brown-out.
+>
 > **Why:** Any product that needs to log timestamps, run scheduled actions, or check license expiration relies on an RTC that survives power cycles. SNVS is the only always-on domain on i.MX6ULL; we need to know how to talk to it.
+>
 > **Focus:** the separate power domain. SNVS has its own supply pin (`VDD_SNVS_IN`, usually tied to a coin cell or supercap), its own 32.768 kHz oscillator, and its own counter. When the rest of the SoC sleeps or browns out, SNVS keeps counting.
 
 ## 18C.1  What the SNVS provides

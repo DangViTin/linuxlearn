@@ -9,7 +9,9 @@ status: draft
 # Chapter 109 — LIN bus
 
 > **What:** **LIN (Local Interconnect Network)** — a single-wire, master/slave serial bus used in cars for low-cost peripherals where CAN is overkill (door modules, seat motors, mirror controls, HVAC fans, rain sensors, parking sensors). Three transceivers: **NXP TJA1020** (legacy 12 V), **TJA1027** (3.3/5 V LIN 2.x), **Microchip MCP2003B** (similar). On Linux there is no native LIN subsystem, so we drive it from a UART with custom break + parity handling, build a master node and a slave responder in C, and demonstrate talking to a real automotive LIN node (HVAC blower controller from a junkyard).
+>
 > **Why:** if you're integrating with automotive systems — retrofit modules, OBD diagnostic tools, custom dashboards, EV conversion kits — you'll meet LIN. Cars use 100+ LIN slaves; CAN buses delegate "is the user pressing the seat-heat button" to a LIN sub-bus underneath. LIN is also spreading into industrial actuator buses (HVAC valves, building blinds). At about $0.40 per node and one wire, it is the cheapest option for simple peripherals. Linux has no native LIN subsystem; you write the framing yourself. This is also a useful UART exercise.
+>
 > **Focus:** A LIN frame is: a UART start, a 'break' pulse, an 0x55 sync byte, a 6-bit Protected Identifier (PID) byte, one to eight data bytes, and a checksum byte. A single master schedules every frame. Slaves never transmit on their own. The break signal (≥13 dominant bits = ~1.4 ms low at 9600 LIN-baud) is *not* a normal UART feature — you either generate it with `tcsendbreak()` or by toggling baud rate momentarily. The protocol is simple. The trap is getting the timing right on a non-deterministic Linux UART.
 
 ## 109.1  LIN at a glance vs CAN, RS-485

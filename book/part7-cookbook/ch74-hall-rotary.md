@@ -9,7 +9,9 @@ status: draft
 # Chapter 74 — Hall-effect & rotary position sensors
 
 > **What:** three Hall-effect-based position sensors at different abstraction levels: **AMS AS5048A** (SPI, 14-bit absolute rotary, "magnet-on-axis" encoder), **Allegro A1324** (analog linear Hall sensor), **Infineon TLE5012B** (SPI, high-rate, dual-die for safety-critical motor control). For each: physics, protocol, mainline driver, plus a from-scratch SPI driver for AS5048A.
+>
 > **Why:** measuring rotary position without mechanical contact is the foundation of brushless motor control, robotic joints, throttle position sensors, steering angle, knob inputs on appliances. Hall-on-magnet sensors replace optical encoders. They cost less, last longer (no slip-rings, no aging photo-emitters), and tolerate oil and dust.
+>
 > **Focus:** **The magnet matters as much as the chip — get it wrong and the chip reads garbage.** AS5048 needs a *diametrically magnetised* 2-pole magnet, axially mounted, 0.5–3 mm above the chip die. Wrong magnet, wrong distance, wrong polarisation = the chip reports nonsense or a low-resolution mess. Most "AS5048 doesn't work" threads online trace back to the wrong magnet.
 
 ## 74.1  Sensor comparison

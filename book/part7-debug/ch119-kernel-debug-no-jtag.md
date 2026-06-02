@@ -9,8 +9,11 @@ status: draft
 # Chapter 119 — Kernel debugging without JTAG
 
 > **What:** the **software-only kernel debugging toolkit** that works on a deployed device with no hardware debug access. **printk**'s deeper toolbox (`pr_debug`, `dynamic_debug`, ring-buffer levels), **ftrace** (function tracer + `function_graph` + tracepoint events), **trace-cmd** + **KernelShark** (record + GUI), **bpftrace** and **bcc** (eBPF for live kernel introspection), **kgdb** over serial (when you do want a debugger but only have UART), and the **oops decoder** workflow (`addr2line`, `scripts/decode_stacktrace.sh`).
+>
 > **Why:** JTAG is for bench work. This chapter covers what you can run on a deployed device with no debug header. You can't ship a fleet with a JTAG cable attached; you can ship a fleet with ftrace enabled. If a customer's device hangs once every three days, you need to know what the kernel was doing in the second before the freeze. ftrace's persistent buffer plus the oops decoder answers that. eBPF lets you attach a probe to `tcp_retransmit_skb` on a production server and count retransmits per remote address, without recompiling the kernel.
+>
 > **Focus:** match the tool to the symptom. Too much output in `dmesg`: use `dynamic_debug` to filter. "It worked once, now hangs": ftrace `function_graph` on the suspect subsystem. "What system calls is this app making?": a bpftrace one-liner. "Kernel oops on customer device": save dmesg and run decode_stacktrace.sh against the matching vmlinux. "I want to breakpoint and step a remote production kernel": kgdb over serial (rare, but sometimes the right call).
+>
 > **Tooling.** **Target:** `trace-cmd` (for ftrace), optional `bpfcc-tools` / `bpftrace` (eBPF — better on aarch64 / newer kernels). **Host:** `kernelshark` to visualise ftrace dumps; `crash(8)` for vmcore analysis. Ubuntu install: `apt install trace-cmd kernelshark bpfcc-tools bpftrace`. Buildroot: `BR2_PACKAGE_TRACE_CMD=y`, `BR2_PACKAGE_BCC=y`, `BR2_PACKAGE_BPFTRACE=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 119.1  printk

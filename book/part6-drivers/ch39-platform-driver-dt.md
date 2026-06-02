@@ -9,7 +9,9 @@ status: draft
 # Chapter 39 — Platform drivers + device tree
 
 > **What:** the `platform_driver` model — the canonical way Linux describes *on-SoC* peripherals (UART, I²C controllers, GPIO blocks, PWM, ADC, all the things memory-mapped into the SoC's address space). A platform driver registers with the kernel saying "I drive devices that match `compatible = "vendor,part"`"; the kernel walks the device tree, finds matching nodes, and invokes the driver's `probe()` once per match.
+>
 > **Why:** the kernel doesn't probe address ranges blindly looking for hardware (that's how PC BIOSes work, and it doesn't scale to SoCs with no buses to enumerate). It needs to be **told** what devices exist and where their registers live — that's exactly what the device tree does. The `platform_driver` API is the kernel-side half of the DT contract: you describe the driver, the DT describes the device, the kernel matches them.
+>
 > **Focus:** **driver and device are separate**. The driver is a `.ko` (or built-in code) that knows *how* to talk to a hardware block. The device is a DT node that says *where the block is* (registers, IRQs, clocks, pins). The bus (platform bus, here) matches them by `compatible` string. Once this trinity clicks, every subsystem driver in the kernel looks the same.
 
 ## 39.1  Why "platform" exists

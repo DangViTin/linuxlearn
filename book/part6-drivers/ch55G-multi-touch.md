@@ -9,7 +9,9 @@ status: draft
 # Chapter 55G — Multi-touch (GT911)
 
 > **What:** the **MT-B** (slot-based multi-touch) protocol, the kernel's standard for reporting per-finger touch coordinates, and the **Goodix GT911** — the common I²C capacitive touch controller that ships with most off-the-shelf RGB-parallel LCDs (ATK4384, ATK7016, ATK10261).
+>
 > **Why:** for any product with a touch panel, this is the input. The mainline `goodix` driver covers GT911, GT9110, GT9271 and other variants; you usually just configure DT correctly. Calibration is rarely needed for capacitive (unlike resistive); the panel's coordinate frame is wired in DT.
+>
 > **Focus:** **MT-B is slot-based**. Each tracked finger gets a *slot*; the driver reports per-slot position. Older code uses MT-A. Current code uses MT-B.
 
 ## 55G.1  MT-B vs MT-A

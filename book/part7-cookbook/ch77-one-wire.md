@@ -9,7 +9,9 @@ status: draft
 # Chapter 77 — 1-Wire sensors
 
 > **What:** Maxim's **1-Wire** protocol — one digital pin (plus ground) carries bidirectional half-duplex data with timing-based bit framing. The well-supported case: **DS18B20** (digital thermometer, real 1-Wire, kernel `w1` subsystem). The lookalike: **DHT22** (single-wire T/H, *not* 1-Wire, hostile to Linux GPIO timing). For DS18B20: protocol, the `w1` master / slave architecture, mainline driver internals, and a from-scratch w1-slave driver. For DHT22: a clear-eyed look at why DHT22 is a poor fit for Linux plus what to do instead.
+>
 > **Why:** 1-Wire is the cheap, long-cable, parasitically-powered alternative to I²C. A 30-meter cable with 10 DS18B20s on it works. *Real* 1-Wire devices (with proper protocol implementations) are kernel-friendly. DHT22 uses the same physical wiring (one signal line plus ground, with parasitic power) but a different, incompatible bit-framing scheme — and that timing requires µs-accurate edge detection that Linux GPIO can't reliably deliver.
+>
 > **Focus:** **the master must generate tightly-timed pulse widths** (15 µs reset, 60 µs slot, 1 µs sample window). For DS18B20 this is done by the **w1 master** driver — usually a "GPIO bit-bang" master with PREEMPT_RT helping, or a hardware UART repurposed as a w1 master. The slave devices live in `drivers/w1/slaves/`. Once the master is reliable, writing a slave driver is short — the w1 core does the work.
 
 ## 77.1  1-Wire protocol — what's on the wire

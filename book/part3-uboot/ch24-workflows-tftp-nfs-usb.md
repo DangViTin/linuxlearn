@@ -9,7 +9,9 @@ status: draft
 # Chapter 24 — Workflows — TFTP, NFS, USB-OTG
 
 > **What:** stop reflashing the SD card. From this chapter on, every kernel change and every rootfs change is visible on the board within seconds, over the wire — TFTP for the kernel + DTB, NFS for the rootfs, USB-OTG (`uuu`) for recovery.
+>
 > **Why:** Iteration speed bounds productivity. SD-reflash takes 1–2 minutes per cycle. TFTP+NFS takes 5–10 seconds. Across hundreds of kernel builds in Parts IV–VI, that adds up to days. The workflow in this chapter is what the rest of the book assumes.
+>
 > **Focus:** the single mental loop: edit a file on the host, the target sees it immediately. That loop is what turns embedded Linux from a build-and-flash cycle into real development.
 
 ## 24.1  Three transports, three jobs

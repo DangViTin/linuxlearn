@@ -9,7 +9,9 @@ status: draft
 # Chapter 55 — USB gadget
 
 > **What:** the **USB gadget** framework — turning the i.MX6ULL's USB OTG controller into a USB *device* (instead of a host). The mainline **ConfigFS** gadget interface lets user-space compose USB devices from "functions" (mass storage, serial, Ethernet, HID) without writing kernel code.
+>
 > **Why:** USB gadget runs on Android phones, Raspberry Pi Zero in USB-Pi mode, smart meters that expose data over USB-serial, and many other devices. For embedded products: USB-as-device is how your board talks to a PC for debug, firmware update, or as a remote sensor.
+>
 > **Focus:** **functions composed into a configuration**. A gadget has one *configuration* with one or more *functions*. ConfigFS exposes this as a filesystem: `mkdir` a function, `echo` settings into its files, then bind to a UDC. No kernel code.
 
 ## 55.1  USB roles on i.MX6ULL

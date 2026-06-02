@@ -9,7 +9,9 @@ status: draft
 # Chapter 41 — Concurrency in the kernel
 
 > **What:** the kernel synchronization toolbox — `atomic_t`, `spinlock_t`, `mutex`, `rwlock_t`, `semaphore`, RCU, and the per-CPU and memory-barrier primitives that back them. By the end you can answer "what lock should I use?" by asking three questions.
+>
 > **Why:** every driver that touches shared state in two contexts (a process and an interrupt; a process and a timer; two processes via `open(2)`) has a race. Pick the wrong primitive and you hit one of two failure modes: a silent data-corruption race, or a lockup so deep that `dmesg` cannot tell you what happened.
+>
 > **Focus:** **the three questions** — *who else can be running this code at the same time?* (process, softirq, hardirq, multiple CPUs); *is the critical section allowed to sleep?* (mutex if yes, spinlock if no); *is the access read-mostly?* (RCU if yes). Get these three answers right and the API choice is mechanical.
 
 ## 41.1  Why the kernel is concurrent

@@ -9,6 +9,7 @@ status: draft
 # Chapter 123 — Yocto vs Buildroot, an honest comparison
 
 > **What:** picking a build system shapes your product's CI, release, and maintenance flow for years. **Buildroot** (the make-driven, "tightly-curated tree of packages" approach) vs **Yocto/OpenEmbedded** (the metadata-driven, "recipes + layers" approach). We walk through the mental model of each, build the same image with both side-by-side, compare reproducibility, build times, SDK production, multi-machine support, layer composition, and BSP integration. Then a verdict on when each wins, when each is a poor fit, and when neither is right.
+>
 > **Why:** most production embedded Linux teams use Buildroot or Yocto. Some use both. The choice affects:
 > - hiring (Yocto skills are scarcer and more expensive than Buildroot),
 > - CI infrastructure (Yocto builds are slower and need more storage),
@@ -17,6 +18,7 @@ status: draft
 > - debugging a build problem (Buildroot wins).
 >
 > Choosing badly costs months; choosing well saves them.
+>
 > **Focus:** **the mental model is different — Buildroot is "menuconfig builds a complete image"; Yocto is "metadata recipes are combined to produce many possible images." Buildroot scales by adding packages; Yocto scales by adding layers + machines + distros. For a single product with 1–3 variants, Buildroot wins. For a vendor BSP that serves dozens of customer products from one codebase, Yocto wins. Most teams overestimate their multi-variant complexity and end up with Yocto sledgehammers cracking Buildroot walnuts.**
 
 ## 123.1  Mental model side-by-side

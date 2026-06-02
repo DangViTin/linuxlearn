@@ -9,7 +9,9 @@ status: draft
 # Chapter 85 — OLED & e-paper
 
 > **What:** two non-backlit display technologies. **OLED** — self-emissive monochrome dot-matrix: **Solomon SSD1306** (128×64, I²C/SPI), **Sino Wealth SH1106** (132×64, the "almost-SSD1306"). **E-paper** — bistable reflective: **Solomon SSD1680** (the controller behind most 1.5"–2.9" e-paper modules). For each: the framebuffer-RAM model, the refresh mechanics (instant for OLED, multi-second for e-paper), the mainline driver, and a from-scratch SSD1306 fbdev driver.
+>
 > **Why:** OLEDs are the cheapest "real display" you can buy. A 128×64 OLED costs around $2, draws ~20 mA, and has perfect contrast without a backlight. E-paper is the opposite. Zero idle power — the image persists with no power. Sunlight-readable. But slow to update. Both show up constantly in IoT status displays, instruments, smart-home panels, electronic shelf labels. They need very different driver thinking than the raster panels of Ch 82–84.
+>
 > **Focus:** OLED uses a page-addressed bitmap. E-paper uses a two-buffer waveform replay driven by a LUT. They need very different driver code. The SSD1306 stores a 1-bit-per-pixel image in internal RAM organized as 8 "pages" of 128 bytes; you push the whole bitmap and it displays instantly. The SSD1680 stores *two* images (old + new) and replays a per-pixel voltage *waveform* (the LUT) over ~2 seconds to flip the e-ink particles — a completely different mental model.
 
 ## 85.1  Technology & chip comparison

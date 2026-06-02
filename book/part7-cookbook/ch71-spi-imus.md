@@ -9,7 +9,9 @@ status: draft
 # Chapter 71 — SPI IMUs
 
 > **What:** three SPI inertial sensors at increasing complexity: **Analog Devices ADXL345** (3-axis accel only, the textbook case), **STMicro LSM6DSO** (6-axis with internal FIFO and finite-state-machine), **InvenSense ICM-42688** (6-axis, low-noise, large FIFO). For each: SPI command framing (R/W bit + register address), FIFO+watermark IRQ patterns, and a from-scratch ADXL345 SPI driver with FIFO support.
+>
 > **Why:** beyond ~400 Hz per axis, you run out of I²C bandwidth: 400 kHz divided by ~10 bits per byte does not leave room for many channels. SPI runs at 10+ MHz, so an ICM-42688 streaming all 6 axes at 8 kHz fits comfortably. SPI also gives **per-CS configuration** (different IMUs on the same bus with different speeds and CPOL/CPHA), which makes multi-IMU systems straightforward to wire.
+>
 > **Focus:** **the FIFO + watermark IRQ pattern**. Instead of taking one IRQ per sample (8000/s, far too many), configure the chip's internal FIFO with a watermark threshold. The chip raises its IRQ only when N samples have accumulated. The driver then drains them in a single SPI burst. The CPU wakes 100×/sec instead of 8000×/sec, while still capturing every sample.
 
 ## 71.1  Chip comparison

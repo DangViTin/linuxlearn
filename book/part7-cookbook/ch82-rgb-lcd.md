@@ -9,7 +9,9 @@ status: draft
 # Chapter 82 — RGB parallel LCD on LCDIF
 
 > **What:** "dumb" RGB-parallel TFT panels driven by the i.MX6ULL's **LCDIF** controller. Three panels compared: **ATK4384** (4.3" 480×272), **ATK7016** (7" 1024×600), **ATK10261** (10.1" 1280×800). The panel has no controller — it just accepts pixel clock + sync + 24 data lines. The "driver" is therefore a *timing description* + the DRM panel framework. We cover panel timings deeply, how `panel-simple` works internally, and how to add a custom panel (two ways: DT-only via `panel-dpi`, or a real `drm_panel` driver from scratch).
+>
 > **Why:** parallel-RGB is the standard HMI display interface for i.MX6ULL. A parallel panel has no frame buffer of its own. The SoC streams pixels at the pixel clock and refreshes the glass 60 times a second. Get the timings right and the panel works. Get one porch wrong and the image rolls, tears, or stays blank. This chapter is mostly about *reading a panel datasheet's timing table and translating it to DT*.
+>
 > **Focus:** A working panel needs a pixel clock, six porch numbers, and three polarities. That is the entire job. The LCDIF is a raster generator: it outputs HSYNC/VSYNC/DE/PCLK and 24 RGB bits, scanning left-to-right, top-to-bottom, forever. The panel datasheet gives you the exact timing; you transcribe it into a `panel-timing` DT node. There is no negotiation. The numbers must match the glass.
 
 ## 82.1  Panel comparison

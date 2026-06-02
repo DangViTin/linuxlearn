@@ -9,7 +9,9 @@ status: draft
 # Chapter 35C — Container runtimes on embedded
 
 > **What:** running OCI containers on an i.MX6ULL with Podman. By the end you'll have an Alpine Linux container running a small Python web server, accessing the host's GPIO from inside the container.
+>
 > **Why:** modern embedded products separate "the base system" (kernel + bootloader + minimal rootfs, updated rarely) from "the application" (one or more containers, updated whenever a customer-facing change is needed). Containers give you reproducible app deployment, image-based updates, and the ability to roll back in seconds. The cost is some RAM and some complexity; the benefit is a deployment story that scales from one device or a fleet of a million.
+>
 > **Focus:** Three kernel features make containers work: namespaces (process isolation), cgroups (resource limits), and overlayfs (storage). All three have been in mainline Linux for years. You just need them turned on in `.config`.
 
 ## 35C.1  When containers make sense on embedded

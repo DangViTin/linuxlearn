@@ -9,8 +9,11 @@ status: draft
 # Chapter 87 — Parallel CSI cameras
 
 > **What:** image sensors connected to the i.MX6ULL's **parallel CSI** (Camera Sensor Interface — 8-bit data + pixel/line/frame sync, *not* MIPI). Three sensors compared: **OmniVision OV5640** (5 MP, the common default), **OV7725** (0.3 MP VGA, simple), **GalaxyCore GC2145** (2 MP, budget). For each: the dual-bus model (I²C for control + parallel for pixels), the V4L2 **sub-device** architecture, the media-controller graph, and a from-scratch V4L2 sensor subdev driver.
+>
 > **Why:** Any i.MX6ULL product with a camera uses parallel CSI. The i.MX6ULL has no MIPI-CSI. Smart doorbells, barcode scanners, and machine-vision sensors all run through this interface. The driver model has more moving parts than most subsystems. A *sensor* sub-device feeds a *CSI bridge* sub-device, which feeds a *video* device. The media controller wires them all together. Understand this graph and the rest of V4L2 falls into place.
+>
 > **Focus:** A camera sensor is two devices in one. It has an I²C control interface and a parallel pixel stream. V4L2 models the combination as a sub-device. The sensor's driver lives on I²C (configure resolution, exposure, format via registers) but exposes a *pad* that emits a pixel-format on the parallel bus. The CSI bridge captures that stream into DRAM. The media graph connects sensor-pad → CSI-pad → video-node.
+>
 > **Tooling.** This chapter uses `v4l-utils`, `gstreamer1.0-tools` + plugins, `i2c-tools`.
 > - **Ubuntu-base (target):** `apt install v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_V4L_UTILS=y BR2_PACKAGE_GSTREAMER1=y BR2_PACKAGE_GST1_PLUGINS_BASE=y BR2_PACKAGE_I2C_TOOLS=y`

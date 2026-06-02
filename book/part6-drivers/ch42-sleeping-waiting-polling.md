@@ -9,7 +9,9 @@ status: draft
 # Chapter 42 — Sleeping, waiting, polling
 
 > **What:** **wait queues** (`wait_queue_head_t`, `wait_event_interruptible`, `wake_up`), the `.poll` file_operations callback, and the `O_NONBLOCK` machinery. Together these let a `read(2)` or `write(2)` syscall block until data is ready, wake exactly the right process when it is, and integrate with `select(2)` / `poll(2)` / `epoll`.
+>
 > **Why:** drivers that produce data on their own schedule (UART, keyboard, sensor, network) need a way to make a reader wait without polling. Without wait queues, your `read` callback either returns "no data, try again" (caller burns CPU spinning) or blocks the CPU itself (kernel hangs). Wait queues are how Linux makes blocking I/O efficient. The thread sleeps. The scheduler runs something else. An interrupt or timer wakes the thread when its data is ready.
+>
 > **Focus:** **the sleep/wake protocol**. The reader registers itself on a wait queue, checks a condition, and sleeps if not met. The producer modifies state then calls `wake_up`. The kernel guarantees no missed wakeups via a careful prepare-and-check sequence. Get the sequence right and your driver's blocking I/O is correct. Get it wrong and reads sometimes hang forever.
 
 ## 42.1  The two ways to wait

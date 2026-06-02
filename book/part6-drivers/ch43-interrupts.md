@@ -9,7 +9,9 @@ status: draft
 # Chapter 43 — Interrupts
 
 > **What:** **`request_irq`**, the **top-half / bottom-half split**, and the four standard bottom halves — softirqs, tasklets, work queues, and threaded IRQs. By the end you'll have a driver that owns a hardware IRQ, acknowledges it in nanoseconds in the top half, and processes the event without blocking the rest of the kernel.
+>
 > **Why:** interrupts are how hardware tells the kernel something happened: data arrived, DMA finished, a button was pressed, a timer expired. Get the IRQ-handler design wrong and you hit one of two failures: *missed interrupts* (handler too slow or wrong polarity) or *IRQ storms* (handler does not acknowledge, hardware re-asserts continuously, system hangs). The rules below give you the right design every time.
+>
 > **Focus:** **the IRQ contract is "fast, atomic, and minimal."** Your top-half runs with interrupts disabled, in atomic context (no sleeping, no `kmalloc(GFP_KERNEL)`, no `copy_to_user`). Anything that takes more than a few microseconds *must* be deferred to a bottom half. Once you accept this constraint, the API choices below follow naturally.
 
 ## 43.1  How the i.MX6ULL gets an interrupt to your code

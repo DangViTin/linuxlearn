@@ -9,7 +9,9 @@ status: draft
 # Chapter 44 — GPIO subsystem + pinctrl
 
 > **What:** the two halves of Linux's pin handling — **pinctrl** (which decides what *function* a pin has — GPIO vs UART vs I²C, plus electrical properties: drive strength, pull-up, slew rate) and **gpiod** (the modern descriptor-based API for the pins that *do* end up as GPIOs: direction and value). By the end you can request a GPIO from DT, configure pull-up, drive it, watch it for IRQs — all without ever touching an MMIO register.
+>
 > **Why:** every real driver eventually wants a GPIO. A reset pin on a peripheral chip. A power-enable on a regulator. A `data-ready` line from a sensor. Hard-coding the MMIO writes (as we did in Part II bare-metal) couples the driver to one specific SoC. The kernel's `gpiod_*` API gives you a portable, DT-described abstraction: "this driver wants the GPIO whose DT property is `reset-gpios`," and the gpiod subsystem figures out which bank, which pin, and which register to touch.
+>
 > **Focus:** **the descriptor abstraction**. `struct gpio_desc *` hides the bank, the pin offset, the polarity (`ACTIVE_LOW`), and the SoC-specific register layout behind one opaque handle. Once you accept that — and stop thinking in "GPIO numbers" — every GPIO-using driver in Linux looks the same.
 
 ## 44.1  The two-step pin model

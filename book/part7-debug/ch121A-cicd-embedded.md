@@ -15,7 +15,9 @@ status: draft
 > - Signal pass/fail back to the PR.
 >
 > We use **GitHub Actions** (or **GitLab CI**) with a self-hosted runner that has a USB connection to a Point Atom MINI. On every push, the runner does the Ch 121 build and flashes via `uuu`. It then watches serial for the `=>` prompt, runs a sysfs check, captures the log, and marks the PR pass or fail.
+>
 > **Why:** any embedded product shipping updates from more than one developer benefits from CI. The risk is real: someone merges a DT change that breaks boot, nobody notices until a customer tries to update, and you spend days firefighting. With CI plus real-hardware smoke tests on every PR, that bug surfaces in ten minutes. The setup cost is small (a dev board, a Linux host, and a few hours) and pays back quickly.
+>
 > **Focus:** a normal cloud CI runner has no USB connection to your board. To run hardware tests, self-host a runner on a Linux box that physically owns the board. GitHub Actions / GitLab CI register the self-hosted runner; the runner does cross-builds, then drives the board via uuu plus a serial terminal scripted in Python. A smoke test is small (boot, get prompt, run a few checks, capture the log) but catches most regressions. Scale from one board to a farm of 10 via Labgrid (RPC framework for board control).
 
 ## 121A.1  What "CI" means for embedded

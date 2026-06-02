@@ -9,7 +9,9 @@ status: draft
 # Chapter 27 — Device Tree: the contract between firmware and kernel
 
 > **What:** the **Device Tree** — its origin, its grammar, the standard properties, how it's compiled (`dtc`) and consumed (`of_*` APIs in the kernel), and how a driver binds to a node via the `compatible` string. By the end you should be able to read `imx6ull-14x14-evk.dts` line by line, write an overlay that adds a new I²C device, and predict which kernel driver will probe it.
+>
 > **Why:** DT is the biggest mental shift in this chapter. There is no longer a hand-written `board-*.c` with platform device tables. There is a `.dts` file that describes the hardware, and the kernel matches drivers to nodes by string at runtime. Understanding this dynamic-binding model is the prerequisite for every chapter in Part VI.
+>
 > **Focus:** the **`compatible` string** as the keystone. Compatible-strings in DT nodes are matched against compatible-strings in driver source code. That single mechanism is how every driver in mainline finds its hardware. Once you have this, the rest of DT is just grammar.
 
 ## 27.1  Why the Device Tree exists

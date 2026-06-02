@@ -9,7 +9,9 @@ status: draft
 # Chapter 70 — I²C IMUs
 
 > **What:** three I²C inertial measurement units, dissected: **InvenSense MPU6050** (6-axis, the classic), **MPU9250** (9-axis with an AK8963 magnetometer hiding inside via I²C-master mode), **ICM-20948** (modern 9-axis, replaced MPU9250). For each: register map, the sampling-rate trade-offs, the IIO **trigger + buffer** mechanism for high-rate capture, and a from-scratch MPU6050 driver including IIO buffer support.
+>
 > **Why:** IMUs are everywhere — drones, e-scooters, VR headsets, fitness wearables, industrial vibration monitors. They're also the canonical IIO example of *high-rate buffered capture*: a 1 kHz IMU produces 6–9 measurements per sample, and one sysfs read per sample isn't going to work. The IIO trigger/buffer framework is the answer. Once you understand it, the same pattern works for any high-rate sensor.
+>
 > **Focus:** **Trigger + buffer is how IIO scales to thousands of samples per second.** A `trigger` (timer or IRQ) tells the driver "now"; the driver atomically samples *all enabled channels*; pushes the coordinated sample into a kfifo; user-space drains the kfifo from `/dev/iio:deviceN`. The whole pipeline is asynchronous and survives microsecond jitter.
 
 ## 70.1  Chip comparison

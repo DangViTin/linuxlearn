@@ -9,7 +9,9 @@ status: draft
 # Chapter 25 — Building mainline Linux for i.MX6ULL
 
 > **What:** clone the mainline Linux source, build a `zImage` + device tree blobs + modules for the i.MX6ULL, and inspect the artefacts. Stop just short of booting; that is Chapter 26.
+>
 > **Why:** every later chapter assumes a built kernel tree on disk. The build is mechanical. What matters is the artefacts it produces and the source-tree layout you will use in every later chapter.
+>
 > **Focus:** the four build artefacts you actually use (`vmlinux`, `zImage`, `*.dtb`, `*.ko`) and the four directories you will visit most (`arch/arm/`, `drivers/`, `include/`, `Documentation/`).
 
 ## 25.1  Why mainline

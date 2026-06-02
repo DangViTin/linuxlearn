@@ -9,8 +9,11 @@ status: draft
 # Chapter 108 — RS-485 + Modbus RTU
 
 > **What:** **RS-485** — the differential half-duplex serial bus that has carried industrial data since 1983, still ubiquitous in factories, building automation, solar inverters, and HVAC. We compare **MAX485** (5 V, 5 Mbps, the canonical chip), **SP3485** (3.3 V, 10 Mbps), **ADM2483** (isolated, for noisy environments), **MAX13487** (auto-direction — eliminates the GPIO control headache). On Linux, we wire RS-485 to a UART, enable the kernel's RS-485 mode (`SER_RS485_ENABLED`), and use **`libmodbus`** to implement a **Modbus RTU** master/slave talking to real inverters, energy meters, and PLCs.
+>
 > **Why:** every industrial site has Modbus RTU. Solar inverters, energy meters, BMS systems, irrigation controllers, VFDs (variable-frequency drives), even building HVAC — they all expose data over Modbus RTU on RS-485. Your i.MX6ULL becomes the data collector / gateway, polling 5–50 devices and bridging to MQTT/cloud. RS-485 is everywhere in industrial systems. Knowing it gives you access to the industrial IoT market that pure-WiFi devices cannot reach.
+>
 > **Focus:** RS-485 is half-duplex differential signalling on a two-wire bus. You must switch the driver between TX and RX with sub-bit-time precision. On top of that, Modbus RTU detects frames by inter-character timeouts that scale with baud rate. The kernel's RS-485 ioctl handles DE/RE control automatically *if* your UART supports it; otherwise you bit-bang via a GPIO with sub-microsecond latency requirements that are hard on a non-RT Linux. Auto-direction transceivers (MAX13487) solve this in hardware. Three things break a bench setup when you deploy it on a real factory floor. Termination — 120 Ω at each end of the bus. Biasing — fail-safe pull-ups so the idle line is a known logic level. Ground reference — measure the voltage between grounds before connecting devices powered from different supplies.
+>
 > **Tooling.** This chapter uses `libmodbus5` + dev headers (C), or `pymodbus` (Python); optional `modpoll` CLI tester.
 > - **Ubuntu-base (target):** `apt install libmodbus5 libmodbus-dev python3-pymodbus`
 > - **Buildroot:** `BR2_PACKAGE_LIBMODBUS=y BR2_PACKAGE_PYTHON3_PYMODBUS=y`

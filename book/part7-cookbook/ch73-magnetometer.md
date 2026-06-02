@@ -9,7 +9,9 @@ status: draft
 # Chapter 73 — Magnetometer / compass
 
 > **What:** three I²C magnetometers: **Honeywell HMC5883L** (legacy classic, EOL but ubiquitous on hobbyist boards), **QST QMC5883L** (cheap clone with quirky register-set differences), **Memsic MMC5983MA** (modern low-noise). Most of this chapter is not driver code. It is calibration: **hard-iron and soft-iron calibration** — the universal "my compass points 23° wrong" problem and how to fix it.
+>
 > **Why:** any product that needs to know which way it's facing — drone, robot vacuum, AR headset, GPS-assisted navigation — needs a magnetometer. The math is simple; the *calibration* is what separates a useful compass from a useless one. Many products ship without calibration; their compass is off by 10–30°, and the IMU often gets blamed.
+>
 > **Focus:** Calibration runs in user-space; the driver's job is to deliver raw X/Y/Z in stable, scaled units. The driver reports raw `µT × scale`; user-space collects samples, fits an ellipsoid model, computes hard-iron (offset) and soft-iron (skew matrix). After applying the correction, raw 3-axis readings become Earth-magnetic-field vectors with < 1° error. Without calibration: 10–30° error is typical, depending on what's mounted near the sensor.
 
 ## 73.1  Chip comparison

@@ -9,8 +9,11 @@ status: draft
 # Chapter 102 — USB 4G LTE modems
 
 > **What:** the **USB-attached cellular modem** — the most common cellular path on Linux. Three modules compared: **Quectel EC20/EC25** (the canonical, LTE Cat-4 / Cat-6), **SimCom SIM7600** (cheaper, more variants), **Telit LM940** (industrial Cat-11, premium pricing). We dissect the **USB composite device** the modem presents (typically 4–7 endpoints: AT, GPS, modem, QMI/MBIM data), walk the kernel's `option`/`qmi_wwan`/`cdc_mbim` drivers, write a from-scratch AT-command client + a QMI session opener using libqmi, and bring up data via **ModemManager + NetworkManager** (the modern path) or **`quectel-CM`** / `qmi-network` (manual).
+>
 > **Why:** every embedded device that talks to a cellular network uses one of these. The kernel handles the USB plumbing. There are three layers to keep straight: the USB interface mode the modem advertises (RNDIS, ECM, MBIM, QMI, or PPP), the kernel driver that binds to it, and the user-space tool that activates the data session. Most "modem doesn't connect" bugs are a mismatch between these three layers. After this chapter you can read an `lsusb` line, name the driver that bound each endpoint, and trace the data path the IP packets take.
+>
 > **Focus:** **the modem is a small embedded system in a USB case. It exposes several USB interfaces at once.** AT commands on `/dev/ttyUSB2` give you SMS, signal strength, and configuration. GPS NMEA on `/dev/ttyUSB1` gives you location. The data path is a separate USB interface that becomes `wwan0` (QMI) or `cdc-wdm0`+`wwan0` (MBIM) — once activated, it's a normal network interface that `ip route` sees. The split is unusual on Linux. The diagram in §102.3 makes it concrete.
+>
 > **Tooling.** This chapter uses `ModemManager` + `NetworkManager`, `libqmi-utils` (`qmicli`), `libmbim-utils` (`mbimcli`).
 > - **Ubuntu-base (target):** `apt install modemmanager network-manager libqmi-utils libmbim-utils`
 > - **Buildroot:** `BR2_PACKAGE_MODEM_MANAGER=y BR2_PACKAGE_NETWORK_MANAGER=y BR2_PACKAGE_LIBQMI=y BR2_PACKAGE_LIBMBIM=y`

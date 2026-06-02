@@ -9,7 +9,9 @@ status: draft
 # Chapter 123A — Yocto layer development in depth
 
 > **What:** the **Yocto layer design** that production vendors use. We build a 3-layer stack: **`meta-mybsp`** (board + BSP — kernel + U-Boot + DT for `imx6ull-myboard`), **`meta-mybsp-mini`** (board variant — same SoC, smaller display), **`meta-mybsp-myapp`** (application layer — your in-house Qt app, MQTT daemon, OTA config). Plus a separate **distro layer** (`meta-mybsp-distro`) that pins package versions + DISTRO_FEATURES. We walk every meaningful concept: layer priorities, bbappend patterns, machine config, `IMAGE_FEATURES`/`DISTRO_FEATURES`, `wic` for image partitioning, `RAUC`/SWUpdate integration, and the `SRC_URI` cache so reproducible builds work offline.
+>
 > **Why:** Ch 123 chose Yocto. Now the meat of the work is *writing layers properly*. A bad layer organization makes every change a hunt across the metadata tree. A good one isolates your product from upstream, keeps variants simple, and survives upstream layer updates. Done well, Yocto becomes a tool you'd recommend. Done badly, it becomes the build system everyone hates.
+>
 > **Focus:** layers stack like CSS — later layers override earlier ones via priority. The roles are:
 > - **bbappend** — extend an upstream recipe.
 > - **a new `.bb`** — your own packages.

@@ -9,7 +9,9 @@ status: draft
 # Chapter 30 — Kernel configuration deep-dive
 
 > **What:** the kernel's Kconfig system — `make menuconfig`, the `.config` file, defconfig snapshots — and the dozen config options that matter most for an i.MX6ULL embedded image. By the end you should be able to enable/disable any kernel feature, save a clean `defconfig`, and explain to a teammate why each option is set.
+>
 > **Why:** Through Chapter 29 we used `imx_v6_v7_defconfig` as a black box. For real products you'll customise: smaller kernels for smaller flash, PREEMPT_RT for real-time, specific debug options on engineering builds. Knowing where each knob lives lets you build a kernel that fits your product, not just one that boots.
+>
 > **Focus:** `.config` is the canonical file. `menuconfig`, `xconfig`, and the others are just UIs that edit it. Read it, edit through the UI, and rebuild.
 
 ## 30.1  The Kconfig system

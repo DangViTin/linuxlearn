@@ -9,7 +9,9 @@ status: draft
 # Chapter 55D — Block device drivers
 
 > **What:** the **block** layer — `gendisk`, request queues, `blk-mq` (multi-queue block), bio. Most embedded systems consume block devices (eMMC, SD card via MMC subsystem; raw NAND via MTD+UBI). Occasionally you need to *write* one — typically a RAM disk, a loop-style virtual device, or a translation layer over a custom storage chip.
+>
 > **Why:** less common to write than char drivers, but worth knowing because (a) the request-queue model differs significantly from "byte stream" and (b) understanding block lets you debug performance of any storage layer above (filesystem latency, fsync behavior).
+>
 > **Focus:** **bio is the universal request**. A user-space `read(fd, ..., 4096)` becomes one or more `struct bio`s submitted to a `gendisk`. Drivers either submit one I/O per bio or batch into hardware-specific request structures.
 
 ## 55D.1  The path from `read()` to your driver

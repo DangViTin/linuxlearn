@@ -9,7 +9,9 @@ status: draft
 # Chapter 125A — VSCode + gdbserver remote-debug workflow
 
 > **What:** the **IDE-driven cross-debug workflow** for engineers who prefer Visual Studio Code over the gdb command line. **`gdbserver`** on the target; **`gdb-multiarch`** on the host; VSCode's C/C++ extension and `launch.json` tying them together; `.vscode/c_cpp_properties.json` resolving headers from the cross-sysroot so "Go to Definition" works on both your app *and* kernel sources. Plus a short note on Source Insight, an old commercial editor that's still the fastest tool for read-only kernel-source navigation.
+>
 > **Why:** many readers come from microcontroller backgrounds where the IDE *is* the debugger (Keil, IAR, STM32CubeIDE). Forcing them to learn gdb's tui mode just to set a breakpoint is unnecessary. VSCode plus the right config gives the same click-to-set-breakpoint experience cross-debugging a remote ARM target, while leaving the underlying gdb fully scriptable for when you do want the command line. Setting up `launch.json` once pays back every debug session after.
+>
 > **Focus:** VSCode's debug UI is a wrapper around gdb. `launch.json` configures it. You set: which gdb binary, which binary to debug, where gdbserver listens, and where the source tree lives. The non-obvious part is `c_cpp_properties.json`. It must point IntelliSense at the target's sysroot headers, not the host's. Otherwise "Go to Definition" finds your laptop's `stdio.h`, not the cross-compiled one. With both files right, IDE-style debug and accurate Go-to-Definition make embedded debug feel close to desktop.
 
 ## 125A.1  Target side — install gdbserver

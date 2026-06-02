@@ -9,7 +9,9 @@ status: draft
 # Chapter 52 — Network driver: FEC + KSZ8081
 
 > **What:** the i.MX6ULL's **FEC** (Fast Ethernet Controller) and the **KSZ8081** RMII PHY that nearly every Point Atom board uses. The kernel's network-device framework (`netdev`), the PHY library (`phylib`), MDIO bus operations, RMII vs MII timing — the full path from MAC to `eth0`.
+>
 > **Why:** Ethernet is one of the most-debugged peripherals on any embedded board. Wrong PHY ID, wrong RMII clock direction, wrong delay-line settings — and you spend a week wondering why your `ping` drops every fifth packet. The mainline `fec_main.c` + `phylib` + `kszphy.c` stack is mature; understanding what it expects from DT and how to verify timing turns a one-week bug-hunt into a one-hour bring-up.
+>
 > **Focus:** **the FEC ↔ PHY ↔ Linux pipeline**. The FEC is the MAC (Media Access Controller). The PHY is the SerDes that turns digital frames into wire signals. The MDIO bus is the management interface between them. Linux's `netdev` exposes the result as `eth0`.
 
 ## 52.1  The pipeline

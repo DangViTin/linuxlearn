@@ -9,8 +9,11 @@ status: draft
 # Chapter 106 — Fingerprint sensors
 
 > **What:** **standalone fingerprint modules** that do the imaging + matching internally and expose a UART command protocol. **Grow R503** (capacitive, ring-LED indicator, the modern favorite), **FPM10A / AS608** (optical, classic, cheap), **GT-521F** (capacitive, larger sensor area). This chapter also covers the libfprint path for USB fingerprint scanners — the laptop-style readers. On the i.MX6ULL we wire R503 to UART, walk the proprietary 9-byte command framing protocol, enroll a template, perform a 1:N match, store templates in flash, and integrate with PAM for "password + fingerprint" 2-factor login.
+>
 > **Why:** Fingerprint is the dominant biometric for low-friction access control. Face recognition has privacy and enrolment problems; iris is expensive. UART modules are *self-contained matchers* — you don't deal with raw image processing, template extraction, or the messy algorithms. You enroll, you match, you get a yes/no + template ID. Common applications: smart locks, time-and-attendance kiosks, equipment-checkout terminals, secure-area entry. On Linux, plug the module's UART into the i.MX6ULL, write a 300-line driver, and you have biometric auth.
+>
 > **Focus:** modules are stateful — they remember which template ID is enrolled in which slot, and protocol commands operate on that state. Enrollment is a three-step sequence: capture image 1, capture image 2, combine into template, store at chosen ID. Matching is one command: capture, compare to all stored, return ID + score. The framing protocol is trivial (header + length + cmd + data + checksum), but the **state model** (which template is at slot N, what happens if you re-enroll into an occupied slot, how power-cycle affects state) is where most integrations fail.
+>
 > **Tooling.** This chapter uses Just a UART terminal (`picocom`); the PAM 2FA lab needs `libpam-dev` to build a custom PAM module.
 > - **Ubuntu-base (target):** `apt install picocom libpam0g-dev`
 > - **Buildroot:** `BR2_PACKAGE_PICOCOM=y BR2_PACKAGE_LINUX_PAM=y`

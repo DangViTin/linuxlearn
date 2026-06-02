@@ -9,7 +9,9 @@ status: draft
 # Chapter 72 — Distance & proximity sensors
 
 > **What:** three radically different "how far away is that object" sensors: **STMicro VL53L0X** (I²C, laser time-of-flight, mm precision, requires firmware-blob upload at probe), **HC-SR04** (GPIO, ultrasonic, famously hard to time accurately under Linux), **Sharp GP2Y0A** (analog IR, ADC-fed). For each: physics, protocol, the mainline driver, and a from-scratch driver for VL53L0X (the most interesting case) plus a clear-eyed look at why HC-SR04 is hard on Linux.
+>
 > **Why:** distance sensing is in every robot, every parking assist, every smart-lighting fixture. The three classes cover the practical price/accuracy spectrum: $0.50 IR analog → $3 ultrasonic → $8 ToF laser. Knowing the trade-offs lets you pick correctly and not promise users a ranging accuracy you cannot actually deliver.
+>
 > **Focus:** Time-of-flight measures with electronics. Ultrasonic measures with sound. IR measures with reflected brightness. Three different physics. ToF measures photon round-trip directly (mm-accurate, fast, expensive). Ultrasonic measures sound round-trip (cm-accurate, slow, cheap). IR measures reflected intensity then maps to a non-linear curve (poor accuracy, very cheap). Each driver's complexity tracks the physics.
 
 ## 72.1  Sensor comparison

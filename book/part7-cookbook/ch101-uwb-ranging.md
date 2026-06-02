@@ -9,7 +9,9 @@ status: draft
 # Chapter 101 — UWB ranging
 
 > **What:** **Ultra-wideband** (UWB) two-way ranging for centimetre-accuracy indoor positioning. Three radios: **Qorvo (Decawave) DWM1000** (the classic, IEEE 802.15.4-2011 UWB), **DWM3000** (newer, FiRa/Apple-AirTag-compatible, lower power, 802.15.4-2020), **NXP NCJ29D5** (automotive-grade UWB for car access). On the i.MX6ULL we wire DWM3000 over SPI, dissect the IEEE 802.15.4 UWB frame, walk the Qorvo "DW3xxx Software API" reference driver, write a 300-line user-space two-way-ranging (TWR) client from scratch, and demonstrate 3-anchor TDoA for 2-D position.
+>
 > **Why:** every modern phone (iPhone 11+, Galaxy S21+ Ultra, Pixel 6 Pro+) has UWB. Logistics warehouses are deploying UWB for forklift / asset tracking. Car keys (Apple Car Key, Tesla 3) use UWB to defeat relay attacks. Indoor venues use it for "blue-dot" navigation. None of this is BLE — BLE RSSI ranging is ±2 m on a good day; UWB ToF is ±10 cm. For sub-metre indoor positioning, UWB is the only practical choice.
+>
 > **Focus:** UWB ranging is a time-of-flight measurement. ToF accuracy depends on how cleanly the radio captures the first arriving signal. Multipath (the signal bouncing off walls and arriving second) corrupts the measurement if the demodulator latches the wrong peak. The DW3000 has hardware-supported leading-edge detection and per-receive antenna-delay calibration. Calibration is most of the engineering. The protocol on top — SS-TWR, DS-TWR, TDoA — is the smaller piece.
 
 ## 101.1  How UWB measures distance

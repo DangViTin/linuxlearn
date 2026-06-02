@@ -9,7 +9,9 @@ status: draft
 # Chapter 30A — Kernel lifecycle: mainline, stable, LTS, vendor BSPs
 
 > **What:** a decision framework for one of the most important architectural choices in any Linux-based product: *which* kernel release do we ship? Mainline tip, the latest stable, an LTS, a vendor BSP frozen years ago, or something curated between them?
+>
 > **Why:** the choice determines your security-fix cadence, your driver-update cost, your hardware-support range, and your migration burden for the next five-to-ten years. If you choose well, updates ship easily for years. If you choose poorly, three years from now you are backporting six years of CVEs onto a fork no one upstream maintains.
+>
 > **Focus:** **maintenance economics**, not features. Whatever you pick, you commit to maintaining the gap between it and what the world ships next. If you cannot maintain it yourself, you pay someone who will.
 
 ## 30A.1  The six release tracks

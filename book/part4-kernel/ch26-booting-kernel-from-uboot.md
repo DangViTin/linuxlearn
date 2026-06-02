@@ -9,7 +9,9 @@ status: draft
 # Chapter 26 — Booting the kernel from U-Boot
 
 > **What:** transfer the `zImage` + `imx6ull-14x14-evk.dtb` we built in Chapter 25 to the board over TFTP, run `bootz` in U-Boot, and watch the first 30 lines of kernel output appear on the UART. Decode each line.
+>
 > **Why:** From here on, Linux is running. Your job changes from writing the boot code to reading what the kernel prints.
+>
 > **Focus:** the **kernel boot log** as a diagnostic instrument. Every line means something specific; every successful boot prints predictable lines in predictable order. If you can recognise the first 30 lines, you can recognise which of them is missing or wrong on a board that's not booting.
 
 ## 26.1  The pre-boot contract

@@ -9,7 +9,9 @@ status: draft
 # Chapter 114 — Beepers, relays, SSRs
 
 > **What:** the **discrete actuators** that fall outside the main subsystems but appear in every product: **passive piezo buzzers** (need PWM to make sound), **active buzzers** (fixed-frequency, GPIO on/off), **mechanical relays** (5 V or 12 V coils driving 240 V AC contacts), **MOSFETs** (DC switching, fast, no contact wear), and **SSRs (Solid State Relays)** (AC switching, opto-isolated, zero-cross, the production-grade choice for mains-load control). On the i.MX6ULL we drive each with the matching kernel framework (PWM for passive, GPIO for the rest), wire the protection circuits (flyback diodes, snubbers, isolation), and build a 4-channel home automation relay board controlled via MQTT.
+>
 > **Why:** real products take physical actions: beep on user input, switch a pump, turn on a heater, drive a solenoid valve, ring a bell. Each actuator has different electrical requirements and different safety pitfalls. Get them wrong and you damage the driver, miss a debounce, energize an AC load while the relay's contact is half-open (arcing → contact welding → can't turn off → fire). This chapter is short but covers the engineering details that separate a demo from a five-year shipping product.
+>
 > **Focus:** three non-negotiable rules for the actuators in this chapter. Inductive loads (relays, solenoids, motors) need a flyback diode. AC loads need isolation. Zero-cross AC switching needs a zero-cross SSR; non-zero-cross switching arcs, generates harmonics, and burns contacts. The Linux side is trivial — sysfs PWM or GPIO. The electrical-engineering side is most of the work.
 
 ## 114.1  Buzzers — passive vs active

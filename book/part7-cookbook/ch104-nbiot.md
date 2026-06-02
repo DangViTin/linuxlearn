@@ -9,7 +9,9 @@ status: draft
 # Chapter 104 — NB-IoT / Cat-M1
 
 > **What:** the **low-power-cellular** subset of LTE — **NB-IoT (Cat-NB1/NB2)** and **LTE-M (Cat-M1)**. Modules: **Quectel BC95-G** (NB-IoT only, ~$8), **Quectel BC26** (NB-IoT + GNSS), **SimCom SIM7080G** (NB-IoT + Cat-M1, multi-region). We cover the PHY differences from LTE Cat-1+, the PSM and eDRX features that let a 19 Ah Li-SOCl2 cell run a sensor for up to ten years, the AT command set, MQTT/CoAP profiles tailored for low data rates, and an end-to-end battery-powered sensor that hits 10 mA average over a 1-uplink-per-hour cycle.
+>
 > **Why:** standard LTE (Ch 102/103) wakes the radio, registers, transmits, idles — total energy per uplink ~5 Joules. NB-IoT/Cat-M1, with PSM, parks the radio in "deep sleep" between uplinks while keeping its network registration alive. The result: ~1 J per uplink → years of battery life. This is the technology behind smart water meters, GPS livestock trackers, vending-machine telemetry, and rural emergency call-boxes. If your product needs cellular + battery for years (not days), this is the only path.
+>
 > **Focus:** PSM is the primary power saver; eDRX is a smaller secondary saving. Use PSM correctly or your battery life estimate is wrong by orders of magnitude. The cycle is: TX, wait for the downlink ACK, then enter PSM. The radio and modem are off, but the network still considers the device registered (IP, PDP context, and security keys are kept). On the next wake — by timer or external GPIO — the device resumes immediately, with no re-registration. The 19 Ah → 10 year math depends on TX every hour at 50 bytes and PSM at <5 µA between. If the AT commands are wrong, the modem stays at 100 mA always-on. Battery life drops by a factor of 1000.
 
 ## 104.1  NB-IoT vs LTE-M vs LTE Cat-1

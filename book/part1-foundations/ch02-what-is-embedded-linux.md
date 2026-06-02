@@ -9,7 +9,9 @@ status: draft
 # Chapter 2 — What "Embedded Linux" actually is
 
 > **What:** a mental model of an embedded Linux system, expressed in terms a microcontroller engineer already understands.
+>
 > **Why:** every later chapter assumes this vocabulary. If a word from this chapter is fuzzy at the end, the rest of the book will be twice as hard.
+>
 > **Focus:** the **user/kernel split**. Once you have it, most of Linux stops looking strange.
 
 ## 2.1  The system you already understand

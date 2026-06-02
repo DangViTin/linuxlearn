@@ -9,8 +9,11 @@ status: draft
 # Chapter 105 — RFID / NFC
 
 > **What:** **13.56 MHz HF RFID and NFC** — the technology behind contactless access cards, transit passes, phone Wallet, and "tap-to-pair." Three chips compared: **NXP MFRC522** (the ubiquitous Arduino-clone SPI/I²C/UART, ISO 14443A only), **NXP PN532** (more capable: 14443A/B + FeliCa, NFC initiator and target), **ST25R3911** (longer read range, high-end). On the i.MX6ULL we read tag UIDs over SPI, authenticate a Mifare Classic 1K block, walk the kernel `pn533` driver as the canonical mainline NFC stack reference, write a 200-line user-space MFRC522 driver from scratch, then bring up `libnfc` + `neard` for high-level NFC.
+>
 > **Why:** Access control is one of the most common embedded Linux applications — door readers, time-and-attendance kiosks, equipment-rental lockers, EV-charger user identification. NFC tagging extends to smart-home pairing (Tap to Wi-Fi), industrial asset tracking, and consumer-product authenticity verification. The chips are cheap (MFRC522 modules cost about $1). The standards are real. The security is half-broken — Mifare Classic was cracked in 2008. And Linux has an NFC subsystem (`net/nfc/`) that most engineers do not know exists.
+>
 > **Focus:** At 13.56 MHz, RFID and NFC use inductive coupling. The reader's antenna generates a magnetic field. That field powers the tag's IC, and the tag sends data back by modulating its load on the field. The reader chip uses a fixed sequence of register writes: configure carrier ON, set framing (Miller-encoded for tag→reader, Manchester for reader→tag), issue protocol-level commands (REQA, ATQA, ANTICOLL, SELECT, AUTH, READ_BLOCK), parse responses. Antenna matching is critical — a 5 mm misalignment between the reference design's antenna loop and yours = 30 % less read range.
+>
 > **Tooling.** This chapter uses `libnfc-bin` (`nfc-list`, `nfc-mfultralight`), `neard`; offensive-research only: `mfoc`, `mfcuk`.
 > - **Ubuntu-base (target):** `apt install libnfc-bin libnfc-dev neard`
 > - **Buildroot:** `BR2_PACKAGE_LIBNFC=y BR2_PACKAGE_NEARD=y`

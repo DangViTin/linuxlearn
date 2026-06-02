@@ -9,7 +9,9 @@ status: draft
 # Chapter 3 — Host environment setup
 
 > **What:** a Linux development host that can cross-compile for ARMv7-A, serve files over TFTP and NFS, talk to the board over serial and USB-OTG, and recover a bricked board.
+>
 > **Why:** for the next sixty chapters, the host is your lever. A flaky host wastes more of your time than any bug in your code.
+>
 > **Focus:** the iteration loop. By the end of this chapter, the loop "change a file, see it run on the board" must take under thirty seconds. If it is slower, you will iterate less, and you will learn less.
 
 ## 3.1  Choosing the host

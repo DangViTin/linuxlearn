@@ -9,7 +9,9 @@ status: draft
 # Chapter 18A — Project organization
 
 > **What:** refactor the monolithic single-file layout we used through Chapter 17 into a real project tree — `bsp/` folder with one subdirectory per peripheral, a single `imx6ull.h` containing all register definitions, and a top-level Makefile that builds and links everything cleanly.
+>
 > **Why:** once a bare-metal project crosses ~500 lines and ~3 peripherals, the single-file layout costs more than it saves. Every new peripheral becomes a merge conflict with the one before it. Every register `#define` competes for namespace with every other. We refactor now, before Part III's U-Boot work pushes us into larger codebases.
+>
 > **Focus:** **the BSP folder pattern** (one driver = one folder = one `.h` + one `.c`) and `imx6ull.h` holds every register definition in one place. The NXP SDK's `MCIMX6Y2.h` does the same thing with auto-generated struct headers. We hand-write ours so the auto-generated version reads as a productivity tool, not a black box.
 
 ## 18A.1  The problem we are solving

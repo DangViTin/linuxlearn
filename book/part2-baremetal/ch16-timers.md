@@ -9,7 +9,9 @@ status: draft
 # Chapter 16 — Timers — EPIT and GPT
 
 > **What:** a 1 ms tick from EPIT1 (interrupt-driven) and a free-running 32-bit counter from GPT1 (polled). Together they give us `tick_ms()`, `udelay()`, `mdelay()`, and a cycle-precise way to measure code.
+>
 > **Why:** Before we touch the MMU or write real drivers we need timing primitives. Schedulers, protocol stacks, and "wait at least N ns then check again" all need them.
+>
 > **Focus:** We use two timers because Linux does: GPT as a free-running counter (clocksource), EPIT for periodic interrupts (tick source). Seeing the split here makes Linux's `arch_timer` and `clocksource` framework easier later.
 
 ## 16.1  Two timers, two jobs

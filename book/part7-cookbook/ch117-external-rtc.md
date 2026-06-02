@@ -9,8 +9,11 @@ status: draft
 # Chapter 117 — External RTC
 
 > **What:** **external battery-backed real-time clocks**. **Maxim DS3231** (TCXO, ±2 ppm, the highest-accuracy popular choice), **NXP PCF8563** (cheap, common, ±20 ppm), **Microchip MCP79410** (with built-in EEPROM, plus a unique ID). On the i.MX6ULL we wire I²C, walk the kernel `rtc-i2c` family of drivers (`rtc-ds1307` covers DS3231; `rtc-pcf8563` for PCF8563; `rtc-mcp7941x` for Microchip), use `hwclock` to sync between system clock and RTC, configure **alarm interrupts** for wake-from-suspend, and integrate with **Ch 51B's runtime PM** so the i.MX6ULL can sleep for hours and wake exactly on a scheduled RTC alarm.
+>
 > **Why:** the i.MX6ULL has an *internal* RTC in the SNVS (Secure Non-Volatile Storage) domain — it survives reboots but loses time without a backup battery on the VDD_SNVS rail. Many board designs skip the SNVS battery to save 50 cents → the SoC's RTC is useless. The external RTC fix: a $0.50 chip plus a $0.30 coin cell on the I²C bus. The device knows the correct time on every cold boot, runs scheduled alarms even when Linux is off, and stays calibrated for years. For products that schedule actions ("daily sensor upload at 06:00") or need accurate timestamps in logs across power outages, an external RTC isn't optional.
+>
 > **Focus:** The RTC chip is a 32.768 kHz oscillator plus counters, accessed over I²C. The kernel `rtc-*` driver exposes it as `/dev/rtcN`. `hwclock` syncs between the hardware clock and the system clock. `chrony` (or `systemd-timesyncd`) keeps the system clock disciplined from NTP or PPS, and writes the corrected time back to the RTC. Three clock domains coexist (hardware RTC, system clock, NTP source); their interactions are what's tricky. Alarm interrupts let the RTC wake the SoC from suspend. The alarm pin must be wired to a GPIO that the kernel can use as a wake source. This wiring requirement is the most-skipped detail in RTC bring-up.
+>
 > **Tooling.** This chapter uses `hwclock` (in `util-linux`), `chrony` for time discipline, optional `i2c-tools`.
 > - **Ubuntu-base (target):** `apt install util-linux chrony i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_UTIL_LINUX_HWCLOCK=y BR2_PACKAGE_CHRONY=y BR2_PACKAGE_I2C_TOOLS=y`

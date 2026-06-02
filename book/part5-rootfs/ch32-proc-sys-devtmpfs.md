@@ -9,7 +9,9 @@ status: draft
 # Chapter 32 — /proc, /sys, devtmpfs
 
 > **What:** the three virtual filesystems through which user space sees and pokes the kernel — `procfs` (process & system info), `sysfs` (the modern device model), and `devtmpfs` (device nodes). Each is RAM-backed and populated by the kernel.
+>
 > **Why:** every later chapter pokes `/proc` or `/sys` somewhere — to read a sensor, to set a GPIO, to inspect a driver. Knowing which virtual filesystem holds what is what makes the difference between following a tutorial and debugging an unfamiliar problem.
+>
 > **Focus:** **the file-as-interface pattern.** In Unix everything is a file; the kernel takes that literally. `cat /proc/cpuinfo` reads CPU info; `echo 1 > /sys/class/leds/led0/brightness` turns on an LED; `cat /proc/interrupts` shows IRQ counts. Once you know this idiom, a lot of debugging needs no code.
 
 ## 32.1  Three virtual filesystems, three jobs

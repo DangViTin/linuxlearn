@@ -9,7 +9,9 @@ status: draft
 # Chapter 23 — `bootcmd`, `bootargs`, FIT images
 
 > **What:** the *contract* between U-Boot and the Linux kernel. `bootcmd` is what U-Boot runs to load and start the kernel; `bootargs` is what U-Boot tells the kernel about the system; FIT (Flattened Image Tree) is the modern signed-bundle format that carries kernel + DTB + initramfs in one file.
+>
 > **Why:** These three things sit between "U-Boot works" and "Linux boots." Most "the kernel won't start" bugs live here. Once you understand them, you can diagnose boot failures from the boot log alone.
+>
 > **Focus:** the **cmdline as a contract**. The kernel's behavior depends entirely on what it finds in `chosen.bootargs` of the DT (which `bootargs` writes to). Know which knobs are kernel-side and which are U-Boot-side, and you stop chasing the wrong file.
 
 ## 23.1  `bootcmd` — U-Boot's autoboot

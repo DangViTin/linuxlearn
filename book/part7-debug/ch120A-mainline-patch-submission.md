@@ -9,7 +9,9 @@ status: draft
 # Chapter 120A — Mainline patch submission workflow
 
 > **What:** the **end-to-end workflow** for submitting a patch to the Linux kernel: `git format-patch`, `scripts/checkpatch.pl`, `scripts/get_maintainer.pl`, `git send-email`, the `b4` tool for series management, response etiquette (`Reviewed-by`, `Acked-by`, v2/v3 iteration), and the **Lore** archive for finding similar prior work. Worked on a real candidate patch — e.g., a YAML binding addition for a sensor used in your Cookbook chapter, or a one-line bug fix in the FEC driver.
+>
 > **Why:** If you write a driver that's useful, it can go upstream. Upstream-merged code gets security backports and API migrations for free; an out-of-tree fork is yours to maintain. The kernel community has strict and partly unwritten rules. A wrong commit-message format, an untested patch, a hostile reply to review, or a top-posted email is enough to get a patch silently dropped, no matter how good the code is.
+>
 > **Focus:** **the workflow is git-format-patch → checkpatch → get_maintainer → send-email → respond to review → v2 → repeat**. The cultural part is harder: be concise; one fix per patch; explain *why* not just *what*; never ignore review feedback (even if you disagree, respond); CC the right people but no spammy CC; subject lines are `[PATCH] subsystem/file: short summary`. Lore.kernel.org is the public archive of every mailing-list discussion since ~1998. Always search it before sending. A "novel" fix may have been tried and rejected three times already, and the rejection threads tell you why.
 
 ## 120A.1  Decide what you're submitting

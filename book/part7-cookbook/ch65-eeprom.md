@@ -9,7 +9,9 @@ status: draft
 # Chapter 65 — I²C / SPI EEPROM
 
 > **What:** small persistent storage chips — bytes addressable, no erase-before-write needed, ~1M write cycles. We'll walk the chip-side protocol byte-by-byte, dissect how the mainline `at24` driver actually works, then write a tiny from-scratch I²C-EEPROM driver. Three chips compared — **Microchip AT24C02** (I²C, 256 B), **AT24C512** (I²C, 64 KB), **25LC512** (SPI, 64 KB).
+>
 > **Why:** EEPROM is the place embedded boards store small permanent facts about themselves — MAC address, board serial, calibration. The protocol is small. Writing your own driver in 100 lines is realistic and worth the time. After this chapter the kernel's `at24.c` will read as ordinary code, not a mystery.
+>
 > **Focus:** **two protocol gotchas** — (a) page-aligned writes (writing across a page boundary silently wraps within the same page), and (b) the ACK-poll loop (the chip NACKs while internally programming, you poll until it ACKs). Get those two right and the rest is byte arithmetic.
 
 ## 65.1  When EEPROM beats flash, OTP fuses, NVRAM

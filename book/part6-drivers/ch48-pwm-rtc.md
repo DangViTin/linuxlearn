@@ -9,7 +9,9 @@ status: draft
 # Chapter 48 — PWM and RTC subsystems
 
 > **What:** two short, unrelated subsystems combined here — each is small enough on its own, and the patterns reinforce each other. **PWM** — the `pwm_*` API and the `pwm-backlight` / `pwm-fan` / `pwm-beeper` consumers. **RTC** — the `rtc_class` framework, sysfs `/sys/class/rtc/`, the `hwclock` user-space tool, and how an external RTC chip plugs into Linux's wall-clock time.
+>
 > **Why:** *backlight dimming, fan speed, audible beeper, servo control* all use PWM — and every product that doesn't have continuous network access needs an RTC to keep time across reboots. These are subsystems you'll touch on almost every embedded project; knowing the consumer-side API saves you from re-inventing it.
+>
 > **Focus:** **consumer vs provider model**. PWM and RTC both expose two APIs: one for the *producer* (chip driver that owns the PWM controller or RTC silicon) and one for the *consumer* (driver/code that wants a PWM signal or a wall-clock read). You almost always write *consumers*. The SoC vendor wrote the producers. Knowing which side you're on tells you which API to look up.
 
 ---

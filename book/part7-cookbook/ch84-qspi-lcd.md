@@ -9,7 +9,9 @@ status: draft
 # Chapter 84 — QSPI LCD
 
 > **What:** displays driven over **quad-SPI** (4 data lanes instead of 1) for ~4× the bandwidth of plain SPI. Common on round smartwatch-style LCDs: **GC9D01** (round 160×160), **ST77916** (round 360×360), **SH8601** (AMOLED). We cover why QSPI matters for displays, the quad-mode MIPI-DBI command framing, the i.MX6ULL QSPI controller's display-mode constraints, and how the mainline `mipi-dbi` helper handles quad transfers.
+>
 > **Why:** a plain-SPI 360×360 16-bit display needs 259 KB per frame — at 40 MHz SPI that's 52 ms = ~19 fps full-refresh, too slow for smooth animation. Quad-SPI quadruples the data rate to about 13 ms per frame, or 75 fps. That is the difference between smooth animation and a slideshow. QSPI is newer and less common. Fewer mainline drivers exist, so you are more likely to write your own.
+>
 > **Focus:** **QSPI display = MIPI-DBI commands sent over 4 data lanes**. The command model is identical to Ch 83 (CASET/RASET/RAMWR), but each byte's 8 bits are spread across 4 IO lines (2 bits per line per clock), so pixels stream 4× faster. The challenge is that the i.MX6ULL QSPI controller is designed for *flash*, not displays — using it for a display means working within its command-LUT model.
 
 ## 84.1  Why QSPI for displays

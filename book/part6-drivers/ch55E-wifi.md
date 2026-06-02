@@ -9,8 +9,11 @@ status: draft
 # Chapter 55E — WiFi + wpa_supplicant
 
 > **What:** Linux's **WiFi stack** — `mac80211` (the kernel's 802.11 implementation), `cfg80211` (the configuration API), per-chip drivers (`brcmfmac`, `rtl8xxxu`, etc.), and the user-space **wpa_supplicant** that handles WPA2/WPA3 authentication. We focus on SDIO WiFi (AP6212 / RTL8189 on Point Atom-class boards) as the most common embedded case.
+>
 > **Why:** WiFi is a vertical stack — driver, kernel WiFi core, supplicant, network manager. If any layer is wrong, nothing works. Knowing the layers and how to debug each one turns "WiFi doesn't work" from a multi-day debug into a methodical bring-up.
+>
 > **Focus:** **firmware + nvram + supplicant**. The driver loads vendor firmware from `/lib/firmware/`, plus a per-board nvram (channel list, antennas, regulatory). wpa_supplicant handles the 4-way handshake. All three must be right.
+>
 > **Tooling.** This chapter uses `wpa_supplicant`, `iw`, optional `hostapd`; chip firmware blob.
 > - **Ubuntu-base (target):** `apt install wpasupplicant iw hostapd firmware-realtek firmware-brcm80211`
 > - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y BR2_PACKAGE_HOSTAPD=y`

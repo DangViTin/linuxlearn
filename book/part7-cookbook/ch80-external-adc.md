@@ -9,7 +9,9 @@ status: draft
 # Chapter 80 — External ADCs
 
 > **What:** four external analog-to-digital converters spanning the price/precision spectrum: **TI ADS1115** (16-bit, I²C, programmable-gain, 4-channel), **TI ADS1256** (24-bit, SPI, ultra-low-noise, 8-channel), **Microchip MCP3008** (10-bit, SPI, cheap, 8-channel), **Analog Devices AD7606** (16-bit, 8-channel *simultaneous-sampling*). For each: protocol, the IIO ADC channel model, and a from-scratch ADS1115 IIO driver. Plus ratiometric measurement (load cells, RTDs) — the trick that cancels reference-voltage error.
+>
 > **Why:** the i.MX6ULL's internal ADCs (two 12-bit SAR blocks, each multiplexing up to 10 pins, ~1 MS/s aggregate) are ±a few LSB noisy and share the SoC's noisy power rails. For precision measurement — a load-cell scale, a 4-20 mA industrial loop, a thermocouple, simultaneous 3-phase power sampling — you need an external ADC with a clean reference, more bits, or true simultaneity. Knowing which external ADC fits saves you from chasing noise that the silicon will never let you remove.
+>
 > **Focus:** Bits, speed, channels, and simultaneity are independent design axes. **ADS1115** is high-bit, slow, and multiplexed. **MCP3008** is low-bit, medium-speed, and cheap. **ADS1256** is very-high-bit, low-noise, and slow. **AD7606** is high-bit, fast, and *simultaneous* (all channels sampled at the same instant — critical for phase measurement). Pick by which axis matters most for your application.
 
 ## 80.1  Chip comparison

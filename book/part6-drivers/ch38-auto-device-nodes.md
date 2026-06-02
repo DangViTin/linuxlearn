@@ -9,7 +9,9 @@ status: draft
 # Chapter 38 — Auto-creating `/dev/` nodes
 
 > **What:** `class_create` + `device_create` — the two calls that let your driver tell the kernel "I have a new device; please broadcast a hot-plug event so user-space creates `/dev/<name>` for me." With these in place you never `mknod` by hand again.
+>
 > **Why:** real drivers don't burden users with manual `mknod` steps after every `insmod`. Modern Linux uses the **uevent** mechanism — the kernel broadcasts a netlink message describing the new device, and a user-space agent (udev on workstations, mdev on embedded) reacts by creating the right file in `/dev/`, setting permissions, and possibly running scripts. Your driver's only responsibility is to register the device and let the framework do the rest.
+>
 > **Focus:** **the relationship between `/sys/class/...` and `/dev/...`**. The class hierarchy in sysfs is the *source of truth* — that's where the kernel describes what devices exist. The `/dev/` tree is a **shadow** of sysfs maintained by the hot-plug agent. Get this picture right and most "why is my device file missing?" debugging becomes trivial.
 
 ## 38.1  The hot-plug pipeline

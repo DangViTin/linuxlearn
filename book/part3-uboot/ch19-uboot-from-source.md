@@ -9,7 +9,9 @@ status: draft
 # Chapter 19 — U-Boot from source, first boot
 
 > **What:** clone mainline U-Boot, build it for the i.MX6ULL, `dd` the result to an SD card, boot it, get a `=>` prompt. Then run a few commands and recognize, in U-Boot's output, every step we did by hand in Chapters 9–17.
+>
 > **Why:** Part II proved we can boot the chip ourselves. From here on the question is what the professional version looks like. U-Boot is that version. Its source is one of the best embedded-Linux codebases to read.
+>
 > **Focus:** **recognition**. By the end of Part III you should be able to point at any line of U-Boot's `arch/arm/cpu/armv7/start.S` or `arch/arm/mach-imx/spl.c` and say "that is Chapter 14 §14.6, rewritten by someone who has done it a thousand times." That recognition is what Part II bought us.
 
 ## 19.1  Why mainline U-Boot

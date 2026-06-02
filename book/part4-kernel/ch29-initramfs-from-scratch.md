@@ -9,7 +9,9 @@ status: draft
 # Chapter 29 — Initramfs from scratch
 
 > **What:** the absolute minimum user space that a Linux kernel can hand off to — a single statically-linked binary in a cpio archive, ~30 KB, that prints "hello" and reboots. Then a BusyBox-based initramfs with a real shell. Both reachable in under an hour.
+>
 > **Why:** the standard rootfs path (`root=/dev/mmcblk0p2`) hides a lot. Building an initramfs by hand surfaces the actual kernel-to-userspace handoff: what kernel_init's `kernel_execve` does, what `/init` must look like, how cpio archives become a populated filesystem at boot. Once you have done it once, Buildroot and Ubuntu-base in Part V build on the same idea, just with more pieces.
+>
 > **Focus:** the **cpio archive as a filesystem image** that the kernel unpacks into the initial tmpfs. Once that model is clear, the rest is just commands.
 
 ## 29.1  What an initramfs is

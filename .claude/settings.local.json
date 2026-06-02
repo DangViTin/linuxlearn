@@ -26,7 +26,8 @@
       "Bash(cp BOOK_TOC.md book/toc.md)",
       "Bash(python -m sphinx -b html -W --keep-going . _build/test)",
       "PowerShell(Get-ChildItem \"C:\\\\Users\\\\ViTin\\\\OneDrive\\\\Project\\\\LinuxLearn\\\\review_parts\\\\part2_style.md\",\"C:\\\\Users\\\\ViTin\\\\OneDrive\\\\Project\\\\LinuxLearn\\\\review_parts\\\\part1_style.md\" | Select-Object Name, @{Name=\"KB\";Expression={[math]::Round\\($_.Length/1KB,1\\)}}; Get-Content \"C:\\\\Users\\\\ViTin\\\\OneDrive\\\\Project\\\\LinuxLearn\\\\review_parts\\\\part2_style.md\" -Tail 3; \"---\"; Get-Content \"C:\\\\Users\\\\ViTin\\\\OneDrive\\\\Project\\\\LinuxLearn\\\\review_parts\\\\part1_style.md\" -Tail 3)",
-      "Bash(git status *)"
+      "Bash(git status *)",
+      "Bash(python *)"
     ]
   }
 }

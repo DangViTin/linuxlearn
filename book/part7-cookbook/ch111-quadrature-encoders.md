@@ -9,7 +9,9 @@ status: draft
 # Chapter 111 — Quadrature encoders & rotary
 
 > **What:** **quadrature incremental encoders** (optical or magnetic — two phase-shifted square waves), **mechanical rotary encoders** (knob-style, low-res), and **absolute magnetic encoders** (AS5048A from Ch 74, here used as a position sensor not a sensor-out). Three implementations on the i.MX6ULL: (a) software quadrature decode via two GPIO IRQs (works ≤ ~10 kHz pulse rate), (b) hardware quadrature via the i.MX **XBAR + ENC** peripheral (works up to ~1 MHz pulse rate but needs the optional ENC IP block), (c) `rotary_encoder` kernel driver for low-rate user-interface knobs. Plus the IIO `angl` channel pattern for absolute encoders.
+>
 > **Why:** every closed-loop motor needs position feedback; every UI knob needs decoding. The i.MX6ULL has a strong NXP-BSP-only ENC peripheral that mainline Linux doesn't fully expose — so on a mainline kernel, you either do software decode (cheap, slow), use the partial mainline driver if it exists for your variant, or bridge to an external decoder IC. Understanding the four implementation tiers (software IRQ, hardware decoder, dedicated chip, sysfs `rotary_encoder` driver) lets you pick correctly for your use case.
+>
 > **Focus:** Quadrature decoding works on two channels that are 90° out of phase. The leading channel tells you the direction of rotation. A is high then B goes high = forward; B high then A high = backward. Four edges per full A+B cycle = 4× resolution multiplication. Mechanical encoders bounce badly — 5 ms or more of noise per click — and need debouncing. Optical encoders are clean but expensive. Magnetic encoders are the middle ground.
 
 ## 111.1  Encoder types

@@ -9,7 +9,9 @@ status: draft
 # Chapter 69 — Air quality, gas, particulate matter
 
 > **What:** three radically different "what's in the air" sensors: **Sensirion SCD30** (NDIR CO₂, I²C with clock-stretching), **AMS CCS811** (metal-oxide TVOC + eCO₂, I²C with interrupt), **Plantower PMS5003** (laser-scattering PM, UART). Each represents a different sensing physics, a different bus, a different protocol shape. For each: physics, protocol, the mainline driver, plus a from-scratch UART-based PMS5003 driver (since it's the most pedagogically interesting and the existing IIO support is fragmented).
+>
 > **Why:** the air-quality market is exploding (post-pandemic; IAQ in offices; outdoor pollution dashboards). These three sensors together cover the dimensions that matter: CO₂ (occupancy, ventilation), VOCs (cleaning chemicals, paint, formaldehyde), particulate matter (combustion, dust, wildfire smoke). Knowing which chip claims to measure what — and what it *actually* measures — separates a useful product from a placebo.
+>
 > **Focus:** **NDIR measures physics directly. Metal-oxide infers from a correlation. Laser scatter counts particles. Three very different things wearing the label 'air quality sensor.'** NDIR (CO₂): direct absorbance measurement, traceable to the molecule. MOX (CCS811): a tin-oxide film whose resistance changes with reducing gases — the "eCO₂" is *inferred* from VOC trends, **not** actually measured. PM: literally counting particles flowing through a laser beam. Once you see this hierarchy, an "eCO₂" reading reads as "rough VOC trend that someone scaled into CO₂-looking numbers," not as a CO₂ measurement.
 
 ## 69.1  Sensor comparison

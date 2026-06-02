@@ -9,7 +9,9 @@ status: draft
 # Chapter 36 — Your first kernel module
 
 > **What:** the smallest possible Linux kernel module — a `.ko` file with an entry point, an exit point, and a license tag — and the build system (`Kbuild`) that turns C source into it. By the end you can `insmod hello.ko`, see your `printk` in `dmesg`, and `rmmod` it without rebooting.
+>
 > **Why:** every driver you'll ever write — character, block, network, platform, I²C, SPI, sound — is a kernel module at its core. The wrapper around the interesting code is the same: module_init / module_exit / MODULE_LICENSE. Master the trivial case once and the only thing left to learn for each subsystem is its own API.
+>
 > **Focus:** **what gets linked into what, and when**. `hello.ko` is a relocatable ELF that the kernel loader patches into the kernel's address space at insmod time. Understanding that — that there is no fresh process, no separate memory, just dynamic linking into the running kernel — explains 80 % of "why is this allowed?" and "why is that not?" questions.
 
 ## 36.1  The driver mindset shift

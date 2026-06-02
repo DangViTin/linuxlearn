@@ -9,7 +9,9 @@ status: draft
 # Chapter 22 — Porting U-Boot to a custom board
 
 > **What:** fork the mainline `mx6ull_14x14_evk` board into a new `mx6ull_pa_mini` (Point Atom MINI) board directory. Update DDR timings, IOMUX, MAC PHY address, and defaults. End with a U-Boot binary that boots cleanly on the MINI from your bare-board changes, not on the EVK config.
+>
 > **Why:** In real product work, you rarely ship the vendor reference board. The custom PCB looks similar but has different pads, different I/O, different DRAM. The port is the deliverable. This chapter is how you produce it.
+>
 > **Focus:** the **anatomy of a board port** — board folder, defconfig, board header, DT, and the points where each touches U-Boot's core. After the first port, every later one is a copy-and-modify of the same five files.
 
 ## 22.1  What "porting" means

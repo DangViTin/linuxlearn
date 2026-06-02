@@ -9,7 +9,9 @@ status: draft
 # Chapter 6 — The toolchain
 
 > **What:** the set of programs that turn your C and assembly source into a binary your i.MX6ULL will execute.
+>
 > **Why:** every later chapter ends with "now build it." If "build" is a black box, every failure will be too.
+>
 > **Focus:** **(a)** that `gcc` is a *driver* over half a dozen smaller tools; **(b)** that **ELF** is the universal container, and the linker decides where every byte ends up; **(c)** that the **ABI** is the contract that every function call in your program follows.
 
 ## 6.1  `gcc` is not one program

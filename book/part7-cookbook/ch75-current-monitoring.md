@@ -9,7 +9,9 @@ status: draft
 # Chapter 75 — Current & power monitoring
 
 > **What:** three I²C high-side current/voltage monitors from Texas Instruments: **INA219** (12-bit, the classic), **INA226** (16-bit, modern, programmable averaging), **INA3221** (3-channel, simultaneous-sample 3-rail monitor). For each: physics, register map, the *calibration register* that is the most common bug, and a from-scratch INA219 driver. Plus the **hwmon** subsystem — the sibling of IIO that current monitors usually live in.
+>
 > **Why:** every device that draws power benefits from knowing how much. Production telemetry (per-rail consumption logged to fleet management), fault detection (overcurrent → shutdown), low-power optimisation (which subsystem ate the budget?), battery-life prediction. INA219 in particular costs $1.50 and lets you watch any 0–26 V rail at 1 mA resolution.
+>
 > **Focus:** The shunt converts current to voltage. The chip's ADC converts voltage to a count. The calibration register tells the chip the shunt's value, so the chip can report current directly. Get the shunt size right (low enough to not waste power; high enough to get good resolution) and program the calibration register to match — the chip then reports current directly in amperes. Without the calibration register, the Current and Power registers read zero (or numbers in unknown units, depending on the chip).
 
 ## 75.1  Chip comparison

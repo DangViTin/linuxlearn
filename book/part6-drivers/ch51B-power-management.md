@@ -9,7 +9,9 @@ status: draft
 # Chapter 51B — Power management
 
 > **What:** Linux's three power-management layers — **runtime PM** (drivers autonomously gate clocks and rails when idle), **DVFS** (CPU frequency-and-voltage scaling under load) and **system sleep** (suspend-to-RAM / standby / hibernation). By the end your driver participates in runtime PM, the system suspends to RAM cleanly, and the CPU clocks down when idle.
+>
 > **Why:** On battery-powered products, PM tuning is a large fraction of the work. Saving 50 mA in idle means 5× battery life on a 1 Ah cell. For mains-powered embedded, it's still meaningful: less heat, smaller heatsinks, lower fan noise. Linux's PM framework is rich and *opt-in* — drivers that don't implement it don't suspend; the whole device fails to enter suspend until you fix them.
+>
 > **Focus:** **the three layers are mostly independent**. Runtime PM is "this peripheral is idle; gate its clock now." DVFS is "the CPU isn't busy; scale to 396 MHz." System sleep is "the user pressed the suspend button; stop everything safely, resume on a wake source." Implement them one at a time; don't tangle them up.
 
 ## 51B.1  Runtime PM

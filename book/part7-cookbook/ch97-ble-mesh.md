@@ -9,8 +9,11 @@ status: draft
 # Chapter 97 — BLE Mesh
 
 > **What:** **Bluetooth Mesh** — a many-to-many networking layer built on BLE advertising, where dozens-to-thousands of nodes relay messages for each other to cover a building. This chapter covers four things: the mesh architecture (elements, models, addresses, publish/subscribe), the **bluez-mesh** stack on Linux, the provisioning flow that adds a node to a network, and a worked lighting-control example with the i.MX6ULL as gateway and provisioner.
+>
 > **Why:** BLE point-to-point (Ch 95) reaches one device at ~30 m. BLE Mesh covers an entire building with hundreds of nodes: smart lighting (the dominant use case), building sensors, industrial monitoring. Nodes relay each other's messages to extend coverage. It is the technology behind commercial smart-lighting systems, the kind installed in offices and warehouses. An i.MX6ULL makes a good mesh gateway, bridging mesh traffic to WiFi or the cloud. It can also act as a provisioner, adding new nodes to the network.
+>
 > **Focus:** mesh is a publish/subscribe protocol layered on flooded BLE advertisements, with addresses tied to models. A node has *elements*, each with *models* (e.g., a "Generic OnOff Server" model for a light). Messages are *published* to *group addresses*; nodes *subscribed* to that group act on them. "Turn off all kitchen lights" means: publish OnOff=0 to the "kitchen" group. Every light subscribed to "kitchen" responds. Flooding plus relay gives whole-building coverage without any backbone wiring.
+>
 > **Tooling.** This chapter uses `bluez` + `bluetooth-meshd` + `mesh-cfgclient`.
 > - **Ubuntu-base (target):** `apt install bluez bluez-meshd`
 > - **Buildroot:** `BR2_PACKAGE_BLUEZ5_UTILS=y  # (mesh requires the Buildroot experimental option)`

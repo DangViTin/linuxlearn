@@ -9,7 +9,9 @@ status: draft
 # Chapter 81 — External DACs + clock generators
 
 > **What:** analog *output* and clock *generation* — the inverse of Chapter 80. **Microchip MCP4725** (12-bit I²C DAC with EEPROM), **Analog Devices AD5663** (16-bit dual SPI DAC), and **SiLabs Si5351** (programmable 3-output clock generator). For each: protocol, the IIO `out_voltage` model (DACs) or the `clk` framework (Si5351), and a from-scratch MCP4725 IIO DAC driver.
+>
 > **Why:** embedded systems sometimes need to *produce* an analog voltage (control a VCO, set a programmable power-supply setpoint, generate a waveform) or *produce a precise clock* (drive an SDR mixer, clock an external ADC, generate a reference frequency). The SoC has neither a DAC nor flexible clock outputs in most cases. These three chips cover the common cases, and they introduce two new frameworks: IIO's output channels and the kernel's `clk` provider model.
+>
 > **Focus:** A DAC is an IIO channel that flows out instead of in. A clock generator is a `clk` provider. DAC: `out_voltage0_raw` is *writable*; writing it sets the output voltage. Clock gen: the chip registers as a `clk` in the kernel clock tree, and other devices (or user-space via `/sys/.../clk`) consume its output. These are two different frameworks; both are useful.
 
 ## 81.1  Chip comparison

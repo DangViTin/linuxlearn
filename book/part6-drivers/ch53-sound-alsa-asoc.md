@@ -9,8 +9,11 @@ status: draft
 # Chapter 53 — Sound: ALSA and ASoC
 
 > **What:** the kernel's audio framework — **ALSA** (Advanced Linux Sound Architecture) and **ASoC** (ALSA System on Chip, the embedded refinement). ASoC splits an audio chain into three drivers. The **CPU-DAI** is the SoC's I²S/SAI controller. The **codec** is the analog chip (WM8960, SGTL5000). The **machine driver** wires them together for one specific board. By the end you can `aplay test.wav` over a WM8960 on the Point Atom ALPHA.
+>
 > **Why:** audio is one of the tightest real-time loops in any embedded system. 48000 samples/second × 2 channels × 16 bits = a 96 KB/s data stream that must never glitch. ASoC's three-way split is the kernel's solution to *not* re-writing a complete audio driver for every new SoC + codec combination — you reuse the CPU-DAI and codec drivers, only writing a small machine driver per board.
+>
 > **Focus:** **the three drivers cooperate via `snd_soc_dai_link`**. The machine driver declares "CPU-DAI X drives codec Y over format Z at clock W." Once you understand this binding, ASoC drivers become readable.
+>
 > **Tooling.** This chapter uses `alsa-utils` (`alsamixer`, `aplay`, `arecord`, `amixer`).
 > - **Ubuntu-base (target):** `apt install alsa-utils libasound2-dev`
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_ALSA_LIB=y`

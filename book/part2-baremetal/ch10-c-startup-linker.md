@@ -9,7 +9,9 @@ status: draft
 # Chapter 10 — C + startup.S + linker script
 
 > **What:** the same blinking LED as Chapter 9, but with `main()` written in C. To get there we need a proper startup that sets the stack, zeroes `.bss`, copies `.data` from its load address to its run address, then branches to `main`. We also write our first real linker script.
+>
 > **Why:** every later chapter in Part II is in C. C demands an environment — initialized globals, zeroed uninitialized globals, a stack, a stable entry point. The toolchain does *not* provide these on bare-metal; you do. This chapter is the one place where we set these up once so the next eight chapters can ignore them.
+>
 > **Focus:** the **LMA vs VMA** distinction for `.data` (introduced in Chapter 6, made concrete here). If you can answer where the initial value of a global lives and how it reaches RAM, you understand startup.
 
 ## 10.1  What `int x = 7;` actually needs

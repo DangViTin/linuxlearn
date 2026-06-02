@@ -9,7 +9,9 @@ status: draft
 # Chapter 11 — Hand-building a Boot ROM-acceptable image
 
 > **What:** a real Python tool, `mkimx.py`, that turns a flat `.bin` into a Boot-ROM-loadable `.imx`. We then `dd` the result to an SD card and boot from it — no `mkimage`, no NXP tools, no magic.
+>
 > **Why:** the Chapter 9 `wrap.sh` worked, but you will edit this tool again. A 60-line Python script you understand beats a 3-line shell command you don't.
+>
 > **Focus:** the **byte-for-byte layout** of the `.imx` file at offset `0x400` of the boot media, and the precise meaning of every word in IVT and BootData. Also: where to write the image on an SD card so the ROM finds it.
 
 ## 11.1  What we produced last chapter, in detail

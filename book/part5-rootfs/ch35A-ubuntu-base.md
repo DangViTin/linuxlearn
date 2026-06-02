@@ -9,7 +9,9 @@ status: draft
 # Chapter 35A — Ubuntu-base rootfs as a peer to BusyBox/Buildroot
 
 > **What:** an Ubuntu rootfs on the i.MX6ULL. Ubuntu-the-distro with GNOME is too heavy. We use **Ubuntu-base** instead, the same Debian-family userland your laptop has, in a 80 MB tarball that runs `apt` and `bash` natively. You unpack it, `chroot` into it via `qemu-user-static`, install packages from the host's network, then NFS-boot the target into it.
+>
 > **Why:** for projects where the developer's familiarity matters more than image footprint, Ubuntu-base wins. Glibc, full coreutils, systemd, an actual `bash` — all present, in exchange for ~80 MB on disk and ~30 MB RAM at idle vs. BusyBox's < 5 MB / < 10 MB.
+>
 > **Focus:** the **`qemu-user-static` + `chroot` trick** — installing armhf packages from x86_64 host into the armhf rootfs by transparently running ARM binaries on the host CPU through QEMU emulation. Apt-get doesn't notice and the workflow works.
 
 ## 35A.1  When this is the right answer

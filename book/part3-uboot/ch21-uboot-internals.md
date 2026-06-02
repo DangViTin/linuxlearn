@@ -9,7 +9,9 @@ status: draft
 # Chapter 21 — U-Boot internals
 
 > **What:** a complete narrative tour of full U-Boot — from `_start` to the `=>` prompt to a typed command running — with the source paths cited at every step. Plus the three subsystems that you will touch most often as a custom-board engineer: the **environment**, the **command system**, and the **driver model (DM)**.
+>
 > **Why:** U-Boot is the bootloader most likely to need *your* code in a real project. Knowing where to put it, and which existing patterns to follow, is half the work.
+>
 > **Focus:** **relocation** — the moment U-Boot copies itself from its load address to high DRAM and patches every pointer. Once you understand relocation, every confusing "why is `&foo` not what I expect?" question dissolves.
 
 ## 21.1  The full-U-Boot boot flow, end to end

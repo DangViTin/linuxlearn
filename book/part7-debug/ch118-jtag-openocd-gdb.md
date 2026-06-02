@@ -9,8 +9,11 @@ status: draft
 # Chapter 118 — JTAG, OpenOCD, GDB at every layer
 
 > **What:** the **hardware-level debug stack**: **JTAG adapters** (FT2232H-based generic, J-Link, SEGGER pro), **OpenOCD** as the software bridge between adapter and target, and **GDB** as the user interface. We wire JTAG to the i.MX6ULL's debug header, write an OpenOCD config, halt the CPU at the very first reset vector instruction, single-step through U-Boot, attach to the running kernel with full `vmlinux` symbol resolution, and inspect a kernel module's variables interactively.
+>
 > **Why:** when the LED doesn't blink and `printk` isn't an option (the kernel hasn't started yet), JTAG is the only way in. The same is true when U-Boot hangs in DCD execution, or the kernel oopses before serial init. JTAG lets you read every register, dump every memory region, set hardware breakpoints, and step a single instruction at a time — at any layer (bare-metal, bootloader, kernel, user-space). It's the difference between guessing the boot fails somewhere in CCM init, and seeing that XTAL_24M is at 0 mV because the crystal isn't running.
+>
 > **Focus:** **OpenOCD is the bridge: it speaks USB to the JTAG adapter and exposes a GDB-server on TCP; GDB connects, fetches symbols from your ELF, and gives you the familiar `b`, `n`, `s`, `p` commands**. The tricky parts are: getting the adapter's USB-IDs right for OpenOCD, choosing the right *target* config (Cortex-A7 vs Cortex-M differ massively), handling Cortex-A's complications (multi-CPU, secure-vs-non-secure world, MMU on/off), and giving GDB the right symbol files at the right times (one ELF for bare-metal, another for U-Boot, another for kernel + per-module symbols).
+>
 > **Tooling.** **Host:** `openocd`, `gdb-multiarch` (or `arm-linux-gnueabihf-gdb` from your cross-toolchain). **Target:** nothing — gdb attaches via OpenOCD over JTAG, no on-target software needed. Ubuntu-host install: `apt install openocd gdb-multiarch`. Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 118.1  JTAG basics — the 4-wire debug bus

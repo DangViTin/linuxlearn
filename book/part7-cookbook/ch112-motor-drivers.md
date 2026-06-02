@@ -9,7 +9,9 @@ status: draft
 # Chapter 112 — Stepper & DC motor drivers
 
 > **What:** the four motor-driver families: **stepper** (DRV8825, A4988 — basic step/dir; TMC2209 — silent stallGuard UART config), **DC brush** (BTS7960 — 43 A H-bridge), **BLDC** (DRV8302 — trapezoidal / sinusoidal / FOC), and **servo** (PWM-controlled hobby servos). On the i.MX6ULL we drive a stepper via PWM-step + GPIO-dir, configure TMC2209's RMS current and microstepping over UART, run a closed-loop velocity on a brushed motor with PWM + encoder feedback (Ch 111), and drive a BLDC with trapezoidal commutation. Emphasis on the **electrical safety + thermal limits** that are easy to overlook and fatal to ignore.
+>
 > **Why:** any product that *moves* needs one of these. 3D printers (steppers), automated blinds (DC), drone ESCs (BLDC), CNC mills (everything), conveyor belts, robotic arms, automated valves — motor control is its own discipline. Linux makes the *control* easy (Cortex-A7 has plenty of MIPS for PID); the hard parts are the silicon-protection details, the EMI from chopping inductive currents, and the mechanical resonance of the load. Get these wrong and the result ranges from an audible whine to a destroyed MOSFET.
+>
 > **Focus:** Steppers need precise step-rate generation, usually from a PWM. DC motors need a PWM and an H-bridge, with current feedback for control. BLDC motors need commutation — switching three half-bridges in sync with rotor position. The kernel's PWM framework (Ch 48) handles step generation for steppers. For DC/BLDC closed-loop, you'll bolt together: encoder (Ch 111) + PID + PWM + current sense (INA226 from Ch 75). For absolute torque control or smooth low-RPM behaviour, you need FOC (Field-Oriented Control). The current loop runs at 10 kHz or higher, which exceeds Linux's scheduling jitter. Most engineers offload FOC to a dedicated MCU — SimpleFOC on STM32 is the open-source standard.
 
 ## 112.1  Driver type pick-guide

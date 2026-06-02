@@ -9,7 +9,9 @@ status: draft
 # Chapter 13 — CCM clock tree bring-up
 
 > **What:** code that takes the i.MX6ULL from its 396 MHz reset default to 696 MHz, with explicit configuration of the bus clocks. By the end we can read back, from registers, exactly what the chip is running at and verify with a hardware measurement.
+>
 > **Why:** every later chapter (DDR especially) depends on knowing the bus clocks precisely. The Boot ROM leaves clocks in a known but conservative state; we must own them before we trust their values in initialization tables.
+>
 > **Focus:** the four-layer clock tree from Chapter 5: XTAL → PLL → root mux+divider → CCGR gate. Each peripheral hangs off one root clock; each root clock hangs off one PLL. Trace a frequency through these four hops and most clock bugs become obvious.
 
 ## 13.1  What we want to set up

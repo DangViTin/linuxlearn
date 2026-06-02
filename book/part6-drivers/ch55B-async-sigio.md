@@ -9,7 +9,9 @@ status: draft
 # Chapter 55B — Async notification (SIGIO)
 
 > **What:** the **fasync / SIGIO** mechanism — a driver tells its user-space process "data is ready" by sending it a Unix signal, instead of the process polling or blocking on read. The driver implements `.fasync` in `file_operations`; user-space arms it with `fcntl(fd, F_SETOWN, getpid()); fcntl(fd, F_SETFL, O_ASYNC);`.
+>
 > **Why:** for very rare events ("button pressed" or "thermal alarm"), forcing user-space to `poll()` continuously or block on `read()` is wasteful. SIGIO lets the application do other things; the signal arrives when something happens. Linux's input layer doesn't use it (poll/epoll is preferred), but legacy POSIX-style apps and some custom devices do.
+>
 > **Focus:** **registers a process for delivery; driver triggers**. The driver maintains a `fasync_struct`; when an event happens, it calls `kill_fasync` and the kernel sends the registered process a SIGIO.
 
 ## 55B.1  Driver side

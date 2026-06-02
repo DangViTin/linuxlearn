@@ -9,7 +9,9 @@ status: draft
 # Chapter 27A — DT bindings YAML and `dt_binding_check`
 
 > **What:** the mainline kernel's machine-checkable description of every Device Tree binding — a JSON-Schema document (in YAML form) that says *exactly* which properties a node should have, of what type, with what constraints. Plus the `make dt_binding_check` / `make dtbs_check` targets that validate your DTS against them.
+>
 > **Why:** Since kernel v4.18 (mid-2018), every new binding *must* ship a YAML schema, and existing bindings are being migrated. Without a schema, your patch will not be accepted upstream. Without a schema check on your CI, your binding can silently drift between board variants and you'll only discover it when something breaks.
+>
 > **Focus:** the **schema as a contract**. A binding YAML is the source of truth for what a node *should* look like. The DTS files are checked against it; drivers are documented by it. Read one binding YAML carefully and the rest follow the same pattern.
 
 ## 27A.1  Why bindings need schemas

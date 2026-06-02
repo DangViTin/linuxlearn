@@ -9,7 +9,9 @@ status: draft
 # Chapter 55I — Rust for Linux
 
 > **What:** the **Rust-for-Linux** project — Rust as a second supported language inside the kernel since Linux 6.1. We cover the toolchain setup (rustc + bindgen + a specific Rust edition), what kernel APIs are *exposed* to Rust today, what kind of drivers can already be written, and how to compile a "hello world" kernel module in Rust.
+>
 > **Why:** Rust's memory-safety guarantees apply at compile time. A whole class of C kernel bugs becomes impossible to write in safe Rust: use-after-free, double-free, data races on shared memory, integer overflows. The kernel community has accepted this as worth integrating because these bug classes account for a large share of kernel CVEs. As of 2026, Rust is still small in the kernel (drivers, no core subsystems) but growing.
+>
 > **Focus:** **the borrow checker, applied to kernel code**. The trade-off: more compile errors, fewer runtime errors. For a chapter on i.MX6ULL device drivers, the value is "you can do it for new drivers if you want, with caveats."
 
 ## 55I.1  Status as of late 2025 / early 2026

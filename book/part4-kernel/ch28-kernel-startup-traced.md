@@ -9,7 +9,9 @@ status: draft
 # Chapter 28 — Kernel startup, traced
 
 > **What:** trace the kernel from the first instruction at `stext` to the moment it `exec`s `/sbin/init` — with the source files and line numbers at every step. By the end you should be able to point at any line of the boot log from Chapter 26 and say which function in which source file printed it.
+>
 > **Why:** The boot path is long but readable. Each line you trace becomes one less thing that surprises you when something breaks. By the time you have walked `stext → __mmap_switched → start_kernel → rest_init → kernel_init` once, you can debug "why is my system not booting?" with confidence.
+>
 > **Focus:** the **four phases** of kernel startup: (1) architecture-specific assembly that runs *before* virtual memory, (2) early C in `start_kernel()` that brings up subsystems in a fixed order, (3) `rest_init()` which forks PID 1 and PID 2, (4) `kernel_init` which exec's user-space. Each phase has a clean handoff to the next.
 
 ## 28.1  The four phases

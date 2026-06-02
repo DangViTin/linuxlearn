@@ -9,7 +9,9 @@ status: draft
 # Chapter 14 — DDR3 initialization with MMDC
 
 > **What:** code that takes the Point Atom MINI's DDR3 chip from "powered on but uninitialized" to "512 MiB of usable memory at `0x80000000`," by hand. Then code that copies itself from OCRAM to DRAM and continues running from DRAM.
+>
 > **Why:** until this works, your bare-metal world is 100 KB. After it works, it is 512 MiB. More fundamentally: every dev board you have ever used had someone solve this problem for you in a vendor BSP. Solving it once removes the "magic" from a layer you will otherwise trust forever.
+>
 > **Focus:** The JEDEC DDR3 init sequence is universal across vendors. The MMDC register groups are i.MX-specific. Know both, and you can port to a different DRAM part or a different SoC.
 
 ## 14.1  This chapter takes time

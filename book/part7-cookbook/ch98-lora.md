@@ -9,7 +9,9 @@ status: draft
 # Chapter 98 — LoRa
 
 > **What:** **LoRa** — a Semtech-proprietary sub-GHz long-range modulation (chirp spread spectrum) reaching multiple kilometres at sub-100 kbps. Four real radios compared: **Semtech SX1276/78** (legacy LoRa, 433/868/915 MHz), **SX1262** (current generation, lower power, FSK + LoRa), **LLCC68** (cheap SX1262 sibling, limited SF range), and **EByte E22-900M30S** (a ready-to-fly SX1262 module with PA + LNA). We dissect the radio's SPI register map, walk the kernel `sx127x` / `sx1301` candidate drivers (and why **most production LoRa stacks live in user space**), write a tiny SPI-only LoRa driver from scratch in user space (no kernel driver), then bring up a real LoRaWAN gateway with **ChirpStack**.
+>
 > **Why:** LoRa is the only short-message radio that crosses kilometres without infrastructure, sub-watt, and into deep building penetration. It's the workhorse for agricultural sensors, wildlife trackers, water-meter telemetry, and remote alarms. Many engineers copy the "Arduino LoRa library" without understanding the modulation, the registers, or why a bad antenna costs most of your link budget. This chapter walks the whole stack.
+>
 > **Focus:** **LoRa is a SPI radio with two state machines on top — modem and packet handler — and a tightly coupled antenna RF chain you cannot ignore**. Chirp spread spectrum (CSS) gives ~–137 dBm sensitivity at SF12/125 kHz, but the air-time at SF12 is *seconds per packet*, throttled by duty-cycle regulation (1 % on 868 MHz EU). The four-tuple of spreading factor, bandwidth, coding rate, and preamble is the whole engineering job. You must know what each one costs in air-time, sensitivity, and power. The radio is easy. The link budget is the engineering.
 
 ## 98.1  LoRa vs everything else short-message

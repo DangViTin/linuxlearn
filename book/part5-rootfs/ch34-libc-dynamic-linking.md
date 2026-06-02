@@ -9,7 +9,9 @@ status: draft
 # Chapter 34 — libc, dynamic linking, and the loader
 
 > **What:** the C library that user-space programs link against (glibc, musl, uClibc-ng), the ELF dynamic-linker that resolves shared-library references at runtime (`/lib/ld-linux-armhf.so.3`), and the bookkeeping (PLT, GOT, `LD_LIBRARY_PATH`, `RPATH`) that makes `hello-world` actually find `printf`.
+>
 > **Why:** every dynamically-linked program on the target depends on this machinery. When it works it's invisible. When it breaks you get `No such file or directory` on a file that does exist. Knowing what the loader does demystifies these failures.
+>
 > **Focus:** **ld-linux's job.** When the kernel `exec`s a dynamically-linked program, the first thing that runs is *not* `main()` — it's the dynamic linker, which loads every required shared library, fixes up addresses, and only *then* jumps to your code. Once you've traced this sequence you can debug most `libfoo.so.X: cannot open shared object file` problems.
 
 ## 34.1  Three C libraries

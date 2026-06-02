@@ -9,7 +9,9 @@ status: draft
 # Chapter 15 — Exceptions and the GIC
 
 > **What:** install a real ARMv7-A exception vector table, configure the GIC v2 distributor and CPU interface, route the UART1 interrupt to the core, and write an ISR that echoes received characters.
+>
 > **Why:** every kernel, every RTOS, and most useful bare-metal programs are interrupt-driven. Polling works for hello-world. It falls apart the moment more than one peripheral needs attention.
+>
 > **Focus:** the two-stage IRQ flow: the GIC routes the IRQ to the CPU, the CPU vectors to your handler, and the handler reads the GIC for the IRQ ID, dispatches, and writes EOI. Internalize this diagram and every A-profile system feels familiar.
 
 ## 15.1  What is different from Cortex-M

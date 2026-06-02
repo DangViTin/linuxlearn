@@ -18,7 +18,9 @@ status: draft
 > - **CSF** — Command Sequence File. The signature blob HAB consumes.
 >
 > **What:** what the i.MX6ULL does between the rising edge on POR_B and the moment it jumps to your code.
+>
 > **Why:** the Boot ROM is the first program that runs and you cannot change it. You can only obey it. The price of misunderstanding it is "the board does nothing" — the worst kind of bug, because there is no log to read.
+>
 > **Focus:** the **IVT** (where the ROM finds your image's metadata), the **DCD** (a tiny scripting language the ROM runs to prepare hardware before your code), and the **BootData** struct (load address and image length). These three structures, all under 100 bytes, are the contract.
 
 ## 7.1  What the Boot ROM is

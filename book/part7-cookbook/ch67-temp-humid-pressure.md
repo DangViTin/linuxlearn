@@ -9,7 +9,9 @@ status: draft
 # Chapter 67 — Temperature / humidity / pressure
 
 > **What:** three I²C environmental sensors, dissected: **Bosch BME280** (T+H+P, the workhorse), **Sensirion SHT3x** (T+H, lab-grade accuracy), **ASAir AHT20** (T+H, cheap-and-good). For each: register map, the bytes on the wire, how the mainline IIO driver works, and — for BME280, the most complex — a from-scratch IIO driver implemented from the datasheet.
+>
 > **Why:** environmental sensors are the most common I²C peripherals in IoT and HMI products. They're also the canonical sensors for understanding the IIO subsystem: a small driver, a clear data path, real compensation math that exposes why "raw" and "scale" are separate IIO attributes. Writing one from scratch teaches you both the chip and IIO at the same time.
+>
 > **Focus:** **calibration math turns raw ADC bins into engineering units**. The BME280 ships per-chip calibration coefficients in non-volatile memory; the driver reads them at probe and applies a published polynomial to each raw measurement. Understanding this — that the compensation formula lives in the *driver*, not the *chip* — is the key insight.
 
 ## 67.1  Sensor comparison

@@ -9,10 +9,12 @@ status: draft
 # Chapter 122 — Build your own cross-toolchain
 
 > **What:** building a complete **cross-compiling toolchain** — binutils + gcc + glibc (or musl/uClibc-ng) + gdb — from upstream sources, using **crosstool-NG** (the canonical tool) and, as a one-time exercise, by hand. We resolve the bootstrap puzzle: "gcc needs libc to compile programs, libc needs gcc to compile itself, gcc needs binutils, …". The output: an `arm-linux-gnueabihf-*` toolchain in `/opt/x-tools/`. We compare it size-for-size and behavior-for-behavior against a pre-built Linaro / Bootlin / Yocto SDK toolchain.
+>
 > **Why:** for most users, `apt install gcc-arm-linux-gnueabihf` is fine. Build your own when one of these matters:
 > 1. **Pinning** — the apt version updates with Ubuntu; your build might silently change behavior. Your own toolchain is reproducible across teams and time.
 > 2. **Custom libc / configuration** — you need `glibc` 2.34 specifically; or you want musl for size; or you want a hardened gcc with stack protector defaults.
 > 3. **Understanding** — every "weird linker error" makes sense once you've built the linker. It also teaches what every flag and stage actually does.
+>
 > **Focus:** a multi-stage build solves the chicken-and-egg problem. Stage 1 gcc has no libc and can only compile freestanding code. It builds the kernel headers, then glibc. Stage 2 gcc is then built against the new glibc and has a full C++/pthread runtime. Each stage knows where to find the previous; the directories, prefix, and `--with-sysroot` flags must agree. Get any of these wrong and the linker can't find libc, or gcc looks in `/usr/lib` instead of the cross sysroot. crosstool-NG hides this complexity in menuconfig + sequenced builds.
 
 ## 122.1  What's in a toolchain

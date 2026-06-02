@@ -9,8 +9,11 @@ status: draft
 # Chapter 113 — WS2812 / SK6812 / APA102 addressable LEDs
 
 > **What:** the **addressable RGB LED strip** — daisy-chained programmable pixels where each pixel is RGB (WS2812) or RGBW (SK6812) or has independent global brightness (APA102). We cover the timing-critical 800 kHz one-wire protocol of WS2812 + SK6812, why bit-banging from Linux fails without PREEMPT_RT, the three production-quality implementations on the i.MX6ULL — (1) **SPI + DMA encoding** (the workhorse), (2) **PWM + DMA** (alternative for boards with spare PWM), (3) **bit-bang under PREEMPT_RT** (only viable for short strips). Then APA102's clean SPI native protocol that sidesteps all the timing pain.
+>
 > **Why:** every modern indicator strip, status display, mood-lighting product, holiday string light, LED ring around a Wi-Fi-enabled doorbell, automotive interior accent — all use these three families. Hundreds of pixels per meter, $0.05 per pixel at volume, the only daisy-chained interface that scales to 1000+ LEDs on a single data line. Yet driving them from Linux is "interesting" — the WS2812 wire protocol uses 350 ns and 800 ns pulses; Linux IRQ jitter is microseconds. Understanding the SPI + DMA trick lets you drive any-length strip at 30+ fps with < 5 % CPU.
+>
 > **Focus:** WS2812 and SK6812 encode bits as pulse widths on a single wire. A "0" bit is 350 ns high followed by 800 ns low. A "1" bit is 800 ns high followed by 450 ns low. A reset is 50 µs or more of low. Each LED takes 24 bits (3 channels × 8) — or 32 bits for RGBW — and the whole strip is one back-to-back stream. Bit-banging from Linux user-space does not work. The IRQ jitter is microseconds; the WS2812 timing budget is hundreds of nanoseconds. The trick: each WS2812 "bit" becomes 4 SPI bits at 3.2 MHz; a "0" is encoded as `1000`, a "1" as `1110`. The SPI bitstream becomes the WS2812 waveform after DMA pushes it out hands-off. APA102 is the escape hatch — separate clock + data lines, no timing constraints.
+>
 > **Tooling.** This chapter uses `libgpiod` (`gpioset`) for hello-world; the SPI-DMA path uses raw `/dev/spidev`; optional `python3-spidev`.
 > - **Ubuntu-base (target):** `apt install gpiod libgpiod-dev python3-spidev`
 > - **Buildroot:** `BR2_PACKAGE_LIBGPIOD=y BR2_PACKAGE_PYTHON3_SPIDEV=y`

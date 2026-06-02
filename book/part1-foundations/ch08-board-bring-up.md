@@ -9,7 +9,9 @@ status: draft
 # Chapter 8 — Hardware bring-up checklist
 
 > **What:** the physical, hands-on first contact with the Point Atom MINI. By the end you have a board you trust, a serial connection that works, an SD-card workflow, and a tested recovery path.
+>
 > **Why:** every later chapter assumes the hardware works. The cheapest time to discover a flaky cable or wrong jumper is now. Not at 1 a.m. in Chapter 14, when you can't tell whether the DDR init or the wiring is broken.
+>
 > **Focus:** the **recovery flow over USB-OTG**. Until you have done it once with a deliberately broken SD card, you will not believe it.
 
 ## 8.1  Unbox and inspect

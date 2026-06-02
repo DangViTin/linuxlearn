@@ -9,8 +9,11 @@ status: draft
 # Chapter 115 — Dual FEC + hosted Ethernet
 
 > **What:** putting **multiple Ethernet interfaces** on an i.MX6ULL. The SoC has two on-chip **FEC (Fast Ethernet Controller)** instances at 100 Mbps; we bring both up simultaneously as `eth0` and `eth1` with separate PHYs. For a third (or fourth) interface, we add **WIZnet W5500** (SPI Ethernet with hardware TCP/IP) or **Microchip ENC28J60** (older, slower, mainline-supported) as `spi-ethernet` chips. We then build typical multi-NIC scenarios: a **router** (eth0 WAN, eth1 LAN), a **bridge** (eth0+eth1 transparent L2), and an **isolated subnet** for industrial bus traffic (eth1 talks only to PLCs, eth0 to corporate network).
+>
 > **Why:** any "edge gateway" product has 2+ Ethernet ports — one to the internet, one to a local industrial network — because mixing the two on a single physical port creates security and reliability problems. The i.MX6ULL is unusual in having two on-chip FECs (most SoCs in this class have one); this is a feature you should exploit. When you need a third interface (e.g., a separate management LAN, or a Modbus-TCP island), SPI Ethernet chips are the only way without an external switch — and they're easy on Linux thanks to mainline drivers.
+>
 > **Focus:** Dual-MAC on one SoC means two PHYs. Each needs its own pinmux, reference clock, and IRQ. The kernel netdev model already isolates the two MACs — they look like two NICs. The hard part is the bring-up: pinmux conflicts (FEC1 shares many pins with FEC2 + UART), separate PHY addresses on MDIO, and per-PHY interrupt routing. The W5500 implements TCP/IP in hardware. You talk to it at the socket layer over SPI, not as a netdev. This does not fit the Linux netdev model. Mainline-friendly choices are ENC28J60 (slow, netdev-presenting) and TI's KSZ8851 / Davicom DM9051 (10/100, netdev, faster). We cover all three patterns.
+>
 > **Tooling.** This chapter uses `iproute2`, `iperf3`, `tcpdump`, `ethtool`, optional `bridge-utils`.
 > - **Ubuntu-base (target):** `apt install iproute2 iperf3 tcpdump ethtool bridge-utils`
 > - **Buildroot:** `BR2_PACKAGE_IPROUTE2=y BR2_PACKAGE_IPERF3=y BR2_PACKAGE_TCPDUMP=y BR2_PACKAGE_ETHTOOL=y BR2_PACKAGE_BRIDGE_UTILS=y`

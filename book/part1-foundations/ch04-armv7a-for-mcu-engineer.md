@@ -9,7 +9,9 @@ status: draft
 # Chapter 4 — ARMv7-A and the Cortex-A7, for the MCU engineer
 
 > **What:** a structural understanding of the CPU core inside the i.MX6ULL, expressed as differences from Cortex-M parts you already know.
+>
 > **Why:** Linux exists *because* the A-profile cores have features the M-profile cores lack. If MMU, privilege levels, and the generic timer are vague, the kernel's boot sequence will be vague too.
+>
 > **Focus:** the three concepts that justify the entire kernel: privilege levels, the MMU, and banked registers / exception modes. Get these and most kernel design choices follow.
 
 ## 4.1  Where the Cortex-A7 sits in the ARM lineup

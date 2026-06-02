@@ -9,7 +9,9 @@ status: draft
 # Chapter 51 — DMA
 
 > **What:** Linux's **`dmaengine`** framework — the portable way to ask a hardware DMA controller to move bytes between memory and a peripheral (or memory and memory) without involving the CPU between start and completion. By the end you'll have an SPI or UART driver that hands off a 4 KB transfer to the SDMA controller and goes to sleep until the completion callback wakes it.
+>
 > **Why:** The CPU is bad at bulk data moves. At 10 Mbps SPI, one IRQ per byte burns a large fraction of the i.MX6ULL CPU. SDMA does the same job at zero CPU cost. Any driver that streams data — SPI, I²S audio, CSI camera, LCDIF, eMMC — uses DMA. Once you know the consumer API, most DMA-using drivers read the same way.
+>
 > **Focus:** **the four standard steps** — request a channel, configure direction & widths, prepare a descriptor, submit + issue + wait. Once you know these four steps, most DMA drivers look the same.
 
 ## 51.1  When and why

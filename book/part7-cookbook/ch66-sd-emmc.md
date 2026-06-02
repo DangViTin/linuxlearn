@@ -9,6 +9,7 @@ status: draft
 # Chapter 66 — SD card and eMMC deep dive
 
 > **What:** the **MMC subsystem** that backs both SD cards and eMMC. Speed modes (DS, HS, HS200, HS400, SDR104), the **EXT_CSD** register (the eMMC's metadata block), boot partitions, RPMB, wear monitoring, and the "removable card in a production product" antipattern. Three configurations compared: **µSD on a card slot**, **soldered eMMC at HS200**, **soldered eMMC with secure boot via RPMB**.
+>
 > **Why:** for most i.MX6ULL products with > 32 MB storage need, the choice is "SD or eMMC." Picking wrong leads to field failures or wasted engineering effort. eMMC is the right choice for production; SD is fine for dev boards. This chapter is mostly the why behind that statement, plus the bring-up + monitoring details.
 > **Compare**: removable SD (cheap, accessible, dies first), soldered eMMC HS200 (200 MB/s, rated for 5+ years of continuous service in industrial-grade parts), eMMC with RPMB (~10 % overhead, replay-protected for secure boot).
 

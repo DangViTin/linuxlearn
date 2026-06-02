@@ -9,7 +9,9 @@ status: draft
 # Chapter 49 — IIO subsystem (ADCs, sensors)
 
 > **What:** **Industrial I/O** (IIO) — the kernel framework that everything sensor-related lives in. ADCs, DACs, temperature/humidity/pressure/light/proximity sensors, IMUs (accel + gyro + mag), color sensors, particulate-matter sensors, current sensors — all expose themselves through one consistent API: `/sys/bus/iio/devices/iio:deviceN/in_<type>_<index>_raw` for one-shot reads, `/dev/iio:deviceN` for streamed buffers.
+>
 > **Why:** before IIO (~2011), every sensor driver invented its own sysfs layout. Reading an ADXL345 was completely different from reading an LIS3DH despite both being 3-axis accelerometers. IIO standardised the interface: every accelerometer reports `in_accel_x_raw` in the same units after `_scale` is applied. User-space tools (`iio-utils`, libiio, gnuplot wrappers) work generically. **Every chip in Part VII's sensor cookbook is an IIO driver.**
+>
 > **Focus:** **channels, scale, and triggers**. A *channel* is one measurable thing (accel-x, temp, ADC-in-3). A *scale* converts raw value to engineering units. A *trigger* is what causes a coordinated sample to be taken (a timer, an IRQ, a sysfs poke). Get those three concepts right and the rest of IIO follows.
 
 ## 49.1  Architecture

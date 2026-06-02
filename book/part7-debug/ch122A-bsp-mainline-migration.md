@@ -9,7 +9,9 @@ status: draft
 # Chapter 122A — BSP → mainline migration playbook
 
 > **What:** the **systematic procedure** for taking an inherited vendor BSP (NXP `linux-imx 4.1.15`, ST's `stm32mp1 4.19`, TI's `ti-linux-5.10`, …) and moving the product to a **mainline** Linux kernel that's supportable for the product's lifetime. We cover the patch inventory + classification, the subsystem-by-subsystem migration order (the safest path through the dependency graph), the test-coverage strategy, the parallel-tree maintenance during the migration, the upstreaming of recoverable bits, and the "do not migrate" decision criterion.
+>
 > **Why:** you join a project; the existing kernel is Linux 4.1.15 from NXP's 2017 BSP; the product ships for 8 more years; security CVEs accumulate weekly; mainline is at 6.6+; and the BSP is *frozen* — no upstream updates because the vendor moved on. This is a project-defining decision. This chapter is the playbook for getting it right.
+>
 > **Focus:** **classify every vendor patch into mainline-merged (delete), mainline-equivalent (replace), still-needed (forward-port), or vendor-only (decide individually); migrate subsystem-by-subsystem in dependency order; maintain BOTH trees in parallel during the transition; CI on both**. The hardest part isn't technical. `git rebase` handles most of the code work. The hardest part is cultural — convincing management that six months of kernel work, with no new features, pays back over the product's lifetime.
 
 ## 122A.1  Why migration is hard

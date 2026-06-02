@@ -9,7 +9,9 @@ status: draft
 # Chapter 76 — Battery fuel gauge + charger
 
 > **What:** the three pieces of a battery-powered embedded product: a **fuel gauge** that tracks state-of-charge (Maxim MAX17048 — I²C, "ModelGauge" algorithm), a **charger** that manages the CC/CV cycle (TI TP4056 — analog, simple; or TI BQ24074 — I²C-configurable, path-managed), and the **`power_supply_class`** framework that ties them into Linux. For each: physics, protocol, mainline driver, plus a from-scratch MAX17048 driver implementing the `power_supply` provider model.
+>
 > **Why:** any battery-powered product needs to report "percent full" to the user accurately. The naive approach — voltage divider into ADC, lookup table — is wrong: Li-ion voltage doesn't track SoC linearly, and load voltage drops badly bias the reading. A fuel gauge chip does the right thing: integrates current (coulomb counting) or models the cell (impedance tracking) to get sub-2 % SoC accuracy. Plus a charger that knows when to terminate.
+>
 > **Focus:** The kernel exposes battery state to user-space through `power_supply_class`, the same framework used by laptops, phones, and embedded boards. Drivers register as `power_supply` providers; user-space (UPower, systemd-battery-monitor, your custom app) reads from `/sys/class/power_supply/`. Same shape for laptop batteries, e-bike packs, phones, embedded devices.
 
 ## 76.1  Chip comparison

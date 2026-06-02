@@ -9,7 +9,9 @@ status: draft
 # Chapter 18B — Button input and beep
 
 > **What:** read a GPIO input with software debouncing, then drive a passive buzzer at an audible frequency from a polled GPIO toggle loop. Two new peripherals; both built on the GPIO and timer primitives we already own.
+>
 > **Why:** every product accepts input and emits feedback. Until now, our only input was UART and our only output was an LED. Adding a button and a buzzer completes the minimal HMI vocabulary, and forces us to handle **debouncing** — a topic every embedded engineer should learn once and then trust.
+>
 > **Focus:** the debounce decision: spin-debounce, timer-debounce, or hardware-debounce. The right one depends on what else the CPU has to do; we will see all three.
 
 ## 18B.1  The hardware on the Point Atom MINI

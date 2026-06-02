@@ -9,7 +9,9 @@ status: draft
 # Chapter 51A — Watchdog
 
 > **What:** the **watchdog subsystem** — `/dev/watchdog`, the `watchdog_device` framework, and the user-space pattern (`systemd-watchdog` or a hand-written keepalive daemon) that reset the hardware timer periodically. If the timer ever expires, the SoC's watchdog peripheral resets the system. By the end you have a system that recovers automatically from any kernel hang or stuck application.
+>
 > **Why:** Most shipping products need this. A kernel oops in some other subsystem. A deadlock in your driver. A user-space process stuck in an infinite loop. Without a watchdog, the device becomes a brick that needs a manual power-cycle. With one, the device reboots within seconds, logs the event, and is back in service.
+>
 > **Focus:** **the keepalive contract**. Some user-space process *must* write to `/dev/watchdog` (or call the right ioctl) before the timer expires, forever. If that process dies, hangs, or gets stuck on disk I/O, the watchdog fires and the system resets. Picking *which* process should hold this responsibility — and what "alive" means to it — is the design decision.
 
 ## 51A.1  Hardware vs software watchdog

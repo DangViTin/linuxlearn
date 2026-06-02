@@ -9,7 +9,9 @@ status: draft
 # Chapter 5 — A tour of the i.MX6ULL SoC
 
 > **What:** a top-down map of the chip — what blocks are inside it, where they live in memory, how they are clocked, and how their pins are routed.
+>
 > **Why:** every later chapter will name a peripheral. For each one you should be able to find it on the block diagram, locate its register base, find its clock root and gate bit, and know what pin it lands on. All of that in a few minutes.
+>
 > **Focus:** the **memory map**, the **clock tree at one level of detail**, and the **IOMUX pattern**. These three structures repeat across every NXP i.MX SoC. The names change, the shapes do not.
 
 ## 5.1  What is the i.MX6ULL

@@ -9,8 +9,11 @@ status: draft
 # Chapter 54A — MTD / UBI for raw NAND
 
 > **What:** the **MTD** (Memory Technology Devices) subsystem and the **UBI** (Unsorted Block Images) layer that sits on top of it. MTD partitions and exposes raw NAND/NOR flash to the kernel; UBI handles wear-levelling, bad-block management, and exposes UBI *volumes* that look like static block devices.
+>
 > **Why:** Raw NAND is common in industrial embedded — cheaper per GB than eMMC, longer-lived if managed correctly. But NAND is not a block device. It has erase blocks (about 128 KB) and pages (about 2 KB). Bad blocks appear over the device's lifetime. Erase cycles are limited. MTD/UBI is the kernel's solution.
+>
 > **Focus:** **the three layers** — MTD (NAND geometry), UBI (wear leveling + bad-block remapping), UBIFS (filesystem). Keep them separate in your head — each solves a different problem.
+>
 > **Tooling.** This chapter uses `mtd-utils` (`flash_erase`, `nandwrite`, `flashcp`, `mtdinfo`, `ubinfo`, `ubinize`, `ubiformat`).
 > - **Ubuntu-base (target):** `apt install mtd-utils`
 > - **Buildroot:** `BR2_PACKAGE_MTD=y`

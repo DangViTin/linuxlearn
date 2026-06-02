@@ -9,7 +9,9 @@ status: draft
 # Chapter 52A — PREEMPT_RT
 
 > **What:** **PREEMPT_RT** — fully merged into the mainline kernel since **v6.12** (December 2024) — is the kernel configuration that turns Linux into a hard-real-time OS, where worst-case interrupt-to-thread latency is measured in tens of microseconds on a Cortex-A7 instead of milliseconds. No out-of-tree patch is needed on v6.12 or later. We cover the four core changes (preemptible spinlocks, threaded IRQs by default, priority inheritance, high-resolution timers), how to enable it on the i.MX6ULL, and how to measure latency with `cyclictest`.
+>
 > **Why:** standard Linux has a few-millisecond worst-case scheduling latency under load. That's fine for general computing but disqualifies it from motor control, audio processing, industrial PLCs, and anything that needs deterministic response. PREEMPT_RT bridges that gap. Many industrial products run PREEMPT_RT Linux today — CNCs, robotic arms, real-time camera inference.
+>
 > **Focus:** **the deterministic-latency contract**. PREEMPT_RT promises that a high-priority thread will run within a bounded time after its waking event, regardless of what lower-priority threads or kernel code are doing. What "bounded" actually means, and what breaks it, is the main thing to learn.
 
 ## 52A.1  What "real-time" means here

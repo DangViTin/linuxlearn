@@ -9,7 +9,9 @@ status: draft
 # Chapter 50 — regmap
 
 > **What:** **regmap** — the register-access layer that sits between your driver and the bus (I²C, SPI, MMIO, or a custom one). You describe the chip's register layout once; regmap gives you `regmap_read(rm, reg, &val)` and `regmap_write(rm, reg, val)` that just work, with optional caching, locking, debugging, and bulk transfers all handled for you.
+>
 > **Why:** before regmap (~2011), every driver duplicated the same boilerplate: an I²C wrapper, an SPI wrapper, register-cache invalidation, byte-swap dances, mutex protection. The same 40 lines were copy-pasted across hundreds of drivers, with subtle bugs each time. Regmap factored it out. A modern driver — especially an audio codec or PMIC with hundreds of registers — uses regmap exclusively and is half as long as it would have been pre-regmap.
+>
 > **Focus:** **declare-then-use**. You provide a `regmap_config` describing your chip's registers (bit widths, ranges, which are volatile vs cached, which are read-only) and a one-call regmap_init for your bus. From there every register access goes through the same two functions. Get the config right and the rest is bookkeeping.
 
 ## 50.1  Why regmap exists

@@ -9,7 +9,9 @@ status: draft
 # Chapter 45 — Input subsystem
 
 > **What:** the **input subsystem** — the kernel framework that turns "a GPIO went low" or "an I²C read returned a touch coordinate" into a standardised event stream consumed by `evdev`, X11, Wayland, framebuffer toolkits, and command-line tools. We'll build a `gpio-keys` derivative — the canonical "GPIO as keyboard key" driver — and walk every byte from the IRQ handler to `evtest` reading `/dev/input/eventN`.
+>
 > **Why:** every input device on a Linux box — keyboard, mouse, touchscreen, joystick, IR remote — goes through the input subsystem. Once you understand `input_register_device` and `input_event`, *every* input driver in the kernel looks familiar. The framework handles event multiplexing, queueing, sysfs/`evdev` integration, autorepeat, and userspace device-node creation — your driver just calls `input_report_key()` and `input_sync()`.
+>
 > **Focus:** **type, code, value** — the three-element tuple that describes every input event. Once that triple makes sense — `EV_KEY` + `KEY_ENTER` + `1` means "Enter was pressed" — the rest of the input subsystem (abs axes, relative motion, multi-touch slots) is just different combinations of type/code/value.
 
 ## 45.1  The picture

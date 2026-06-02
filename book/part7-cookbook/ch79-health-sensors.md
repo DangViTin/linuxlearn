@@ -9,7 +9,9 @@ status: draft
 # Chapter 79 — Health sensors
 
 > **What:** **PPG** (photoplethysmography) sensors — Maxim **MAX30100** (the original) and **MAX30102** (the improved successor). Both: red + IR LED + photodiode + FIFO + I²C. They give you raw light-intensity samples from a finger (or earlobe, forehead); your code extracts **heart rate** and **SpO₂** (blood-oxygen saturation) from those samples. Protocol, FIFO mechanics, from-scratch IIO driver, and a sketch of the HR/SpO₂ extraction algorithm.
+>
 > **Why:** "wellness" features (fitness bands, smart watches, baby monitors, medical IoT) all use PPG. The chip is cheap, the wiring trivial, the principle is simple, but the work is in the signal processing on the host side. This chapter covers the chip end-to-end and points at what user-space must do.
+>
 > **Focus:** The chip delivers light-intensity samples. Your code turns those samples into heart rate and SpO₂ — the chip cannot do this for you. Heart rate comes from counting peaks in the IR signal. SpO₂ comes from the ratio of red-AC/red-DC to IR-AC/IR-DC mapped through an empirical curve. The driver delivers raw 18-bit samples at 100 Hz; user-space filters, finds peaks, computes. Without good signal processing, the readings are unreliable. The chip cannot compensate for bad code on the host.
 
 ## 79.1  Chip comparison

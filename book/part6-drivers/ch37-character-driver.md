@@ -9,7 +9,9 @@ status: draft
 # Chapter 37 — A character driver, by hand
 
 > **What:** a character device driver — the kind that backs `/dev/ttyS0`, `/dev/i2c-1`, `/dev/hidraw0`, and most other "stream of bytes you read and write" device files in `/dev/`. We'll build one from scratch: allocate a device number, register a `cdev`, hook up `open`/`read`/`write`/`release`, and copy data safely between user-space and kernel.
+>
 > **Why:** character drivers are how the vast majority of embedded peripheral drivers expose themselves to user-space. UARTs, GPIO chips, I²C/SPI controllers, sensors, fingerprint readers, sound cards' control interfaces — almost all are character devices under the hood. The pattern is identical every time; what changes is the body of `open` / `read` / `write`. Master the pattern in this chapter; everything in Part VI is variations on it.
+>
 > **Focus:** **the user/kernel boundary**. The single most common bug class in driver code is dereferencing a user-space pointer directly. `copy_to_user` and `copy_from_user` are not just safer — they are *correct*; a direct dereference will fault, silently corrupt, or be a security hole. By the end of this chapter the `__user` annotation should feel like a load-bearing part of every function signature.
 
 ## 37.1  The picture

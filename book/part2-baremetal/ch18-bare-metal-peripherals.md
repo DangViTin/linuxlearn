@@ -9,7 +9,9 @@ status: draft
 # Chapter 18 — Optional bare-metal peripherals
 
 > **What:** small, working bare-metal drivers for I²C (read an EEPROM byte), SPI (read a flash JEDEC ID), and a tiny eLCDIF "draw a color bar." Plus a one-section reflection on what's left to do bare-metal vs what we move to U-Boot for.
+>
 > **Why:** the rest of Part VI will teach these same peripherals inside Linux, where the abstractions are thicker. Touching the raw controllers here, once, makes the Linux drivers feel like simplifications rather than magic.
+>
 > **Focus:** the driver pattern that repeats: clock, IOMUX, register init, polled state machine, optional IRQ. After writing a few bare-metal drivers, the Linux equivalents look mostly like glue.
 
 ## 18.1  Why this chapter is optional

@@ -9,7 +9,9 @@ status: draft
 # Chapter 17 — MMU and caches
 
 > **What:** build a first-level page table by hand, map our peripherals as Device memory and our RAM as Normal Cacheable, switch on the MMU and both caches, and measure the speed-up.
+>
 > **Why:** The MMU and caches are the last hardware blocks Linux abstracts from you. Turn them on once by hand and every kernel page-table operation looks like a variation on this.
+>
 > **Focus:** the short-descriptor format: a 4096-entry first-level table covering 4 GiB in 1 MiB sections, with per-section permissions and memory attributes. LPAE (3 levels, 40-bit PA) is overkill for our 512 MiB DRAM.
 
 ## 17.1  What we are not doing

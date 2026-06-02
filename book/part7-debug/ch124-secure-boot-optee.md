@@ -9,7 +9,9 @@ status: draft
 # Chapter 124 — Secure boot (HAB) and OP-TEE
 
 > **What:** **NXP HAB (High Assurance Boot)** — the SoC-enforced chain-of-trust that ensures only signed bootloaders/kernels run on production i.MX devices. Plus **TrustZone** and **OP-TEE** — the ARM-architectural Secure World and the most-used open-source TEE (Trusted Execution Environment). We walk: the cryptographic chain ROM → SRK fuses → CSF → signed U-Boot → signed kernel → dm-verity rootfs; NXP's **CST (Code Signing Tool)** for producing CSF files; the *key ceremony* (how to generate, store, and rotate signing keys); TrustZone primer (monitor mode, SMC calls, world switch); OP-TEE basics (Trusted Application lifecycle, REE↔TEE communication, TA development).
+>
 > **Why:** verified boot is needed for any product handling user data, payment credentials, certificate-based identity, or DRM. Without it, an attacker with physical access can replace U-Boot, boot a custom kernel that bypasses authentication, or extract storage encryption keys. With HAB plus dm-verity, the device resists most physical-access attacks. Silicon-level attacks (decap, side-channel, fault injection) remain possible but require expensive equipment. OP-TEE adds a runtime-isolated execution domain — Secure World keys, crypto operations, attestation primitives are inaccessible even to a fully-compromised Linux kernel.
+>
 > **Focus:** the chain works like this:
 > 1. The ROM checks U-Boot's signature against the SRK hash in eFuses.
 > 2. Verified U-Boot checks the kernel and DT signature.
@@ -19,6 +21,7 @@ status: draft
 > Break any link and all later links lose meaning.
 >
 > Key management is the part that bites: if you lose the private key you brick the fleet; if you expose it you hand attackers full control. This chapter is short on the easy bits and long on the parts you'll regret skipping.
+>
 > **Tooling.** **Host:** `openssl` (preinstalled), NXP's **CST** (Code Signing Tool — downloaded from NXP after registration, non-redistributable). **Target:** OP-TEE client (`tee-supplicant`, `libteec`) — build from `OP-TEE/optee_os` + `OP-TEE/optee_client`, or use Buildroot's `BR2_PACKAGE_OPTEE_CLIENT=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 
 ## 124.1  The threat model

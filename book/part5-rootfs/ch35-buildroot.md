@@ -9,7 +9,9 @@ status: draft
 # Chapter 35 — Buildroot, after you can do it by hand
 
 > **What:** Buildroot — a make-driven build system that produces a complete root filesystem (optionally + bootloader + kernel + cross-toolchain) from one `make` command and one `.config` file. By the end you will have built a working rootfs that boots on the i.MX6ULL, then customised it with extra packages, and learned where to look when the build fails.
+>
 > **Why:** Chapter 31 took us 22 pages and a dozen hand-typed commands to get a BusyBox shell. Buildroot does the same in twenty minutes of compile time and one menuconfig session. On top of that it offers 3000+ optional packages (Qt, alsa-utils, openssh, mosquitto, nodejs, ...). Chapter 31 was for understanding; this chapter is for speed.
+>
 > **Focus:** **the `output/` tree** — every artefact Buildroot produces lives in one place under `output/`, with a predictable layout. Once you know `output/`, debugging a failed build is a directed search instead of a hunt.
 
 ## 35.1  What Buildroot is

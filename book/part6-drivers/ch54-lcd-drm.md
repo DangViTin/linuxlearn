@@ -9,7 +9,9 @@ status: draft
 # Chapter 54 — LCD framebuffer and DRM/KMS
 
 > **What:** the kernel's display stack — the legacy **fbdev** (`/dev/fb0`) API and the modern **DRM/KMS** (Direct Rendering Manager / Kernel Mode Setting) framework. Both still ship; new drivers target DRM. We cover the i.MX6ULL **LCDIF** controller, the `panel-simple` driver that handles dozens of RGB-parallel panels, and how mainline kernels expose displays to user-space.
+>
 > **Why:** LCDIF + RGB parallel LCDs are the bread and butter of i.MX6ULL HMI products. The framework has shifted significantly in the last 5 years (away from fbdev, toward DRM) and being current matters — DRM brings page-flipping, atomic mode-setting, fence-based synchronisation, and Wayland compatibility.
+>
 > **Focus:** For most boards, panel-simple plus correct DT timings is enough. For 90 % of products you don't write a panel driver; you describe panel timings in DT, point at `panel-simple`, and the LCDIF driver handles the rest. The remaining 10 % is custom panels needing a chip-specific init sequence, covered in Ch 80–84 of the cookbook.
 
 ## 54.1  fbdev vs DRM

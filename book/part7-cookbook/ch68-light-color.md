@@ -9,7 +9,9 @@ status: draft
 # Chapter 68 — Light & color sensors
 
 > **What:** four I²C ambient-light sensors, dissected: **Rohm BH1750** (the simplest), **AMS TSL2561** (dual-channel for IR rejection), **Vishay VEML7700** (low-power, modern). Plus the bonus **AMS TCS34725** (RGB+clear color sensor). For each: protocol on the wire, the mainline IIO driver internals, and a from-scratch IIO driver for BH1750.
+>
 > **Why:** measuring light is harder than it looks. A photodiode's current is roughly proportional to incident photon flux, but the human eye's "lux" response is wavelength-weighted (CIE photopic curve). Different sensors solve this differently. BH1750 uses an analog filter. TSL2561 measures a broadband channel and an IR channel and subtracts. VEML7700 uses an integrated correction. After this chapter you can pick a sensor by its trade-offs, and write a driver for any of them.
+>
 > **Focus:** **integration time controls both noise floor and saturation point**. Light sensors are integrators — current × time → digital count. Long integration: low-light accuracy. Short integration: high-light range. Pick integration time for the range you care about. The IIO `integration_time` attribute exposes this directly.
 
 ## 68.1  Sensor comparison

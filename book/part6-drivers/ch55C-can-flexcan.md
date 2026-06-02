@@ -9,8 +9,11 @@ status: draft
 # Chapter 55C — CAN bus (SocketCAN + FlexCAN)
 
 > **What:** **SocketCAN** — Linux's abstraction that exposes a CAN interface as a network device (`can0`) and CAN frames as `struct sockaddr_can` / `struct can_frame` over a normal socket. The **FlexCAN** driver covers i.MX6ULL's 2 FlexCAN controllers; user-space speaks the socket API. By the end you can `cansend can0 123#DEADBEEF` and watch the frame on a scope.
+>
 > **Why:** CAN is the dominant bus in automotive and a strong second in industrial automation. The SocketCAN abstraction means you write CAN apps with `socket()` / `sendto()` / `recvmsg()` — same APIs as TCP/UDP. No proprietary library; tools work across all CAN hardware on Linux.
+>
 > **Focus:** **CAN looks like a network device.** Once `can0` is "up," everything is generic — Wireshark, tcpdump-equivalent (`candump`), `iproute2` configuration, even SO_TIMESTAMP for nanosecond-accurate receive timestamps.
+>
 > **Tooling.** This chapter uses `can-utils` + `iproute2` (`ip link set canX type can ...`).
 > - **Ubuntu-base (target):** `apt install can-utils iproute2`
 > - **Buildroot:** `BR2_PACKAGE_CAN_UTILS=y BR2_PACKAGE_IPROUTE2=y`

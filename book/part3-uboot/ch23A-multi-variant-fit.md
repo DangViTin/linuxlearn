@@ -9,7 +9,9 @@ status: draft
 # Chapter 23A — Multi-variant FIT images and DT overlays
 
 > **What:** one FIT image that boots correctly on three different board variants — same kernel, different DTBs — with the variant selected at boot time from a strap pin or an EEPROM ID.
+>
 > **Why:** Real products ship in revisions. Rev A has a 4.3-inch display, Rev B has a 7-inch display and a fan, Rev C drops the display and adds Wi-Fi. Three separate images means three OTA targets and three release pipelines. One image means one OTA stream and one QA artifact set.
+>
 > **Focus:** the **runtime-selection mechanism** — strap pin or EEPROM ID read by U-Boot before `bootm` selects which `configurations` entry to apply. Plus DT overlays, which let you patch one base DTB with small fragments rather than maintaining N full DTBs.
 
 ## 23A.1  The scenario

@@ -9,8 +9,11 @@ status: draft
 # Chapter 54B — V4L2 + GStreamer
 
 > **What:** the **V4L2** (Video for Linux 2) subsystem — the kernel framework that abstracts video capture and output devices behind `/dev/videoN` — and **GStreamer**, the user-space pipeline framework that consumes V4L2 frames. We focus on the i.MX6ULL's **CSI** (Camera Serial Interface) for parallel cameras (OV5640, OV7725, GC2145), the only camera interface on this SoC.
+>
 > **Why:** every IP camera, dashcam, smart-doorbell, machine-vision product runs this stack. The complexity comes from V4L2's flexibility: sub-devices (the sensor, the CSI, the IPU) compose into pipelines that can be configured at runtime. Once the pipeline model clicks, the rest of the imaging stack reads easily.
+>
 > **Focus:** **the V4L2 subdev graph + GStreamer's `v4l2src`**. The kernel exposes the capture pipeline as a graph of sub-devices; GStreamer's `v4l2src` element grabs frames from `/dev/video0`. After that, the rest is image processing.
+>
 > **Tooling.** This chapter uses `v4l-utils` + `gstreamer1.0-tools` + base/good/bad plugins.
 > - **Ubuntu-base (target):** `apt install v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad`
 > - **Buildroot:** `BR2_PACKAGE_V4L_UTILS=y BR2_PACKAGE_GSTREAMER1=y BR2_PACKAGE_GST1_PLUGINS_BASE=y BR2_PACKAGE_GST1_PLUGINS_GOOD=y BR2_PACKAGE_GST1_PLUGINS_BAD=y`

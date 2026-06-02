@@ -9,7 +9,9 @@ status: draft
 # Chapter 55H — RGB-to-HDMI bridge (sii902x)
 
 > **What:** the **Silicon Image SiI902x** family of RGB-parallel-to-HDMI transmitter chips, and the kernel's **DRM bridge** subsystem. The i.MX6ULL has no native HDMI; an SiI9022/SiI9024 chip on the LCDIF parallel output gives you HDMI. The mainline `sii902x.c` DRM bridge driver handles config and EDID parsing.
+>
 > **Why:** any product that needs an external display (HMI, kiosk, signage) usually wants HDMI compatibility. SiI902x is a small, low-cost (~$2) chip that takes 24-bit RGB + HSYNC/VSYNC/PCLK and outputs HDMI 1.4 at up to 1080p60. It works on any i.MX6ULL board with LCDIF pinmux available.
+>
 > **Focus:** **the bridge concept**. A DRM "bridge" sits between a CRTC (LCDIF) and a connector (HDMI port). DRM chains bridges automatically. You describe the chain in DT and the driver does the rest.
 
 ## 55H.1  Hardware

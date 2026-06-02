@@ -9,7 +9,9 @@ status: draft
 # Chapter 99 — Sub-GHz proprietary
 
 > **What:** **non-LoRa short-range radios** for fleets that need higher throughput than LoRa or have no infrastructure: **Nordic nRF24L01+** (2.4 GHz, 250 kbps – 2 Mbps GFSK, the dominant cheap mesh radio), **TI CC1101** (sub-GHz 300–928 MHz multi-mode), **TI CC1200** (newer, lower phase noise, higher data rate, better Wi-SUN candidate). We dissect each chip's SPI command/register model, the **Enhanced ShockBurst** auto-ACK in nRF24, the CC1101 state machine, write a 200-line nRF24 P2P driver from scratch in user space, then wire DT for the existing kernel drivers where they exist.
+>
 > **Why:** LoRa (Ch 98) buys range with bandwidth. The opposite trade — sub-second latency, multi-kbps throughput, no MAC stack, no infrastructure, $1–4 BOM — is what nRF24L01 and CC1101 give you. Every consumer remote control, garage opener, weather station, and dozens-of-nodes IoT prototype uses one of these. The kernel has *some* support (`nrf24` is out-of-tree; CC1101 has an old in-tree driver), but as with LoRa, most production stacks live in user space against `spidev`. Understanding the chip's state machine + SPI command shape is everything.
+>
 > **Focus:** **these chips are state machines driven by SPI commands. The behavior depends on the current state, not on individual register values**. nRF24's state machine has 7 states (Power-Down, Standby-I, Standby-II, RX, TX, etc.); CC1101's has 13. Almost every "the chip doesn't work" bug is the chip being in the wrong state — TX commanded from RX, FIFO read while still receiving, command issued before the previous one's settling time elapsed. Learn the state diagram and the rest is straightforward.
 
 ## 99.1  Choosing the chip

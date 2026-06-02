@@ -9,7 +9,9 @@ status: draft
 # Chapter 33 — Init systems
 
 > **What:** PID 1 — what it does, what it should do, and the three real choices for an embedded Linux system: BusyBox `init` (tiny, traditional), `sysvinit` (the classical desktop init from the 90s), and `systemd` (the modern service manager that runs on basically every desktop distro).
+>
 > **Why:** PID 1 is special: the kernel panics if it dies, and every other process on the system descends from it. The choice you make here determines how you write boot scripts, how you crash-restart services, how logs are collected, and how much disk and RAM the system uses just to "be up."
+>
 > **Focus:** the **trade-off triangle**: simplicity, capability, and footprint. BusyBox wins on simplicity and footprint. Systemd wins on capability. Sysvinit is the historical middle. For most embedded products in 2025, BusyBox init is the right answer. Knowing *why* is the goal of this chapter.
 
 ## 33.1  What PID 1 actually does

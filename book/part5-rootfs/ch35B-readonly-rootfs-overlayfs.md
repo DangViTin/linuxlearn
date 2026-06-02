@@ -9,7 +9,9 @@ status: draft
 # Chapter 35B — Read-only rootfs + overlayfs
 
 > **What:** mount the root filesystem **read-only** on a shipped product, then use **`overlayfs`** to give the parts of `/` that must be writable (e.g., `/var/log/`, `/etc/`, `/tmp/`) a per-boot tmpfs or persistent overlay. The result: power can drop at any instant without corrupting the rootfs.
+>
 > **Why:** every shipping industrial product mounts its rootfs read-only. The reason is simple: a user yanks the power, the filesystem doesn't catch the close-and-flush, the next boot's `fsck` finds inconsistencies, sometimes corrects them, sometimes returns "dropped to /bin/sh for emergency repair." A read-only rootfs cannot be corrupted by power loss because no one is writing to it. The trade is that any data the system *does* need to write must go somewhere else — a tmpfs (lost on reboot), a separate data partition (persistent), or an overlay (write-through to tmpfs / data partition).
+>
 > **Focus:** the **three-tier model** — `lowerdir` (immutable rootfs), `upperdir` (where changes accumulate), `workdir` (overlay's scratch space). Once you understand those three, every overlayfs setup follows the same shape.
 
 ## 35B.1  The problem this solves

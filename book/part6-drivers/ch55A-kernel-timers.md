@@ -9,7 +9,9 @@ status: draft
 # Chapter 55A — Kernel timers and hrtimers
 
 > **What:** the kernel's two timer families — **timer_list** (jiffies-granular, ~1 ms on i.MX6ULL with HZ=1000) and **hrtimer** (high-resolution, nanosecond-granular). Used for "do X in N ms" patterns inside drivers — debouncing buttons, polling status, scheduling periodic samples.
+>
 > **Why:** `msleep` and `mdelay` block the calling thread. Sometimes you need "fire a callback in 50 ms without blocking" — that's what these timers are for. Common driver patterns use them: timeouts, periodic polling, rate limiting, deferred work.
+>
 > **Focus:** **timer_list for ms granularity, hrtimer for µs/ns**.
 
 ## 55A.1  timer_list
