@@ -178,6 +178,3 @@ The book's GitHub repository is the canonical place for errata. Open an issue or
 ---
 
 > **One last thing before you turn the page.** This is a slow book. It rewards patience and punishes shortcut-taking. If you find yourself wanting to skip from Chapter 7 to Chapter 19, close the book and come back later. It will still be here.
-
-— *(Author)*
-*(City), 2026*

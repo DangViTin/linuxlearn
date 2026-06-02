@@ -18,35 +18,51 @@
  *    custom.js).
  * ========================================================================== */
 
-/* Wider content on huge displays, default on smaller ones. */
+/* Wider content on huge displays, default on smaller ones.
+ * 52em ≈ 70 characters per line at our base size — the long-form sweet spot. */
 @media (min-width: 80em) {
   :root {
     --content-padding: 2.5em;
-    /* Furo's default page width hovers around 46em. Push out a bit. */
   }
   body .content {
-    max-width: 56em;
+    max-width: 52em;
   }
 }
 
-/* Larger body text + line-height for long-form reading. */
+/* Larger body text + line-height for long-form reading on tall (vertical
+ * Full HD-ish) monitors. Inter leads the stack — it's hinted for screens and
+ * pairs cleanly with monospace code blocks. */
 :root {
-  --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
-                "Roboto", "Helvetica Neue", Arial, sans-serif;
+  --font-stack: "Inter", "Inter var", -apple-system, BlinkMacSystemFont,
+                "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
   --font-stack--monospace: "JetBrains Mono", "Fira Code", "Cascadia Code",
                            ui-monospace, "SFMono-Regular", Menlo, Consolas,
                            "Liberation Mono", monospace;
-  font-size: 17px;
+  font-size: 17.5px;
 }
 
 article.bd-article,
 .content {
-  line-height: 1.65;
+  line-height: 1.72;
+  font-feature-settings: "kern", "liga", "calt";  /* nicer kerning + ligatures */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 article.bd-article p,
 .content p {
-  margin-block: 0.7em;
+  margin-block: 0.85em;
+}
+
+/* Subtle negative tracking on big headings — looks crisp at large sizes. */
+article h1, .content h1 { letter-spacing: -0.015em; }
+article h2, .content h2 { letter-spacing: -0.01em; }
+article h3, .content h3 { letter-spacing: -0.005em; }
+
+/* Wider sidebar on desktop — Furo defaults to 15em, which feels cramped
+ * on a Full HD portrait monitor. Bump to 17em (closer to Sphinx default). */
+@media (min-width: 67em) {
+  body { --sidebar-width: 17em; }
 }
 
 /* Heading rhythm — slightly tighter than Furo default, with subtle rules
@@ -276,52 +292,67 @@ button.copybtn:hover {
 }
 
 /* ---------------------------------------------------------------------------
- * Desktop sidebar toggle (added by custom.js).
+ * Desktop sidebar toggle.
  *
- * When the user clicks the toggle, body gets class `sidebar-hidden` and the
- * sidebar slides off-screen, content expands.
+ * The drawer is a flex item with width derived from --sidebar-width. To make
+ * the content actually expand when the sidebar is hidden (not just cover the
+ * empty slot), we collapse the drawer's width to 0 with overflow hidden.
+ * `margin-left` alone on a flex item leaves the slot reserved — that was the
+ * reason the previous implementation looked broken on desktop.
  * ------------------------------------------------------------------------- */
 @media (min-width: 67em) {
-  body.sidebar-hidden .sidebar-drawer {
-    margin-left: calc(-1 * var(--sidebar-width, 15em));
-    transition: margin-left 0.2s ease-in-out;
-  }
-  body.sidebar-hidden .content,
-  body.sidebar-hidden main {
-    /* Expand into the freed space. */
-    max-width: 70em;
-  }
   .sidebar-drawer {
-    transition: margin-left 0.2s ease-in-out;
+    overflow: hidden;
+    transition: width 0.25s ease, min-width 0.25s ease,
+                flex-basis 0.25s ease, padding 0.25s ease,
+                border-color 0.25s ease;
   }
-  /* The toggle button itself, injected by custom.js. */
+  body.sidebar-hidden .sidebar-drawer {
+    width: 0 !important;
+    min-width: 0 !important;
+    flex-basis: 0 !important;
+    padding: 0;
+    border-right-color: transparent;
+  }
+
+  /* Floating toggle button — top-left of the viewport, always above the
+   * sidebar so the click target stays reachable in both states. */
   .sidebar-toggle {
     position: fixed;
-    top: 0.5em;
-    left: 0.5em;
-    z-index: 50;
-    background: var(--color-background-secondary);
-    color: var(--color-foreground-primary);
-    border: 1px solid var(--color-background-border);
-    border-radius: 6px;
+    top: 0.55em;
+    left: 0.55em;
+    z-index: 200;
     width: 32px;
     height: 32px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    background: var(--color-background-secondary);
+    color: var(--color-foreground-muted);
+    border: 1px solid var(--color-background-border);
+    border-radius: 6px;
     cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
   .sidebar-toggle:hover {
     background: var(--color-background-hover);
+    color: var(--color-foreground-primary);
   }
-  body.sidebar-hidden .sidebar-toggle {
-    left: 0.5em;
+  .sidebar-toggle svg { display: block; }
+  /* Show the "panel" glyph when sidebar visible, the "hamburger" when hidden. */
+  .sidebar-toggle .icon-show { display: none; }
+  body.sidebar-hidden .sidebar-toggle .icon-hide { display: none; }
+  body.sidebar-hidden .sidebar-toggle .icon-show { display: block; }
+
+  /* Push the brand block down so the toggle button doesn't overlap the title. */
+  .sidebar-brand {
+    padding-top: 2.6em;
   }
 }
 
-/* On narrow screens (vertical / portrait / mobile), the hamburger menu
- * already handles the show/hide, so we don't show the desktop toggle. */
+/* On narrow screens (vertical / portrait / mobile) Furo's hamburger handles
+ * show/hide, so we hide our desktop toggle. */
 @media (max-width: 67em) {
   .sidebar-toggle { display: none; }
 }
