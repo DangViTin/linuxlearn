@@ -1,4 +1,4 @@
-﻿---
+---
 chapter: 28
 title: Kernel startup, traced
 part: IV — The Kernel
@@ -7,12 +7,16 @@ status: draft
 ---
 
 # Chapter 28 — Kernel startup, traced
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
 
 > **What:** trace the kernel from the first instruction at `stext` to the moment it `exec`s `/sbin/init` — with the source files and line numbers at every step. By the end you should be able to point at any line of the boot log from Chapter 26 and say which function in which source file printed it.
 >
 > **Why:** The boot path is long but readable. Each line you trace becomes one less thing that surprises you when something breaks. By the time you have walked `stext → __mmap_switched → start_kernel → rest_init → kernel_init` once, you can debug "why is my system not booting?" with confidence.
 >
 > **Focus:** the **four phases** of kernel startup: (1) architecture-specific assembly that runs *before* virtual memory, (2) early C in `start_kernel()` that brings up subsystems in a fixed order, (3) `rest_init()` which forks PID 1 and PID 2, (4) `kernel_init` which exec's user-space. Each phase has a clean handoff to the next.
+
 
 ## 28.1  The four phases
 
@@ -45,7 +49,7 @@ status: draft
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-We walk each phase in turn. Source-file paths are relative to the kernel source root. Line numbers reference v6.6; ±5 lines on other versions.
+We walk each phase in turn. Source-file paths are relative to the kernel source root. Line numbers reference v6.6. ±5 lines on other versions.
 
 ## 28.2  Phase 1 — `stext` (arch/arm/kernel/head.S)
 
@@ -56,6 +60,8 @@ ENTRY(stext)
 ```
 
 `stext` is defined in `arch/arm/kernel/head.S`. Before the kernel takes control, U-Boot has prepared:
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```
 MMU       = off
@@ -98,13 +104,15 @@ ENDPROC(stext)
 Four points to keep in mind:
 
 - **`__lookup_processor_type`** walks a linker-supplied array (`__proc_info_begin..__proc_info_end`) of `struct proc_info_list`. Each entry says "for MIDR mask X = value Y, this is your `cpu_setup`, `cpu_cache_fns`, etc." The Cortex-A7 entry lives in `arch/arm/mm/proc-v7.S`. If your CPU isn't recognised, the kernel hangs in `__error_p` (you see no output because UART isn't initialised yet — Chapter 26 §26.5 covers this failure mode).
-- **`__vet_atags`** does a quick byte-pattern check on the data at `r2`. If it looks like a DTB (magic bytes `0xD00DFEED`) or ATAGS, it's accepted; otherwise the address is zeroed and the kernel will later boot with no DT (almost certainly panicking).
+- **`__vet_atags`** does a quick byte-pattern check on the data at `r2`. If it looks like a DTB (magic bytes `0xD00DFEED`) or ATAGS, it's accepted. otherwise the address is zeroed and the kernel will later boot with no DT (almost certainly panicking).
 - **`__create_page_tables`** builds a flat identity-mapped 1-MiB-section page table just big enough to cover the kernel image + early reservations. Real page tables come later in `paging_init()`.
-- **`__enable_mmu`** sets `SCTLR.M=1`. The next instruction it executes is via virtual addresses; the jump-via-`r13` lands at `__mmap_switched`, which lives at a virtual address in the kernel's mapped region.
+- **`__enable_mmu`** sets `SCTLR.M=1`. The next instruction it executes is via virtual addresses. The jump-via-`r13` lands at `__mmap_switched`, which lives at a virtual address in the kernel's mapped region.
 
 ## 28.3  Phase 2 begins — `__mmap_switched` (arch/arm/kernel/head-common.S)
 
 The first C-callable function after the MMU comes up. It does the C runtime setup:
+MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+**MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 
 ```asm
 __mmap_switched:
@@ -243,6 +251,8 @@ Initializes the scheduler's data structures and creates the boot CPU's runqueue.
 ### `init_IRQ()` — calls into `arch/arm/kernel/irq.c` → `irqchip_init()`
 
 Walks the DT looking for nodes with `compatible = "arm,cortex-a7-gic"` (or whichever interrupt controller the SoC uses), and probes the GIC driver. After this, IRQs from devices can be registered with `request_irq()`.
+MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+**GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 
 ### `time_init()` — `drivers/clocksource/`
 
@@ -254,7 +264,7 @@ Now binds the *real* console driver to the UART. Until this point, all `printk` 
 
 ### Roughly 30 more init calls
 
-`vfs_caches_init`, `proc_root_init`, `cgroup_init`, `taskstats_init_early`, `cpuset_init`, `kthread_init`, `late_time_init`, … each brings up one subsystem. Don't memorise the order; do know that it's a fixed sequence that you can trace in source.
+`vfs_caches_init`, `proc_root_init`, `cgroup_init`, `taskstats_init_early`, `cpuset_init`, `kthread_init`, `late_time_init`, … each brings up one subsystem. Don't memorise the order. do know that it's a fixed sequence that you can trace in source.
 
 At the end, `start_kernel()` calls `rest_init()` and never returns.
 
@@ -399,9 +409,9 @@ In English:
 
 1. **Wait for `kthreadd` to be ready** (so the rest of init can spawn kthreads).
 2. **`kernel_init_freeable()`** — finishes device probing, mounts the rootfs (per `root=` and `rootfstype=` from cmdline), opens `/dev/console`. This is the call that emits the *"VFS: Mounted root (ext4 filesystem) on device 179:2."* boot-log line.
-3. **`free_initmem()`** — frees the `.init.*` linker sections. The kernel's setup code has run; it's no longer needed and gets returned to the page allocator. You see the famous *"Freeing unused kernel image (initmem) memory: 1024K"* line.
+3. **`free_initmem()`** — frees the `.init.*` linker sections. The kernel's setup code has run. It's no longer needed and gets returned to the page allocator. You see the famous *"Freeing unused kernel image (initmem) memory: 1024K"* line.
 4. **Fall through the init-binary search**:
-   - If `rdinit=` was on the cmdline → run that (initramfs case; see Ch 29).
+   - If `rdinit=` was on the cmdline → run that (initramfs case. see Ch 29).
    - Else if `init=` was on the cmdline → run that.
    - Else if `CONFIG_DEFAULT_INIT` is set → run that.
    - Else try `/sbin/init`, `/etc/init`, `/bin/init`, `/bin/sh` in order.
@@ -432,21 +442,21 @@ That table is the goal of this chapter. After it, you can grep the kernel for an
 1. **Walk `start_kernel()` end-to-end** with the source open. Count the init-step calls. Mark which ones you'd expect to be expensive (memory init, clocksource init, console init) vs cheap.
 2. **Find which DT property each setup_arch step reads.** Look at `early_init_dt_scan_*()` functions in `drivers/of/fdt.c`. Note which ones look at `/chosen/bootargs`, which at `/cpus`, which at `/memory`.
 3. **Build with `ftrace_dump_on_oops`** in `.config` and add `printk.devkmsg=on initcall_debug` to bootargs. Boot. Run `dmesg | grep initcall`. You will see every initcall function name printed as it runs — a more detailed view of the same flow this chapter described.
-4. **Boot with `loglevel=8`** to see *all* `printk` levels. You'll see kilobytes more output than the default; among it are the debug-level prints that document things like the page allocator's initial population, slab cache creation, and so on.
+4. **Boot with `loglevel=8`** to see *all* `printk` levels. You'll see kilobytes more output than the default. among it are the debug-level prints that document things like the page allocator's initial population, slab cache creation, and so on.
 5. **Trace a panic.** Pass `init=/nonexistent` in bootargs. Boot. The kernel reaches `kernel_init`, the four `try_to_run_init_process()` calls fail in turn, and `panic("No working init found.")` fires. Compare the panic message to the source in `kernel_init()`.
 
 ## 28.9  Pitfalls
 
 - **Confusing `vmlinux` with `zImage`.** When debugging a panic, you want symbols. The symbols are in `vmlinux`, not `zImage`. Always have `vmlinux` from the *same build* alongside your `zImage`.
-- **Thinking init runs in kernel space.** PID 1 is *kernel_init* until `kernel_execve("/sbin/init")` returns successfully; thereafter PID 1 is the `/sbin/init` user-space binary. The transition is invisible in `ps` output but real in process address space.
+- **Thinking init runs in kernel space.** PID 1 is *kernel_init* until `kernel_execve("/sbin/init")` returns successfully. thereafter PID 1 is the `/sbin/init` user-space binary. The transition is invisible in `ps` output but real in process address space.
 - **`free_initmem` recycles `.init.text` and `.init.data`.** Function names like `init_IRQ`, `setup_arch`, `start_kernel` themselves get freed — you cannot call them after boot. The compiler enforces this via the `__init` attribute, which places them in the `.init.text` section.
-- **`__init` data referenced after boot.** A subtler version of the above. If a driver's probe routine stashes a pointer to a global tagged `__initdata`, that pointer becomes dangling after `free_initmem`. Symptom: crash on first access to the data, much later. Lint catches most of these; some slip through.
+- **`__init` data referenced after boot.** A subtler version of the above. If a driver's probe routine stashes a pointer to a global tagged `__initdata`, that pointer becomes dangling after `free_initmem`. Symptom: crash on first access to the data, much later. Lint catches most of these. some slip through.
 - **Console output disappearing mid-boot.** Happens when the early `earlycon` is active, then the regular console-driver probes but mismatches the port, and the regular driver "takes over" without working. Symptom: log goes silent partway through. Fix: ensure your `console=` and DT `/chosen/stdout-path` agree.
 - **Reading kernel source on the wrong version.** Always check what `cat /proc/version` reports on your target and read the matching tag in your local source tree. v6.6 and v6.7 can differ in startup flow.
 
 ## 28.10  Going deeper
 
-- **`init/main.c`** — the file `start_kernel` lives in. Read it cover to cover; ~1000 lines, mostly the function we walked.
+- **`init/main.c`** — the file `start_kernel` lives in. Read it cover to cover. ~1000 lines, mostly the function we walked.
 - **`arch/arm/kernel/head.S`** and **`arch/arm/kernel/head-common.S`** — the assembly entry. Short and educational.
 - **`Documentation/arch/arm/booting.rst`** — the boot contract.
 - **`Documentation/admin-guide/init.rst`** — what cmdline parameters `kernel_init` consults.

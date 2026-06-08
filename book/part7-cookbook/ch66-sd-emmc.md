@@ -8,10 +8,15 @@ status: draft
 
 # Chapter 66 — SD card and eMMC deep dive
 
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
+
 > **What:** the **MMC subsystem** that backs both SD cards and eMMC. Speed modes (DS, HS, HS200, HS400, SDR104), the **EXT_CSD** register (the eMMC's metadata block), boot partitions, RPMB, wear monitoring, and the "removable card in a production product" antipattern. Three configurations compared: **µSD on a card slot**, **soldered eMMC at HS200**, **soldered eMMC with secure boot via RPMB**.
 >
-> **Why:** for most i.MX6ULL products with > 32 MB storage need, the choice is "SD or eMMC." Picking wrong leads to field failures or wasted engineering effort. eMMC is the right choice for production; SD is fine for dev boards. This chapter is mostly the why behind that statement, plus the bring-up + monitoring details.
+> **Why:** for most i.MX6ULL products with > 32 MB storage need, the choice is "SD or eMMC." Picking wrong leads to field failures or wasted engineering effort. eMMC is the right choice for production. SD is fine for dev boards. This chapter is mostly the why behind that statement, plus the bring-up + monitoring details.
 > **Compare**: removable SD (cheap, accessible, dies first), soldered eMMC HS200 (200 MB/s, rated for 5+ years of continuous service in industrial-grade parts), eMMC with RPMB (~10 % overhead, replay-protected for secure boot).
+
 
 ## 66.1  SD card vs eMMC — the production reality
 
@@ -20,7 +25,7 @@ SD cards fail often, in ways that surprise engineers used to flash chips:
 - **No wear levelling guarantees**. The card's controller does *some* — but cheap cards (the kind whose price you negotiate down) skimp on it.
 - **Power-loss corruption**. A write in progress when power drops can corrupt the entire FAT/ext4 metadata, not just the in-flight sector. eMMC has better resilience (built-in caching with battery backup in some packages), but SD cards are notoriously fragile.
 - **Temperature**. Industrial-grade SD exists (-40 to +85 °C) but consumer ones spec 0–70.
-- **Counterfeit**. The single biggest reliability issue. A "32 GB SanDisk" purchased on a forum reseller might be a 4 GB chip with the controller faked to report 32 GB; writes beyond 4 GB silently fail. Even reputable distributors get hit with fakes.
+- **Counterfeit**. The single biggest reliability issue. A "32 GB SanDisk" purchased on a forum reseller might be a 4 GB chip with the controller faked to report 32 GB. writes beyond 4 GB silently fail. Even reputable distributors get hit with fakes.
 
 For a dev board or a product where the user *expects* removable media (a kiosk that takes SD-card content updates), SD is fine. **For any product that's supposed to "just work" for years untouched, solder an eMMC.**
 
@@ -78,12 +83,12 @@ i.MX6ULL supports up to HS200 (200 MB/s on 8-bit eMMC) and SDR104 (104 MB/s on 4
 ```
 
 Critical pieces:
-- **`bus-width = <8>`** — eMMC's 8 data lines; gets HS200's full bandwidth.
+- **`bus-width = <8>`** — eMMC's 8 data lines. gets HS200's full bandwidth.
 - **`non-removable`** — kernel knows not to poll for card removal.
 - **`mmc-hs200-1_8v`** — declares HS200 mode is supported (requires switching VQMMC to 1.8 V).
-- **`vqmmc-supply`** — the I/O voltage rail; needs to support 1.8 V for HS200.
+- **`vqmmc-supply`** — the I/O voltage rail. needs to support 1.8 V for HS200.
 - **`pinctrl-1` and `-2`** — different pin slew rates at higher speeds (pull strengths change).
-- **`no-sd`, `no-sdio`** — speeds up probing; we know this is eMMC.
+- **`no-sd`, `no-sdio`** — speeds up probing. We know this is eMMC.
 
 For an SD slot on uSDHC1:
 
@@ -107,7 +112,7 @@ For an SD slot on uSDHC1:
 
 ## 66.5  The MMC protocol — what's actually on the wire
 
-Unlike QSPI and EEPROM (Ch 64/65) — where a from-scratch driver was tractable in ~200 lines — an MMC/SD **host controller** driver is genuinely a different scale. The SD spec is ~700 pages; the eMMC spec is ~400. There are ~60 commands, multi-stage state machines, signal-voltage switching, tuning windows, CRC validation, and physical-layer subtleties. **Writing one from scratch in a single chapter is not realistic.**
+Unlike QSPI and EEPROM (Ch 64/65) — where a from-scratch driver was tractable in ~200 lines — an MMC/SD **host controller** driver is genuinely a different scale. The SD spec is ~700 pages. The eMMC spec is ~400. There are ~60 commands, multi-stage state machines, signal-voltage switching, tuning windows, CRC validation, and physical-layer subtleties. **Writing one from scratch in a single chapter is not realistic.**
 
 What we *can* do is **trace a single `read()` through the layers** so you understand exactly what the kernel does, and you can read the existing host driver's source after.
 
@@ -158,7 +163,7 @@ For multi-block (CMD18), one command triggers a stream of consecutive blocks unt
 
 ### The state machine
 
-Cards live in one of these states: **Idle → Ready → Identification → Standby → Transfer → Sending-data / Receive-data / Programming / Disconnected**. Commands move the card between states; only certain commands are valid in each state. The host's job is to track this state and never issue an illegal command.
+Cards live in one of these states: **Idle → Ready → Identification → Standby → Transfer → Sending-data / Receive-data / Programming / Disconnected**. Commands move the card between states. only certain commands are valid in each state. The host's job is to track this state and never issue an illegal command.
 
 This is why a from-scratch MMC driver isn't tractable in a chapter — it's not the wire protocol (relatively simple), it's the state-machine management plus the voltage switching plus the tuning plus the CRC plus the error recovery.
 
@@ -220,6 +225,7 @@ static const struct mmc_host_ops sdhci_esdhc_ops = {
 ```
 
 **That is the abstraction.** The core asks the host driver to "execute this request" or "switch to bus width 8" without caring whether the controller is uSDHC, sdhci-pci, dw-mshc, or anything else. The host driver translates abstract requests into specific MMIO writes for its hardware.
+**MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 
 ### Tracing a single 4-KB read
 
@@ -231,16 +237,21 @@ You run `dd if=/dev/mmcblk1p1 bs=4096 count=1 of=/tmp/x`. Here's what happens:
    - Calculates the **MMC block address** (LBA / 512, since MMC blocks are 512 B even when the FS uses larger).
    - Decides between **single-block (CMD17)** for 1 block or **multi-block (CMD18 / CMD23+CMD18)** for 2+ blocks. For 4 KB = 8 blocks: multi-block with CMD23 prefix.
    - Builds a **`struct mmc_request`** containing the command, data-direction, sg-list for the DMA destination, and a completion callback.
+MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 4. **`mmc_wait_for_req(host, mrq)`** in the core: sends to host_ops->request, waits on the completion.
 5. **`sdhci_request`** in the host driver:
    - Programs the eSDHC's command register (CMD18 opcode), argument register (start block), block-count register (8).
    - Sets up SDMA: scatter-gather list pointing into the user-space buffer's pinned pages.
    - Enables IRQs for "command complete" and "transfer complete."
-   - Writes the "start" bit; hardware now drives the bus.
-6. **Hardware** drives CMD18 onto the CMD line; eMMC responds with R1; eMMC begins streaming 8 × 512 bytes on the 8-bit DAT bus at 200 MHz (HS200) into DDR via DMA.
-7. **IRQ "command complete"** fires after the CMD line transaction; host reads R1 response register, captures status.
+   - Writes the "start" bit. hardware now drives the bus.
+6. **Hardware** drives CMD18 onto the CMD line. eMMC responds with R1. eMMC begins streaming 8 × 512 bytes on the 8-bit DAT bus at 200 MHz (HS200) into DDR via DMA.
+**DDR** - external DRAM that must be configured and trained before most software can run from it.
+7. **IRQ "command complete"** fires after the CMD line transaction. host reads R1 response register, captures status.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 8. **IRQ "transfer complete"** fires after the data phase finishes. Host driver calls `mmc_request_done(host, mrq)`.
-9. **MMC core** wakes the waiter; `mmc_blk_request_fn` checks for errors, retries if needed, calls `blk_mq_end_request(req, status)`.
+9. **MMC core** wakes the waiter. `mmc_blk_request_fn` checks for errors, retries if needed, calls `blk_mq_end_request(req, status)`.
 10. **Block layer** returns to user-space.
 
 End-to-end at HS200, 4 KB takes about ~25 µs (10 µs of bus time, ~15 µs of kernel + IRQ overhead). For a properly-sized buffer (~64 KB or larger), the kernel overhead amortises and you approach raw bus bandwidth.
@@ -273,7 +284,7 @@ static int sdhci_xxx_probe(struct platform_device *pdev)
 }
 ```
 
-The **SDHCI framework** (`drivers/mmc/host/sdhci.c`) handles the standard cases; vendor drivers like `sdhci-esdhc-imx.c` add quirks and override specific operations. That's why the i.MX driver is ~1500 lines (mostly quirks) rather than 5000+ — the heavy lifting is in `sdhci.c`.
+The **SDHCI framework** (`drivers/mmc/host/sdhci.c`) handles the standard cases. vendor drivers like `sdhci-esdhc-imx.c` add quirks and override specific operations. That's why the i.MX driver is ~1500 lines (mostly quirks) rather than 5000+ — the heavy lifting is in `sdhci.c`.
 
 For a completely custom controller (not SDHCI-compatible), you'd implement `mmc_host_ops` from scratch — that's more work but the structure is the same.
 
@@ -324,6 +335,8 @@ eMMCs typically have:
 ```
 
 `mmcblk1boot0` is the active boot partition — i.MX6ULL boots from it (with the right fuse setting) instead of looking at the main partition's MBR. Use it for U-Boot:
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```
 # Force write to mmcblk1boot0
@@ -335,7 +348,7 @@ eMMCs typically have:
 [root@pa-mini:~]# mmc bootpart enable 1 1 /dev/mmcblk1
 ```
 
-Why? Two boot partitions enable atomic boot-loader updates: write to boot0 while booting from boot1; on success, swap. Crash mid-update = boot1 still works.
+Why? Two boot partitions enable atomic boot-loader updates: write to boot0 while booting from boot1. on success, swap. Crash mid-update = boot1 still works.
 
 ## 66.9  RPMB — replay-protected secure storage
 
@@ -365,7 +378,11 @@ HS200 eMMC: 100–150 MB/s sequential, ~2500 IOPS random 4k write. Compare to a 
 
 ## 66.11  Lab
 
-1. **Trace a read with ftrace.** `echo function > /sys/kernel/debug/tracing/current_tracer; echo 'mmc_*' > set_ftrace_filter; cat /dev/mmcblk1p1 > /dev/null; cat trace`. See `mmc_blk_request_fn`, `mmc_wait_for_req`, `sdhci_request` fire in order — exactly the layered call chain described in §66.6.
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
+1. **Trace a read with ftrace.** `echo function > /sys/kernel/debug/tracing/current_tracer. echo 'mmc_*' > set_ftrace_filter. cat /dev/mmcblk1p1 > /dev/null. cat trace`. See `mmc_blk_request_fn`, `mmc_wait_for_req`, `sdhci_request` fire in order — exactly the layered call chain described in §66.6.
 2. **Inspect EXT_CSD.** Run `mmc extcsd read /dev/mmcblk1`. Identify the eMMC's life-time estimation.
 3. **Benchmark.** dd + fio at sequential and random. Compare against an SD card.
 4. **Boot partition write.** `dd` U-Boot to `mmcblk1boot0`. Activate it. Boot.
@@ -376,14 +393,14 @@ HS200 eMMC: 100–150 MB/s sequential, ~2500 IOPS random 4k write. Compare to a 
 
 ## 66.12  Pitfalls
 
-- **`bus-width = <4>`** on a chip with 8 data lines wired. You get DS or HS speeds at best; HS200 needs 8-bit. Check schematic ↔ DT.
-- **Missing `vqmmc-supply`** for HS200. Driver can't switch to 1.8 V signaling; falls back to HS50. Look for "fall back" messages in dmesg.
+- **`bus-width = <4>`** on a chip with 8 data lines wired. You get DS or HS speeds at best. HS200 needs 8-bit. Check schematic ↔ DT.
+- **Missing `vqmmc-supply`** for HS200. Driver can't switch to 1.8 V signaling. falls back to HS50. Look for "fall back" messages in dmesg.
 - **`non-removable` on an SD slot.** The card-detect signal is ignored, so the system keeps trying to talk to the slot after the card is removed.
 - **`cd-gpios` polarity wrong.** Empty slot reports as "card present" (or vice versa). `GPIO_ACTIVE_LOW` is typical for card-detect switches.
-- **eMMC tuning fails.** HS200 requires per-card calibration ("tuning"). Some eMMCs require specific tuning patterns. Mainline supports this; if you see "tuning failed" in dmesg, the eMMC chip is buggy (not common but happens — usually fixable by `mmc-ddr-1_8v` instead of HS200).
+- **eMMC tuning fails.** HS200 requires per-card calibration ("tuning"). Some eMMCs require specific tuning patterns. Mainline supports this. If you see "tuning failed" in dmesg, the eMMC chip is buggy (not common but happens — usually fixable by `mmc-ddr-1_8v` instead of HS200).
 - **fsync slow.** eMMC `fsync` does a real flush-to-flash, which takes 10 to 100 ms. If your application calls `fsync` after every write, throughput drops sharply. Batch your writes.
 - **Write amplification.** Even with TRIM, eMMC's GC writes amplify your data ~2–5×. A 10 GB/day app actually writes 30 GB/day to flash. Plan lifetime accordingly.
-- **`force_ro` on boot partitions**. Default is RO; you must clear it to write. Don't forget to re-arm.
+- **`force_ro` on boot partitions**. Default is RO. You must clear it to write. Don't forget to re-arm.
 - **Power-fail mid-erase.** eMMC's internal erase block is invisible. A power loss can corrupt a wider area than you actually wrote. Industrial eMMCs (Micron, KIOXIA) include PFAIL protection. Consumer parts do not.
 
 ## 66.13  Going deeper
@@ -404,3 +421,4 @@ HS200 eMMC: 100–150 MB/s sequential, ~2500 IOPS random 4k write. Compare to a 
 > **End of Group A — Storage (Ch 64–66).** You now have the three storage stacks covered: QSPI NOR for small boot, EEPROM for tiny metadata, eMMC/SD for bulk. Pick by capacity + speed + reliability requirements.
 
 > Next chapter: **Chapter 67 — Temperature / humidity / pressure sensors.** Group B opens with the environmental sensors trio — BME280, SHT3x, AHT20 — and the IIO drivers that expose them.
+> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.

@@ -11,8 +11,10 @@ status: draft
 > **What:** small persistent storage chips — bytes addressable, no erase-before-write needed, ~1M write cycles. We'll walk the chip-side protocol byte-by-byte, dissect how the mainline `at24` driver actually works, then write a tiny from-scratch I²C-EEPROM driver. Three chips compared — **Microchip AT24C02** (I²C, 256 B), **AT24C512** (I²C, 64 KB), **25LC512** (SPI, 64 KB).
 >
 > **Why:** EEPROM is the place embedded boards store small permanent facts about themselves — MAC address, board serial, calibration. The protocol is small. Writing your own driver in 100 lines is realistic and worth the time. After this chapter the kernel's `at24.c` will read as ordinary code, not a mystery.
+> **MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
 >
 > **Focus:** **two protocol gotchas** — (a) page-aligned writes (writing across a page boundary silently wraps within the same page), and (b) the ACK-poll loop (the chip NACKs while internally programming, you poll until it ACKs). Get those two right and the rest is byte arithmetic.
+
 
 ## 65.1  When EEPROM beats flash, OTP fuses, NVRAM
 
@@ -84,7 +86,7 @@ For a write of 4 bytes to offset 0x40:
    Slave:                  ←─┘         ←─┘   ←─┘    ←─┘    ←─┘    ←─┘
 ```
 
-After the data bytes, the chip starts an *internal write cycle* of about 5 ms. During this time it NACKs every I²C transaction. The host keeps issuing address-write transactions; each NACK means "still writing," and the first ACK means "done." This is called **ACK polling**.
+After the data bytes, the chip starts an *internal write cycle* of about 5 ms. During this time it NACKs every I²C transaction. The host keeps issuing address-write transactions. each NACK means "still writing," and the first ACK means "done." This is called **ACK polling**.
 
 For AT24C512 (and larger), the byte address is **2 bytes**: send 0xA0, ACK, addr_high, ACK, addr_low, ACK, then data. Same protocol, one more address byte.
 
@@ -109,6 +111,8 @@ This is the AT24 driver's most important loop. Get it wrong = silent data corrup
 Source: `drivers/misc/eeprom/at24.c` (~1000 lines).
 
 The driver is structured around a **regmap** abstraction (Ch 50) over either `regmap_init_i2c` or `regmap_init_smbus` (for the 1-byte-address case). The regmap config encodes the address width and page size. Then the driver implements two callbacks for `nvmem` (Ch 65.7 below) and that's most of it.
+MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 
 ### Probe walk
 
@@ -237,7 +241,7 @@ static int at24_write(void *priv, unsigned int off, void *val, size_t count)
 Two things to notice:
 
 1. **The page-boundary split**: `chunk = min(count, at24->page_size - page_offset)` ensures we never cross a page boundary in one transaction.
-2. **ACK polling**: the loop with `regmap_read(regmap, 0, &dummy)` tests whether the chip ACKs *yet*. While the chip is writing internally, it NACKs every transaction; the loop spins (yielding with `usleep_range`) until it gets an ACK.
+2. **ACK polling**: the loop with `regmap_read(regmap, 0, &dummy)` tests whether the chip ACKs *yet*. While the chip is writing internally, it NACKs every transaction. The loop spins (yielding with `usleep_range`) until it gets an ACK.
 
 That is the whole driver. Around 50 lines of real code. The rest is parameter tables, DT plumbing, and edge cases (multi-address chips, write-protect GPIOs).
 
@@ -500,7 +504,10 @@ What we *skipped* compared to `at24`:
 - Multi-address chips (AT24C512 spans 4 I²C addresses).
 - 2-byte addressing (we hardcoded 1-byte AT24C02).
 - Write-protect GPIO.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - Sysfs binary attribute (we exposed via /dev only).
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 - read-only mode for DT `read-only` boolean.
 
 ## 65.7  Now: the mainline driver and nvmem
@@ -550,7 +557,7 @@ For SPI 25LC512:
 };
 ```
 
-The `"atmel,at25"` fallback covers most SPI EEPROMs with the same protocol; the explicit `size`, `pagesize`, `address-width` tell the driver the geometry.
+The `"atmel,at25"` fallback covers most SPI EEPROMs with the same protocol. The explicit `size`, `pagesize`, `address-width` tell the driver the geometry.
 
 After probe, the EEPROM exposes a binary attribute (sysfs-bin):
 
@@ -600,13 +607,13 @@ After factory: WP held high, field firmware can read but not write. Reboot → k
 2. **Build and load `myeeprom.ko`.** Write 12 bytes ("Hello world!"), read back. Verify it survives reboot.
 3. **Provoke the page-boundary bug.** Modify `me_fops_write` to skip the split — write 12 bytes in one `me_write_page` call (relax the validation `if`). Observe data corruption: bytes 8–11 overwrite bytes 0–3 of page 0, not bytes 0–3 of page 1. Restore the split.
 4. **ACK-poll timing.** Add `ktime` measurement around the ACK-poll loop. With a 5 ms internal cycle, expect ~5 ms per write.
-5. **Switch to mainline `at24`.** Unload `myeeprom`; bind the same chip with `compatible = "atmel,24c02"`. Verify `/sys/bus/i2c/devices/1-0050/eeprom` appears. Same chip, more features available.
-6. **nvmem MAC.** Configure DT as in §65.7. Boot; `ip link show eth0`; verify the MAC matches the bytes you wrote at offset 0. This is the production pattern.
+5. **Switch to mainline `at24`.** Unload `myeeprom`. bind the same chip with `compatible = "atmel,24c02"`. Verify `/sys/bus/i2c/devices/1-0050/eeprom` appears. Same chip, more features available.
+6. **nvmem MAC.** Configure DT as in §65.7. Boot. `ip link show eth0`. verify the MAC matches the bytes you wrote at offset 0. This is the production pattern.
 
 ## 65.10  Pitfalls
 
-- **Wrong pagesize.** Writes across page boundaries wrap silently. Always set `pagesize = <N>` in DT (mainline) or hardcode correctly (from-scratch); the AT24C512's 128-byte pages are not the same as AT24C02's 8-byte pages.
-- **Address-width confusion.** AT24C02 uses 1-byte address; AT24C512 uses 2-byte. The mainline driver derives this from chip size; the from-scratch driver hardcodes one or the other.
+- **Wrong pagesize.** Writes across page boundaries wrap silently. Always set `pagesize = <N>` in DT (mainline) or hardcode correctly (from-scratch). The AT24C512's 128-byte pages are not the same as AT24C02's 8-byte pages.
+- **Address-width confusion.** AT24C02 uses 1-byte address. AT24C512 uses 2-byte. The mainline driver derives this from chip size. The from-scratch driver hardcodes one or the other.
 - **5 ms write cycle not waited for.** Issuing the next command before the cycle finishes → NACK → kernel error. The ACK-poll loop is mandatory.
 - **Multiple EEPROMs on one bus.** Strap each chip's A0/A1/A2 differently to give unique addresses (0x50–0x57). If two chips share an address, neither responds correctly.
 - **WP pin floating.** Reads return all-0xFF and writes silently fail. Tie WP low, or wire it to a GPIO that defaults to low.
@@ -621,6 +628,7 @@ After factory: WP held high, field firmware can read but not write. Reboot → k
 - **`Documentation/devicetree/bindings/eeprom/at24.yaml`** — DT binding.
 - **`Documentation/devicetree/bindings/nvmem/nvmem.yaml`** — nvmem provider binding.
 - **`Documentation/ABI/testing/sysfs-bus-nvmem`** — nvmem sysfs.
+**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
 - **AT24C02 datasheet** (Microchip) — has timing diagrams for the ACK-poll loop on page 11.
 
 > Next chapter: **Chapter 66 — SD card and eMMC deep dive.** A different beast: you wouldn't write an MMC host controller driver from scratch in 200 lines (the protocol has 40+ commands, multiple state machines, signal-voltage switching, tuning). Instead we'll trace a single `read()` through the kernel's MMC stack — host driver → core → block layer — to see how the layers fit, and inspect EXT_CSD to manage device life. That gets you "understand the framework" without "rewrite the framework."

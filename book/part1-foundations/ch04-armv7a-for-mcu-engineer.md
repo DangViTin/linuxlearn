@@ -7,21 +7,27 @@ status: draft
 ---
 
 # Chapter 4 — ARMv7-A and the Cortex-A7, for the MCU engineer
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 
 > **What:** a structural understanding of the CPU core inside the i.MX6ULL, expressed as differences from Cortex-M parts you already know.
 >
 > **Why:** Linux exists *because* the A-profile cores have features the M-profile cores lack. If MMU, privilege levels, and the generic timer are vague, the kernel's boot sequence will be vague too.
+> MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+> **MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 >
 > **Focus:** the three concepts that justify the entire kernel: privilege levels, the MMU, and banked registers / exception modes. Get these and most kernel design choices follow.
+
 
 ## 4.1  Where the Cortex-A7 sits in the ARM lineup
 
 ARM names its cores along two axes:
 
 - **Profile letter.** `A` for "Application" (smartphones, set-top boxes, embedded Linux), `R` for "Real-time" (storage controllers, automotive), `M` for "Microcontroller" (the Cortex-M0/M3/M4/M7/M33 you have worked with).
-- **Architecture version.** v6, v7, v8, v9. The version determines the instruction set and which features are present; the core implementation determines pipeline depth, cache topology, and clock ceiling.
+- **Architecture version.** v6, v7, v8, v9. The version determines the instruction set and which features are present. The core implementation determines pipeline depth, cache topology, and clock ceiling.
 
-The i.MX6ULL has one Cortex-A7 core with VFPv4 and NEON. Bigger i.MX6 parts (e.g. SoloX) also carry a Cortex-M4 companion. The i.MX6ULL does not — it is A7 only. The silicon's **architectural maximum** is **800 MHz** (industrial bin) or **900 MHz** (consumer/commercial bin) per the i.MX6ULL reference manual; most BSPs — including the Point Atom factory image — clock the part at **528 MHz** or **696 MHz** to stay in a more comfortable voltage / power / thermal envelope. We run at the BSP-default **696 MHz** throughout this book.
+The i.MX6ULL has one Cortex-A7 core with VFPv4 and NEON. Bigger i.MX6 parts (e.g. SoloX) also carry a Cortex-M4 companion. The i.MX6ULL does not — it is A7 only. The silicon's **architectural maximum** is **800 MHz** (industrial bin) or **900 MHz** (consumer/commercial bin) per the i.MX6ULL reference manual. Most BSPs — including the Point Atom factory image — clock the part at **528 MHz** or **696 MHz** to stay in a more comfortable voltage / power / thermal envelope. We run at the BSP-default **696 MHz** throughout this book.
+**BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 
 By 2026 standards Cortex-A7 is a slow core: in-order, dual-issue, 8-stage pipeline. Its strengths are power, area, and price. For our purposes it is also easier to reason about than the bigger A53/A72/A76 cores, which is why we picked it.
 
@@ -77,6 +83,7 @@ In Cortex-A (ARMv7-A) there is no auto-stacking. The CPU has **nine processor mo
 R13 is SP. R14 is LR. SPSR is the saved-program-status register — the snapshot of CPSR at the moment the exception was taken.
 
 > **Cortex-A7 specifics.** All nine modes exist on every Cortex-A profile core, but their use varies. On Cortex-A7 in i.MX6ULL, **MON mode is real** and used by TrustZone-enabled secure-boot flows (Chapter 124). **HYP mode is present in the architecture** but not used in our work — the i.MX6ULL is a single-core part rarely used as a hypervisor host. SYS mode is rarely entered by anyone except in low-level diagnostics. Our daily work concerns USR, SVC, IRQ, FIQ, ABT, and UND.
+> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 The full banked-register layout, columns showing per-mode visibility:
 
@@ -120,7 +127,7 @@ Across the nine modes, ARM defines three **privilege levels**:
 
 - **PL0** (unprivileged, user-mode equivalent) — only USR mode. The mode applications run in.
 - **PL1** (privileged) — most modes: SVC, IRQ, FIQ, ABT, UND, SYS. The level the kernel runs at.
-- **PL2** (hypervisor) — only HYP mode. Above PL1; allows trapping of PL1 actions.
+- **PL2** (hypervisor) — only HYP mode. Above PL1. allows trapping of PL1 actions.
 
 A separate **Security state** (Normal World / Secure World) is orthogonal to PL: MON mode straddles the boundary.
 
@@ -140,18 +147,18 @@ CPSR (Current Program Status Register) is the A-profile equivalent of M-profile'
 ```
 
 - **N, Z, C, V** — condition flags (the same as M-profile: negative, zero, carry, overflow)
-- **Q** — saturation flag (ARMv5TE-J and later; set by saturating arithmetic instructions)
+- **Q** — saturation flag (ARMv5TE-J and later. set by saturating arithmetic instructions)
 - **IT[7:0]** (split bits 26:25 + 15:10) — IF-THEN block state for Thumb-2 conditional execution
 - **J** (bit 24), **T** (bit 5) — together select the active instruction set: ARM (J=0,T=0), Thumb (J=0,T=1), ThumbEE (J=1,T=1), Jazelle (J=1,T=0)
 - **GE[3:0]** (bits 19:16) — SIMD greater-or-equal flags, set by NEON parallel comparisons
-- **E** — endianness (set per-load/store; ARMv7-A supports mixed)
+- **E** — endianness (set per-load/store. ARMv7-A supports mixed)
 - **A** — asynchronous abort mask
 - **I** — IRQ mask (`I=1` disables IRQs)
 - **F** — FIQ mask
 - **T** — Thumb state (`T=1` means executing in Thumb)
 - **M[4:0]** — current processor mode (encoding for USR/SVC/IRQ/...)
 
-When an exception is taken, CPSR snapshots into SPSR_<mode>, and the new mode's M[4:0] gets written to CPSR. The handler can `mrs Rn, spsr` to read it; `cps` instructions can change mode and mask bits in-place.
+When an exception is taken, CPSR snapshots into SPSR_<mode>, and the new mode's M[4:0] gets written to CPSR. The handler can `mrs Rn, spsr` to read it. `cps` instructions can change mode and mask bits in-place.
 
 Linux's preemption logic, IRQ masking, and "is this code running in user or kernel context" predicates all reduce, at the bottom, to bits in CPSR.
 
@@ -164,7 +171,7 @@ The Cortex-A7 has a **2-stage MMU** capability, but on a single-core, non-virtua
 ARMv7-A supports two translation table formats:
 
 - **Short descriptor (32-bit physical addresses, 2-level tables).** What we will use.
-- **Long descriptor (LPAE, 40-bit physical, 3-level tables).** Required for >4 GB of physical memory. The i.MX6ULL has at most 512 MiB; we don't need LPAE.
+- **Long descriptor (LPAE, 40-bit physical, 3-level tables).** Required for >4 GB of physical memory. The i.MX6ULL has at most 512 MiB. We don't need LPAE.
 
 The short-descriptor walk:
 
@@ -183,7 +190,7 @@ The short-descriptor walk:
 Each Level-1 entry can:
 
 - Point to a Level-2 table (resolves a 1 MB region in 4 KB pages).
-- Be a **1 MB "section"** directly (no Level-2 walk needed; saves a memory access).
+- Be a **1 MB "section"** directly (no Level-2 walk needed. saves a memory access).
 - Be a **16 MB "supersection"** (less common).
 
 Each L1 / L2 entry also carries:
@@ -210,12 +217,14 @@ The split is why a 32-bit Linux user process can address at most ~3 GB.
 
 ## 4.6  Caches
 
-Cortex-A7 has separate **L1 instruction** and **L1 data** caches (32 KB each, 4-way, 64-byte lines on i.MX6ULL). The Cortex-A7 MPCore platform also contains an **integrated 128 KB unified L2** cache (i.MX6ULL Reference Manual, §11, "L2 cache"). What the i.MX6ULL does *not* have is an external L2 controller — earlier i.MX6 family members (e.g., i.MX6Q) integrate ARM's separate **PL310** controller; here L2 is built into the MPCore block instead.
+Cortex-A7 has separate **L1 instruction** and **L1 data** caches (32 KB each, 4-way, 64-byte lines on i.MX6ULL). The Cortex-A7 MPCore platform also contains an **integrated 128 KB unified L2** cache (i.MX6ULL Reference Manual, §11, "L2 cache"). What the i.MX6ULL does *not* have is an external L2 controller — earlier i.MX6 family members (e.g., i.MX6Q) integrate ARM's separate **PL310** controller. here L2 is built into the MPCore block instead.
 
 Two things about A-profile caches that bite Cortex-M-trained engineers:
 
 1. **Caches are off at reset.** Same as Cortex-M. The difference is that on A-profile you cannot get useful performance without them. Enabling caches is one of the first things any A-profile bootloader does after MMU setup.
-2. **L1 caches are PIPT on Cortex-A7** (Physically Indexed, Physically Tagged — per the Cortex-A7 MPCore TRM, ARM DDI 0464). PIPT means no virtual-address aliasing for normal cache lines, so the painful VIPT-aliasing class of bugs that the earlier ARM cores (and Cortex-A9) had does not apply here. You still care about cache maintenance for DMA-coherent code (Chapter 51), but for ordinary access there is no aliasing to worry about. *(Some surface-level docs say Cortex-A7 L1-D is VIPT; the TRM is authoritative.)*
+2. **L1 caches are PIPT on Cortex-A7** (Physically Indexed, Physically Tagged — per the Cortex-A7 MPCore TRM, ARM DDI 0464). PIPT means no virtual-address aliasing for normal cache lines, so the painful VIPT-aliasing class of bugs that the earlier ARM cores (and Cortex-A9) had does not apply here. You still care about cache maintenance for DMA-coherent code (Chapter 51), but for ordinary access there is no aliasing to worry about. *(Some surface-level docs say Cortex-A7 L1-D is VIPT. The TRM is authoritative.)*
+MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 Cache maintenance is done via **CP15** coprocessor instructions:
 
@@ -235,21 +244,23 @@ Key registers (CP15 access):
 
 - `CNTFRQ` — counter frequency (Hz). Software writes this once at boot to inform the rest of the system.
 - `CNTPCT` — current counter value (64-bit physical counter).
-- `CNTP_CVAL` — comparator value; the timer fires when CNTPCT ≥ CNTP_CVAL.
+- `CNTP_CVAL` — comparator value. The timer fires when CNTPCT ≥ CNTP_CVAL.
 - `CNTP_CTL` — enable + interrupt mask + status.
 
-The generic timer is the kernel's preferred tick source on ARMv7-A. Linux's `arch_timer` driver targets it directly. The i.MX6ULL also has legacy GPT and EPIT timer blocks; we use those in bare-metal Chapter 16 because they are simpler to demonstrate, then switch to the generic timer when Linux takes over.
+The generic timer is the kernel's preferred tick source on ARMv7-A. Linux's `arch_timer` driver targets it directly. The i.MX6ULL also has legacy GPT and EPIT timer blocks. We use those in bare-metal Chapter 16 because they are simpler to demonstrate, then switch to the generic timer when Linux takes over.
 
-> **Contrast with SysTick:** SysTick is a 24-bit down-counter, per-CPU, inside the M-profile core. The ARMv7-A generic timer is a 64-bit counter, per-CPU but globally synchronized, accessed via CP15. Both serve the same purpose (kernel/RTOS tick); the A-profile version is what enables coherent multi-CPU time on big systems.
+> **Contrast with SysTick:** SysTick is a 24-bit down-counter, per-CPU, inside the M-profile core. The ARMv7-A generic timer is a 64-bit counter, per-CPU but globally synchronized, accessed via CP15. Both serve the same purpose (kernel/RTOS tick). The A-profile version is what enables coherent multi-CPU time on big systems.
 
 ## 4.8  The Generic Interrupt Controller (GIC)
 
 The Cortex-M NVIC was inside the core. The A-profile equivalent, the **GIC**, is outside the core. The i.MX6ULL integrates a **GIC-400** (an implementation of GIC v2).
+MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+**GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 
 GICv2 has two parts:
 
-- **Distributor** (`GICD_*` registers, base `0x00A01000` on i.MX6ULL): one per system; arbitrates which interrupt goes to which CPU, sets priorities, masks, and trigger types (level/edge).
-- **CPU Interface** (`GICC_*` registers, base `0x00A02000`): one per CPU; the core reads acknowledgement and writes end-of-interrupt here.
+- **Distributor** (`GICD_*` registers, base `0x00A01000` on i.MX6ULL): one per system. arbitrates which interrupt goes to which CPU, sets priorities, masks, and trigger types (level/edge).
+- **CPU Interface** (`GICC_*` registers, base `0x00A02000`): one per CPU. The core reads acknowledgement and writes end-of-interrupt here.
 
 Three flavors of interrupt:
 
@@ -269,7 +280,7 @@ ARMv7-A is **weakly ordered**. Stores and loads can be reordered by the CPU. Lin
 
 - `dsb` (Data Synchronization Barrier) — waits for outstanding memory accesses to complete.
 - `dmb` (Data Memory Barrier) — orders accesses but does not necessarily wait.
-- `isb` (Instruction Synchronization Barrier) — flushes the pipeline; required after changing CPSR, system registers, or page tables.
+- `isb` (Instruction Synchronization Barrier) — flushes the pipeline. required after changing CPSR, system registers, or page tables.
 
 The atomic primitive is **LDREX/STREX**:
 
@@ -288,7 +299,7 @@ Cortex-M has the same instructions. The surprise on A-profile is that you also n
 
 VFPv4 gives you 32 double-precision FP registers and the usual IEEE-754 operations. NEON shares the same register file (viewed as 16 × 128-bit Q registers, or 32 × 64-bit D registers) and adds packed integer/float SIMD.
 
-For kernel code, NEON/VFP are **disabled by default**. Touching them in kernel context requires `kernel_neon_begin()` / `kernel_neon_end()` — failing to do so corrupts user-space FP state on context switch. Most drivers never need NEON; some crypto and codec paths do.
+For kernel code, NEON/VFP are **disabled by default**. Touching them in kernel context requires `kernel_neon_begin()` / `kernel_neon_end()` — failing to do so corrupts user-space FP state on context switch. Most drivers never need NEON. some crypto and codec paths do.
 
 For user space, NEON is always available. `libc`'s `memcpy`, `memset`, and `strcmp` use it, and you will see it in any glibc `objdump -d`.
 
@@ -328,8 +339,9 @@ Bookmark each. We will refer to them often.
 - **Assuming A-profile exceptions auto-stack like M-profile.** They do not. Forget this once and your IRQ handler will trash USR-mode registers.
 - **Forgetting `isb` after writing system registers.** Changes to TTBR, SCTLR, VBAR do not take effect until you barrier and the pipeline refills. Symptom: code "should work" but doesn't, until you add an unrelated `printk` (which happens to insert a barrier).
 - **Thinking the GIC is in the core.** It is a separate memory-mapped block. You configure it via loads/stores to MMIO, not CP15.
+**MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 - **Mixing up SPI (Shared Peripheral Interrupt) with SPI (Serial Peripheral Interface bus).** Context disambiguates, but every paragraph that mentions both is hard to read. This book will say "GIC SPI" or "SPI bus" whenever it could be ambiguous.
-- **Cache flush by set/way for "flush everything"** — common on Cortex-M code carried over; on A-profile, set/way flushes are *not* broadcast and miss aliased lines. Use the VA-based ops for correctness; only the initial cold-boot all-cache flush should use set/way.
+- **Cache flush by set/way for "flush everything"** — common on Cortex-M code carried over. on A-profile, set/way flushes are *not* broadcast and miss aliased lines. Use the VA-based ops for correctness. only the initial cold-boot all-cache flush should use set/way.
 
 ## 4.14  Going deeper
 

@@ -7,14 +7,18 @@ status: draft
 ---
 
 # Chapter 48 — PWM and RTC subsystems
+**MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 
 > **What:** two short, unrelated subsystems combined here — each is small enough on its own, and the patterns reinforce each other. **PWM** — the `pwm_*` API and the `pwm-backlight` / `pwm-fan` / `pwm-beeper` consumers. **RTC** — the `rtc_class` framework, sysfs `/sys/class/rtc/`, the `hwclock` user-space tool, and how an external RTC chip plugs into Linux's wall-clock time.
+> **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
-> **Why:** *backlight dimming, fan speed, audible beeper, servo control* all use PWM — and every product that doesn't have continuous network access needs an RTC to keep time across reboots. These are subsystems you'll touch on almost every embedded project; knowing the consumer-side API saves you from re-inventing it.
+> **Why:** *backlight dimming, fan speed, audible beeper, servo control* all use PWM — and every product that doesn't have continuous network access needs an RTC to keep time across reboots. These are subsystems you'll touch on almost every embedded project. knowing the consumer-side API saves you from re-inventing it.
 >
 > **Focus:** **consumer vs provider model**. PWM and RTC both expose two APIs: one for the *producer* (chip driver that owns the PWM controller or RTC silicon) and one for the *consumer* (driver/code that wants a PWM signal or a wall-clock read). You almost always write *consumers*. The SoC vendor wrote the producers. Knowing which side you're on tells you which API to look up.
 
 ---
+
 
 ## 48.1  PWM subsystem
 
@@ -40,7 +44,7 @@ status: draft
                            hardware
 ```
 
-The provider talks to the hardware; the consumer asks for a `period` and `duty_cycle`. The core mediates and enforces invariants (e.g., duty ≤ period, period ≤ chip max).
+The provider talks to the hardware. The consumer asks for a `period` and `duty_cycle`. The core mediates and enforces invariants (e.g., duty ≤ period, period ≤ chip max).
 
 i.MX6ULL has 8 PWM channels (PWM1–PWM8). The mainline `pwm-imx27` driver covers them.
 
@@ -111,7 +115,7 @@ pwm_enable(pwm);
 pwm_disable(pwm);
 ```
 
-`pwm_config` / `pwm_enable` are wrappers over `pwm_apply_state`. New code prefers the explicit state struct; legacy code uses the simpler form.
+`pwm_config` / `pwm_enable` are wrappers over `pwm_apply_state`. New code prefers the explicit state struct. legacy code uses the simpler form.
 
 ### 48.1.4  Built-in consumer drivers
 
@@ -144,7 +148,7 @@ pwmchip0  pwmchip1  pwmchip2  pwmchip3  pwmchip4  pwmchip5  pwmchip6  pwmchip7
 [root@pa-mini:~]# echo 1 > enable
 ```
 
-A 1 kHz, 50 % duty PWM is now on the corresponding pin. Useful for quick bring-up; production drivers should use the consumer API.
+A 1 kHz, 50 % duty PWM is now on the corresponding pin. Useful for quick bring-up. production drivers should use the consumer API.
 
 ---
 
@@ -284,8 +288,8 @@ This is the foundation of low-power data-logger products: sleep deeply, wake on 
 ## 48.3  Lab
 
 1. **Backlight via pwm-backlight.** Configure DT to use `pwm-backlight` for your LCD. Verify `/sys/class/backlight/backlight/brightness` controls it.
-2. **Beeper.** Configure `pwm-beeper` on PWM2 (or unused PWM); send tones via `/sys/class/input/eventN`.
-3. **Direct PWM via sysfs.** Generate a 1 kHz 25% duty signal on PWM3; scope it.
+2. **Beeper.** Configure `pwm-beeper` on PWM2 (or unused PWM). send tones via `/sys/class/input/eventN`.
+3. **Direct PWM via sysfs.** Generate a 1 kHz 25% duty signal on PWM3. scope it.
 4. **Add DS3231 to your board** (or use the internal SNVS RTC if no external). Verify `hwclock` reads sensibly, `date -s` + `hwclock -w` persists across reboots.
 5. **Wake from suspend.** Set a 30-second alarm via `wakealarm`, suspend, watch the system come back up.
 6. **Compare RTC accuracy.** Run `chronyd` for an hour, check `/sys/class/rtc/rtc0/since_epoch` against `date +%s` — drift should be under 100 ms for DS3231, under a second for raw SoC RTC.
@@ -296,10 +300,11 @@ This is the foundation of low-power data-logger products: sleep deeply, wake on 
 - **Polarity inversion forgotten.** Some backlights are active-low (full brightness = 0% duty). Use `PWM_POLARITY_INVERTED` in `pwm_state` or `pwms = <..., PWM_POLARITY_INVERTED>` in DT.
 - **PWM stops when consumer driver unloads.** `pwm_put` (or `devm_*` cleanup) disables the PWM. If you want the signal to keep running after unload, that's a design choice you must explicitly handle.
 - **Multiple consumers fighting over one PWM.** Only one consumer per PWM. Verify with `/sys/class/pwm/pwmchipN/pwmN/`.
-- **RTC time-zone confusion.** RTC by convention stores UTC; some legacy systems store local time. `timedatectl set-local-rtc 0` to enforce UTC.
+- **RTC time-zone confusion.** RTC by convention stores UTC. some legacy systems store local time. `timedatectl set-local-rtc 0` to enforce UTC.
 - **No backup battery on SNVS_LP.** SoC's internal RTC loses time on power-loss without `VBAT`. Symptom: every reboot starts in 1970. Wire up a CR2032. If you cannot, accept the limit and sync via NTP at boot.
 - **Multiple RTCs, hctosys reads the wrong one.** `CONFIG_RTC_HCTOSYS_DEVICE="rtc0"` (default) picks the first registered. If you have both SoC RTC (registers first) and DS3231 (registers later, more accurate), you get the wrong one. Either rename via udev or change kernel config.
-- **DS3231 alarm-mask register quirk.** The alarm fires for the first match across multiple fields; misconfiguring the mask gives a once-per-second wake instead of once-per-day. Read the datasheet carefully.
+**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
+- **DS3231 alarm-mask register quirk.** The alarm fires for the first match across multiple fields. misconfiguring the mask gives a once-per-second wake instead of once-per-day. Read the datasheet carefully.
 
 ## 48.5  Going deeper
 
@@ -311,3 +316,4 @@ This is the foundation of low-power data-logger products: sleep deeply, wake on 
 - **`Documentation/devicetree/bindings/pwm/`** and **`/rtc/`** — DT bindings.
 
 > Next chapter: **Chapter 49 — IIO subsystem.** ADCs, DACs, light/temp/pressure/IMU sensors — they all live in IIO, the "Industrial I/O" subsystem. Once you internalise IIO, every sensor in Part VII's cookbook becomes "DT + driver registers channels + user-space reads /sys/bus/iio/devices/."
+> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.

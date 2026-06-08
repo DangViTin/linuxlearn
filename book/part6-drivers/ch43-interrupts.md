@@ -9,10 +9,14 @@ status: draft
 # Chapter 43 — Interrupts
 
 > **What:** **`request_irq`**, the **top-half / bottom-half split**, and the four standard bottom halves — softirqs, tasklets, work queues, and threaded IRQs. By the end you'll have a driver that owns a hardware IRQ, acknowledges it in nanoseconds in the top half, and processes the event without blocking the rest of the kernel.
+> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 >
 > **Why:** interrupts are how hardware tells the kernel something happened: data arrived, DMA finished, a button was pressed, a timer expired. Get the IRQ-handler design wrong and you hit one of two failures: *missed interrupts* (handler too slow or wrong polarity) or *IRQ storms* (handler does not acknowledge, hardware re-asserts continuously, system hangs). The rules below give you the right design every time.
+> MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 >
 > **Focus:** **the IRQ contract is "fast, atomic, and minimal."** Your top-half runs with interrupts disabled, in atomic context (no sleeping, no `kmalloc(GFP_KERNEL)`, no `copy_to_user`). Anything that takes more than a few microseconds *must* be deferred to a bottom half. Once you accept this constraint, the API choices below follow naturally.
+
 
 ## 43.1  How the i.MX6ULL gets an interrupt to your code
 
@@ -49,8 +53,8 @@ Two things to notice:
 
 Your top half is the function the kernel calls when the IRQ fires. The contract:
 
-- **It runs in atomic context.** No sleeping. No `kmalloc(GFP_KERNEL)`. No `mutex_lock`. No `copy_to_user`. No `printk` with `KERN_INFO` (well, `printk` works but is rate-limited; minimize).
-- **It runs with that IRQ disabled.** The GIC won't re-fire the same IRQ on the same CPU until you return. (Other CPUs *can* see it; that's how SMP works.)
+- **It runs in atomic context.** No sleeping. No `kmalloc(GFP_KERNEL)`. No `mutex_lock`. No `copy_to_user`. No `printk` with `KERN_INFO` (well, `printk` works but is rate-limited. minimize).
+- **It runs with that IRQ disabled.** The GIC won't re-fire the same IRQ on the same CPU until you return. (Other CPUs *can* see it. that's how SMP works.)
 - **It runs with kernel preemption off.** No context switch until you return.
 - **It returns `IRQ_HANDLED`** if it processed the IRQ, `IRQ_NONE` if not (used in shared-IRQ scenarios — "this wasn't mine").
 - **It must acknowledge the hardware.** Otherwise the IRQ line stays asserted and the IRQ fires again immediately ⇒ IRQ storm ⇒ system hang.
@@ -168,7 +172,7 @@ You can pass `NULL` for the primary, in which case the kernel installs a default
 
 ### 2. Work queues — explicit deferral
 
-A work queue is a kernel thread that processes a queue of work items. Schedule a work item from your top-half; the work runs later in a normal kernel thread.
+A work queue is a kernel thread that processes a queue of work items. Schedule a work item from your top-half. The work runs later in a normal kernel thread.
 
 ```c
 #include <linux/workqueue.h>
@@ -204,7 +208,7 @@ schedule_work(&my_work);
 ```
 
 **When to use work queues** over threaded IRQs:
-- You want to *coalesce* multiple IRQs into one bottom-half execution (work is idempotent; queueing it again is a no-op if already queued).
+- You want to *coalesce* multiple IRQs into one bottom-half execution (work is idempotent. queueing it again is a no-op if already queued).
 - You don't want a dedicated kthread per IRQ.
 - You're piggy-backing on existing workqueue infrastructure.
 
@@ -233,11 +237,12 @@ static irqreturn_t my_irq(int irq, void *dev_id)
 }
 ```
 
-Tasklets are **discouraged** in new code. The kernel is migrating away from them — they're an obstacle for `PREEMPT_RT` (real-time kernel; Ch 52A). Use threaded IRQs unless you have a strong reason for atomic-context bottom-half processing.
+Tasklets are **discouraged** in new code. The kernel is migrating away from them — they're an obstacle for `PREEMPT_RT` (real-time kernel. Ch 52A). Use threaded IRQs unless you have a strong reason for atomic-context bottom-half processing.
+**PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 
 ### 4. Softirqs — kernel-internal only
 
-Softirqs are the lowest-level deferred mechanism. Used internally for networking, timers, and block-I/O completion. **Driver authors don't write softirqs**; we use tasklets/workqueues/threaded IRQs which are built on top of softirq machinery.
+Softirqs are the lowest-level deferred mechanism. Used internally for networking, timers, and block-I/O completion. **Driver authors don't write softirqs**. We use tasklets/workqueues/threaded IRQs which are built on top of softirq machinery.
 
 ### Picking among them — table
 
@@ -251,6 +256,8 @@ Softirqs are the lowest-level deferred mechanism. Used internally for networking
 ## 43.5  GPIO interrupts — the everyday case
 
 The most common reason embedded drivers want IRQs is to react to a GPIO transition (button press, sensor data-ready, etc.). The mechanics:
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ### DT side
 
@@ -304,7 +311,7 @@ That's it. The threaded handler runs whenever the button is pressed. Sleep, mute
 
 ## 43.6  Shared IRQs
 
-Multiple devices can share one IRQ line on some hardware (PCI is the canonical case; some SoC peripherals also support it). To handle:
+Multiple devices can share one IRQ line on some hardware (PCI is the canonical case. some SoC peripherals also support it). To handle:
 
 ```c
 err = request_irq(virq, my_handler, IRQF_SHARED, "myhw", priv);
@@ -333,7 +340,7 @@ When IRQs misbehave:
 
 - **Count stuck at 0**: IRQ never fires — wrong trigger polarity, hardware not configured, line not wired up.
 - **Count exploding**: IRQ storm — handler not acknowledging hardware properly.
-- **"None" in the owner column**: someone requested it then `free_irq`'d but didn't claim ownership; usually a bug.
+- **"None" in the owner column**: someone requested it then `free_irq`'d but didn't claim ownership. usually a bug.
 
 To debug timing:
 
@@ -349,23 +356,27 @@ You'll see timestamps for every entry/exit of your handler, in microseconds. Cha
 
 ## 43.8  Lab
 
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
 1. **Write a GPIO-button driver.** Use the user button on the Point Atom MINI. Threaded IRQ, prints to dmesg on press.
 2. **Measure IRQ latency.** Use ftrace to time from a button press (capture in the GPIO bank IRQ) to your threaded handler running. Compare against running the same work in a tasklet.
-3. **Add bouncing handling.** Add a 20 ms debounce: ignore further IRQs that fire within 20 ms of the previous (use `jiffies` and `time_after`). Test by pressing and holding; observe a single event in dmesg.
-4. **Force an IRQ storm.** Set the trigger type to LEVEL but don't acknowledge the hardware. Observe `/proc/interrupts` count exploding; recover with `rmmod`. *(Note: do this on a non-critical system; if you don't recover quickly, the kernel may detect the storm and disable the IRQ.)*
-5. **Convert from threaded to workqueue.** Rewrite #1 using `schedule_work` from a non-threaded `request_irq`. Compare code complexity; observe equivalent behavior.
+3. **Add bouncing handling.** Add a 20 ms debounce: ignore further IRQs that fire within 20 ms of the previous (use `jiffies` and `time_after`). Test by pressing and holding. observe a single event in dmesg.
+4. **Force an IRQ storm.** Set the trigger type to LEVEL but don't acknowledge the hardware. Observe `/proc/interrupts` count exploding. recover with `rmmod`. *(Note: do this on a non-critical system. If you don't recover quickly, the kernel may detect the storm and disable the IRQ.)*
+5. **Convert from threaded to workqueue.** Rewrite #1 using `schedule_work` from a non-threaded `request_irq`. Compare code complexity. observe equivalent behavior.
 6. **Shared-IRQ experiment.** On a real shared IRQ (or fake one), register two handlers and verify the kernel calls both. Confirm `IRQ_NONE` is the right return when *your* device didn't fire.
 
 ## 43.9  Pitfalls
 
-- **Sleeping in a top-half.** `kmalloc(GFP_KERNEL)`, `mutex_lock`, `copy_to_user` — all forbidden. `CONFIG_DEBUG_ATOMIC_SLEEP=y` catches at the call site. Use `GFP_ATOMIC` if you really must allocate from IRQ context; otherwise pre-allocate.
+- **Sleeping in a top-half.** `kmalloc(GFP_KERNEL)`, `mutex_lock`, `copy_to_user` — all forbidden. `CONFIG_DEBUG_ATOMIC_SLEEP=y` catches at the call site. Use `GFP_ATOMIC` if you really must allocate from IRQ context. otherwise pre-allocate.
 - **Forgetting to ack.** Level-triggered IRQ + no acknowledge = continuous re-fire = lockup. The kernel will eventually detect the storm and disable the IRQ, printing "spurious IRQ disabled" to dmesg.
 - **Wrong trigger polarity in DT.** Symptom: IRQ never fires. Always cross-check the device's datasheet against the DT's `IRQ_TYPE_*` value.
 - **Returning `IRQ_NONE` from a non-shared handler.** The kernel treats this as a spurious IRQ. After enough of these, the IRQ is disabled.
 - **Calling `request_irq` then `free_irq` with mismatched `dev` pointers.** `free_irq` is keyed on the cookie. Mismatch ⇒ silently fails to free the right handler.
 - **Not using `IRQF_ONESHOT` with threaded IRQs.** The hardware can re-fire while the thread is still running, causing a queue of pending threaded calls. Almost always you want `IRQF_ONESHOT`.
 - **Wrong context for memory allocation.** In an IRQ handler, `kmalloc(GFP_KERNEL)` may sleep waiting for memory reclaim. Use `GFP_ATOMIC` in top-halves and bottom-halves running in softirq context. Top tip: pre-allocate at probe time so you never alloc in IRQ context.
-- **Forgetting `dev_id` parameter.** `request_irq` takes a cookie; you can pass a pointer to your private state. **Don't pass NULL** even if you don't need it — the kernel won't free the handler later, because the cookie is part of the identity for `free_irq`.
+- **Forgetting `dev_id` parameter.** `request_irq` takes a cookie. You can pass a pointer to your private state. **Don't pass NULL** even if you don't need it — the kernel won't free the handler later, because the cookie is part of the identity for `free_irq`.
 - **Not handling shared IRQ correctly.** If you register with `IRQF_SHARED` but always return `IRQ_HANDLED`, other handlers on the same line are starved. Inspect *your* hardware status before claiming the IRQ.
 
 ## 43.10  Going deeper
@@ -380,5 +391,10 @@ You'll see timestamps for every entry/exit of your handler, in microseconds. Cha
 ---
 
 > **End of foundation chapters (Ch 36–43).** You now have the full kernel-module driver vocabulary: load/unload, chardev, hot-plug, platform binding, locking, blocking I/O, and interrupts. The chapters that follow (44–51 + insertions) take this vocabulary and apply it to specific subsystems: GPIO, input, I²C, SPI, PWM/RTC, IIO, regmap, DMA, network, sound, LCD/DRM. Each chapter follows the same pattern — the subsystem provides a registration API, you fill in callbacks, the framework handles the rest.
+> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 
 > Next chapter: **Chapter 44 — GPIO subsystem.** The `gpiod_*` API and how character drivers integrate with the GPIO framework.

@@ -9,6 +9,8 @@ status: draft
 # Chapter 53 — Sound: ALSA and ASoC
 
 > **What:** the kernel's audio framework — **ALSA** (Advanced Linux Sound Architecture) and **ASoC** (ALSA System on Chip, the embedded refinement). ASoC splits an audio chain into three drivers. The **CPU-DAI** is the SoC's I²S/SAI controller. The **codec** is the analog chip (WM8960, SGTL5000). The **machine driver** wires them together for one specific board. By the end you can `aplay test.wav` over a WM8960 on the Point Atom ALPHA.
+> **ASoC** - ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
+> **ALSA** - Linux's kernel and user-space audio stack.
 >
 > **Why:** audio is one of the tightest real-time loops in any embedded system. 48000 samples/second × 2 channels × 16 bits = a 96 KB/s data stream that must never glitch. ASoC's three-way split is the kernel's solution to *not* re-writing a complete audio driver for every new SoC + codec combination — you reuse the CPU-DAI and codec drivers, only writing a small machine driver per board.
 >
@@ -17,7 +19,11 @@ status: draft
 > **Tooling.** This chapter uses `alsa-utils` (`alsamixer`, `aplay`, `arecord`, `amixer`).
 > - **Ubuntu-base (target):** `apt install alsa-utils libasound2-dev`
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_ALSA_LIB=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 53.1  Three drivers cooperating
 
@@ -49,7 +55,7 @@ status: draft
 ```
 
 - **CPU-DAI** — the SoC's audio peripheral driver. For i.MX6ULL: SAI (Synchronous Audio Interface). The driver is `drivers/sound/soc/fsl/fsl_sai.c`. Speaks I²S to the codec.
-- **Codec** — the codec chip's driver, e.g., `sound/soc/codecs/wm8960.c`. Talks I²C for control (volume, mute, sample rate); receives/sends I²S audio data.
+- **Codec** — the codec chip's driver, e.g., `sound/soc/codecs/wm8960.c`. Talks I²C for control (volume, mute, sample rate). receives/sends I²S audio data.
 - **Machine** — the board-specific glue. e.g., `sound/soc/fsl/imx-wm8960.c`. Declares the DAI link and any board-specific routing (which speaker/headphone outputs are wired, which mics are connected).
 
 ## 53.2  Device tree for WM8960 audio
@@ -123,8 +129,13 @@ Three nodes:
 ```
 
 DMA fires an IRQ every period (typically 1024 samples, about 21 ms at 48 kHz). ALSA refills that period from the user-space buffer. The cycle continues. If user-space writes fast enough to avoid an underrun, playback continues without glitches.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
-If userspace can't keep up: **xrun** (underrun). ALSA logs it; sound clicks or pauses. Reasons: CPU too loaded, period too short, user-space process scheduling jitter (Ch 52A's PREEMPT_RT helps).
+If userspace can't keep up: **xrun** (underrun). ALSA logs it. sound clicks or pauses. Reasons: CPU too loaded, period too short, user-space process scheduling jitter (Ch 52A's PREEMPT_RT helps).
+**PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 
 ## 53.4  Writing a machine driver
 
@@ -206,11 +217,14 @@ For higher-level audio (Bluetooth, network), you'd stack PulseAudio or PipeWire 
 ## 53.6  Lab
 
 1. **Get audio working on a board with WM8960.** Enable in DT, boot, `aplay test.wav`, hear sound.
-2. **Capture.** `arecord -d 5 rec.wav`; play back; confirm round-trip works.
+2. **Capture.** `arecord -d 5 rec.wav`. play back. confirm round-trip works.
 3. **Adjust mixer settings.** `alsamixer` — try Headphone volume, capture-channel selection.
-4. **Diagnose an xrun.** Use `aplay -v test.wav`; reduce period size with `--period-size=128`; observe xruns appearing as load increases.
+4. **Diagnose an xrun.** Use `aplay -v test.wav`. reduce period size with `--period-size=128`. observe xruns appearing as load increases.
 5. **Listen at different rates.** `aplay -f S24_LE -r 44100 ...` — verify codec accepts non-48k rates.
 6. **Read the WM8960 driver.** `sound/soc/codecs/wm8960.c` — find the regmap config, the DAPM (Dynamic Audio Power Management) routing, the bias-level callbacks.
+MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+**MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 
 ## 53.7  Pitfalls
 
@@ -219,7 +233,7 @@ For higher-level audio (Bluetooth, network), you'd stack PulseAudio or PipeWire 
 - **MCLK rate wrong.** Codec needs e.g., 256× sample rate as master clock. Set `assigned-clock-rates` in DT for the codec's MCLK input.
 - **DAPM routes incomplete.** Headphone outputs muted because DAPM thinks they're not connected. Trace `cat /sys/kernel/debug/asoc/.../dapm/*`.
 - **Wrong codec address.** `&i2c2 { wm8960: codec@1a { reg = <0x1a> ... } }` — verify with `i2cdetect`.
-- **MASTER clock not enabled.** Codec needs MCLK to be running before any I²C command; tie the codec's clock to the SAI's clock-gate so they enable together.
+- **MASTER clock not enabled.** Codec needs MCLK to be running before any I²C command. tie the codec's clock to the SAI's clock-gate so they enable together.
 - **No DAPM widgets for jacks.** Audio "plays" (DMA happily transfers) but mute amps because DAPM doesn't know to route. Always declare physical jacks as widgets.
 
 ## 53.8  Going deeper

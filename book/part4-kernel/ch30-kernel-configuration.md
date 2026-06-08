@@ -7,12 +7,16 @@ status: draft
 ---
 
 # Chapter 30 — Kernel configuration deep-dive
+**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 
 > **What:** the kernel's Kconfig system — `make menuconfig`, the `.config` file, defconfig snapshots — and the dozen config options that matter most for an i.MX6ULL embedded image. By the end you should be able to enable/disable any kernel feature, save a clean `defconfig`, and explain to a teammate why each option is set.
 >
 > **Why:** Through Chapter 29 we used `imx_v6_v7_defconfig` as a black box. For real products you'll customise: smaller kernels for smaller flash, PREEMPT_RT for real-time, specific debug options on engineering builds. Knowing where each knob lives lets you build a kernel that fits your product, not just one that boots.
+> **PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 >
 > **Focus:** `.config` is the canonical file. `menuconfig`, `xconfig`, and the others are just UIs that edit it. Read it, edit through the UI, and rebuild.
+
 
 ## 30.1  The Kconfig system
 
@@ -44,9 +48,9 @@ You'll get a full-screen ncurses interface. Navigation:
 - **Enter** — descend into a submenu
 - **Space** — cycle `=y` / `=m` / disabled
 - **`?`** — show help for the current option (very useful — every Kconfig symbol has descriptive help)
-- **`/`** — search for an option by name (case-insensitive substring; multiple matches show their location in the menu tree)
+- **`/`** — search for an option by name (case-insensitive substring. multiple matches show their location in the menu tree)
 - **`esc esc`** — go back
-- **`Q`** — quit; prompts to save
+- **`Q`** — quit. prompts to save
 
 A representative top-level menu:
 
@@ -72,6 +76,10 @@ A representative top-level menu:
 Each `--->` is a submenu. Each `[*]` / `<*>` / `<M>` / `< >` is a yes/module/no option. Each `(...)` is a string or integer option. The structure is consistent: subsystems group their options together.
 
 ## 30.3  The `.config` file
+
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
 
 After saving in `menuconfig`, the entire state lives in `.config` at the kernel-tree root. It is plain text. Each line is one of: `CONFIG_FOO=y`, `CONFIG_FOO=m`, `CONFIG_FOO="string"`, `CONFIG_FOO=10`, or `# CONFIG_FOO is not set`.
 
@@ -145,7 +153,7 @@ Kernel Features
     ( ) 1000 Hz
 ```
 
-How often the kernel scheduler tick fires. Higher = better latency, more overhead. 250 Hz is the modern default for non-server workloads. For battery-powered devices, lower; for low-latency, 1000 Hz.
+How often the kernel scheduler tick fires. Higher = better latency, more overhead. 250 Hz is the modern default for non-server workloads. For battery-powered devices, lower. For low-latency, 1000 Hz.
 
 ### Tickless idle — `CONFIG_NO_HZ_*`
 
@@ -170,6 +178,7 @@ Device Drivers
 ```
 
 Required for the modern `/dev` model: kernel populates `/dev/*` from device probes. Without it, you need `udev` or `mdev` in userspace. **Always enable both.**
+**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 
 ### Initramfs — `CONFIG_BLK_DEV_INITRD` + `CONFIG_INITRAMFS_SOURCE`
 
@@ -193,7 +202,7 @@ Enables `=m`-style driver loading. Useful for development (load/unload a driver 
 
 ### `console=` defaults via DT — already covered
 
-The kernel reads `chosen.stdout-path` from DT plus the `console=` cmdline; both are independent of `.config`.
+The kernel reads `chosen.stdout-path` from DT plus the `console=` cmdline. both are independent of `.config`.
 
 ### USB — `CONFIG_USB` + `CONFIG_USB_EHCI_HCD` + `CONFIG_USB_GADGET`
 
@@ -217,7 +226,7 @@ Device Drivers
                  <*>   FEC (Freescale FEC and i.MX6UL/ULL)
 ```
 
-Without `CONFIG_FEC`, your Ethernet won't work. Default `imx_v6_v7_defconfig` enables this; if you start from a stripped-down config you may have to add it back.
+Without `CONFIG_FEC`, your Ethernet won't work. Default `imx_v6_v7_defconfig` enables this. If you start from a stripped-down config you may have to add it back.
 
 ### MMC / SD — `CONFIG_MMC` + `CONFIG_MMC_SDHCI_ESDHC_IMX`
 
@@ -267,9 +276,10 @@ Aggressive trimming:
 
 - **Disable unused architectures/SoCs.** `System Type → Multiple platform selection`: turn off `ARM_AT91`, `ARM_OMAP`, `ARCH_BCM`, etc. — keep only `ARCH_MXC`. Saves ~500 KB.
 - **Disable unused drivers.** `Device Drivers → Sound card support → ALSA for SoC audio support` — off if you don't have audio. Saves ~200 KB.
+**ALSA** - Linux's kernel and user-space audio stack.
 - **Disable unused filesystems.** Only ext4 needed? Disable F2FS, FAT, etc. Saves ~100 KB.
 - **Disable IPv6 / IPv4 sub-features you don't need.** TCP / UDP / unicast routing — yes. Multicast routing / fib_rules / netfilter — no. Saves ~500 KB.
-- **Disable debug info.** `Kernel hacking → Kernel debugging → off`. Cuts `vmlinux` size dramatically; `zImage` shrinks by ~1 MB. Keep your dev build separate.
+- **Disable debug info.** `Kernel hacking → Kernel debugging → off`. Cuts `vmlinux` size dramatically. `zImage` shrinks by ~1 MB. Keep your dev build separate.
 
 A trimmed image for i.MX6ULL can reach ~3 MB. Below that requires turning off things you usually want (e.g., loadable modules → +200 KB savings, but you lose `modprobe`).
 
@@ -281,7 +291,7 @@ A trimmed image for i.MX6ULL can reach ~3 MB. Below that requires turning off th
 ( ) Inside menuconfig, press / and type CONFIG_FOO
 ```
 
-The search results include the menu path. Quote: "`Symbol: PREEMPT_RT [=n]; Defined at kernel/Kconfig.preempt:64; Location: Main menu → General setup → Preemption Model → ...`". You can jump there with Enter.
+The search results include the menu path. Quote: "`Symbol: PREEMPT_RT [=n]. Defined at kernel/Kconfig.preempt:64. Location: Main menu → General setup → Preemption Model → ...`". You can jump there with Enter.
 
 ### See dependencies
 
@@ -326,6 +336,8 @@ You start from a known baseline and apply targeted changes. Easier to maintain t
 - **`make defconfig` overwrites `.config`.** If you've made customisations and run `make defconfig`, those changes are gone. Save with `make savedefconfig` first.
 - **Different defconfigs in different parts of the tree.** `arch/arm/configs/imx_v6_v7_defconfig` is for ARM 32-bit i.MX6/i.MX7. `arch/arm64/configs/defconfig` is for everything ARM 64-bit. Don't cross them.
 - **Disabling `CONFIG_MMU`.** There is a `CONFIG_MMU` symbol you can clear. Don't. The result is `nommu` Linux for parts without an MMU, which won't run on Cortex-A7 anyway.
+MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+**MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 - **Disabling `CONFIG_PREEMPT_VOLUNTARY` to "make it faster".** If you turn off `CONFIG_PREEMPT_VOLUNTARY`, the build falls back to `CONFIG_PREEMPT_NONE`, which is the server profile (higher latency, higher throughput). On an interactive system this is a regression. Read the help on each Preemption Model option before changing.
 
 ## 30.10  Going deeper
@@ -336,3 +348,4 @@ You start from a known baseline and apply targeted changes. Easier to maintain t
 - **`Documentation/admin-guide/`** — runtime-tunable options many of which correspond to `.config` choices.
 
 > Next chapter: **Chapter 30A — Kernel lifecycle decision framework.** Now that you can configure any kernel, the question becomes *which* kernel — mainline, stable, LTS, or vendor BSP. The single most important architectural decision in any product.
+> **BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.

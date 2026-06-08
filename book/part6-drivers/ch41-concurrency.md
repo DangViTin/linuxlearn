@@ -10,16 +10,17 @@ status: draft
 
 > **What:** the kernel synchronization toolbox — `atomic_t`, `spinlock_t`, `mutex`, `rwlock_t`, `semaphore`, RCU, and the per-CPU and memory-barrier primitives that back them. By the end you can answer "what lock should I use?" by asking three questions.
 >
-> **Why:** every driver that touches shared state in two contexts (a process and an interrupt; a process and a timer; two processes via `open(2)`) has a race. Pick the wrong primitive and you hit one of two failure modes: a silent data-corruption race, or a lockup so deep that `dmesg` cannot tell you what happened.
+> **Why:** every driver that touches shared state in two contexts (a process and an interrupt. a process and a timer. two processes via `open(2)`) has a race. Pick the wrong primitive and you hit one of two failure modes: a silent data-corruption race, or a lockup so deep that `dmesg` cannot tell you what happened.
 >
-> **Focus:** **the three questions** — *who else can be running this code at the same time?* (process, softirq, hardirq, multiple CPUs); *is the critical section allowed to sleep?* (mutex if yes, spinlock if no); *is the access read-mostly?* (RCU if yes). Get these three answers right and the API choice is mechanical.
+> **Focus:** **the three questions** — *who else can be running this code at the same time?* (process, softirq, hardirq, multiple CPUs). *is the critical section allowed to sleep?* (mutex if yes, spinlock if no). *is the access read-mostly?* (RCU if yes). Get these three answers right and the API choice is mechanical.
+
 
 ## 41.1  Why the kernel is concurrent
 
 Unlike a single-core MCU running a single firmware loop, the kernel is concurrent on multiple axes:
 
 1. **Multi-CPU (SMP).** The i.MX6ULL is single-core, but the kernel is built `CONFIG_SMP=y` and *behaves* as if it were SMP. Your driver may run on different CPUs at different times.
-2. **Preemption.** A process running your driver code can be preempted by a higher-priority process. Your local variables are safe; your shared variables aren't.
+2. **Preemption.** A process running your driver code can be preempted by a higher-priority process. Your local variables are safe. your shared variables aren't.
 3. **Interrupts.** A hardware interrupt can preempt your driver mid-instruction. If both your driver and its interrupt handler touch the same variable, you have a race.
 4. **Softirqs and tasklets.** A "bottom half" — softirq, tasklet, or work queue — can run on the same CPU as your driver, interleaving at quantum boundaries.
 5. **Multiple syscalls.** Two processes both calling `read(fd)` on your device file are racing inside your driver simultaneously.
@@ -33,6 +34,8 @@ Three questions. Answer them and you've picked your primitive.
 ### Question 1: What contexts can access the data?
 
 - **Process only** (no IRQ handler, no softirq) → mutex or semaphore.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 - **Process + IRQ** → spinlock (and the IRQ variant — `spin_lock_irqsave`).
 - **Process + softirq/tasklet** → spinlock with `_bh` variant.
 - **IRQ only**, single CPU → no lock needed (interrupts are serialized on one CPU). With SMP, still need a spinlock.
@@ -51,7 +54,12 @@ That's it. Three questions, one primitive. Let's see them in action.
 
 ### Context cheat sheet — what may sleep, what may not
 
-This is *the* table to memorize. Every later driver chapter (i2c, SPI, IIO, regmap, DMA, USB, etc.) assumes you know it; we will not repeat it.
+This is *the* table to memorize. Every later driver chapter (i2c, SPI, IIO, regmap, DMA, USB, etc.) assumes you know it. We will not repeat it.
+MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
+**IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 
 | Context | Examples | May sleep? | Locks you may take | Locks you must avoid |
 |---|---|---|---|---|
@@ -68,7 +76,11 @@ We refer back to this table from many places. When a later chapter says "this ru
 
 ## 41.3  Atomic operations
 
-Sometimes you just want to increment a counter from multiple contexts. A lock is overkill; the kernel exposes **atomic types** that compile to a single bus-locked instruction.
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
+
+Sometimes you just want to increment a counter from multiple contexts. A lock is overkill. The kernel exposes **atomic types** that compile to a single bus-locked instruction.
 
 ```c
 #include <linux/atomic.h>
@@ -92,7 +104,7 @@ if (old == 0) {
 }
 ```
 
-Atomics are signed 32-bit (`atomic_t`) or signed 64-bit (`atomic64_t`). They're guaranteed atomic against all contexts, all CPUs. They don't take a lock; they use the CPU's atomic-instruction support (ldrex/strex on ARM).
+Atomics are signed 32-bit (`atomic_t`) or signed 64-bit (`atomic64_t`). They're guaranteed atomic against all contexts, all CPUs. They don't take a lock. they use the CPU's atomic-instruction support (ldrex/strex on ARM).
 
 Use atomics for:
 - Reference counts.
@@ -239,7 +251,7 @@ The catch: rwlocks have a famously bad performance profile on heavily contended 
 
 ## 41.7  RCU — the read-mostly secret weapon
 
-Read-Copy-Update is the kernel's read-mostly trick: readers pay zero synchronization cost — no atomic operations, no lock acquisition, no memory barriers in the fast path. Writers copy, modify, and publish atomically. Old readers see the old version until they finish; new readers see the new.
+Read-Copy-Update is the kernel's read-mostly trick: readers pay zero synchronization cost — no atomic operations, no lock acquisition, no memory barriers in the fast path. Writers copy, modify, and publish atomically. Old readers see the old version until they finish. new readers see the new.
 
 ```c
 #include <linux/rcupdate.h>
@@ -280,11 +292,11 @@ void update_config(int s, int m)
 
 The catch: writes are expensive (`synchronize_rcu()` can take milliseconds) and you can only protect *pointer* updates this way. RCU is heavy machinery — not for a simple counter. But for "lookup-then-use" data on every packet, it is dramatically faster than any lock — that's why almost every networking-fast-path data structure in the kernel is RCU-protected.
 
-We won't go deeper here. If you find yourself wanting RCU, read `Documentation/RCU/whatisRCU.rst` and the references; it has subtleties.
+We won't go deeper here. If you find yourself wanting RCU, read `Documentation/RCU/whatisRCU.rst` and the references. It has subtleties.
 
 ## 41.8  Per-CPU data — the lock-free shortcut
 
-Sometimes you can sidestep locking entirely by *splitting* the data. If you have a "packets sent" counter, instead of one shared `atomic64_t`, have **per-CPU counters**. Each CPU increments its own (no contention); read combines them.
+Sometimes you can sidestep locking entirely by *splitting* the data. If you have a "packets sent" counter, instead of one shared `atomic64_t`, have **per-CPU counters**. Each CPU increments its own (no contention). read combines them.
 
 ```c
 #include <linux/percpu.h>
@@ -392,18 +404,18 @@ This pattern — copy outside, lock around the structure mutation only — is fu
 
 1. **Build and run the ring buffer above.** Test single-threaded, then with parallel producers.
 2. **Add a stress test.** Have a kthread (`kthread_run`) consume in a tight loop while `write(2)` is hammered from user space. Verify no crashes, no corrupt data, no deadlocks.
-3. **Provoke a deadlock.** Take lock A then lock B in one path; take B then A in another. Build with `CONFIG_PROVE_LOCKING=y`. Watch lockdep's dmesg report when both paths actually run.
+3. **Provoke a deadlock.** Take lock A then lock B in one path. take B then A in another. Build with `CONFIG_PROVE_LOCKING=y`. Watch lockdep's dmesg report when both paths actually run.
 4. **Convert `packets` to per-CPU.** Compare overhead vs an `atomic64_t`. (Spoiler: per-CPU is faster on multi-core but the test is harder to write on a single-core i.MX6ULL.)
 5. **RCU experiment.** Implement a simple read-mostly config lookup with RCU. Use `ftrace` (Chapter 119) to measure the read-side overhead. Confirm it's zero in `CONFIG_PREEMPT_NONE`.
 
 ## 41.12  Pitfalls
 
-- **Sleeping inside a spinlock.** The kernel may not crash immediately; it may deadlock minutes or hours later when the *other* CPU tries to take the same lock. `CONFIG_DEBUG_ATOMIC_SLEEP=y` catches this immediately at the offending call site.
+- **Sleeping inside a spinlock.** The kernel may not crash immediately. It may deadlock minutes or hours later when the *other* CPU tries to take the same lock. `CONFIG_DEBUG_ATOMIC_SLEEP=y` catches this immediately at the offending call site.
 - **Forgetting `spin_lock_irqsave` when sharing with an IRQ.** Process takes lock → IRQ fires on same CPU → IRQ tries lock → deadlock. Use `_irqsave` whenever IRQ context can hit the same lock.
 - **Recursive locking.** Linux mutexes are **not recursive**. Taking the same mutex twice from the same task = deadlock (or BUG with debug enabled). Use `mutex_trylock` if you might already hold it, or restructure to never re-enter.
 - **`mutex_lock` in `read`/`write` instead of `mutex_lock_interruptible`.** A process holding your mutex becomes unkillable. Always use interruptible in syscall context.
-- **Long-held mutexes.** `mutex_lock` doesn't sleep-spin — it actually puts the thread to sleep. For very short critical sections (<a few hundred cycles), a spinlock is faster than the schedule overhead. For long ones, mutex is far better. Profile if unsure; the dividing line is ~tens of cycles vs ~microseconds.
-- **Mixing atomic and locked access.** `atomic_inc(&x); spin_lock(&l); some_other_code(); spin_unlock(&l);` — what consistency are you trying to maintain? If `x` is only consistent with the lock, use the lock everywhere. Mixed access usually means a bug.
+- **Long-held mutexes.** `mutex_lock` doesn't sleep-spin — it actually puts the thread to sleep. For very short critical sections (<a few hundred cycles), a spinlock is faster than the schedule overhead. For long ones, mutex is far better. Profile if unsure. The dividing line is ~tens of cycles vs ~microseconds.
+- **Mixing atomic and locked access.** `atomic_inc(&x). spin_lock(&l). some_other_code(). spin_unlock(&l);` — what consistency are you trying to maintain? If `x` is only consistent with the lock, use the lock everywhere. Mixed access usually means a bug.
 - **Using `volatile`.** `volatile` is almost always wrong in kernel code. Use atomics or memory barriers. The kernel coding style explicitly bans `volatile` except for compile-time-known special cases. See `Documentation/process/volatile-considered-harmful.rst`.
 
 ## 41.13  Going deeper
@@ -411,7 +423,7 @@ This pattern — copy outside, lock around the structure mutation only — is fu
 - **`Documentation/locking/`** — the kernel's lock-by-lock documentation. Read `mutex-design.rst` and `rt-mutex-design.rst`.
 - **`Documentation/locking/lockdep-design.rst`** — what lockdep watches for and how to read its reports.
 - **`Documentation/RCU/whatisRCU.rst`** — the friendly RCU intro.
-- **`Documentation/memory-barriers.txt`** — when you absolutely need to think about memory ordering. (Almost never in driver code; usually only in lock primitives themselves.)
+- **`Documentation/memory-barriers.txt`** — when you absolutely need to think about memory ordering. (Almost never in driver code. usually only in lock primitives themselves.)
 - **`Is Parallel Programming Hard, And, If So, What Can You Do About It?`** by Paul McKenney — the definitive textbook on kernel concurrency, free PDF online.
 
 > Next chapter: **Chapter 42 — Sleeping, waiting, polling.** With locking understood, we add the missing piece for blocking I/O: wait queues, `wait_event_interruptible`, and the `poll`/`select` integration.

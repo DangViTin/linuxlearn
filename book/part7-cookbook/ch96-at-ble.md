@@ -17,7 +17,11 @@ status: draft
 > **Tooling.** This chapter uses Just a UART terminal: `picocom` or `minicom`.
 > - **Ubuntu-base (target):** `apt install picocom minicom`
 > - **Buildroot:** `BR2_PACKAGE_PICOCOM=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 96.1  Module comparison
 
@@ -32,11 +36,11 @@ status: draft
 | Cloned variants | many (firmware varies!) | several | several |
 | Volume price | $3–6 (genuine), $1–2 (clone) | $1–2 | $1–2 |
 
-**Clone variants are a real problem.** There are at least five different "HM-10" modules in the market, each with different firmware and different AT command syntax. A genuine HM-10 (from Jnhuamao) responds to one command set; clones may differ. Always verify the exact AT dialect of *your* module.
+**Clone variants are a real problem.** There are at least five different "HM-10" modules in the market, each with different firmware and different AT command syntax. A genuine HM-10 (from Jnhuamao) responds to one command set. clones may differ. Always verify the exact AT dialect of *your* module.
 
 **Pick guide:**
 - **HM-10 genuine**: best-documented, most-supported. Worth the premium for the known command set.
-- **HC-08 / JDY-08**: cheaper; verify the command set before designing around it.
+- **HC-08 / JDY-08**: cheaper. verify the command set before designing around it.
 
 ## 96.2  The transparent-UART model
 
@@ -50,7 +54,7 @@ status: draft
    - DATA mode (connected): bytes flow transparently both ways.
 ```
 
-After a phone connects, the module enters **data mode**: every byte Linux writes to the UART is sent to the phone (as a GATT notification on the module's TX characteristic); every byte the phone writes (to the module's RX characteristic) appears on Linux's UART RX. It's literally a wireless UART cable.
+After a phone connects, the module enters **data mode**: every byte Linux writes to the UART is sent to the phone (as a GATT notification on the module's TX characteristic). every byte the phone writes (to the module's RX characteristic) appears on Linux's UART RX. It's literally a wireless UART cable.
 
 This is the main reason to choose an AT-BLE module. Your application is plain serial I/O — no D-Bus, no GATT objects, no BlueZ daemon.
 
@@ -129,18 +133,20 @@ For a real product with a custom phone app, the BlueZ GATT path (Ch 95) is bette
 
 ## 96.6  Lab
 
-1. **Identify your module.** Wire to a UART. Send `AT+VERS?`; record the firmware version (tells you the clone variant + command dialect).
+1. **Identify your module.** Wire to a UART. Send `AT+VERS?`. record the firmware version (tells you the clone variant + command dialect).
 2. **Configure.** Set name, baud, peripheral role. Reset.
-3. **Connect from a phone.** Use "Serial Bluetooth Terminal" (Android) or "LightBlue" (iOS). Find your module's name; connect.
+3. **Connect from a phone.** Use "Serial Bluetooth Terminal" (Android) or "LightBlue" (iOS). Find your module's name. connect.
 4. **Bidirectional data.** From Linux, write text to the UART → see it in the phone app. From the phone, send text → read it on the UART.
-5. **Real integration.** Wire it to a BME280 (Ch 67): Linux sends temperature every 5 s; the phone app shows it. Add a command parser (phone sends "LED ON" → Linux toggles a GPIO).
+5. **Real integration.** Wire it to a BME280 (Ch 67): Linux sends temperature every 5 s. The phone app shows it. Add a command parser (phone sends "LED ON" → Linux toggles a GPIO).
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 6. **Compare effort.** Reflect on the ~10 lines here vs the ~250-line GATT server of Ch 95. Note what you gave up (standard GATT, throughput, multiple characteristics).
-7. **Range test.** Walk away with the phone; note where the connection drops (~20–30 m).
+7. **Range test.** Walk away with the phone. note where the connection drops (~20–30 m).
 
 ## 96.7  Pitfalls
 
 - **Clone command-set differences.** "HM-10" clones use different AT syntax (`AT+NAME=x` vs `AT+NAMEx`, with/without `\r\n`). Always `AT+VERS?` first and match your module's dialect.
-- **No line terminator (genuine HM-10).** Genuine HM-10 v5xx commands have *no* CR/LF. Sending `AT\r\n` to one may fail; send bare `AT`. Clones often *require* `\r\n`. Test.
+- **No line terminator (genuine HM-10).** Genuine HM-10 v5xx commands have *no* CR/LF. Sending `AT\r\n` to one may fail. send bare `AT`. Clones often *require* `\r\n`. Test.
 - **Command mode vs data mode confusion.** Once connected, the module is in data mode — AT commands are passed through as data, not interpreted. To reconfigure, disconnect first (or use a mode pin if the module has one).
 - **Baud mismatch after AT+BAUD.** Set the baud, reset, then *reopen the UART at the new baud*. Forgetting this = no communication.
 - **Throughput ceiling.** BLE's connection interval limits throughput to a few hundred bytes/sec to a few KB/sec. Don't expect serial-cable speeds.

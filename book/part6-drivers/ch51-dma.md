@@ -7,12 +7,17 @@ status: draft
 ---
 
 # Chapter 51 — DMA
+**MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 
 > **What:** Linux's **`dmaengine`** framework — the portable way to ask a hardware DMA controller to move bytes between memory and a peripheral (or memory and memory) without involving the CPU between start and completion. By the end you'll have an SPI or UART driver that hands off a 4 KB transfer to the SDMA controller and goes to sleep until the completion callback wakes it.
+> **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 >
 > **Why:** The CPU is bad at bulk data moves. At 10 Mbps SPI, one IRQ per byte burns a large fraction of the i.MX6ULL CPU. SDMA does the same job at zero CPU cost. Any driver that streams data — SPI, I²S audio, CSI camera, LCDIF, eMMC — uses DMA. Once you know the consumer API, most DMA-using drivers read the same way.
+> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 >
 > **Focus:** **the four standard steps** — request a channel, configure direction & widths, prepare a descriptor, submit + issue + wait. Once you know these four steps, most DMA drivers look the same.
+
 
 ## 51.1  When and why
 
@@ -23,6 +28,8 @@ Without DMA, an SPI driver writes one byte to TX, waits for "TX empty," writes t
 The trade-off:
 - **Setup cost.** Configuring an SDMA transfer costs ~1 µs. For 4-byte transfers, PIO is faster.
 - **Memory pinning.** DMA needs physically-contiguous, cache-coherent buffers. Use `dma_alloc_coherent` (slower, smaller pool) or `dma_map_single` (faster, manages cache). The MMU/cache material from Ch 4 matters here.
+MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+**MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 - **Debug pain.** A misconfigured DMA writes to random memory. Bugs are harder to diagnose than PIO bugs.
 
 Rule of thumb: use DMA for transfers ≥ 64 bytes, polling/PIO for shorter.
@@ -63,9 +70,11 @@ A peripheral that wants DMA declares it in DT via the standard `dmas` + `dma-nam
 };
 ```
 
-Each `<&sdma N M K>` triple is provider-specific. For i.MX SDMA: `<&sdma <channel> <type> <priority>>`. `channel` and `type` come from the SDMA event-mux table (e.g., ECSPI3 RX = event 7); the SoC datasheet has the mapping.
+Each `<&sdma N M K>` triple is provider-specific. For i.MX SDMA: `<&sdma <channel> <type> <priority>>`. `channel` and `type` come from the SDMA event-mux table (e.g., ECSPI3 RX = event 7). The SoC datasheet has the mapping.
 
-`dma-names` gives each channel a *symbolic* name; drivers ask for `"rx"` or `"tx"` (not channel number 7). Same pattern as PWM and clocks.
+`dma-names` gives each channel a *symbolic* name. drivers ask for `"rx"` or `"tx"` (not channel number 7). Same pattern as PWM and clocks.
+MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+**PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 
 ## 51.4  The four standard steps
 
@@ -161,7 +170,7 @@ static void rx_done_cb(void *param)
 wait_for_completion(&p->rx_done);
 ```
 
-`dmaengine_submit` queues the descriptor; `dma_async_issue_pending` actually kicks the engine. Most drivers separate them so they can queue multiple descriptors before starting (chained transfers).
+`dmaengine_submit` queues the descriptor. `dma_async_issue_pending` actually kicks the engine. Most drivers separate them so they can queue multiple descriptors before starting (chained transfers).
 
 The callback runs in *tasklet context* — no sleeping, no `kmalloc(GFP_KERNEL)`, no `mutex_lock`. Use it to release the mapping and signal a completion that a sleeping waiter can pick up.
 
@@ -188,6 +197,7 @@ dma_async_issue_pending(rx_chan);
 ```
 
 The callback fires once per *period* — every 4096 bytes. User-space drains via separate API (ALSA's snd_pcm_indirect or similar).
+**ALSA** - Linux's kernel and user-space audio stack.
 
 `dma_alloc_coherent` allocates from the kernel's coherent-DMA pool — guaranteed cache-coherent (writes from the CPU are immediately visible to DMA and vice versa), at the cost of being uncached for the CPU. For audio ring buffers this is perfect.
 
@@ -209,7 +219,7 @@ Memcpy DMA is rare on i.MX6ULL (CPU is fast enough at small sizes). Useful on bi
 
 A common bug: User-space fills a buffer. The driver hands the kernel pointer to DMA. DMA reads stale data — the CPU's recent writes are still in L1 cache.
 
-`dma_map_single(dev, ptr, size, DMA_TO_DEVICE)` solves this by **flushing** (writing back) the relevant cache lines to memory before the DMA reads them. The matching `dma_unmap_single` does nothing for `TO_DEVICE`; for `FROM_DEVICE`, it **invalidates** the cache so subsequent CPU reads come from the (DMA-written) memory.
+`dma_map_single(dev, ptr, size, DMA_TO_DEVICE)` solves this by **flushing** (writing back) the relevant cache lines to memory before the DMA reads them. The matching `dma_unmap_single` does nothing for `TO_DEVICE`. For `FROM_DEVICE`, it **invalidates** the cache so subsequent CPU reads come from the (DMA-written) memory.
 
 The kernel handles cache coherency for you, but only if you use the APIs. If you cast a pointer to `dma_addr_t` and skip `dma_map_*`, you get random data corruption. Whether it appears depends on whether the cache line was evicted between operations. **Always use dma_map_* or dma_alloc_coherent — never cast.**
 
@@ -217,20 +227,20 @@ The kernel handles cache coherency for you, but only if you use the APIs. If you
 
 1. **Inspect existing DMA users.** Read `drivers/spi/spi-imx.c` — find the dma_request_chan, slave_config, prep_slave_single, submit, issue, callback. Note how the driver decides PIO vs DMA based on transfer length.
 2. **Write a memory-to-memory test.** Allocate two 4 KB buffers, prepare a memcpy descriptor, submit, wait, verify content matches. Compare timings against `memcpy()` for sizes 64 B → 64 KB.
-3. **Enable SPI-with-DMA on your platform.** Add `dmas` + `dma-names` to your `&ecspi3` node, watch dmesg for "DMA acquired" or similar. Repeat your SPI loopback from Ch 47 with a 4 KB transfer; verify it works.
+3. **Enable SPI-with-DMA on your platform.** Add `dmas` + `dma-names` to your `&ecspi3` node, watch dmesg for "DMA acquired" or similar. Repeat your SPI loopback from Ch 47 with a 4 KB transfer. verify it works.
 4. **Measure CPU savings.** Use `top` or `perf` while running a 1 MB SPI loopback in tight loop, with and without DMA. The DMA case should idle the CPU between IRQs.
-5. **Provoke a cache bug.** Skip the dma_map_single call (cast directly). Observe corruption. Add the map call back; observe correctness.
-6. **Cyclic transfer prototype.** Sketch a fake audio capture: a kernel thread fills a ring buffer; a cyclic DMA copies it to a pretend FIFO; each callback prints a count. Verify smoothness.
+5. **Provoke a cache bug.** Skip the dma_map_single call (cast directly). Observe corruption. Add the map call back. observe correctness.
+6. **Cyclic transfer prototype.** Sketch a fake audio capture: a kernel thread fills a ring buffer. a cyclic DMA copies it to a pretend FIFO. each callback prints a count. Verify smoothness.
 
 ## 51.9  Pitfalls
 
-- **Forgetting to call `dma_async_issue_pending`.** Descriptor sits queued; callback never fires; driver hangs. The split between submit and issue is intentional (for chaining) but easy to get wrong.
-- **Wrong direction in dma_map_single.** `TO_DEVICE` for outgoing (driver writes, DMA reads); `FROM_DEVICE` for incoming (DMA writes, driver reads); `BIDIRECTIONAL` if both. Wrong direction = stale data.
+- **Forgetting to call `dma_async_issue_pending`.** Descriptor sits queued. callback never fires. driver hangs. The split between submit and issue is intentional (for chaining) but easy to get wrong.
+- **Wrong direction in dma_map_single.** `TO_DEVICE` for outgoing (driver writes, DMA reads). `FROM_DEVICE` for incoming (DMA writes, driver reads). `BIDIRECTIONAL` if both. Wrong direction = stale data.
 - **Buffer alignment / size constraints.** Some DMA engines require power-of-2 sizes or specific alignment. Check the engine's `device_caps`.
 - **DMA on stack buffers.** `dma_map_single(&stack_var, ...)` — the stack isn't necessarily DMA-able memory. Use `kmalloc(GFP_DMA | GFP_KERNEL, ...)` or `dma_alloc_coherent`.
 - **Sleeping in the callback.** Tasklet context. Use `complete()`, `wake_up()`, or schedule a workqueue.
-- **Not releasing the channel.** `dma_release_channel` in remove (or DMA channels leak; eventually you run out).
-- **Two consumers requesting the same channel.** First wins; second fails with -EBUSY. DT specifies which event line each peripheral uses; conflicts mean rewiring.
+- **Not releasing the channel.** `dma_release_channel` in remove (or DMA channels leak. eventually you run out).
+- **Two consumers requesting the same channel.** First wins. second fails with -EBUSY. DT specifies which event line each peripheral uses. conflicts mean rewiring.
 - **Cache flushing on bidirectional transfers.** Subtle. For `BIDIRECTIONAL` the kernel flushes before *and* invalidates after — slower. Use one direction whenever possible.
 
 ## 51.10  Going deeper
@@ -241,4 +251,4 @@ The kernel handles cache coherency for you, but only if you use the APIs. If you
 - **`sound/soc/fsl/imx-sdma.c`** + `imx-pcm-dma.c` — audio's cyclic DMA usage.
 - **`Documentation/core-api/dma-api-howto.rst`** — DMA buffer ownership rules and cache coherency, the canonical reference.
 
-> Next chapter: **Chapter 51A — Watchdog.** A simple but critical subsystem; every shipping product needs to recover automatically from a hung kernel or stuck application.
+> Next chapter: **Chapter 51A — Watchdog.** A simple but critical subsystem. every shipping product needs to recover automatically from a hung kernel or stuck application.

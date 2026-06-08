@@ -14,10 +14,11 @@ status: draft
 >
 > **Focus:** **functions composed into a configuration**. A gadget has one *configuration* with one or more *functions*. ConfigFS exposes this as a filesystem: `mkdir` a function, `echo` settings into its files, then bind to a UDC. No kernel code.
 
+
 ## 55.1  USB roles on i.MX6ULL
 
 i.MX6ULL has 2× USB OTG controllers. Each can be:
-- **Host** — Linux runs the USB host stack; devices plug into it.
+- **Host** — Linux runs the USB host stack. devices plug into it.
 - **Device** (gadget) — the SoC *is* a USB device that gets plugged into something else.
 - **OTG** — auto-detect host/device via the ID pin.
 
@@ -35,6 +36,8 @@ Configure in DT:
 ```
 
 For "otg" mode you also wire the ID pin to a GPIO.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 55.2  ConfigFS gadget overview
 
@@ -170,10 +173,10 @@ For specialised use cases (e.g., a custom protocol over USB), you can write a ke
 
 1. **Compose a USB serial gadget.** Use ConfigFS as in §55.4. Plug into a host PC, see `/dev/ttyACM0`.
 2. **USB Ethernet over OTG.** Set up `ecm` function, assign IPs both sides, SSH into the i.MX6ULL.
-3. **Mass storage from a backing file.** Expose a virtual disk; mount it on the host; copy files.
-4. **HID keyboard.** Use `g_hid` to make the i.MX6ULL appear as a USB keyboard; "type" characters by writing report descriptors.
-5. **Hot re-bind.** Write to `UDC` with empty string to disconnect; then re-bind. Useful for changing config without reboot.
-6. **Composite gadget.** Stack ACM + ECM + mass storage in one configuration; verify all three function on the host.
+3. **Mass storage from a backing file.** Expose a virtual disk. mount it on the host. copy files.
+4. **HID keyboard.** Use `g_hid` to make the i.MX6ULL appear as a USB keyboard. "type" characters by writing report descriptors.
+5. **Hot re-bind.** Write to `UDC` with empty string to disconnect. then re-bind. Useful for changing config without reboot.
+6. **Composite gadget.** Stack ACM + ECM + mass storage in one configuration. verify all three function on the host.
 
 ## 55.7  Pitfalls
 

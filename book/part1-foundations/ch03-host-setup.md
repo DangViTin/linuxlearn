@@ -9,12 +9,20 @@ status: draft
 # Chapter 3 — Host environment setup
 
 > **What:** a Linux development host that can cross-compile for ARMv7-A, serve files over TFTP and NFS, talk to the board over serial and USB-OTG, and recover a bricked board.
+> **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
+> **TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
+> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 >
 > **Why:** for the next sixty chapters, the host is your lever. A flaky host wastes more of your time than any bug in your code.
 >
 > **Focus:** the iteration loop. By the end of this chapter, the loop "change a file, see it run on the board" must take under thirty seconds. If it is slower, you will iterate less, and you will learn less.
 
+
 ## 3.1  Choosing the host
+
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
 
 The book assumes **native Ubuntu 22.04 LTS** running on bare-metal hardware. Other options work but cost you time, sometimes a lot:
 
@@ -29,9 +37,13 @@ The book assumes **native Ubuntu 22.04 LTS** running on bare-metal hardware. Oth
 
 If you are running Windows or macOS, the fastest path is to put Ubuntu on a USB-3 NVMe enclosure and boot from it. Dual-booting your daily machine is the obvious alternative. What matters is that when you plug the board into a USB port, `lsusb` sees it without trouble.
 
-The remainder of this book assumes Ubuntu 22.04. Commands shown with the `$` prompt run as your normal user; commands with `#` run as root via `sudo`.
+The remainder of this book assumes Ubuntu 22.04. Commands shown with the `$` prompt run as your normal user. Commands with `#` run as root via `sudo`.
 
 ## 3.2  Workspace layout
+
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
 
 Create the workspace before installing anything. The layout you set now will be referred to by every chapter:
 
@@ -51,9 +63,20 @@ $ tree -L 1
 Two rules about this layout. Both matter for the rest of the book:
 
 1. **Sources are read-only.** We never edit inside `src/u-boot/`. We patch and build out-of-tree into `build/u-boot/`. This is the only way to keep a clean diff against upstream and keep cross-chapter reproducibility honest.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 2. **`rootfs/` is the live NFS root.** Anything you copy into `rootfs/` is visible to the board after the next boot, with no flashing step. This is the central iteration trick of embedded Linux.
+MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 ## 3.3  Host packages
+
+> **Storage safety:** Before any command that names /dev/sdX, run lsblk -o NAME,SIZE,MODEL,TRAN,TYPE,MOUNTPOINTS.
+> Verify the removable card by size and model, unmount its partitions, and stop if the path is not the target card. Writing the wrong /dev node can destroy the host disk.
+
+
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
 
 Install in one shot:
 
@@ -79,17 +102,18 @@ What each pulls in, briefly:
 - **`device-tree-compiler`** — `dtc`. You'll use this in every chapter from Ch 27 on.
 - **`u-boot-tools`** — provides `mkimage`, `mkenvimage`, `dumpimage`, `mkeficapsule`.
 - **`nfs-kernel-server`, `tftpd-hpa`** — server side of the network-boot loop.
-- **`minicom`, `picocom`** — serial terminals. We'll use `picocom`; `minicom` is here for users who prefer it.
+- **`minicom`, `picocom`** — serial terminals. We'll use `picocom`. `minicom` is here for users who prefer it.
 - **`qemu-user-static`, `binfmt-support`** — lets you run ARM binaries on the host transparently. Useful when staging a rootfs with `chroot`.
-- **`gdb-multiarch`** — one `gdb` that speaks every architecture; we'll point it at ARM ELFs.
+- **`gdb-multiarch`** — one `gdb` that speaks every architecture. We'll point it at ARM ELFs.
 - **`libusb-1.0-0-dev`, `libftdi1-dev`** — needed by `imx_usb_loader` and OpenOCD when we build them from source.
+**OpenOCD** - the host program that talks to a JTAG adapter and exposes a GDB server.
 - **`fakeroot`, `dosfstools`, `mtools`, `parted`** — manipulate SD card images without needing root.
 
 If `apt` complains about any package on your distribution, search for the closest equivalent and note the substitution in your journal.
 
 ## 3.4  The cross toolchain
 
-We need a toolchain that runs on `x86_64-linux-gnu` (the host) and produces code for `arm-linux-gnueabihf` (the target). Two reasonable sources for now; we build one ourselves in Chapter 122.
+We need a toolchain that runs on `x86_64-linux-gnu` (the host) and produces code for `arm-linux-gnueabihf` (the target). Two reasonable sources for now. We build one ourselves in Chapter 122.
 
 ### Option A — Ubuntu package
 
@@ -114,12 +138,13 @@ Pros: newer GCC, often better optimization. Cons: triplet is `arm-none-linux-gnu
 
 ### Decoding the triplet
 
-`arm-linux-gnueabihf` looks alphabet-soupy; it is not.
+`arm-linux-gnueabihf` looks alphabet-soupy. It is not.
 
 - `arm` — target CPU family
 - `linux` — target OS (vs `none` for bare metal, `eabi` for bare-metal-ish without OS)
 - `gnu` — userland convention (vs `musl`, `uclibc`)
 - `eabi` — Embedded ABI v5
+**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
 - `hf` — hard-float: floating-point arguments passed in VFP registers (faster but binary-incompatible with `gnueabi` soft-float)
 
 For bare-metal Part II we will sometimes want a `arm-none-eabi` toolchain (no OS, no libc). Install it now so we don't have to interrupt later:
@@ -203,7 +228,7 @@ If your host is Windows (WSL2 or dual-boot Linux), or if you sometimes connect f
 - **Putty** (`putty.org`, free) — minimal, ubiquitous, no scripting. Fine if you only need it occasionally.
 - **Tera Term** (`teratermproject.github.io`, free) — Japanese-origin, popular in industrial settings, has a useful macro language.
 
-For all of them, the **CH340/CP2102 USB-serial dongle driver** is the prerequisite on Windows; install from the chip vendor's site (`wch.cn` for CH340, `silabs.com` for CP2102). Linux includes both kernel drivers by default — nothing to install.
+For all of them, the **CH340/CP2102 USB-serial dongle driver** is the prerequisite on Windows. install from the chip vendor's site (`wch.cn` for CH340, `silabs.com` for CP2102). Linux includes both kernel drivers by default — nothing to install.
 
 When configuring any of these tools, the settings are the same we used for `picocom`: **115200 8N1, no flow control**.
 
@@ -259,7 +284,7 @@ Export list for localhost:
 
 The flags decoded:
 
-- `rw` — the target can write back. We want this; the target's `dmesg` and `/var/log` should be persistent across reboots.
+- `rw` — the target can write back. We want this. The target's `dmesg` and `/var/log` should be persistent across reboots.
 - `sync` — writes are committed before the server replies. Slower but safer.
 - `no_root_squash` — the target's `root` is treated as host root. Required, because the target's processes will create files as `uid 0` and expect them to be readable by `uid 0`.
 - `no_subtree_check` — skip a check that hurts performance and offers little safety on a dev host.
@@ -300,6 +325,7 @@ $ sudo make install
 You only need one. We will use `uuu` in this book because its scripting language is useful for Chapter 8's recovery flow. Install both if you like options.
 
 **udev rule for non-root access:**
+**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 
 ```sh
 $ sudo tee /etc/udev/rules.d/99-imx.rules > /dev/null <<'EOF'
@@ -310,7 +336,9 @@ $ sudo udevadm control --reload-rules
 $ sudo udevadm trigger
 ```
 
-`15a2:0080` is the i.MX6ULL ROM SDP enumeration; `1fc9:0145` is the same after a board enters the second-stage download (different VID/PID once U-Boot SPL takes over).
+`15a2:0080` is the i.MX6ULL ROM SDP enumeration. `1fc9:0145` is the same after a board enters the second-stage download (different VID/PID once U-Boot SPL takes over).
+MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 
 ## 3.9  SD card preparation
 
@@ -356,7 +384,7 @@ Pick a static IP for the dev host on the wire to the board. We will use `192.168
 - Host: **192.168.7.1**
 - Board: **192.168.7.2**
 
-The simplest setup is a directly-connected Ethernet cable between host and board, with the host's secondary NIC set to a static IP. If you only have one NIC and need internet, a small unmanaged switch in between is fine. Wi-Fi works but adds variables; we prefer wired.
+The simplest setup is a directly-connected Ethernet cable between host and board, with the host's secondary NIC set to a static IP. If you only have one NIC and need internet, a small unmanaged switch in between is fine. Wi-Fi works but adds variables. We prefer wired.
 
 If you use NetworkManager:
 
@@ -434,7 +462,7 @@ A more disciplined alternative is `direnv` (`sudo apt install direnv`), which au
 - **NFS over Wi-Fi to a slow board.** Booting a kernel over NFS-root on Wi-Fi works but is brittle. If you see "VFS: Unable to mount root fs", it is almost always NFS timing out, not a real kernel bug. Use wired.
 - **Multiple toolchains on PATH.** The first `arm-linux-gnueabihf-gcc` in `PATH` wins. If you install both the Ubuntu package and Linaro, prepend the one you want explicitly.
 - **`dd` to the wrong device.** Every embedded engineer has done this once. Use the helper from §3.9 and you will only do it once.
-- **`sudo` and environment variables.** `sudo CROSS_COMPILE=arm-linux-gnueabihf- make` does *not* pass `CROSS_COMPILE` unless `sudo`'s `env_reset` is disabled. Build without `sudo`; install with `sudo`.
+- **`sudo` and environment variables.** `sudo CROSS_COMPILE=arm-linux-gnueabihf- make` does *not* pass `CROSS_COMPILE` unless `sudo`'s `env_reset` is disabled. Build without `sudo`. install with `sudo`.
 
 ## 3.14  Going deeper
 

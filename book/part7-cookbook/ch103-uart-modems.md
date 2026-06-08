@@ -12,12 +12,16 @@ status: draft
 >
 > **Why:** USB host is expensive. A USB modem requires USB-OTG/host hardware on your SoC, a 5 V supply that can deliver 2.5 A peaks, ESD protection on D+/D-, and a USB connector or board-to-board. A UART modem is 4 wires (TX/RX/RTS/CTS) + a small 3.3/4 V buck. On a price-sensitive IoT product (alarm panel, vending machine, agricultural sensor), the UART path saves $5–10 BOM + a USB-host integration headache. The trade: max ~5 Mbps (versus 150 Mbps over USB-QMI), and you live with PPP overhead.
 >
-> **Focus:** PPP is a 1989-vintage link protocol. It uses HDLC framing, LCP for link negotiation, IPCP for IPv4 address assignment, and PAP/CHAP for authentication. It still works on every modem ever made. The kernel's `ppp_generic.ko` provides the netdev; `pppd` is the user-space brain that runs the LCP/IPCP state machines and a chat script that converses with the modem to bring up the channel. With `pppd`, a chat script, and an init.d (or systemd) supervisor, you have a robust auto-reconnecting cellular link with no QMI/MBIM/RNDIS complexity.
+> **Focus:** PPP is a 1989-vintage link protocol. It uses HDLC framing, LCP for link negotiation, IPCP for IPv4 address assignment, and PAP/CHAP for authentication. It still works on every modem ever made. The kernel's `ppp_generic.ko` provides the netdev. `pppd` is the user-space brain that runs the LCP/IPCP state machines and a chat script that converses with the modem to bring up the channel. With `pppd`, a chat script, and an init.d (or systemd) supervisor, you have a robust auto-reconnecting cellular link with no QMI/MBIM/RNDIS complexity.
 >
-> **Tooling.** This chapter uses `ppp` (`pppd`, `chat`); optional GSM mux via `ldattach` (`util-linux`).
+> **Tooling.** This chapter uses `ppp` (`pppd`, `chat`). optional GSM mux via `ldattach` (`util-linux`).
 > - **Ubuntu-base (target):** `apt install ppp util-linux`
 > - **Buildroot:** `BR2_PACKAGE_PPP=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 103.1  When UART beats USB
 
@@ -54,7 +58,9 @@ Mandatory rules:
 1. **Above 9600 baud, hardware flow control is mandatory.** Most modules expect 115200 with flow control by default. Without it, the UART drops bytes, PPP LCP times out, and the modem looks broken.
 2. **VBAT, not VDD_3V3.** The modem's RF block runs from a 4 V (typ.) supply directly to the PA. The internal LDO drops to 3.3 V for logic, but the PA pulls from VBAT. Sourcing VBAT from a weak 3.3 V LDO instead of a buck = TX brownouts.
 3. **470 µF or larger bulk cap on VBAT.** TX is a 1.7 W burst at ~500 mA peak. The supply needs to hold that without sagging or PPP drops on every transmit.
-4. **PWRKEY pulse.** Modules are off after VBAT applied. Pulse PWRKEY low for at least 1 s to power on. The Air724 needs 2 s. Some boards tie PWRKEY low through a resistor for automatic power-on; GPIO control is cleaner because it lets the host reset the modem.
+4. **PWRKEY pulse.** Modules are off after VBAT applied. Pulse PWRKEY low for at least 1 s to power on. The Air724 needs 2 s. Some boards tie PWRKEY low through a resistor for automatic power-on. GPIO control is cleaner because it lets the host reset the modem.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 5. **3.3 V vs 1.8 V UART logic.** Newer modules (LTE Cat-1bis) are 1.8 V. A direct 3.3 V tie kills the I/O. Level-shift if mismatched.
 
 ## 103.3  Powering on and the boot sequence
@@ -118,9 +124,9 @@ What this does, step by step:
 3. After `CONNECT`, the UART has switched from AT mode to **HDLC framing** — every byte is now PPP-framed.
 4. **pppd takes over the file descriptor**, runs **LCP** (Link Control Protocol) — both sides negotiate MTU, auth method, magic numbers.
 5. If auth required, **PAP** or **CHAP** runs (most LTE carriers skip auth here since the SIM already authenticated).
-6. **IPCP** (IP Control Protocol) runs: the modem assigns an IPv4 address to our side; we accept the DNS servers it offers.
-7. pppd creates **`ppp0`** netdev; configures address; if `defaultroute`, adds the default route.
-8. Connection is up; pppd monitors LCP echoes for liveness; `persist` makes it reconnect on drop.
+6. **IPCP** (IP Control Protocol) runs: the modem assigns an IPv4 address to our side. We accept the DNS servers it offers.
+7. pppd creates **`ppp0`** netdev. configures address. If `defaultroute`, adds the default route.
+8. Connection is up. pppd monitors LCP echoes for liveness. `persist` makes it reconnect on drop.
 
 ```sh
 ip addr show ppp0
@@ -132,7 +138,7 @@ You now have internet over a 4-wire UART. Throughput: ~1–3 Mbps on Cat-1, limi
 
 ## 103.5  How the kernel ppp_generic driver works
 
-`drivers/net/ppp/ppp_generic.c` is the netdev side; `drivers/net/ppp/ppp_async.c` (or `ppp_synctty.c`) handles HDLC framing over the UART.
+`drivers/net/ppp/ppp_generic.c` is the netdev side. `drivers/net/ppp/ppp_async.c` (or `ppp_synctty.c`) handles HDLC framing over the UART.
 
 ```
 Userspace pppd
@@ -245,15 +251,15 @@ dhclient usb0
 
 ## 103.9  Lab
 
-1. **Power on, capture boot URCs.** Wire the modem; pulse PWRKEY; `cat /dev/ttymxc3`. Watch for `RDY`, `+CPIN: READY`, `SMS Ready`.
+1. **Power on, capture boot URCs.** Wire the modem. pulse PWRKEY. `cat /dev/ttymxc3`. Watch for `RDY`, `+CPIN: READY`, `SMS Ready`.
 2. **AT bring-up checklist.** Reuse `at_client.py` from Ch 102. Confirm `AT+CPIN?`, `AT+CSQ`, `AT+COPS?`.
-3. **PPP up.** Configure `/etc/ppp/peers/cellular` + chat script. `pppd call cellular`. Verify `ppp0` has an IP; `curl ifconfig.io` shows the public address.
-4. **Reconnect test.** Pull the antenna; LCP echo timeouts fire; `persist` makes pppd reconnect. Time the recovery.
-5. **Chat script trace.** Run `pppd call cellular debug logfile /tmp/pppd.log`. Read the log line-by-line; understand every chat exchange and LCP/IPCP packet.
-6. **GSM 07.10 mux.** Enable CMUX; bring up PPP on `/dev/gsmtty2` while simultaneously querying `AT+CSQ` on `/dev/gsmtty1`. Verify both work concurrently.
-7. **Supervisor script.** Implement `celld.sh`; install as init. Reboot; verify `ppp0` comes up automatically.
-8. **Cat-1bis with USB-ECM.** If you have an ML302 or EC200N, switch it to ECM mode; bring up `usb0` via DHCP. Compare bring-up complexity vs PPP.
-9. **Throughput measurement.** `iperf3 -c <server>` over PPP at 115200 (~80 kbps), 921600 (~600 kbps), and ECM (~5 Mbps). The UART speed dominates PPP throughput; ECM is limited by Cat-1 cell capacity.
+3. **PPP up.** Configure `/etc/ppp/peers/cellular` + chat script. `pppd call cellular`. Verify `ppp0` has an IP. `curl ifconfig.io` shows the public address.
+4. **Reconnect test.** Pull the antenna. LCP echo timeouts fire. `persist` makes pppd reconnect. Time the recovery.
+5. **Chat script trace.** Run `pppd call cellular debug logfile /tmp/pppd.log`. Read the log line-by-line. understand every chat exchange and LCP/IPCP packet.
+6. **GSM 07.10 mux.** Enable CMUX. bring up PPP on `/dev/gsmtty2` while simultaneously querying `AT+CSQ` on `/dev/gsmtty1`. Verify both work concurrently.
+7. **Supervisor script.** Implement `celld.sh`. install as init. Reboot. verify `ppp0` comes up automatically.
+8. **Cat-1bis with USB-ECM.** If you have an ML302 or EC200N, switch it to ECM mode. bring up `usb0` via DHCP. Compare bring-up complexity vs PPP.
+9. **Throughput measurement.** `iperf3 -c <server>` over PPP at 115200 (~80 kbps), 921600 (~600 kbps), and ECM (~5 Mbps). The UART speed dominates PPP throughput. ECM is limited by Cat-1 cell capacity.
 10. **SMS send/receive.** While PPP is up (via CMUX), `AT+CMGF=1`, `AT+CMGS="+1234..."`, type message, Ctrl-Z. Confirm receipt on the destination phone.
 
 ## 103.10  Pitfalls
@@ -267,12 +273,12 @@ dhclient usb0
 - **PPP holds the tty.** Once pppd takes the line, you can't `cat /dev/ttymxc3` to debug AT. Use CMUX or a second UART for debug.
 - **NetworkManager fights pppd.** If NM is running, it may auto-take the modem. Disable NM for that tty or use NM exclusively.
 - **Default route conflict.** PPP's `defaultroute` plus existing eth0 default route → routing loops. Use `replacedefaultroute` or set metric.
-- **MTU 1500 vs operator MTU.** Some operators clamp at 1460 or 1430; pppd negotiates LCP MTU but TCP path-MTU discovery can still fail. Set `mtu 1430` explicitly if you see hung-large-packet symptoms.
-- **CMUX framing errors silent.** Bad CRTS/CTS on the underlying UART causes n_gsm to drop frames; the per-channel ttys appear functional but data is garbled. Verify hardware flow first.
+- **MTU 1500 vs operator MTU.** Some operators clamp at 1460 or 1430. pppd negotiates LCP MTU but TCP path-MTU discovery can still fail. Set `mtu 1430` explicitly if you see hung-large-packet symptoms.
+- **CMUX framing errors silent.** Bad CRTS/CTS on the underlying UART causes n_gsm to drop frames. The per-channel ttys appear functional but data is garbled. Verify hardware flow first.
 
 ## 103.11  Going deeper
 
-- **`pppd(8)` manual** — the canonical reference; every option matters for production reliability.
+- **`pppd(8)` manual** — the canonical reference. every option matters for production reliability.
 - **`chat(8)`** — the connect-script DSL.
 - **`drivers/net/ppp/ppp_generic.c` + `ppp_async.c`** — the kernel side.
 - **`drivers/tty/n_gsm.c`** — 3GPP 27.010 multiplexer.

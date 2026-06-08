@@ -9,15 +9,21 @@ status: draft
 # Chapter 89 — I²S audio codecs
 
 > **What:** the analog-front-end chips that give the i.MX6ULL real audio: DAC for playback, ADC for capture, headphone and speaker drivers, mic preamps. Four codecs compared: **Cirrus WM8960** (the i.MX favourite), **NXP SGTL5000** (on many i.MX EVKs), **Everest ES8388** (cheap, ESP32-popular), **TI TLV320AIC3104** (industrial). Builds on Ch 53 (ALSA/ASoC framework). For each: the codec's role, the register/DAPM model, and a from-scratch ASoC codec driver.
+> **ASoC** - ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
+> **ALSA** - Linux's kernel and user-space audio stack.
 >
-> **Why:** the i.MX6ULL's SAI is a digital I²S serializer only. It has no analog audio. A codec adds the DAC/ADC/amp/mic. Ch 53 showed the three-driver ASoC split (CPU-DAI + codec + machine) with WM8960; this chapter goes *deep on the codec side* — how a codec driver is structured, what DAPM (Dynamic Audio Power Management) actually does, and how to write one from scratch.
+> **Why:** the i.MX6ULL's SAI is a digital I²S serializer only. It has no analog audio. A codec adds the DAC/ADC/amp/mic. Ch 53 showed the three-driver ASoC split (CPU-DAI + codec + machine) with WM8960. This chapter goes *deep on the codec side* — how a codec driver is structured, what DAPM (Dynamic Audio Power Management) actually does, and how to write one from scratch.
 >
 > **Focus:** a codec driver has three parts: a regmap for register access, DAPM widgets and routes for the analog graph, and DAI ops for I²S format negotiation. The regmap (Ch 50) handles register access. The DAPM graph models the analog signal paths: DAC → mixer → headphone amp → jack. Each block is powered up only when it lies on an active route, which saves power and avoids switching clicks. The DAI ops handle the I²S format negotiation. Once you understand these three, every codec driver looks familiar.
 >
 > **Tooling.** This chapter uses `alsa-utils`, `i2c-tools`.
 > - **Ubuntu-base (target):** `apt install alsa-utils i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_I2C_TOOLS=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 89.1  Codec comparison
 
@@ -36,8 +42,8 @@ status: draft
 
 **Pick guide:**
 - **WM8960**: has a *built-in speaker amp* — drive a speaker directly, no external amp. Default for i.MX boards.
-- **SGTL5000**: best SNR; on NXP EVKs; no speaker amp.
-- **ES8388**: cheapest; common on Chinese audio boards.
+- **SGTL5000**: best SNR. on NXP EVKs. no speaker amp.
+- **ES8388**: cheapest. common on Chinese audio boards.
 - **TLV320AIC3104**: industrial temperature range, robust.
 
 ## 89.2  What a codec does (and the SAI doesn't)
@@ -64,7 +70,7 @@ status: draft
    └──────────────────────────────────────────────────────────┘
 ```
 
-The codec turns digital PCM into analog you can hear, and analog mic/line signals into digital PCM. The I²S carries the digital samples; I²C carries the control (volume, routing, power).
+The codec turns digital PCM into analog you can hear, and analog mic/line signals into digital PCM. The I²S carries the digital samples. I²C carries the control (volume, routing, power).
 
 ## 89.3  DAPM — Dynamic Audio Power Management
 
@@ -77,6 +83,8 @@ Widget types:
 - **Mixers**: `SND_SOC_DAPM_MIXER` (combine sources).
 - **PGAs / amps**: `SND_SOC_DAPM_PGA`, `SND_SOC_DAPM_OUT_DRV`.
 - **Supplies**: `SND_SOC_DAPM_SUPPLY` (a shared resource like a bias generator or PLL).
+MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+**PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 
 And **routes** connecting them:
 
@@ -91,7 +99,7 @@ static const struct snd_soc_dapm_route wm8960_routes[] = {
 };
 ```
 
-When you play audio: the stream activates "Left DAC"; DAPM walks the graph forward — DAC → mixer → PGA → Headphone Jack — and powers on each widget in that path. When you stop, it powers them down (in the right order to avoid pops). Blocks *not* in an active route stay off.
+When you play audio: the stream activates "Left DAC". DAPM walks the graph forward — DAC → mixer → PGA → Headphone Jack — and powers on each widget in that path. When you stop, it powers them down (in the right order to avoid pops). Blocks *not* in an active route stay off.
 
 DAPM is why a well-written codec driver consumes µA at idle and doesn't click — and why a *badly* written one pops on every play/stop. Getting the routes and power-sequencing right is the bulk of codec-driver effort.
 
@@ -384,19 +392,19 @@ What WM8960 adds (the other ~1300 lines): ADC + capture path, mic preamp + boost
 ## 89.6  Codec differences that matter
 
 - **WM8960**: built-in 1 W class-D speaker amp — the `Speaker` DAPM route + the `SPK_LP/LN/RP/RN` outputs. Drive a speaker directly. Unique among these four.
-- **SGTL5000**: best SNR; needs a specific power-up sequence (the chip has analog + digital + I/O rails that must come up in order). The mainline driver enforces it.
-- **ES8388**: cheap; the mainline `es8328.c` driver covers it but the ES8388 has minor register differences — check the compatible.
-- **TLV320AIC3104**: highly configurable routing (a "miniDSP" in bigger siblings); industrial temp range.
+- **SGTL5000**: best SNR. needs a specific power-up sequence (the chip has analog + digital + I/O rails that must come up in order). The mainline driver enforces it.
+- **ES8388**: cheap. The mainline `es8328.c` driver covers it but the ES8388 has minor register differences — check the compatible.
+- **TLV320AIC3104**: highly configurable routing (a "miniDSP" in bigger siblings). industrial temp range.
 
 ## 89.7  Lab
 
-1. **Bring up WM8960** (or your codec) per Ch 53. Verify `aplay -l` shows it; play a WAV.
+1. **Bring up WM8960** (or your codec) per Ch 53. Verify `aplay -l` shows it. play a WAV.
 2. **From-scratch codec.** Build `mycodec.ko` (adapt registers to a real simple codec, or test the registration logic). Verify the component registers and `alsamixer` shows the volume control.
 3. **DAPM trace.** `cat /sys/kernel/debug/asoc/*/dapm/*` while playing/stopping. Watch widgets power on/off. Confirm the DAC powers down when playback stops.
-4. **Volume + dB.** In `alsamixer`, adjust Master volume; verify the dB readout matches the TLV scale.
-5. **Capture (WM8960).** `arecord` from the mic input; verify the capture path + mic boost.
-6. **Speaker (WM8960).** Route to the built-in class-D speaker amp; drive a small speaker directly (no external amp).
-7. **Anti-pop.** Play/stop repeatedly; listen for clicks. A correct DAPM power-sequence + soft-mute eliminates them; comment out the mute_stream op and hear the difference.
+4. **Volume + dB.** In `alsamixer`, adjust Master volume. verify the dB readout matches the TLV scale.
+5. **Capture (WM8960).** `arecord` from the mic input. verify the capture path + mic boost.
+6. **Speaker (WM8960).** Route to the built-in class-D speaker amp. drive a small speaker directly (no external amp).
+7. **Anti-pop.** Play/stop repeatedly. listen for clicks. A correct DAPM power-sequence + soft-mute eliminates them. comment out the mute_stream op and hear the difference.
 
 ## 89.8  Pitfalls
 
@@ -404,10 +412,12 @@ What WM8960 adds (the other ~1300 lines): ADC + capture path, mic preamp + boost
 - **Master/slave clock mismatch.** If both SAI and codec think they're I²S master, no bit clock. One must be slave. Set `bitclock-master`/`frame-master` in the machine DT.
 - **MCLK rate wrong.** Codecs need MCLK = a specific multiple of the sample rate (e.g., 256× or 512× fs). For 48 kHz: 12.288 MHz or 24.576 MHz. Wrong MCLK → wrong pitch or no audio. Configure the SAI's clock to produce the right MCLK.
 - **DAPM routes incomplete.** Audio "plays" (DMA flows) but is silent because DAPM never powered the output path. Trace the dapm debugfs.
+MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 - **Pop/click on play/stop.** Missing soft-mute or wrong power-up/down order. Implement `mute_stream` and order DAPM events.
 - **Wrong codec I²C address.** WM8960 = 0x1A, SGTL5000 = 0x0A, ES8388 = 0x10/0x11. Check `i2cdetect`.
-- **SGTL5000 power sequencing.** Its rails must come up in order; out-of-order = chip doesn't respond. The mainline driver handles it; a hand-rolled one must too.
-- **Non-integer sample rates.** 44.1 kHz needs a fractional PLL ratio from a 12 MHz MCLK. Codecs have an internal PLL; configure `set_pll` or you only get the integer-related rates.
+- **SGTL5000 power sequencing.** Its rails must come up in order. out-of-order = chip doesn't respond. The mainline driver handles it. a hand-rolled one must too.
+- **Non-integer sample rates.** 44.1 kHz needs a fractional PLL ratio from a 12 MHz MCLK. Codecs have an internal PLL. configure `set_pll` or you only get the integer-related rates.
 
 ## 89.9  Going deeper
 
@@ -418,6 +428,6 @@ What WM8960 adds (the other ~1300 lines): ADC + capture path, mic preamp + boost
 - **`Documentation/sound/soc/dapm.rst`** — the DAPM model, in depth.
 - **`Documentation/sound/soc/codec.rst`** — the codec-driver author's guide.
 - **`include/sound/soc.h`** — the `SOC_*` control macros and DAPM widget macros.
-- **WM8960 datasheet (Cirrus)** — register map; the DAPM graph mirrors its block diagram.
+- **WM8960 datasheet (Cirrus)** — register map. The DAPM graph mirrors its block diagram.
 
 > Next chapter: **Chapter 90 — Digital class-D amplifiers.** When you don't need a full codec — just turn I²S into sound through a speaker. MAX98357A (no control at all), TAS5805M (DSP amp), PCM5102A (DAC).

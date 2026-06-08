@@ -8,13 +8,20 @@ status: draft
 
 # Chapter 7 — The Boot ROM, IVT, DCD, and BootData
 
-> **Acronyms used in this chapter** *(introduced here once; referenced through Parts II and III)*:
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
+
+> **Acronyms used in this chapter** *(introduced here once. referenced through Parts II and III)*:
 > - **POR_B** — Power-On Reset (active low). The pin that, when low, holds the SoC in reset.
 > - **IVT** — Image Vector Table. The header structure at the start of a bootable image that tells the ROM where everything else is.
 > - **DCD** — Device Configuration Data. A list of address/value pairs the ROM writes before loading your code (used to bring up DDR and PLLs).
+> **DCD** - Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
+> **DDR** - external DRAM that must be configured and trained before most software can run from it.
 > - **BootData** — a small struct holding the image's load address and total length.
 > - **SDP** — Serial Download Protocol. The USB-OTG fallback the ROM enters when boot fuses say so.
 > - **HAB** — High Assurance Boot. The cryptographic chain-of-trust feature (signed images). Detail in Ch 124.
+> **HAB** - High Assurance Boot, NXP's ROM-enforced secure boot mechanism on i.MX SoCs.
 > - **CSF** — Command Sequence File. The signature blob HAB consumes.
 >
 > **What:** what the i.MX6ULL does between the rising edge on POR_B and the moment it jumps to your code.
@@ -22,6 +29,7 @@ status: draft
 > **Why:** the Boot ROM is the first program that runs and you cannot change it. You can only obey it. The price of misunderstanding it is "the board does nothing" — the worst kind of bug, because there is no log to read.
 >
 > **Focus:** the **IVT** (where the ROM finds your image's metadata), the **DCD** (a tiny scripting language the ROM runs to prepare hardware before your code), and the **BootData** struct (load address and image length). These three structures, all under 100 bytes, are the contract.
+
 
 ## 7.1  What the Boot ROM is
 
@@ -32,7 +40,7 @@ Its sole job is to load some other code (your bootloader, or your bare-metal ima
 Three useful facts about the Boot ROM:
 
 1. **It is documented.** NXP publishes "Chapter 8 — System Boot" of the i.MX6ULL Reference Manual specifically to describe ROM behavior. Read it before this chapter feels solid.
-2. **It is the same across all i.MX6ULL chips** of a given silicon revision. Behavioral differences between dev boards are *not* in the ROM; they are in the boot pins and the boot-media contents.
+2. **It is the same across all i.MX6ULL chips** of a given silicon revision. Behavioral differences between dev boards are *not* in the ROM. they are in the boot pins and the boot-media contents.
 3. **It is recoverable.** Even if you have written garbage to every flash on the board, you can still drop into **USB Serial Download Protocol (SDP)** and push a new image directly into OCRAM over USB-OTG. We rely on this in Chapter 8.
 
 ## 7.2  The boot sequence, step by step
@@ -40,6 +48,7 @@ Three useful facts about the Boot ROM:
 From POR_B rising to your `_start` executing, the i.MX6ULL Boot ROM performs roughly the following:
 
 1. **Internal initialization.** Set up the watchdog, the ROM's own stack at the top of OCRAM, and a few CCM defaults.
+**CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
 2. **Sample boot fuses + boot pins.**
    - The ROM reads `OCOTP_CFG5[BT_FUSE_SEL]`. If that bit is set, the boot device is taken from the fuses in `OCOTP_CFG4`. If clear, it comes from the BOOT_MODE[1:0] pins together with the BOOT_CFG pins.
 3. **Determine boot mode.**
@@ -52,9 +61,10 @@ From POR_B rising to your `_start` executing, the i.MX6ULL Boot ROM performs rou
    - **SD / eMMC / eSD / SDXC**: IVT at offset **`0x400`** (1 KB into the boot device).
    - **SPI EEPROM (SPI-NOR)**: IVT at offset **`0x400`**.
    - **QSPI NOR**: IVT at offset **`0x1000`** (4 KB) on typical i.MX6ULL configurations — verify against your specific BSP / mkimage settings.
+**BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
    - **Parallel NOR / EIM**: IVT at offset **`0x1000`** (4 KB).
    - **OneNAND**: IVT at offset **`0x100`** (256 B).
-   - **Raw NAND** (non-OneNAND): handled via the **FCB (Firmware Configuration Block)** — the IVT does *not* live at a fixed offset; it is reached after the ROM parses the FCB. We do not cover raw-NAND boot in detail in this book.
+   - **Raw NAND** (non-OneNAND): handled via the **FCB (Firmware Configuration Block)** — the IVT does *not* live at a fixed offset. It is reached after the ROM parses the FCB. We do not cover raw-NAND boot in detail in this book.
 6. **Validate the IVT.** Check its tag byte (`0xD1`), version, and self-pointer.
 7. **Walk the DCD** (if pointed-to by the IVT). The DCD is a list of register writes the ROM will perform before loading your image. Typical use: configure DDR controller and PLLs so the image can be loaded into DRAM.
 8. **Load the image.** Read `BootData.length` bytes from the boot device into `BootData.start` (the destination address).
@@ -147,6 +157,8 @@ Each DCD entry is one instruction in a small, one-byte-opcode language:
 ```
 
 Reads `addr`, ANDs with `mask`, loops until the condition specified by flags is met. Typically used for "wait until PLL locked."
+MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+**PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 
 ### A minimal DCD
 
@@ -167,6 +179,9 @@ You could, in principle, do all of this in your own startup code instead of in D
 
 1. **You may need DRAM up *before* your image is loaded.** If your image is bigger than OCRAM (128 KB), the only way to use it is for the ROM to load it into DRAM. The ROM can only load into DRAM after DDR is initialized, and the ROM cannot initialize DDR on its own. The DCD is the script you hand it that does that initialization.
 2. **Some peripherals need very early init.** Bringing up clocks to specific peripherals before your code runs can simplify SPL.
+MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 
 For a small bare-metal image that runs purely from OCRAM, you don't need a DCD. Your IVT can leave the DCD pointer as zero and bring up DDR yourself. We will do exactly that in Chapter 14 to keep things honest. The image we build in Chapter 11 also has no DCD — it's small enough to fit in OCRAM.
 
@@ -227,6 +242,7 @@ The exact layout is partly your choice — within the constraint that IVT.self m
 Tools that generate `.imx` files:
 
 - `mkimage -T imximage -n image.cfg -d app.bin app.imx` — the U-Boot tool. Takes a `.cfg` describing DCD writes and produces the final image.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 - `imx-mkimage` — NXP's standalone tool, used by their OS BSPs.
 - **Your own script in Chapter 11.** We will write a 60-line Python program that emits an `.imx` file byte-by-byte, with no `mkimage`.
 
@@ -239,6 +255,8 @@ If `IVT.csf` is nonzero, the ROM jumps to a verification routine before executin
 On a freshly-fabricated chip, HAB is in "open" mode — verification is performed but failures do not stop the boot. Once you burn the `SEC_CONFIG[1]` fuse, HAB is in "closed" mode — failures stop the boot, permanently. There is no recovery from a botched closed-mode signing.
 
 We will not enable HAB in Parts I–VI of this book. Chapter 124 covers the full HAB workflow, including how to sign U-Boot and the kernel and how to chain that trust into a verified rootfs.
+MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 For now: leave `IVT.csf = 0`. Do not touch SEC_CONFIG fuses.
 
@@ -284,6 +302,7 @@ Write the wiring in `~/imx6ull/notes/ch07-boot-pins.md`. Photograph the relevant
 ### Lab B — Decode a known-good .imx
 
 Grab any prebuilt `u-boot.imx` for i.MX6ULL (e.g., from an existing Buildroot output, or download one from NXP). Without using `dumpimage`:
+**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 
 ```sh
 $ xxd -s 0x400 -l 32 u-boot.imx
@@ -311,4 +330,4 @@ You do not need to *run* the image. The point is to read it.
 - The U-Boot `tools/mkimage.c` and `tools/imximage.c` source — read these *after* you have written your own image-builder, not before.
 - The `imx-mkimage` repository at `<https://github.com/nxp-imx/imx-mkimage>`. Useful reference, but our goal in Ch 11 is to do without it.
 
-> Next chapter: **Chapter 8 — Hardware bring-up checklist.** The last conceptual chapter; from Ch 9 onward, every chapter ends with running code on the board.
+> Next chapter: **Chapter 8 — Hardware bring-up checklist.** The last conceptual chapter. From Ch 9 onward, every chapter ends with running code on the board.

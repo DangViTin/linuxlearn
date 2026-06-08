@@ -7,12 +7,15 @@ status: draft
 ---
 
 # Chapter 35B — Read-only rootfs + overlayfs
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 > **What:** mount the root filesystem **read-only** on a shipped product, then use **`overlayfs`** to give the parts of `/` that must be writable (e.g., `/var/log/`, `/etc/`, `/tmp/`) a per-boot tmpfs or persistent overlay. The result: power can drop at any instant without corrupting the rootfs.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 >
 > **Why:** every shipping industrial product mounts its rootfs read-only. The reason is simple: a user yanks the power, the filesystem doesn't catch the close-and-flush, the next boot's `fsck` finds inconsistencies, sometimes corrects them, sometimes returns "dropped to /bin/sh for emergency repair." A read-only rootfs cannot be corrupted by power loss because no one is writing to it. The trade is that any data the system *does* need to write must go somewhere else — a tmpfs (lost on reboot), a separate data partition (persistent), or an overlay (write-through to tmpfs / data partition).
 >
 > **Focus:** the **three-tier model** — `lowerdir` (immutable rootfs), `upperdir` (where changes accumulate), `workdir` (overlay's scratch space). Once you understand those three, every overlayfs setup follows the same shape.
+
 
 ## 35B.1  The problem this solves
 
@@ -34,7 +37,7 @@ There are two common ways to ship a read-only rootfs:
 
 ### Pattern A — RO rootfs + tmpfs for writable paths
 
-The simplest. Your application doesn't need writes to persist; it just needs *some* place to put `/var/log/`, `/tmp/`, and any temp state. Make those paths point to a tmpfs (RAM-backed, lost on reboot — exactly what you want for `/tmp/`):
+The simplest. Your application doesn't need writes to persist. It just needs *some* place to put `/var/log/`, `/tmp/`, and any temp state. Make those paths point to a tmpfs (RAM-backed, lost on reboot — exactly what you want for `/tmp/`):
 
 ```
 /        ext4 ro       (root filesystem; immutable)
@@ -62,13 +65,13 @@ And set bootargs:
 root=/dev/mmcblk1p2 ro rootwait    # ← note the "ro"
 ```
 
-That's it. The rootfs is mounted RO; the tmpfs mounts give you writable paths.
+That's it. The rootfs is mounted RO. The tmpfs mounts give you writable paths.
 
 The downside: anything in `/etc/` you'd want to modify (e.g., `/etc/network/interfaces` to change IP, `/etc/hostname` to set device serial) requires *rebuilding the rootfs* or some out-of-band update mechanism.
 
 ### Pattern B — RO rootfs + overlay for selective persistence
 
-If you want some changes to persist (e.g., the device's serial number, configuration, learned data), use **overlayfs**. The rootfs stays read-only; an overlay on top gives the illusion of writability and stores changes to a separate persistent partition.
+If you want some changes to persist (e.g., the device's serial number, configuration, learned data), use **overlayfs**. The rootfs stays read-only. an overlay on top gives the illusion of writability and stores changes to a separate persistent partition.
 
 ```
                 user-space sees a normal "writable /"
@@ -99,7 +102,7 @@ We'll set up both. Pattern A first because it's simpler.
 
 ## 35B.3  Pattern A in practice
 
-Assume the rootfs we built in Chapter 31 or Chapter 35 lives on `/dev/mmcblk1p2` (the second eMMC partition; `p1` is FAT for boot, `p2` is ext4 root).
+Assume the rootfs we built in Chapter 31 or Chapter 35 lives on `/dev/mmcblk1p2` (the second eMMC partition. `p1` is FAT for boot, `p2` is ext4 root).
 
 Build the rootfs as normal, with whatever method you prefer. Then customise `/etc/fstab` as in §35B.2 above. Save.
 
@@ -114,10 +117,12 @@ Common culprits to fix:
 
 - `/etc/resolv.conf` updated by `dhclient` — link to `/run/resolv.conf` (tmpfs) instead.
 - `/etc/adjtime` updated by `hwclock` — same fix, or use `--noadjfile`.
-- `/etc/machine-id` (systemd) — needs to be persistent; pre-generate at install time, then it's not written at boot.
-- `/var/log/*` — ensure your tmpfs has enough space (`size=8M` in our fstab) and you have log rotation; otherwise the tmpfs fills up.
+- `/etc/machine-id` (systemd) — needs to be persistent. pre-generate at install time, then it's not written at boot.
+- `/var/log/*` — ensure your tmpfs has enough space (`size=8M` in our fstab) and you have log rotation. otherwise the tmpfs fills up.
 
 Adjust bootargs (in U-Boot env):
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```
 => setenv bootargs 'console=ttymxc0,115200 earlycon root=/dev/mmcblk1p2 ro rootwait ...'
@@ -138,13 +143,17 @@ touch: /etc/test: Read-only file system
 /var/log/test                            ← writable, in tmpfs
 ```
 
-`/` is RO; tmpfs paths are RW. The system is now power-cycle safe.
+`/` is RO. tmpfs paths are RW. The system is now power-cycle safe.
 
 ## 35B.4  Pattern B — overlayfs
 
 For changes that need to persist, set up overlayfs. We'll make `/etc/`, `/var/`, and `/home/` overlay-mounted on top of the RO rootfs, with the upper layer on a separate eMMC partition.
 
 ### Partition layout
+
+> **Storage safety:** Before any command that names /dev/sdX, run lsblk -o NAME,SIZE,MODEL,TRAN,TYPE,MOUNTPOINTS.
+> Verify the removable card by size and model, unmount its partitions, and stop if the path is not the target card. Writing the wrong /dev node can destroy the host disk.
+
 
 ```
 /dev/mmcblk1p1   FAT  boot files (zImage, dtb, optional)
@@ -218,7 +227,7 @@ exec /sbin/init
 
 That `/init` is ~30 lines but does the whole dance: mount RO rootfs, mount overlay storage, overlay-mount the writable subdirs, pivot the root, exec real init.
 
-A simpler approach (no initramfs) that works for some setups: a small `S00-overlay` script in `/etc/init.d/` that runs *before* `S01-mountall` (BusyBox runs them alphabetically). But mounting overlay over a partial filesystem is fragile; initramfs is cleaner.
+A simpler approach (no initramfs) that works for some setups: a small `S00-overlay` script in `/etc/init.d/` that runs *before* `S01-mountall` (BusyBox runs them alphabetically). But mounting overlay over a partial filesystem is fragile. initramfs is cleaner.
 
 ### From inside the running system
 
@@ -252,15 +261,15 @@ The whole point. Let's verify:
 > done
 ```
 
-While that's running, **yank the power**. (Use the SD card; pull it; reinsert; power up.)
+While that's running, **yank the power**. (Use the SD card. pull it. reinsert. power up.)
 
 After reboot:
 
-- The rootfs at `/dev/mmcblk1p2` is intact. `fsck` shows clean (it was mounted RO; no journal entries to recover).
+- The rootfs at `/dev/mmcblk1p2` is intact. `fsck` shows clean (it was mounted RO. no journal entries to recover).
 - `/var/log/important.txt`'s last few lines may be missing or partial — but **only the lines written in the second or two before power loss**. The earlier content is preserved.
 - The system boots cleanly.
 
-Compare with the same test on a RW rootfs: half the time you get a clean boot; half the time `fsck` finds something that needs manual intervention. Over a thousand power cycles, the difference is large enough to count.
+Compare with the same test on a RW rootfs: half the time you get a clean boot. half the time `fsck` finds something that needs manual intervention. Over a thousand power cycles, the difference is large enough to count.
 
 ## 35B.6  Factory reset
 
@@ -277,10 +286,10 @@ A common production button-combination is "hold the recovery button at boot for 
 
 ## 35B.7  Lab
 
-1. **Convert your Chapter 31/35 rootfs to RO + tmpfs (Pattern A).** Test that writes to `/tmp/` work but writes to `/etc/` fail. Power-cycle 10 times; verify no `fsck` errors.
+1. **Convert your Chapter 31/35 rootfs to RO + tmpfs (Pattern A).** Test that writes to `/tmp/` work but writes to `/etc/` fail. Power-cycle 10 times. verify no `fsck` errors.
 2. **Set up Pattern B.** Partition an SD card with `rootfs` + `overlay` partitions. Build the initramfs. Boot. Verify `/etc/test` persists across reboots.
-3. **Power-cycle stress test.** Write a script that creates a counter file in the overlay, increments it once per second, and `sync`s. Run it; power-cycle 100 times at random intervals. After 100 cycles, the counter should be roughly accurate (within ~2 per cycle of slack for sync timing) and the rootfs should never have needed `fsck`.
-4. **Factory reset.** Trigger from inside a running shell (`rm -rf /overlay/upper-*; reboot`). Verify pristine state on next boot.
+3. **Power-cycle stress test.** Write a script that creates a counter file in the overlay, increments it once per second, and `sync`s. Run it. power-cycle 100 times at random intervals. After 100 cycles, the counter should be roughly accurate (within ~2 per cycle of slack for sync timing) and the rootfs should never have needed `fsck`.
+4. **Factory reset.** Trigger from inside a running shell (`rm -rf /overlay/upper-*. reboot`). Verify pristine state on next boot.
 5. **Quantify the cost.** What's the boot-time overhead of the overlay setup? (Time the initramfs's overlay mounts.) What's the RAM cost?
 
 ## 35B.8  Pitfalls

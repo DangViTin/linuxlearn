@@ -7,12 +7,18 @@ status: draft
 ---
 
 # Chapter 5 — A tour of the i.MX6ULL SoC
+**PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+**JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
+MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 
 > **What:** a top-down map of the chip — what blocks are inside it, where they live in memory, how they are clocked, and how their pins are routed.
 >
 > **Why:** every later chapter will name a peripheral. For each one you should be able to find it on the block diagram, locate its register base, find its clock root and gate bit, and know what pin it lands on. All of that in a few minutes.
 >
 > **Focus:** the **memory map**, the **clock tree at one level of detail**, and the **IOMUX pattern**. These three structures repeat across every NXP i.MX SoC. The names change, the shapes do not.
+> MCU bridge: Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
+> **IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
+
 
 ## 5.1  What is the i.MX6ULL
 
@@ -23,8 +29,10 @@ Key parameters of the part variant used on Point Atom MINI:
 - **Core:** 1 × Cortex-A7 @ 528 / 696 MHz
 - **L1 cache:** 32 KB I + 32 KB D
 - **L2 cache:** 128 KB unified, integrated inside the Cortex-A7 MPCore (no external PL310 controller)
-- **On-chip memory:** 128 KB **OCRAM** at `0x00900000` (the most useful 128 KB on the chip) plus a separate 96 KB **Boot ROM** at `0x00000000` (mask-programmed by NXP). There is **no TCM**. TCM is a Cortex-M / Cortex-R concept; A-profile cores use L1/L2 caches instead.
+- **On-chip memory:** 128 KB **OCRAM** at `0x00900000` (the most useful 128 KB on the chip) plus a separate 96 KB **Boot ROM** at `0x00000000` (mask-programmed by NXP). There is **no TCM**. TCM is a Cortex-M / Cortex-R concept. A-profile cores use L1/L2 caches instead.
 - **DRAM:** 16-bit LPDDR2/DDR3L/DDR3 controller (MMDC), up to ~ 1 GB
+**MMDC** - the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
+**DDR** - external DRAM that must be configured and trained before most software can run from it.
 - **Boot media:** SD/MMC, eMMC, NAND, SPI-NOR, QSPI, parallel NOR, USB (recovery)
 - **Process:** 28 nm
 - **Package:** BGA289 / BGA324 (depending on variant)
@@ -54,11 +62,12 @@ A simplified view (omitting buses for clarity):
                    (256/512 MB on MINI)
 ```
 
-The **bus matrix** connects everything. Initiators (the core, DMA engines, USB, FEC, eLCDIF, CSI, GPU/VPU if present, …) talk to targets (OCRAM, DDR via MMDC, the IPS slave bridges for peripherals). For most software work you don't need to think about the matrix; for performance work you eventually will.
+The **bus matrix** connects everything. Initiators (the core, DMA engines, USB, FEC, eLCDIF, CSI, GPU/VPU if present, …) talk to targets (OCRAM, DDR via MMDC, the IPS slave bridges for peripherals). For most software work you don't need to think about the matrix. For performance work you eventually will.
+**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 ## 5.3  System memory map
 
-The i.MX6ULL exposes a 4 GB physical address space. Most of it is unused; the rest is divided into regions whose function does not change. Memorize this table. It is the geography of the chip.
+The i.MX6ULL exposes a 4 GB physical address space. Most of it is unused. The rest is divided into regions whose function does not change. Memorize this table. It is the geography of the chip.
 
 | Region | Base | Size | What's there |
 |--------|------|------|--------------|
@@ -78,14 +87,18 @@ The i.MX6ULL exposes a 4 GB physical address space. Most of it is unused; the re
 A few things worth committing to long-term memory:
 
 1. **The DRAM aperture starts at `0x80000000`.** Every U-Boot script you will read sets `loadaddr=0x80800000` or similar. That is just "DRAM base + 8 MB". The kernel image is loaded at that offset because the compressed image decompresses downward into the space below it.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 2. **OCRAM at `0x00900000`** is where the Boot ROM places your SPL and where bare-metal images live before DRAM is up. 128 KB is enough for a substantial bootloader stage.
+**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 3. **All peripherals live in AIPS-1 / AIPS-2 / AIPS-3.** A register address like `0x020C4000` (CCM) tells you it's in AIPS-2 (`0x021xxxxx` range) just by inspection. This is a useful debugging shortcut.
+**CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
 
 The reference manual has the full map in Chapter 2 ("Memory Maps"). Print that table and tape it to the wall.
 
 ## 5.4  OCRAM and the boot footprint
 
-The Boot ROM uses part of OCRAM (`0x00900000`–`0x0091FFFF`) while it is running the boot sequence. The low end holds exception vectors; the top end holds the MMU table, stack, and ROM bookkeeping. Per the i.MX6ULL Reference Manual (§8, Figure 8-3 "OCRAM Memory Map During Boot"):
+The Boot ROM uses part of OCRAM (`0x00900000`–`0x0091FFFF`) while it is running the boot sequence. The low end holds exception vectors. The top end holds the MMU table, stack, and ROM bookkeeping. Per the i.MX6ULL Reference Manual (§8, Figure 8-3 "OCRAM Memory Map During Boot"):
 
 - **`0x00900000`–`0x009001FF`** — exception-vector region used by the Boot ROM (low ~0.5 KB).
 - **`0x00900200`–`0x00906FFF`** — also reserved for ROM bookkeeping (the practical "do not write here while the ROM may still be involved" zone).
@@ -107,7 +120,7 @@ External oscillators ─► PLLs (ANATOP) ─► Root clocks (CCM) ─► Gates 
 ### Layer 1 — Oscillators
 
 - **XTALOSC24M** — 24 MHz crystal. Everything derives from this. The Point Atom MINI has a 24 MHz crystal on Y2.
-- **XTALOSC32K** — 32.768 kHz crystal for the RTC / SNVS domain. Optional; if absent, the RTC is less accurate.
+- **XTALOSC32K** — 32.768 kHz crystal for the RTC / SNVS domain. Optional. If absent, the RTC is less accurate.
 
 ### Layer 2 — PLLs (in the ANATOP block)
 
@@ -124,6 +137,7 @@ Seven PLLs:
 | PLL7 — USB2 PLL | 480 MHz | Host USB |
 
 PLL2 and PLL3 expose **PFDs** (Phase Fractional Dividers): four per PLL, each producing a fractionally-divided output. E.g., PLL2_PFD2 at 396 MHz is commonly used as the AHB root.
+**PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 
 ### Layer 3 — Root clocks (in CCM)
 
@@ -158,16 +172,18 @@ The mapping of peripheral to CCGR bit lives in the reference manual's CCM chapte
 Every signal pin on the i.MX6ULL can be one of several alternate functions. For example, the pin labelled `GPIO1_IO04` can be:
 
 - ALT0: `GPIO1_IO04` (just a GPIO)
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - ALT1: `ENET1_REF_CLK`
 - ALT2: `USB_OTG2_OC`
 - ALT3: `ENET1_1588_EVENT0_IN`
 - ALT4: `MQS_RIGHT`
-- ALT5: `GPIO1_IO04` (same as ALT0; sometimes the GPIO appears in two ALTs)
+- ALT5: `GPIO1_IO04` (same as ALT0. sometimes the GPIO appears in two ALTs)
 - ALT6: `EPIT1_OUT`
 - ALT7: `USB_OTG2_PWR`
 - ALT8: `CSI_FIELD`
 
-(Numbers vary per pin; you check the reference manual or the on-chip IOMUX tool.)
+(Numbers vary per pin. You check the reference manual or the on-chip IOMUX tool.)
 
 The **IOMUXC** (IO Multiplexer Controller) block contains, for every pin:
 
@@ -191,6 +207,10 @@ The IOMUX tables fill ~300 pages of the reference manual. You will not read them
 
 ## 5.7  Power domains and the SNVS
 
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
+
 The chip has three power domains worth knowing:
 
 - **VDD_SOC** — main digital supply (the part you turn off in deep sleep).
@@ -201,7 +221,8 @@ In our work we treat the SNVS as "the thing that holds the RTC." Chapter 48 retu
 
 ## 5.8  Fuses and identification
 
-The **OCOTP** (One-Time Programmable) block contains ~96 words of fuse-burnable storage. Some fuses are factory-programmed and read-only (unique chip ID, MAC address slots, silicon revision); others can be burned by your code (boot device selection, HAB SRK hashes, NX bits). Reading is cheap:
+The **OCOTP** (One-Time Programmable) block contains ~96 words of fuse-burnable storage. Some fuses are factory-programmed and read-only (unique chip ID, MAC address slots, silicon revision). others can be burned by your code (boot device selection, HAB SRK hashes, NX bits). Reading is cheap:
+**HAB** - High Assurance Boot, NXP's ROM-enforced secure boot mechanism on i.MX SoCs.
 
 ```c
 uint32_t chip_id_lo = OCOTP_HW_OCOTP_CFG0;
@@ -274,7 +295,7 @@ The two Point Atom dev boards built around the i.MX6ULL share the same SoC but d
 
 **Three practical consequences:**
 
-1. **Core-board variant matters more than ALPHA-vs-MINI baseboard.** Both boards accept the same i.MX6ULL "BTB" core-board module; the same core board plugs into either base. There are two flavors of core board — a **NAND** flavor with 256 MiB DDR3L + 256-512 MiB NAND, and an **eMMC** flavor with 512 MiB DDR3L + 8 GiB eMMC. Identify which you have; Chapter 14's DDR3 init values depend on it.
+1. **Core-board variant matters more than ALPHA-vs-MINI baseboard.** Both boards accept the same i.MX6ULL "BTB" core-board module. The same core board plugs into either base. There are two flavors of core board — a **NAND** flavor with 256 MiB DDR3L + 256-512 MiB NAND, and an **eMMC** flavor with 512 MiB DDR3L + 8 GiB eMMC. Identify which you have. Chapter 14's DDR3 init values depend on it.
 2. **The MINI lacks** the on-board WM8960 audio codec, AP3216C light sensor, ICM-20608 IMU, and CAN transceivers that the ALPHA base carries. The corresponding chapters (53/65 audio, 26/61 I²C+AP3216C, 27/62 SPI+ICM-20608, 66 CAN) still teach the *subsystems*, but the lab requires either skipping or wiring an external part. Each affected chapter calls this out.
 3. **Pin assignments for LED, KEY, BEEP, UART1 debug, eMMC, USDHC2 are identical** between ALPHA and MINI. The bare-metal Part II labs work unchanged on both.
 
@@ -309,7 +330,7 @@ Write the answers in `~/imx6ull/notes/ch05-locator.md`. You will use these value
 
 ## 5.12  Pitfalls
 
-- **Reading the wrong manual revision.** NXP issues errata that change register fields. Always check the rev date. This book targets *rev 1, 11/2017*; if you have a newer rev, prefer it but expect minor discrepancies.
+- **Reading the wrong manual revision.** NXP issues errata that change register fields. Always check the rev date. This book targets *rev 1, 11/2017*. If you have a newer rev, prefer it but expect minor discrepancies.
 - **Believing the i.MX6ULL has a Cortex-M4.** It does not. The bigger i.MX6 SoloX / 7Solo have one. The 6ULL is single-A7 only.
 - **Trusting marketing block diagrams.** The block diagram on page 1 of the datasheet omits *most* of the chip. The real block diagram is in Chapter 1 of the reference manual.
 - **Assuming all i.MX6ULL parts are the same.** MX6Y2 (full) vs MX6Y1 (-cs, fewer peripherals) vs MX6G2 (lowest-tier) differ in subtle ways. Always cross-check your specific part number's datasheet against the reference manual.
@@ -318,7 +339,7 @@ Write the answers in `~/imx6ull/notes/ch05-locator.md`. You will use these value
 
 - **IMX6ULLRM** — *i.MX 6ULL Applications Processor Reference Manual* (the 5191-page document).
 - **IMX6ULLIEC** — *i.MX 6ULL Industrial Electrical Characteristics* (timings, IO drive characteristics).
-- **AN12085** — *Designing a Hardware Solution Based on the i.MX 6UL/6ULL*. NXP's bring-up application note; concise and useful for hardware engineers.
+- **AN12085** — *Designing a Hardware Solution Based on the i.MX 6UL/6ULL*. NXP's bring-up application note. concise and useful for hardware engineers.
 - **AN12117** — *iMX6ULL Power Consumption Measurement*.
 - The **Point Atom MINI schematic** (provided with your board). You will look at this constantly.
 

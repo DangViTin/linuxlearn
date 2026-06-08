@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 93 — Hosted WiFi via ESP32 / ESP8266
 
-> **What:** offloading WiFi to an **ESP32** (or ESP8266) co-processor connected over SPI or UART. Two architectures: **esp-hosted** (the ESP runs firmware that makes Linux see a normal `wlan0` — full network-stack integration), and **AT-command mode** (the ESP runs the TCP/IP stack itself; Linux talks to it like a modem). For each: the architecture, the bring-up, and how the host-side driver shuttles data.
+> **What:** offloading WiFi to an **ESP32** (or ESP8266) co-processor connected over SPI or UART. Two architectures: **esp-hosted** (the ESP runs firmware that makes Linux see a normal `wlan0` — full network-stack integration), and **AT-command mode** (the ESP runs the TCP/IP stack itself. Linux talks to it like a modem). For each: the architecture, the bring-up, and how the host-side driver shuttles data.
 >
 > **Why:** sometimes the SoC has no SDIO and no spare USB (or you want to add WiFi to an existing design without changing the SoC). An ESP32 is a $2 WiFi+BT co-processor you connect over a couple of GPIOs. It's also the answer for *MCU + Linux co-existence* designs, and for adding WiFi to legacy SoCs that predate good WiFi support. The trade-off: lower throughput than SDIO/USB, and you now have *two* firmwares to manage.
 >
@@ -17,7 +17,11 @@ status: draft
 > **Tooling.** This chapter uses `wpa_supplicant`, `iw`, the `esp-hosted` kernel module + firmware on the ESP.
 > - **Ubuntu-base (target):** `apt install wpasupplicant iw`
 > - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 93.1  Why hosted WiFi
 
@@ -75,7 +79,7 @@ AT+CIPSEND=18                      ← send 18 bytes
 GET / HTTP/1.0\r\n\r\n
 ```
 
-The ESP runs the entire network stack; Linux just orchestrates via AT strings. Simple, but: no standard `wlan0`, no wpa_supplicant, no Linux sockets — your app speaks the AT dialect. Limited to a handful of simultaneous connections. Non-standard.
+The ESP runs the entire network stack. Linux just orchestrates via AT strings. Simple, but: no standard `wlan0`, no wpa_supplicant, no Linux sockets — your app speaks the AT dialect. Limited to a handful of simultaneous connections. Non-standard.
 
 ### Choosing
 
@@ -83,6 +87,10 @@ The ESP runs the entire network stack; Linux just orchestrates via AT strings. S
 - **AT-command**: when you want dead-simple, a few connections, and don't mind a non-standard interface. AT-command mode is common in quick prototypes and in MCU-style code. Avoid it for any product that needs Linux's network ecosystem (sockets, TLS, multiple connections, NetworkManager).
 
 ## 93.3  esp-hosted bring-up (SPI transport)
+
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
 
 Espressif's esp-hosted has two parts: firmware flashed to the ESP32, and a Linux driver (out-of-tree, from Espressif's `esp-hosted` repo).
 
@@ -140,7 +148,7 @@ Now `espsta0` behaves like any `wlan0` — wpa_supplicant, DHCP, etc.:
 [root@pa-mini:~]# ping 8.8.8.8
 ```
 
-Throughput: ~10–20 Mbps over SPI at 10 MHz. Adequate for IoT telemetry, MQTT, OTA updates; not for video streaming.
+Throughput: ~10–20 Mbps over SPI at 10 MHz. Adequate for IoT telemetry, MQTT, OTA updates. not for video streaming.
 
 ## 93.4  How the esp-hosted driver works
 
@@ -229,10 +237,10 @@ If you want AT-mode to look like a network interface, the kernel's PPP driver (`
 1. **Flash esp-hosted firmware** to an ESP32 (Espressif's tool). Wire SPI + handshake/data-ready GPIOs.
 2. **Build + load the esp32_spi driver.** Verify `espsta0` appears + the BT `hci0`.
 3. **Connect.** wpa_supplicant on `espsta0`, DHCP, ping. Measure throughput with iperf3 (~10–20 Mbps).
-4. **Bluetooth too.** `hciconfig hci0 up`; scan for BLE devices — the same ESP provides BT.
+4. **Bluetooth too.** `hciconfig hci0 up`. scan for BLE devices — the same ESP provides BT.
 5. **AT-command comparison.** Flash AT firmware to a second ESP. Talk to it over UART: join AP, open a TCP socket, fetch a web page. Compare effort vs esp-hosted.
-6. **Throughput vs SPI clock.** Vary the esp-hosted SPI clock (5/10/20 MHz); measure throughput scaling.
-7. **Co-existence role.** Use the ESP32 *also* for a real-time GPIO task (it has its own CPU); demonstrate WiFi + a real-time job on the co-processor while Linux does the heavy lifting.
+6. **Throughput vs SPI clock.** Vary the esp-hosted SPI clock (5/10/20 MHz). measure throughput scaling.
+7. **Co-existence role.** Use the ESP32 *also* for a real-time GPIO task (it has its own CPU). demonstrate WiFi + a real-time job on the co-processor while Linux does the heavy lifting.
 
 ## 93.8  Pitfalls
 

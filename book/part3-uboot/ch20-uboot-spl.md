@@ -7,12 +7,20 @@ status: draft
 ---
 
 # Chapter 20 — U-Boot SPL: the missing link
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+**PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
+MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+**CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
 
 > **What:** the **SPL** (Secondary Program Loader) — the first stage of the two-stage U-Boot — explained in enough detail that you can read its source and modify it for a custom board.
+> **SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
+> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Why:** The i.MX6ULL OCRAM is 128 KB at `0x00900000`. The Boot ROM reserves the bottom ~28 KB (`0x00900000–0x00906FFF`) for its own scratch space. That leaves a ~68 KB window for SPL (`0x00907000–0x0091FFFF`). Full U-Boot is ~600 KB and does not fit. SPL is the small first-stage program that bridges the gap: it brings up DRAM, loads full U-Boot into DRAM, and jumps to it. Mechanically, SPL is the production version of Chapters 11–14.
+> **FIT** - Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
 >
-> **Focus:** the **size constraint** as a design pressure. NXP's `mx6ull_14x14_evk_defconfig` caps `CONFIG_SPL_MAX_SIZE` near **64 KB** with a small reserve; treat that as your ceiling. Every feature pays for itself in bytes. Understanding what SPL chooses to include and what it skips is how you understand what is and isn't expected to work in the first 100 ms of a board's life.
+> **Focus:** the **size constraint** as a design pressure. NXP's `mx6ull_14x14_evk_defconfig` caps `CONFIG_SPL_MAX_SIZE` near **64 KB** with a small reserve. treat that as your ceiling. Every feature pays for itself in bytes. Understanding what SPL chooses to include and what it skips is how you understand what is and isn't expected to work in the first 100 ms of a board's life.
+
 
 ## 20.1  Why two stages
 
@@ -20,8 +28,9 @@ If you have read Chapters 7, 11, and 14, you already know the constraint: the Bo
 
 Three possible solutions:
 
-1. **DCD-driven big load.** Put DRAM init into the DCD; the ROM then loads U-Boot directly into DRAM, bypassing OCRAM size limits. This works and was the dominant pattern in the i.MX5 era. Mainline U-Boot for i.MX6 has moved away from it; the DCD becomes unwieldy at ~800 bytes and is hard to maintain when DRAM timings change.
-2. **Multi-stage boot with SPL.** ROM loads a small SPL into OCRAM; SPL initializes DRAM; SPL loads the full U-Boot from the boot medium into DRAM; SPL jumps to it. Mainline does this.
+1. **DCD-driven big load.** Put DRAM init into the DCD. The ROM then loads U-Boot directly into DRAM, bypassing OCRAM size limits. This works and was the dominant pattern in the i.MX5 era. Mainline U-Boot for i.MX6 has moved away from it. The DCD becomes unwieldy at ~800 bytes and is hard to maintain when DRAM timings change.
+**DCD** - Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
+2. **Multi-stage boot with SPL.** ROM loads a small SPL into OCRAM. SPL initializes DRAM. SPL loads the full U-Boot from the boot medium into DRAM. SPL jumps to it. Mainline does this.
 3. **Static link to a small U-Boot.** Strip features until U-Boot fits in ~64 KB. Has been done. Painful.
 
 Mainline uses Pattern 2: two stages, one for setup, one for the main work. The same pattern repeats up the stack — U-Boot loads Linux, Linux loads `/sbin/init`. Each stage has more resources than the one before.
@@ -33,10 +42,12 @@ The SPL's job, in order:
 1. **CPU init.** Mode-set to SVC, vectors, stack pointer in OCRAM. (Your Chapter 10.)
 2. **Clock init.** PLLs, AHB/IPG bus, CCGR gates for what SPL needs. (Your Chapter 13.)
 3. **DRAM init.** MMDC setup with timings for the specific DRAM part. (Your Chapter 14.)
+**MMDC** - the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
+**DDR** - external DRAM that must be configured and trained before most software can run from it.
 4. **Console init.** UART so we can see what's happening. (Your Chapter 12.)
 5. **Boot-medium init.** Driver for SD/eMMC/NAND/SPI-NOR — whichever the strap pins indicate.
 6. **Load full U-Boot.** Read the second-stage image from the boot medium into DRAM at a known address.
-7. **Jump to it.** Branch to the loaded image; full U-Boot takes over.
+7. **Jump to it.** Branch to the loaded image. full U-Boot takes over.
 
 That is the whole list. SPL does not run the kernel, handle networking, or offer a command prompt. It is the smallest program that can do the seven steps above on this hardware.
 
@@ -161,6 +172,8 @@ You wrote almost every line of this in Chapter 10's `startup.S`. The differences
 - `save_boot_params` is a hook the SoC family uses to capture boot-mode info the ROM leaves in registers. We never needed it in bare-metal.
 - The HYP-mode check is for Cortex-A15+ which can boot in hypervisor mode. The Cortex-A7 on i.MX6ULL does not have HYP, so the check is a no-op for us.
 - `cpu_init_cp15` configures cache and MMU registers to a known state.
+MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+**MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 - `cpu_init_crit` does very-early board-critical init (memory remapping, system control register tweaks).
 - `_main` (defined in `arch/arm/lib/crt0.S`) is the C-runtime entry — sets up the stack, then calls `board_init_f`.
 
@@ -246,7 +259,7 @@ $ xxd -s 0x400 -l 32 SPL
 Decode:
 
 - Magic `D1 00 20 40` ✓
-- Entry `0x80780000` — a **DRAM** address. That tells us this file is **not** the SPL; it's *full U-Boot's* `.imx`, which loads to DRAM. The dump above is from `u-boot.imx`, not `spl/u-boot-spl.imx`.
+- Entry `0x80780000` — a **DRAM** address. That tells us this file is **not** the SPL. It's *full U-Boot's* `.imx`, which loads to DRAM. The dump above is from `u-boot.imx`, not `spl/u-boot-spl.imx`.
 
 The SPL's `.imx` is a different file. To inspect it:
 
@@ -299,20 +312,21 @@ Full U-Boot's `_main` then proceeds with *its* `board_init_f` → relocation →
 ## 20.10  Lab
 
 1. **Find your SPL.** After your Chapter 19 build, locate the SPL ELF and its `.imx` wrapper. Use `size` to see how big each section is.
+**ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
 2. **Read `board/freescale/mx6ull_14x14_evk/spl.c` end-to-end.** Annotate which functions you wrote analogues of in Part II and which are new.
 3. **Trace one DDR register write.** Pick `MDCFG1` (Chapter 14's tRP/tRAS/tRC/tWR setting). Find where it's set in `arch/arm/mach-imx/mx6/ddr.c`. Compare to your Chapter 14 constant.
 4. **Shrink the SPL.** In `make menuconfig`, disable an unused SPL feature (e.g., `CONFIG_SPL_USB_GADGET`). Rebuild. Note the change in `size spl/u-boot-spl`.
 5. **Break the SPL deliberately.** Edit `board/freescale/mx6ull_14x14_evk/spl.c`'s `spl_dram_init` to write a bogus value (e.g., `MDCFG1 = 0;`). Rebuild, flash, boot. Observe the freeze. *Restore.*
-6. **Reset cause investigation.** Boot, then immediately reset (button or short PWR). Compare the "Reset cause: ..." line on the second boot vs. the first. (POR vs. WDOG-RESET, etc.)
+6. **Reset cause investigation.** Boot, then immediately reset (button or short PWR). Compare the "Reset cause: ..." line on the second boot vs. The first. (POR vs. WDOG-RESET, etc.)
 
 ## 20.11  Pitfalls
 
-- **`spl/u-boot-spl-dtb.bin` vs `spl/u-boot-spl-dtb.imx`.** The first is the raw SPL; the second is wrapped with an IVT for the Boot ROM. Use the second for SD-boot.
-- **Mixing SPL and full-U-Boot defconfigs.** They share one `.config`. The same defconfig builds both stages; you can't have separate configs without significant work.
+- **`spl/u-boot-spl-dtb.bin` vs `spl/u-boot-spl-dtb.imx`.** The first is the raw SPL. The second is wrapped with an IVT for the Boot ROM. Use the second for SD-boot.
+- **Mixing SPL and full-U-Boot defconfigs.** They share one `.config`. The same defconfig builds both stages. You can't have separate configs without significant work.
 - **Forgetting that SPL has its own device tree.** SPL uses a *cut-down* DT — `u-boot-spl.dts` if defined — that only describes peripherals SPL actually uses. Adding a DT node for full U-Boot does not automatically make it visible to SPL.
 - **Out-of-bounds OCRAM access.** SPL has ~64 KB of usable OCRAM (the lower ~28 KB belongs to the Boot ROM). If you accidentally grow it (large global arrays, large stack frames), boot fails silently — the image is bigger than the ROM expects.
-- **Cache state at handoff.** If SPL leaves caches dirty, full U-Boot may not see what SPL wrote. The standard pattern is `cleanup_before_linux()`-equivalent before jumping — clean caches, disable MMU. Mainline does this; if you hand-edit you must too.
-- **Calling SPL functions from full U-Boot.** They don't exist there — different binary, different memory map. Build errors usually catch this; runtime errors when they don't.
+- **Cache state at handoff.** If SPL leaves caches dirty, full U-Boot may not see what SPL wrote. The standard pattern is `cleanup_before_linux()`-equivalent before jumping — clean caches, disable MMU. Mainline does this. If you hand-edit you must too.
+- **Calling SPL functions from full U-Boot.** They don't exist there — different binary, different memory map. Build errors usually catch this. runtime errors when they don't.
 
 ## 20.12  Going deeper
 

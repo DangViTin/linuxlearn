@@ -1,4 +1,4 @@
-﻿---
+---
 chapter: 23A
 title: Multi-variant FIT images and DT overlays
 part: III — U-Boot, deeply (inserted v1.2)
@@ -9,10 +9,13 @@ status: draft
 # Chapter 23A — Multi-variant FIT images and DT overlays
 
 > **What:** one FIT image that boots correctly on three different board variants — same kernel, different DTBs — with the variant selected at boot time from a strap pin or an EEPROM ID.
+> **FIT** - Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
 >
 > **Why:** Real products ship in revisions. Rev A has a 4.3-inch display, Rev B has a 7-inch display and a fan, Rev C drops the display and adds Wi-Fi. Three separate images means three OTA targets and three release pipelines. One image means one OTA stream and one QA artifact set.
 >
 > **Focus:** the **runtime-selection mechanism** — strap pin or EEPROM ID read by U-Boot before `bootm` selects which `configurations` entry to apply. Plus DT overlays, which let you patch one base DTB with small fragments rather than maintaining N full DTBs.
+> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+
 
 ## 23A.1  The scenario
 
@@ -208,8 +211,13 @@ int board_late_init(void)
 ```
 
 Advantages over strap pins: 256 possible IDs, you can reprogram in the field, and no extra pads if you already have an EEPROM for serial number or MAC address.
+**MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
 
 ### Pattern C — eFuse
+
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
 
 The i.MX6ULL has 96 words of OCOTP fuses. You can burn a board-ID into a dedicated fuse word at manufacture and read it from U-Boot:
 
@@ -327,14 +335,14 @@ When you receive a unit, you don't have to ask which rev it is. The unit identif
 ## 23A.7  Lab
 
 1. **Build a multi-config FIT** with two configurations differing only in a model-string change in the DT. Verify both boot.
-2. **Add a strap-pin reader** in your custom `board_late_init`. Tie a GPIO high or low on the board; verify U-Boot reads it correctly and `env_set`s the right `variant`.
+2. **Add a strap-pin reader** in your custom `board_late_init`. Tie a GPIO high or low on the board. verify U-Boot reads it correctly and `env_set`s the right `variant`.
 3. **Author a DT overlay.** Pick something small — add a new I²C node — and verify `fdt apply` succeeds. Confirm the kernel sees the added device (`/sys/bus/i2c/devices/...`).
 4. **Make a deliberately broken overlay** (reference a label that doesn't exist in the base). Observe the `fdt apply` failure and the fallback to the base DT.
 5. **Read U-Boot's `fdt apply` source.** `cmd/fdt.c` and `common/fdt_support.c`. Trace what happens when an overlay references a symbol that doesn't exist.
 
 ## 23A.8  Pitfalls
 
-- **Hash mismatch in FIT.** If you forget `hash-1 { algo = "sha256"; };` on an image, `bootm` may print a warning and proceed (depending on config). For production, *always* hash; for signed FIT (Chapter 124), hashes are mandatory.
+- **Hash mismatch in FIT.** If you forget `hash-1 { algo = "sha256". };` on an image, `bootm` may print a warning and proceed (depending on config). For production, *always* hash. For signed FIT (Chapter 124), hashes are mandatory.
 - **Strap pin floats.** If your strap GPIO has no pull resistor and your board mounting position can leave it floating, you may read a different rev on every boot. Always pull explicitly.
 - **EEPROM I²C address collision.** Many boards have multiple I²C devices at `0x50`-`0x57`. Verify your ID byte location vs sensor addresses.
 - **Overlay `dtc` without `-@`.** Without `-@`, no symbol table is emitted, and overlays can't reference labels in the base. Always `dtc -@`.
@@ -349,3 +357,5 @@ When you receive a unit, you don't have to ask which rev it is. The unit identif
 - **`tools/mkimage.c`** for FIT details. Particularly the `-r` (required) and `-K` (key) flags for signed-FIT prep.
 
 > Next chapter: **Chapter 24 — Workflows: TFTP, NFS, USB-OTG.** With U-Boot fully under our control, we wire it into a fast development loop — edit on host, network-boot on target, no SD-card reflashing.
+> **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
+> **TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.

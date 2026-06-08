@@ -8,11 +8,17 @@ status: draft
 
 # Chapter 38 — Auto-creating `/dev/` nodes
 
-> **What:** `class_create` + `device_create` — the two calls that let your driver tell the kernel "I have a new device; please broadcast a hot-plug event so user-space creates `/dev/<name>` for me." With these in place you never `mknod` by hand again.
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
+> **What:** `class_create` + `device_create` — the two calls that let your driver tell the kernel "I have a new device. please broadcast a hot-plug event so user-space creates `/dev/<name>` for me." With these in place you never `mknod` by hand again.
 >
 > **Why:** real drivers don't burden users with manual `mknod` steps after every `insmod`. Modern Linux uses the **uevent** mechanism — the kernel broadcasts a netlink message describing the new device, and a user-space agent (udev on workstations, mdev on embedded) reacts by creating the right file in `/dev/`, setting permissions, and possibly running scripts. Your driver's only responsibility is to register the device and let the framework do the rest.
+> **udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 >
 > **Focus:** **the relationship between `/sys/class/...` and `/dev/...`**. The class hierarchy in sysfs is the *source of truth* — that's where the kernel describes what devices exist. The `/dev/` tree is a **shadow** of sysfs maintained by the hot-plug agent. Get this picture right and most "why is my device file missing?" debugging becomes trivial.
+
 
 ## 38.1  The hot-plug pipeline
 
@@ -46,7 +52,7 @@ When your driver calls `device_create(...)`, this happens:
 
 The driver call (`device_create`) doesn't itself create `/dev/hello`. It creates the **sysfs entry** at `/sys/class/hello/hello/`, which the kernel uses to broadcast the uevent. The actual `/dev/hello` is created by the **listener**.
 
-This is different from how you might imagine it. The kernel does not maintain `/dev/`. It publishes events. User-space decides what to do with them. Different listeners can make wildly different choices (udev creates rich-permission nodes with named symlinks; mdev creates minimal nodes; both work).
+This is different from how you might imagine it. The kernel does not maintain `/dev/`. It publishes events. User-space decides what to do with them. Different listeners can make wildly different choices (udev creates rich-permission nodes with named symlinks. mdev creates minimal nodes. both work).
 
 (Aside: there is a fallback. If `CONFIG_DEVTMPFS=y` and the kernel mounts devtmpfs on `/dev/` — Ch 32 — the *kernel itself* auto-creates the device node, no user-space listener required. Then udev/mdev's job becomes just refining permissions and creating symlinks. We'll assume devtmpfs is on, which it is in 99% of modern setups.)
 
@@ -127,6 +133,8 @@ struct class *class_create(struct module *owner, const char *name);
 ```
 
 Creates a directory `/sys/class/<name>/`. A *class* is a group of devices that share a role — LED, RTC, GPIO chip, network interface, sound card. The class directory holds one entry per device in that group. It also publishes group-level attributes that udev/mdev rules can match on.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 The kernel ships dozens of standard classes:
 
@@ -350,15 +358,15 @@ For multiple attributes, group them and use `device_create_file` per attribute, 
 - **Forgetting `device_destroy` in cleanup.** The `/dev/` node lingers (kernel side) — udev/mdev never gets the "remove" event. Next load creates `/dev/hello` *again*, double-registered. Eventually you'll trip over name conflicts.
 - **`IS_ERR(class)` vs `class == NULL`.** `class_create` returns an `ERR_PTR` on failure, not `NULL`. Test with `IS_ERR(class)` and recover with `PTR_ERR(class)`. Same for `device_create`.
 - **Race between insmod and udev.** If your user-space code does `insmod hello.ko && cat /dev/hello`, the second part may run before udev has created `/dev/hello`. Mitigation: use `udevadm settle` between `insmod` and the access, or have your user-space code retry with a short delay.
-- **Class name collisions.** Two drivers trying to register a class with the same name fail loudly. Use unique names; if you're adding a driver to an existing subsystem, use that subsystem's `register` API (e.g., `led_classdev_register`) instead of creating a competing class.
+- **Class name collisions.** Two drivers trying to register a class with the same name fail loudly. Use unique names. If you're adding a driver to an existing subsystem, use that subsystem's `register` API (e.g., `led_classdev_register`) instead of creating a competing class.
 - **Sysfs attribute permissions.** `DEVICE_ATTR_RW` creates 0644 attributes. For root-only writes, use `DEVICE_ATTR(name, 0640, show, store)` or one of `DEVICE_ATTR_RO`, `DEVICE_ATTR_WO`, `DEVICE_ATTR_ADMIN_RO`.
-- **Returning >PAGE_SIZE from a `show` callback.** Silently truncated by sysfs. Don't use sysfs to stream large data; use a chardev or `debugfs` instead.
+- **Returning >PAGE_SIZE from a `show` callback.** Silently truncated by sysfs. Don't use sysfs to stream large data. Use a chardev or `debugfs` instead.
 
 ## 38.9  Going deeper
 
-- **`Documentation/driver-api/driver-model/overview.rst`** — the device model is much richer than what we use here; classes are one slice of it.
+- **`Documentation/driver-api/driver-model/overview.rst`** — the device model is much richer than what we use here. classes are one slice of it.
 - **`Documentation/admin-guide/devices.rst`** — udev/mdev rule syntax in detail.
 - **`drivers/leds/led-class.c`** — a real subsystem class, fully fleshed out. Read it once.
-- **`Documentation/filesystems/sysfs.rst`** — the sysfs design rationale; explains why each file is limited to PAGE_SIZE and how the kobject hierarchy works.
+- **`Documentation/filesystems/sysfs.rst`** — the sysfs design rationale. explains why each file is limited to PAGE_SIZE and how the kobject hierarchy works.
 
 > Next chapter: **Chapter 39 — Platform drivers + device tree.** With manual device registration understood, we move to the *real* way Linux drivers describe themselves: a `platform_driver` that gets matched to a device-tree `compatible` string, with `probe`/`remove` doing what `module_init`/`module_exit` did up until now.

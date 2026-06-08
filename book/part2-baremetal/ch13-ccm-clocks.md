@@ -10,9 +10,13 @@ status: draft
 
 > **What:** code that takes the i.MX6ULL from its 396 MHz reset default to 696 MHz, with explicit configuration of the bus clocks. By the end we can read back, from registers, exactly what the chip is running at and verify with a hardware measurement.
 >
-> **Why:** every later chapter (DDR especially) depends on knowing the bus clocks precisely. The Boot ROM leaves clocks in a known but conservative state; we must own them before we trust their values in initialization tables.
+> **Why:** every later chapter (DDR especially) depends on knowing the bus clocks precisely. The Boot ROM leaves clocks in a known but conservative state. We must own them before we trust their values in initialization tables.
+> **DDR** - external DRAM that must be configured and trained before most software can run from it.
 >
-> **Focus:** the four-layer clock tree from Chapter 5: XTAL → PLL → root mux+divider → CCGR gate. Each peripheral hangs off one root clock; each root clock hangs off one PLL. Trace a frequency through these four hops and most clock bugs become obvious.
+> **Focus:** the four-layer clock tree from Chapter 5: XTAL → PLL → root mux+divider → CCGR gate. Each peripheral hangs off one root clock. each root clock hangs off one PLL. Trace a frequency through these four hops and most clock bugs become obvious.
+> MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+> **PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
+
 
 ## 13.1  What we want to set up
 
@@ -28,6 +32,8 @@ By the end of this chapter, the clock tree looks like:
 | MMDC (DDR) | 396 MHz | PLL2 (528 MHz) PFD or direct |
 
 This matches what U-Boot will set up in Chapter 19.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ## 13.2  The ANATOP block — PLLs and PFDs
 
@@ -88,6 +94,7 @@ UART can be fed either from PLL3 directly with a /6 divider (giving 80 MHz, what
 ## 13.3  The CCM block — root clocks and gates
 
 CCM base = `0x020C4000`. The registers we touch:
+**CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
 
 | Register | Offset | Purpose |
 |----------|--------|---------|
@@ -286,7 +293,7 @@ uint32_t clocks_get_uart_hz(void)
 What is conspicuously absent from this code:
 
 - **No CCGR writes.** We do not gate or ungate any peripheral here. Each subsystem's `*_init()` function gates its own clock (as `uart_init()` does in Chapter 12). This keeps responsibility local.
-- **No fancy interrupt nesting / atomicity guards.** We are bare-metal; we have nothing pre-empting us.
+- **No fancy interrupt nesting / atomicity guards.** We are bare-metal. We have nothing pre-empting us.
 
 ## 13.5  Verifying with `printf`
 
@@ -339,7 +346,7 @@ A read-back of what you just wrote can lie to itself. For confidence, measure th
 
 ### Quick check: blink rate
 
-The Chapter 9 / 10 delay loop ran at 396 MHz. After clocks_init() we should see almost twice the blink rate at 696 MHz for the same delay constant. Add a blink to `main()`; observe.
+The Chapter 9 / 10 delay loop ran at 396 MHz. After clocks_init() we should see almost twice the blink rate at 696 MHz for the same delay constant. Add a blink to `main()`. observe.
 
 ### Better check: count cycles with PMU
 
@@ -381,6 +388,8 @@ At 696 MHz a million-iteration empty loop takes ~5 million cycles (~7 ns per ite
 ### Hardware check: scope a GPIO
 
 Toggle a GPIO in a tight loop:
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ```c
 for (;;) {
@@ -403,8 +412,8 @@ So this chapter and Chapter 14 are coupled: get clocks right here, and DDR init 
 
 1. **Build, push, observe pre/post clocks.** Confirm ARM goes from 396 to 696 MHz.
 2. **Enable PMU CCNT.** Measure a known busy loop's cycle count. Confirm it matches the loop length.
-3. **Scope a GPIO toggle loop.** Measure frequency. Compute the cycles-per-iteration the compiler emitted; compare to `objdump`.
-4. **Try to set ARM to 792 MHz.** This is the upper bin; some chips can take it. (Many MINIs can. Yours may or may not.) Set DIV_SELECT = 66. Observe — does it lock, does it crash? **Restore 696 MHz** before next chapter.
+3. **Scope a GPIO toggle loop.** Measure frequency. Compute the cycles-per-iteration the compiler emitted. compare to `objdump`.
+4. **Try to set ARM to 792 MHz.** This is the upper bin. some chips can take it. (Many MINIs can. Yours may or may not.) Set DIV_SELECT = 66. Observe — does it lock, does it crash? **Restore 696 MHz** before next chapter.
 5. **Read CCM_CBCMR after init and decode every field by hand.** Cross-check with what your code wrote.
 
 ## 13.9  Pitfalls
@@ -415,6 +424,7 @@ So this chapter and Chapter 14 are coupled: get clocks right here, and DDR init 
 - **Wrong PFD FRAC formula.** It's `f_PLL × 18 / FRAC`, not `f_PLL / FRAC`. The 18× makes the math counterintuitive.
 - **CCM_CBCDR divider fields off-by-one.** "Divider N" = "field value (N-1)". For divider 3, write 2.
 - **Boot ROM did something useful that you undid.** The ROM configures DDR (via DCD if present) and sometimes the USB PLL. If you blow those away, you may break things that depended on them. Only modify what you understand.
+**DCD** - Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
 
 ## 13.10  Going deeper
 

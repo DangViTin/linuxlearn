@@ -14,6 +14,7 @@ status: draft
 >
 > **Focus:** **timer_list for ms granularity, hrtimer for µs/ns**.
 
+
 ## 55A.1  timer_list
 
 The classic jiffies-based timer:
@@ -64,6 +65,8 @@ static irqreturn_t button_irq(int irq, void *dev_id)
 ```
 
 Each press triggers an IRQ that re-arms the timer. If the button bounces, every bounce resets the timer. Only after 20 ms of silence does the timer fire and report the press.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ## 55A.2  hrtimer
 
@@ -107,7 +110,7 @@ p->hr.function = sample_cb;
 hrtimer_start(&p->hr, ms_to_ktime(1), HRTIMER_MODE_REL);
 ```
 
-Each callback: do the work, then `hrtimer_forward_now(t, ms_to_ktime(1)); return HRTIMER_RESTART;`. The forwarding (vs. recomputing now+1ms) keeps the schedule cumulative without drift.
+Each callback: do the work, then `hrtimer_forward_now(t, ms_to_ktime(1)). return HRTIMER_RESTART;`. The forwarding (vs. recomputing now+1ms) keeps the schedule cumulative without drift.
 
 ## 55A.3  Workqueue vs timer
 
@@ -161,10 +164,13 @@ cancel_delayed_work_sync(&my_dwork);
 ## 55A.5  Lab
 
 1. **Add a software heartbeat.** A `timer_list` that prints `dmesg` every 5 seconds. Verify it fires regularly.
-2. **Hrtimer for jitter measurement.** Fire an hrtimer every 1 ms; in the callback, log the actual time delta. With PREEMPT_RT, compare jitter against standard kernel.
+2. **Hrtimer for jitter measurement.** Fire an hrtimer every 1 ms. In the callback, log the actual time delta. With PREEMPT_RT, compare jitter against standard kernel.
+**PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 3. **Debounce button.** Use `timer_list` for 20 ms debounce on a GPIO key.
-4. **Periodic GPIO toggle.** Use hrtimer + GPIO output to generate a 1 kHz square wave; scope it; observe jitter.
-5. **Combine timer + workqueue.** A timer that schedules work; the work does `msleep(50)`; verify the system stays responsive.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+4. **Periodic GPIO toggle.** Use hrtimer + GPIO output to generate a 1 kHz square wave. scope it. observe jitter.
+5. **Combine timer + workqueue.** A timer that schedules work. The work does `msleep(50)`. verify the system stays responsive.
 
 ## 55A.6  Pitfalls
 
@@ -173,7 +179,7 @@ cancel_delayed_work_sync(&my_dwork);
 - **Forgetting to re-arm a periodic timer.** It fires once and stops. Either `mod_timer` in the callback or use `delayed_work`.
 - **hrtimer drift with manual re-arming.** `hrtimer_start(t, now + 1ms)` drifts because of callback latency. `hrtimer_forward_now(t, 1ms)` doesn't.
 - **Timer fires after device is unregistered.** Without `del_timer_sync`, the callback can run after probe-cleanup, touching freed memory. Synchronize cleanup.
-- **Too many timers in flight.** Each adds to the kernel timer wheel; thousands cost CPU. For mass-scheduled events, consider a single timer + a list of work items.
+- **Too many timers in flight.** Each adds to the kernel timer wheel. thousands cost CPU. For mass-scheduled events, consider a single timer + a list of work items.
 
 ## 55A.7  Going deeper
 

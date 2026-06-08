@@ -8,11 +8,12 @@ status: draft
 
 # Chapter 76 — Battery fuel gauge + charger
 
-> **What:** the three pieces of a battery-powered embedded product: a **fuel gauge** that tracks state-of-charge (Maxim MAX17048 — I²C, "ModelGauge" algorithm), a **charger** that manages the CC/CV cycle (TI TP4056 — analog, simple; or TI BQ24074 — I²C-configurable, path-managed), and the **`power_supply_class`** framework that ties them into Linux. For each: physics, protocol, mainline driver, plus a from-scratch MAX17048 driver implementing the `power_supply` provider model.
+> **What:** the three pieces of a battery-powered embedded product: a **fuel gauge** that tracks state-of-charge (Maxim MAX17048 — I²C, "ModelGauge" algorithm), a **charger** that manages the CC/CV cycle (TI TP4056 — analog, simple. or TI BQ24074 — I²C-configurable, path-managed), and the **`power_supply_class`** framework that ties them into Linux. For each: physics, protocol, mainline driver, plus a from-scratch MAX17048 driver implementing the `power_supply` provider model.
 >
 > **Why:** any battery-powered product needs to report "percent full" to the user accurately. The naive approach — voltage divider into ADC, lookup table — is wrong: Li-ion voltage doesn't track SoC linearly, and load voltage drops badly bias the reading. A fuel gauge chip does the right thing: integrates current (coulomb counting) or models the cell (impedance tracking) to get sub-2 % SoC accuracy. Plus a charger that knows when to terminate.
 >
-> **Focus:** The kernel exposes battery state to user-space through `power_supply_class`, the same framework used by laptops, phones, and embedded boards. Drivers register as `power_supply` providers; user-space (UPower, systemd-battery-monitor, your custom app) reads from `/sys/class/power_supply/`. Same shape for laptop batteries, e-bike packs, phones, embedded devices.
+> **Focus:** The kernel exposes battery state to user-space through `power_supply_class`, the same framework used by laptops, phones, and embedded boards. Drivers register as `power_supply` providers. user-space (UPower, systemd-battery-monitor, your custom app) reads from `/sys/class/power_supply/`. Same shape for laptop batteries, e-bike packs, phones, embedded devices.
+
 
 ## 76.1  Chip comparison
 
@@ -30,10 +31,10 @@ status: draft
 
 **Pick guide:**
 - **MAX17048**: lowest-cost real fuel gauge. Use unless you need coulomb-counting precision.
-- **TP4056**: cheap charger; fine for "low-power device that mostly runs from battery." No power-path = device loses power when battery dies, even with USB plugged.
-- **BQ24074**: production-quality charger with power-path. Device stays on with input even when battery is removed; charger negotiates input current. The standard choice for production-grade hardware.
+- **TP4056**: cheap charger. fine for "low-power device that mostly runs from battery." No power-path = device loses power when battery dies, even with USB plugged.
+- **BQ24074**: production-quality charger with power-path. Device stays on with input even when battery is removed. charger negotiates input current. The standard choice for production-grade hardware.
 
-A complete battery system typically combines a charger + a gauge: TP4056 + MAX17048 is the cheap stack; BQ24074 + MAX17048 is the production stack.
+A complete battery system typically combines a charger + a gauge: TP4056 + MAX17048 is the cheap stack. BQ24074 + MAX17048 is the production stack.
 
 ## 76.2  The physics — why a fuel gauge is needed
 
@@ -44,8 +45,8 @@ A naïve "voltage → %" approach fails for two reasons:
 
 Two real-world approaches:
 
-- **Coulomb counting** (TI BQ27xxx, MAX17042). Measure current with a shunt; integrate over time; subtract from a known-full capacity. Pros: accurate. Cons: needs full charge cycle to calibrate; drift over time as full capacity changes with age.
-- **Impedance tracking / ModelGauge** (MAX17048). Build an internal model of the cell's V/I/T/SoC relationship; use measured V and I (in MAX17048's case, just V — it estimates I from V swings) to look up SoC. Pros: no shunt needed; no full-charge required to calibrate. Cons: needs a per-chemistry pre-loaded model.
+- **Coulomb counting** (TI BQ27xxx, MAX17042). Measure current with a shunt. integrate over time. subtract from a known-full capacity. Pros: accurate. Cons: needs full charge cycle to calibrate. drift over time as full capacity changes with age.
+- **Impedance tracking / ModelGauge** (MAX17048). Build an internal model of the cell's V/I/T/SoC relationship. Use measured V and I (in MAX17048's case, just V — it estimates I from V swings) to look up SoC. Pros: no shunt needed. no full-charge required to calibrate. Cons: needs a per-chemistry pre-loaded model.
 
 MAX17048's main selling point: 23 µA standby current, no shunt resistor required, a factory-loaded "typical Li-ion" model, and SoC accurate enough for most consumer products.
 
@@ -73,15 +74,15 @@ Register map (every register is 16 bits, big-endian):
    (0x36 << 1 = 0x6C for write; ... | 1 = 0x6D for read)
 ```
 
-`raw = (buf[0] << 8) | buf[1]; vcell_uV = raw × 78.125;` — voltage in microvolts. Divide by 1000 for mV.
+`raw = (buf[0] << 8) | buf[1]. vcell_uV = raw × 78.125;` — voltage in microvolts. Divide by 1000 for mV.
 
-For SoC: `soc_pct = buf[0]; soc_frac = buf[1];` so a reading of `0x52 0xC0` is 82 + 192/256 = 82.75 %.
+For SoC: `soc_pct = buf[0]. soc_frac = buf[1];` so a reading of `0x52 0xC0` is 82 + 192/256 = 82.75 %.
 
 ### Bring-up
 
 Practically no init needed for default operation:
 
-1. Read VERSION (0x08); verify chip is alive.
+1. Read VERSION (0x08). verify chip is alive.
 2. (Optional) write MODE = 0x4000 to issue "quick-start" — forces a fresh SoC estimate, useful after a brand-new pack is connected.
 3. Start reading VCELL and SOC.
 
@@ -345,17 +346,19 @@ Charge current is set by `R_PROG`:
 I_charge = 1200 / R_prog   amps
 ```
 
-R = 1.2 kΩ → 1 A; R = 2.4 kΩ → 500 mA, etc.
+R = 1.2 kΩ → 1 A. R = 2.4 kΩ → 500 mA, etc.
 
 The chip does:
 1. **Trickle charge** (8 % of programmed current) until cell > 2.9 V.
 2. **Constant current** at programmed current up to 4.2 V.
-3. **Constant voltage** at 4.2 V; current tapers.
+3. **Constant voltage** at 4.2 V. current tapers.
 4. **Termination** when current drops to 10 % of programmed.
 
 No I²C, no control. CHRG and STDBY pins drive LEDs (or GPIOs into the SoC for status detection).
 
-To integrate with Linux: wire CHRG to a GPIO; in DT, declare a `power_supply` of type AC with this GPIO. The mainline framework `gpio-charger.c` does this generic pattern:
+To integrate with Linux: wire CHRG to a GPIO. in DT, declare a `power_supply` of type AC with this GPIO. The mainline framework `gpio-charger.c` does this generic pattern:
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ```dts
 charger {
@@ -373,7 +376,7 @@ charger {
 ## 76.7  BQ24074 — production-quality
 
 BQ24074 adds:
-- **Power-path**: input feeds VOUT directly when present; battery feeds VOUT only when input absent. Device stays on regardless of battery state, as long as input is present.
+- **Power-path**: input feeds VOUT directly when present. battery feeds VOUT only when input absent. Device stays on regardless of battery state, as long as input is present.
 - **Dynamic Power-Path Management (DPPM)**: monitors input voltage. If input collapses below the threshold (overloaded USB port), the chip reduces charge current to keep the load alive.
 - **Configurable via I²C**: programmed charge current, termination voltage, safety timer.
 
@@ -434,22 +437,24 @@ In product UI, do *time-averaged* SoC display — instantaneous readings vary by
 
 1. **Wire a MAX17048** to your i.MX6ULL I²C bus, with a Li-ion cell on its VCELL input.
 2. **i2cdetect.** Verify 0x36 appears.
-3. **Build and load `mymax17048.ko`.** Read capacity and voltage. Disconnect / reconnect the cell; capacity should jump after a 30-second model-recompute period.
-4. **Cell discharge test.** Connect a load (resistor); log capacity + voltage every 10 s for an hour. Plot. You should see voltage drop and capacity decline together, but not in a strictly linear relationship.
-5. **upower integration.** Install UPower; verify `upower -i /org/freedesktop/UPower/devices/battery_battery` reports your readings.
+3. **Build and load `mymax17048.ko`.** Read capacity and voltage. Disconnect / reconnect the cell. capacity should jump after a 30-second model-recompute period.
+4. **Cell discharge test.** Connect a load (resistor). log capacity + voltage every 10 s for an hour. Plot. You should see voltage drop and capacity decline together, but not in a strictly linear relationship.
+5. **upower integration.** Install UPower. verify `upower -i /org/freedesktop/UPower/devices/battery_battery` reports your readings.
 6. **TP4056 charging.** Wire a TP4056 to charge the cell from USB. Wire CHRG to a GPIO. Use `gpio-charger` in DT. Verify `online` reports correctly.
-7. **Switch to mainline MAX17048 driver.** `compatible = "maxim,max17048";`. Verify same data; gain access to extra properties (alerts, capacity-level).
-8. **Capacity-level logic.** Write a user-space daemon that reads capacity every 30 s; logs to syslog when crossing thresholds (low 20 %, critical 5 %); triggers `poweroff` at critical-3 %.
+7. **Switch to mainline MAX17048 driver.** `compatible = "maxim,max17048";`. Verify same data. gain access to extra properties (alerts, capacity-level).
+8. **Capacity-level logic.** Write a user-space daemon that reads capacity every 30 s. logs to syslog when crossing thresholds (low 20 %, critical 5 %). triggers `poweroff` at critical-3 %.
 
 ## 76.10  Pitfalls
 
-- **Quick-start without justification.** Writing 0x4000 to MODE clears the chip's internal model and forces a fresh estimate. Useful on fresh-pack-insertion; harmful if done routinely (degrades SoC accuracy).
+- **Quick-start without justification.** Writing 0x4000 to MODE clears the chip's internal model and forces a fresh estimate. Useful on fresh-pack-insertion. harmful if done routinely (degrades SoC accuracy).
 - **Reading SoC immediately after power-on.** Chip needs ~250 ms to initialise. The first read returns the cached value from last shutdown.
 - **Trusting MAX17048 SoC on a cell-chemistry mismatch.** Factory-loaded model is "typical Li-ion 3.7 V nominal." LiFePO₄ (3.2 V nominal) reads wildly wrong. Use BQ27xxx with the right chemistry profile for non-standard cells.
 - **TP4056 without thermal management.** At 1 A charge, the chip dissipates ~1 W. Without thermal vias and a ground plane, it overheats and reduces charge current — slower charging.
 - **TP4056 in deep-discharge cells.** Cells below 2.5 V might fail TP4056's pre-charge. Use a chip with adjustable pre-charge current.
 - **BQ24074 without I²C in the boot path.** If the chip needs config at boot to set higher input current, U-Boot must initialize it — otherwise it defaults to 100 mA input, which can't power the SoC.
-- **Power-path absent on production-bound product.** User unplugs charger; device dies. They expected the battery to take over. Verify your topology before laying out.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+- **Power-path absent on production-bound product.** User unplugs charger. device dies. They expected the battery to take over. Verify your topology before laying out.
 - **Forgetting `present` property.** Some user-space code refuses to talk to a battery whose `present` is 0. Always report 1 if the chip is responding.
 - **Capacity hysteresis.** Naïve daemons toggle "5% low warning" at 4.9 % then back at 5.0 %. Add hysteresis (warn at 5 %, clear at 8 %).
 
@@ -461,7 +466,9 @@ In product UI, do *time-averaged* SoC display — instantaneous readings vary by
 - **`drivers/power/supply/bq2415x_charger.c`** + `bq24190_charger.c` — TI charger family.
 - **`Documentation/power/power_supply_class.rst`** — framework documentation.
 - **`Documentation/ABI/testing/sysfs-class-power`** — full sysfs attribute list.
-- **MAX17048 datasheet (Maxim)** — register map; quickstart guide.
+**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+- **MAX17048 datasheet (Maxim)** — register map. quickstart guide.
 - **TP4056 datasheet (NanJing Top Power)** — application circuit.
 - **BQ24074 datasheet (TI SLUS818)** — power-path explained.
 - **UPower source** at <https://gitlab.freedesktop.org/upower/upower> — how user-space consumes power_supply_class.
@@ -470,4 +477,4 @@ In product UI, do *time-averaged* SoC display — instantaneous readings vary by
 
 > **End of Group E — Power & current (Ch 75–76).** Together with Ch 51B (power management) you now have all three pieces of low-power product engineering: PM saves power, INA reports it, fuel gauge predicts remaining time.
 
-> Next chapter: **Chapter 77 — 1-Wire sensors (DS18B20 / DHT22).** Maxim's odd "one wire + ground" protocol. Slow but charming; the kernel's w1 subsystem; why DHT22 is a worse fit for Linux than for an MCU.
+> Next chapter: **Chapter 77 — 1-Wire sensors (DS18B20 / DHT22).** Maxim's odd "one wire + ground" protocol. Slow but charming. The kernel's w1 subsystem. why DHT22 is a worse fit for Linux than for an MCU.

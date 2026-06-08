@@ -9,10 +9,18 @@ status: draft
 # Chapter 111 — Quadrature encoders & rotary
 
 > **What:** **quadrature incremental encoders** (optical or magnetic — two phase-shifted square waves), **mechanical rotary encoders** (knob-style, low-res), and **absolute magnetic encoders** (AS5048A from Ch 74, here used as a position sensor not a sensor-out). Three implementations on the i.MX6ULL: (a) software quadrature decode via two GPIO IRQs (works ≤ ~10 kHz pulse rate), (b) hardware quadrature via the i.MX **XBAR + ENC** peripheral (works up to ~1 MHz pulse rate but needs the optional ENC IP block), (c) `rotary_encoder` kernel driver for low-rate user-interface knobs. Plus the IIO `angl` channel pattern for absolute encoders.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
-> **Why:** every closed-loop motor needs position feedback; every UI knob needs decoding. The i.MX6ULL has a strong NXP-BSP-only ENC peripheral that mainline Linux doesn't fully expose — so on a mainline kernel, you either do software decode (cheap, slow), use the partial mainline driver if it exists for your variant, or bridge to an external decoder IC. Understanding the four implementation tiers (software IRQ, hardware decoder, dedicated chip, sysfs `rotary_encoder` driver) lets you pick correctly for your use case.
+> **Why:** every closed-loop motor needs position feedback. every UI knob needs decoding. The i.MX6ULL has a strong NXP-BSP-only ENC peripheral that mainline Linux doesn't fully expose — so on a mainline kernel, you either do software decode (cheap, slow), use the partial mainline driver if it exists for your variant, or bridge to an external decoder IC. Understanding the four implementation tiers (software IRQ, hardware decoder, dedicated chip, sysfs `rotary_encoder` driver) lets you pick correctly for your use case.
+> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
+> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
-> **Focus:** Quadrature decoding works on two channels that are 90° out of phase. The leading channel tells you the direction of rotation. A is high then B goes high = forward; B high then A high = backward. Four edges per full A+B cycle = 4× resolution multiplication. Mechanical encoders bounce badly — 5 ms or more of noise per click — and need debouncing. Optical encoders are clean but expensive. Magnetic encoders are the middle ground.
+> **Focus:** Quadrature decoding works on two channels that are 90° out of phase. The leading channel tells you the direction of rotation. A is high then B goes high = forward. B high then A high = backward. Four edges per full A+B cycle = 4× resolution multiplication. Mechanical encoders bounce badly — 5 ms or more of noise per click — and need debouncing. Optical encoders are clean but expensive. Magnetic encoders are the middle ground.
+
 
 ## 111.1  Encoder types
 
@@ -41,7 +49,7 @@ B:  ─┐   ┌───┐   ┌───┐   ┌───┐
    On B's falling edge: if A==0 then count++   else count--
 ```
 
-That's 4× decoding (every edge of either channel = one count). The encoder spec ("100 PPR") refers to 100 pulses per revolution of just one channel; 4× decoded → 400 counts/rev.
+That's 4× decoding (every edge of either channel = one count). The encoder spec ("100 PPR") refers to 100 pulses per revolution of just one channel. 4× decoded → 400 counts/rev.
 
 State-machine view (current AB state + previous AB state):
 
@@ -80,7 +88,7 @@ static void encoder_irq_handler(void) {
 }
 ```
 
-Both channels call this on rising and falling edges. The 12 valid transitions produce ±1; the 4 invalid transitions (where both bits changed at once = missed edge) produce 0.
+Both channels call this on rising and falling edges. The 12 valid transitions produce ±1. The 4 invalid transitions (where both bits changed at once = missed edge) produce 0.
 
 ## 111.3  Software decode in user-space (libgpiod)
 
@@ -162,7 +170,7 @@ Event: time 1709236745.234, type 2 (EV_REL), code 0 (REL_X), value 1
 Event: time 1709236745.345, type 2 (EV_REL), code 0 (REL_X), value -1
 ```
 
-This is the right pattern for a volume knob, menu scroll, jog wheel. Bouncing? The driver does some debouncing internally; for very bouncy mechanical encoders, add an RC filter on the GPIO inputs.
+This is the right pattern for a volume knob, menu scroll, jog wheel. Bouncing? The driver does some debouncing internally. For very bouncy mechanical encoders, add an RC filter on the GPIO inputs.
 
 ## 111.5  i.MX hardware quadrature — the ENC peripheral (and its mainline state)
 
@@ -170,7 +178,7 @@ The i.MX6ULL **eXtended Quadrature Encoder (ENC)** module — 32-bit counter, ha
 
 Status in mainline Linux:
 - **NXP BSP kernels**: full support via `drivers/staging/iio/quadrature_encoder.c` or vendor patches.
-- **Mainline**: partial; some i.MX variants (i.MX7, i.MX8) have IIO-exposed encoder counters; i.MX6ULL coverage varies by kernel version. Check `find /sys/bus/iio/devices/ -iname '*encoder*'` after enabling `CONFIG_IIO_ST_LSM6DSX` or relevant config.
+- **Mainline**: partial. some i.MX variants (i.MX7, i.MX8) have IIO-exposed encoder counters. i.MX6ULL coverage varies by kernel version. Check `find /sys/bus/iio/devices/ -iname '*encoder*'` after enabling `CONFIG_IIO_ST_LSM6DSX` or relevant config.
 
 If your kernel has it, exposing via DT:
 
@@ -198,7 +206,7 @@ For "I need a fast quadrature counter and my SoC doesn't have one":
                       i.MX6ULL ← SPI ← LS7366R
 ```
 
-LS7366R is a $5 chip; 4× decode in hardware; 32-bit counter; up to 40 MHz pulse rate. Driver: write your own ~200-line userspace SPI driver. Sequence: write MDR0 register (filter, decode mode), then `READ_CNTR` over SPI returns the current count.
+LS7366R is a $5 chip. 4× decode in hardware. 32-bit counter. up to 40 MHz pulse rate. Driver: write your own ~200-line userspace SPI driver. Sequence: write MDR0 register (filter, decode mode), then `READ_CNTR` over SPI returns the current count.
 
 No mainline driver, but SPI access is straightforward.
 
@@ -256,17 +264,19 @@ for (;;) {
 ```
 
 A 100 Hz control loop is adequate for a brushed motor. Mechanical dynamics are much slower than that. PWM drives the H-bridge from Ch 112.
+MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+**PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 
 ## 111.9  Lab
 
-1. **Knob → terminal.** Wire a Bourns PEC11 mechanical encoder (5-pin: A, B, common, switch, common). Use `rotary_encoder` DT binding; `evtest` to see relative events.
-2. **Software qdec.** Wire an optical incremental (LPD3806-100BM-G5-24C-100ppr, $20). Run the user-space qdec; spin the encoder by hand; verify count tracks. Spin fast; note where counts start dropping (~10 kHz on i.MX6ULL).
-3. **LS7366R external.** Wire LS7366R between encoder and i.MX SPI. Read the 32-bit count via SPI. Spin the encoder at 5,000 RPM (use a drill); verify no missed counts.
-4. **Index pulse / homing.** Add Z (index) input. On every revolution, the Z pulse should fire; verify your count is a multiple of `4 × PPR`. Use Z to home an axis on startup.
-5. **AS5048A absolute.** Wire AS5048A; verify IIO `in_angl0_raw` tracks shaft rotation. Verify boot-up reads the correct angle without homing.
+1. **Knob → terminal.** Wire a Bourns PEC11 mechanical encoder (5-pin: A, B, common, switch, common). Use `rotary_encoder` DT binding. `evtest` to see relative events.
+2. **Software qdec.** Wire an optical incremental (LPD3806-100BM-G5-24C-100ppr, $20). Run the user-space qdec. spin the encoder by hand. verify count tracks. Spin fast. note where counts start dropping (~10 kHz on i.MX6ULL).
+3. **LS7366R external.** Wire LS7366R between encoder and i.MX SPI. Read the 32-bit count via SPI. Spin the encoder at 5,000 RPM (use a drill). verify no missed counts.
+4. **Index pulse / homing.** Add Z (index) input. On every revolution, the Z pulse should fire. verify your count is a multiple of `4 × PPR`. Use Z to home an axis on startup.
+5. **AS5048A absolute.** Wire AS5048A. verify IIO `in_angl0_raw` tracks shaft rotation. Verify boot-up reads the correct angle without homing.
 6. **Velocity closed loop.** Combine the velocity loop with the DC motor driver from Ch 112 (BTS7960). Tune Kp, Ki for stable 1000 RPM.
-7. **Position closed loop.** Same loop, but track a target angle. Test for steady-state error; add an integrator if needed.
-8. **Direction-detection robustness.** Spin the encoder back-and-forth rapidly; verify the count is consistent and direction is right. If counts are wrong, check the QDEC_TABLE.
+7. **Position closed loop.** Same loop, but track a target angle. Test for steady-state error. add an integrator if needed.
+8. **Direction-detection robustness.** Spin the encoder back-and-forth rapidly. verify the count is consistent and direction is right. If counts are wrong, check the QDEC_TABLE.
 
 ## 111.10  Pitfalls
 
@@ -274,18 +284,18 @@ A 100 Hz control loop is adequate for a brushed motor. Mechanical dynamics are m
 - **No pull-ups on encoder inputs.** Open-collector outputs from optical encoders need external 4.7 kΩ pull-ups. Without, signals float and you see ghost counts.
 - **No debouncing on mechanical encoder.** 5 ms of bounce per detent → 100s of false counts per click. Use RC filter or the kernel driver's debounce.
 - **Reversed A/B.** Direction is wrong. Swap two wires in software or DT.
-- **Index pulse double-trigger.** Z is often longer than one count's worth of time; trigger on its rising edge only, or you'll home twice per revolution.
+- **Index pulse double-trigger.** Z is often longer than one count's worth of time. trigger on its rising edge only, or you'll home twice per revolution.
 - **Encoder loses counts on power loss.** Incremental encoders need re-homing after every boot. Use absolute encoders (AS5048A) or a homing routine.
 - **User-space decode misses edges under CPU load.** A user-space loop on a busy Linux box loses edges when the scheduler holds it. RT priority (`chrt -f 99`) or move to a kernel module.
-- **AS5048A magnet alignment.** The magnet must be on the shaft axis (radially polarized, diametric) within ±0.5 mm; misalignment → non-linear angle errors of several degrees.
-- **Index of LS7366R registers wrong.** MDR0 vs MDR1; common mistake. Default values don't enable filters → noisy signals cause false counts.
+- **AS5048A magnet alignment.** The magnet must be on the shaft axis (radially polarized, diametric) within ±0.5 mm. misalignment → non-linear angle errors of several degrees.
+- **Index of LS7366R registers wrong.** MDR0 vs MDR1. common mistake. Default values don't enable filters → noisy signals cause false counts.
 
 ## 111.11  Going deeper
 
 - **`Documentation/devicetree/bindings/input/rotary-encoder.txt`** — kernel rotary encoder binding.
 - **`drivers/input/misc/rotary_encoder.c`** — readable source.
 - **NXP IMX6ULL Reference Manual, ch. 33 (ENC)** — full peripheral docs.
-- **LS7366R datasheet** — 12-page chip; SPI register tour.
+- **LS7366R datasheet** — 12-page chip. SPI register tour.
 - **AMS AS5048A datasheet** — absolute encoder.
 - **Bourns PEC11 series** — the classic UI knob.
 - **`libgpiod`** — for user-space GPIO event-based code.

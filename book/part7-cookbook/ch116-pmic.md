@@ -8,11 +8,16 @@ status: draft
 
 # Chapter 116 — PMICs and regulator framework
 
-> **What:** **Power Management ICs** — single-chip power solutions that replace the half-dozen discrete LDOs and buck converters around an SoC. We cover **NXP PCA9450** (the i.MX-recommended PMIC for i.MX8M; also used on some i.MX6 designs), **NXP PF8200** (industrial), **Rohm BD71850MWV** (compact, integrated for i.MX6/8 cores). On the i.MX6ULL we walk the I²C register map of a typical PMIC, configure voltage rails for SoC + DDR + I/O via the kernel **regulator framework**, integrate with **DVFS** (Ch 51B), and measure the power savings from PMIC-coordinated voltage scaling vs always-on discrete LDOs.
+> **What:** **Power Management ICs** — single-chip power solutions that replace the half-dozen discrete LDOs and buck converters around an SoC. We cover **NXP PCA9450** (the i.MX-recommended PMIC for i.MX8M. also used on some i.MX6 designs), **NXP PF8200** (industrial), **Rohm BD71850MWV** (compact, integrated for i.MX6/8 cores). On the i.MX6ULL we walk the I²C register map of a typical PMIC, configure voltage rails for SoC + DDR + I/O via the kernel **regulator framework**, integrate with **DVFS** (Ch 51B), and measure the power savings from PMIC-coordinated voltage scaling vs always-on discrete LDOs.
+> MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **DDR** - external DRAM that must be configured and trained before most software can run from it.
+> **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 >
 > **Why:** every i.MX6ULL design has 4–6 voltage rails: 3.3 V (I/O), 1.35 V (DDR3), 1.275 V (SoC core), 2.5 V (analog), 1.8 V (some I/O), 5 V (USB). Discrete LDOs work but: (a) bring-up sequencing is tricky (DDR before SoC core, etc.), (b) no central control for sleep, (c) BOM = 6+ chips. A PMIC consolidates these into 1 chip with I²C control, programmable voltages, ramp-rate control, sequencing, and per-rail enable for runtime power management. For products that ship in volume or need real sleep/wake, a PMIC isn't optional — it's the only practical path.
 >
 > **Focus:** The regulator framework treats every rail as a "supply". Drivers declare their consumer-supply relationship in the DT. The kernel computes the power-on order from the dependency graph, and waits for each rail to stabilise before letting consumers probe. The PMIC driver translates "set supply VDDARM to 1.275 V" into the right I²C writes. DVFS uses this: when cpufreq drops to 396 MHz, it calls `regulator_set_voltage(VDDARM, 1.150 V)` first, saving ~30 % of core power. If you get the boot-sequence wrong — for example the kernel starts the FEC before its PHY's 1.8 V rail is stable — you will see PHY probe failures that look random.
+> **PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
+
 
 ## 116.1  Discrete vs PMIC
 
@@ -31,7 +36,7 @@ PMICs are better in every dimension once a board has more than three rails or ne
 
 ## 116.2  Anatomy of a typical PMIC (PCA9450)
 
-The PCA9450 (i.MX8M-recommended; technically over-specified for i.MX6ULL but illustrative):
+The PCA9450 (i.MX8M-recommended. technically over-specified for i.MX6ULL but illustrative):
 - 4× Buck DC-DC (BUCK1: 1.0–1.65 V @ 3.5 A for VDDARM, BUCK2: same for SOC, BUCK3: 1.0–1.65 V @ 1.5 A, BUCK4: 0.6–2.1875 V)
 - 1× Buck for DDR (BUCK5: 1.1 V / 1.35 V)
 - 6× LDO (LDO1: 1.6/3.3 V @ 100 mA, LDO2: 1.5–3.3 V @ 250 mA, LDO3–5: similar)
@@ -151,11 +156,13 @@ i.MX6ULL has a required power-up sequence:
 3. VDD_ARM_IN, VDD_SOC_IN — together, within 100 ms
 4. NVCC_DRAM (1.35 V for DDR3) — before any DDR access
 5. Per-bank I/O supplies (NVCC_GPIO_*) — before any GPIO use
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 6. POR_B released (reset deassert) — last
 
 If you violate this, behavior ranges from "doesn't boot" to "boots but crashes intermittently" to "silicon damage." The PMIC's programmable sequencer enforces this in hardware — set PWRON_DELAY registers per rail and the PMIC powers them in the right order at the right intervals.
 
-At runtime, `regulator_enable()` walks the supply dependency graph and powers parent supplies first. Mark each rail with `regulator-boot-on` if the kernel inherits an already-on rail; mark with `regulator-always-on` if it must never disable.
+At runtime, `regulator_enable()` walks the supply dependency graph and powers parent supplies first. Mark each rail with `regulator-boot-on` if the kernel inherits an already-on rail. mark with `regulator-always-on` if it must never disable.
 
 ## 116.5  DVFS — coordinated voltage and frequency scaling
 
@@ -196,8 +203,8 @@ The OPP table tells cpufreq: "at 396 MHz, 1.15 V is sufficient." On transition:
 ```
 
 Power saving from 1.275 V to 1.150 V:
-- Static (leakage) power ∝ V; ~10 % reduction.
-- Dynamic power ∝ V² × f; ~28 % reduction at same frequency, more if f drops too.
+- Static (leakage) power ∝ V. ~10 % reduction.
+- Dynamic power ∝ V² × f. ~28 % reduction at same frequency, more if f drops too.
 
 Combined with f drop from 696 → 396 MHz: ~60 % total power saving for "idle background" load. This is why DVFS exists.
 
@@ -221,7 +228,7 @@ if (pmic->sleep_mode) {
 
 On wake: PMIC's wake pin (typically tied to an i.MX EXTRBOOT or PMIC's WAKE_IN) brings the PMIC back to active state, which restores all rails to their pre-sleep values, in the correct sequence. Linux resumes.
 
-Without a PMIC, each rail needs its own GPIO with its own timing; the suspend driver grows complex. With a PMIC, suspend is one I²C transaction.
+Without a PMIC, each rail needs its own GPIO with its own timing. The suspend driver grows complex. With a PMIC, suspend is one I²C transaction.
 
 ## 116.7  From scratch — minimal PMIC interaction over I²C
 
@@ -276,37 +283,44 @@ int main(void) {
 }
 ```
 
-This is for understanding; in real Linux code you go through the regulator framework via the consumer driver — never directly poke PMIC registers from an unrelated process.
+This is for understanding. in real Linux code you go through the regulator framework via the consumer driver — never directly poke PMIC registers from an unrelated process.
 
 ## 116.8  Lab
 
-1. **Identify PMIC.** If your i.MX6ULL board has a PMIC: `i2cdetect -y 0` to find it. Read DEV_ID register; verify it matches the chip's datasheet.
-2. **DT skeleton.** If your kernel isn't using the PMIC: write a DT overlay with the PMIC node + a few rails; rebuild kernel; verify `regulator_summary` lists them.
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
+1. **Identify PMIC.** If your i.MX6ULL board has a PMIC: `i2cdetect -y 0` to find it. Read DEV_ID register. verify it matches the chip's datasheet.
+2. **DT skeleton.** If your kernel isn't using the PMIC: write a DT overlay with the PMIC node + a few rails. rebuild kernel. verify `regulator_summary` lists them.
 3. **Power measurement.** Insert a shunt resistor between PSU and VDDARM rail. Measure current at 696 MHz idle, then at 396 MHz idle, then with cpufreq's `userspace` governor forcing each freq. Compute power.
 4. **DVFS active.** Set the cpufreq governor to `ondemand`. Run a CPU-bound benchmark (`stress-ng --cpu 1`). Watch the regulator voltage change in real-time:
    ```sh
    watch -n0.1 cat /sys/class/regulator/regulator.0/microvolts
    ```
-5. **Per-rail enable test.** Identify a non-critical rail (e.g., one for an unused peripheral). Manually disable it via sysfs `enable` knob; verify the peripheral indeed goes dead.
-6. **Sleep state.** Trigger suspend-to-RAM (`echo mem > /sys/power/state`). Measure VDDARM rail — should be 0 V during suspend. Wake; resume; verify rail restored.
-7. **Fault interrupt.** PMICs typically have an INT pin. Configure it as a kernel IRQ; over-current the chip (short a rail momentarily); verify the kernel sees the fault.
-8. **OPP tuning.** Add a custom OPP (e.g., 528 MHz at 1.1 V — slightly under the safe-spec to see what fails). Run stress tests; record where the SoC starts to glitch (you may corrupt files; use a scratch SD).
-9. **From-scratch I²C peek.** Use `pmic_test.c` to read every register; dump them; identify which rail is which by toggling each and observing what dies.
+5. **Per-rail enable test.** Identify a non-critical rail (e.g., one for an unused peripheral). Manually disable it via sysfs `enable` knob. verify the peripheral indeed goes dead.
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+6. **Sleep state.** Trigger suspend-to-RAM (`echo mem > /sys/power/state`). Measure VDDARM rail — should be 0 V during suspend. Wake. resume. verify rail restored.
+7. **Fault interrupt.** PMICs typically have an INT pin. Configure it as a kernel IRQ. over-current the chip (short a rail momentarily). verify the kernel sees the fault.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+8. **OPP tuning.** Add a custom OPP (e.g., 528 MHz at 1.1 V — slightly under the safe-spec to see what fails). Run stress tests. record where the SoC starts to glitch (you may corrupt files. Use a scratch SD).
+9. **From-scratch I²C peek.** Use `pmic_test.c` to read every register. dump them. identify which rail is which by toggling each and observing what dies.
 10. **Cold start sequencing trace.** With a scope on each rail's output, capture the power-on sequence. Verify timing matches the i.MX6ULL datasheet's required order.
 
 ## 116.9  Pitfalls
 
 - **Direct PMIC register pokes bypass safety.** Lowering VDDARM below the OPP minimum mid-execution = SoC crashes immediately. Always use the regulator framework.
 - **OPP table wrong voltage.** Setting 396 MHz at 1.0 V (below spec) may "work" most of the time but crashes randomly. Match the SoC datasheet exactly.
-- **Sleep-mode rails not configured.** PMIC enters sleep; user-relevant rail (e.g., backlight) stays on — wakes everything via leakage. Configure SLEEP_REG for each rail.
+- **Sleep-mode rails not configured.** PMIC enters sleep. user-relevant rail (e.g., backlight) stays on — wakes everything via leakage. Configure SLEEP_REG for each rail.
 - **No `regulator-boot-on` on rails the kernel finds already on.** Kernel assumes off, tries to enable, may sequence wrongly. Mark every pre-up rail.
 - **`regulator-always-on` everywhere.** Defeats DVFS and sleep. Use only for rails that genuinely cannot disable (DDR, RTC, etc.).
 - **I²C bus contention.** PMIC, EEPROM, RTC, sensors all on i2c0. PMIC ops during heavy traffic delay → DVFS transitions slow → cpufreq stalls. Put PMIC on a dedicated I²C bus if you have one spare.
-- **PMIC requires VDDA before I²C.** Some PMICs (PCA9450) won't ACK I²C until their internal LDOs are up; the kernel I²C probe must retry. The driver handles this; ad-hoc test scripts may not.
+- **PMIC requires VDDA before I²C.** Some PMICs (PCA9450) won't ACK I²C until their internal LDOs are up. The kernel I²C probe must retry. The driver handles this. ad-hoc test scripts may not.
 - **OTP-programmed PMIC defaults.** Some PMICs ship with vendor-specific OTP values. If you got a "datasheet default" example, your part may differ. Read all registers at boot, verify against your design.
-- **Ramp rate too fast.** Fast voltage steps cause overshoot. PMIC `regulator-ramp-delay` (µV/µs) controls slew; default may be too aggressive for sensitive consumers.
+- **Ramp rate too fast.** Fast voltage steps cause overshoot. PMIC `regulator-ramp-delay` (µV/µs) controls slew. default may be too aggressive for sensitive consumers.
 - **WAKE_IN polarity wrong.** Active-low vs active-high — wrong polarity = PMIC ignores wake. Spec mismatch.
-- **DDR rail timing.** DDR3 needs ≤1 ms from VREF to VDDQ stable. PMIC sequence must enforce this; otherwise DDR initializes corruptly.
+- **DDR rail timing.** DDR3 needs ≤1 ms from VREF to VDDQ stable. PMIC sequence must enforce this. otherwise DDR initializes corruptly.
 
 ## 116.10  Going deeper
 
@@ -317,8 +331,8 @@ This is for understanding; in real Linux code you go through the regulator frame
 - **`Documentation/devicetree/bindings/regulator/`** — DT binding docs.
 - **`Documentation/power/regulator/`** — kernel regulator framework guide.
 - **i.MX6ULL Reference Manual ch. 11 (Power Supply Strategy)** — the canonical power-up sequence.
-- **Ch 51B** — runtime PM + DVFS chapter; the consumer side.
-- **Ch 75** — INA226 + current monitoring; how you measure rail consumption.
+- **Ch 51B** — runtime PM + DVFS chapter. The consumer side.
+- **Ch 75** — INA226 + current monitoring. how you measure rail consumption.
 
 ---
 

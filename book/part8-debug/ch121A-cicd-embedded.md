@@ -10,15 +10,21 @@ status: draft
 
 > **What:** **continuous integration** for embedded Linux. The pieces:
 > - Build U-Boot, kernel, and rootfs on every commit.
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 > - Run smoke tests on **real hardware** in a board farm via a self-hosted CI runner with USB-OTG flashing.
 > - Use a **Labgrid**-style test harness.
 > - Signal pass/fail back to the PR.
 >
 > We use **GitHub Actions** (or **GitLab CI**) with a self-hosted runner that has a USB connection to a Point Atom MINI. On every push, the runner does the Ch 121 build and flashes via `uuu`. It then watches serial for the `=>` prompt, runs a sysfs check, captures the log, and marks the PR pass or fail.
+> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
 > **Why:** any embedded product shipping updates from more than one developer benefits from CI. The risk is real: someone merges a DT change that breaks boot, nobody notices until a customer tries to update, and you spend days firefighting. With CI plus real-hardware smoke tests on every PR, that bug surfaces in ten minutes. The setup cost is small (a dev board, a Linux host, and a few hours) and pays back quickly.
 >
-> **Focus:** a normal cloud CI runner has no USB connection to your board. To run hardware tests, self-host a runner on a Linux box that physically owns the board. GitHub Actions / GitLab CI register the self-hosted runner; the runner does cross-builds, then drives the board via uuu plus a serial terminal scripted in Python. A smoke test is small (boot, get prompt, run a few checks, capture the log) but catches most regressions. Scale from one board to a farm of 10 via Labgrid (RPC framework for board control).
+> **Focus:** a normal cloud CI runner has no USB connection to your board. To run hardware tests, self-host a runner on a Linux box that physically owns the board. GitHub Actions / GitLab CI register the self-hosted runner. The runner does cross-builds, then drives the board via uuu plus a serial terminal scripted in Python. A smoke test is small (boot, get prompt, run a few checks, capture the log) but catches most regressions. Scale from one board to a farm of 10 via Labgrid (RPC framework for board control).
+
 
 ## 121A.1  What "CI" means for embedded
 
@@ -168,7 +174,7 @@ Now add a hardware-test job:
           path: serial.log
 ```
 
-The runner is labelled `imx6ull`; only jobs targeting that label run on this hardware. You can have multiple labelled runners (one per board type).
+The runner is labelled `imx6ull`. only jobs targeting that label run on this hardware. You can have multiple labelled runners (one per board type).
 
 ## 121A.4  The smoke test script
 
@@ -239,7 +245,7 @@ if __name__ == '__main__':
     main()
 ```
 
-Run on the self-hosted runner; outputs all of the serial conversation; exit 0 on success, non-zero on any failure → PR gets a red X.
+Run on the self-hosted runner. outputs all of the serial conversation. exit 0 on success, non-zero on any failure → PR gets a red X.
 
 ## 121A.5  Labgrid — for board farms
 
@@ -270,13 +276,13 @@ target.sdmux.switch_to_target()
 target.serial.expect('=>')
 ```
 
-Multiple test runners can share the same board farm; Labgrid handles locking. For larger teams, this is the production-grade setup.
+Multiple test runners can share the same board farm. Labgrid handles locking. For larger teams, this is the production-grade setup.
 
 ## 121A.6  Test artifact storage
 
-A board boot log is ~50 KB; build outputs are ~150 MB; you generate 10–50 builds/day. Plan storage:
+A board boot log is ~50 KB. build outputs are ~150 MB. You generate 10–50 builds/day. Plan storage:
 
-- **GitHub Actions artifact retention**: 90 days default; configurable.
+- **GitHub Actions artifact retention**: 90 days default. configurable.
 - **Self-hosted artifact server** (e.g., minio S3-compatible): infinite retention.
 - **A binary cache** (e.g., `sccache` for builds): speeds up re-builds.
 
@@ -295,7 +301,7 @@ Cross-builds are slow (~10–30 min). Speed up:
       restore-keys: ccache-${{ matrix.target }}-
   ```
 - **Module dependencies cache**: kernel `*.cmd` files + `.o` files. `make` is incremental if these survive.
-- **Toolchain cache**: download the cross compiler once; cache the result.
+- **Toolchain cache**: download the cross compiler once. cache the result.
 
 ## 121A.8  Trigger patterns
 
@@ -337,28 +343,30 @@ When the board farm is offline or builds fail repeatedly:
 
 ## 121A.10  Lab
 
-1. **GitHub Actions cross-build.** Set up `.github/workflows/build.yml`. Push a commit; verify the build runs in cloud.
-2. **Trigger failure.** Introduce a syntax error in a DT; push; verify the build fails red.
-3. **Self-hosted runner.** Install runner on a Linux box with USB to a board. Register; verify it shows "Idle" in GitHub UI.
-4. **Hardware test job.** Add `hardware-smoke` job; verify it runs on the self-hosted runner.
-5. **smoke_test.py.** Write a Python script that drives the serial console and runs 3 checks. Run locally first; then in CI.
+1. **GitHub Actions cross-build.** Set up `.github/workflows/build.yml`. Push a commit. verify the build runs in cloud.
+2. **Trigger failure.** Introduce a syntax error in a DT. push. verify the build fails red.
+3. **Self-hosted runner.** Install runner on a Linux box with USB to a board. Register. verify it shows "Idle" in GitHub UI.
+4. **Hardware test job.** Add `hardware-smoke` job. verify it runs on the self-hosted runner.
+5. **smoke_test.py.** Write a Python script that drives the serial console and runs 3 checks. Run locally first. then in CI.
 6. **Power-cycle GPIO.** Wire a USB-controlled power switch (e.g., `usbrelay`) so the runner can hard-reboot the board between tests.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 7. **uuu flashing.** Set up the runner to use `uuu` to flash a fresh image on every test. Verify it works clean.
-8. **ccache.** Wire ccache into the build; observe 5× speedup on the second run.
-9. **Labgrid (stretch).** Install Labgrid; expose 2 boards via the framework; have CI acquire one at random.
+8. **ccache.** Wire ccache into the build. observe 5× speedup on the second run.
+9. **Labgrid (stretch).** Install Labgrid. expose 2 boards via the framework. have CI acquire one at random.
 10. **Slack notification.** On test failure, post a message to a Slack channel.
 
 ## 121A.11  Pitfalls
 
 - **Self-hosted runner security.** A runner with checkout permissions can run arbitrary PR code. Don't allow forks to trigger your hardware runner without manual approval. `pull_request_target` runs the workflow with write permissions on the target repo, which a forked PR can abuse.
-- **USB instability.** Long USB cables drop intermittently; uuu fails randomly. Use short, shielded cables; powered hubs.
-- **uuu version drift.** New SoCs need new uuu versions; pin to a known-good.
-- **Serial port conflicts.** Two tests grabbing /dev/ttyUSB0 simultaneously = chaos. Labgrid handles locking; ad-hoc scripts need flock.
+- **USB instability.** Long USB cables drop intermittently. uuu fails randomly. Use short, shielded cables. powered hubs.
+- **uuu version drift.** New SoCs need new uuu versions. pin to a known-good.
+- **Serial port conflicts.** Two tests grabbing /dev/ttyUSB0 simultaneously = chaos. Labgrid handles locking. ad-hoc scripts need flock.
 - **Board "stuck on" between tests.** If a previous test crashed the board, it may not respond to flash. Always hard-power-cycle at test start.
-- **Time-of-day cron.** `cron: '0 6 * * *'` is UTC; off-by-time-zone embarrassment. Comment your timezone assumption.
-- **Caches stale.** ccache occasionally returns wrong objects when toolchain changes; invalidate cache on toolchain bump.
-- **Test pollution.** Test #1 leaves the board with the wrong network config; test #2 fails for unrelated reasons. Always flash a fresh image.
-- **Storage exhausted.** Build artifacts add up; GitHub limits to 500 MB per repo. Purge old artifacts.
+- **Time-of-day cron.** `cron: '0 6 * * *'` is UTC. off-by-time-zone embarrassment. Comment your timezone assumption.
+- **Caches stale.** ccache occasionally returns wrong objects when toolchain changes. invalidate cache on toolchain bump.
+- **Test pollution.** Test #1 leaves the board with the wrong network config. test #2 fails for unrelated reasons. Always flash a fresh image.
+- **Storage exhausted.** Build artifacts add up. GitHub limits to 500 MB per repo. Purge old artifacts.
 - **Workflow YAML errors.** Subtle indentation or quoting bugs in YAML cause "workflow failed before starting" with no useful error. Validate with `actionlint`.
 
 ## 121A.12  Going deeper
@@ -366,11 +374,11 @@ When the board farm is offline or builds fail repeatedly:
 - **GitHub Actions documentation** — https://docs.github.com/actions.
 - **GitLab CI docs** — similar concepts, different syntax.
 - **Labgrid** — https://labgrid.org/.
-- **uuu (Universal Update Utility)** — NXP's MFGTOOL successor; https://github.com/nxp-imx/mfgtools.
+- **uuu (Universal Update Utility)** — NXP's MFGTOOL successor. https://github.com/nxp-imx/mfgtools.
 - **`usbrelay`** — controls cheap USB relay boards for power-cycling.
 - **`actionlint`** — GitHub Actions YAML validator.
 - **Pengutronix's "Labgrid" talks on YouTube** — board-farm architecture in production.
-- **LAVA (Linaro Automated Validation Architecture)** — the Linaro-style board farm; complex but powerful.
+- **LAVA (Linaro Automated Validation Architecture)** — the Linaro-style board farm. complex but powerful.
 - **Ch 121** — the build script that CI calls.
 - **Ch 125** — for over-the-air updates that CI builds and signs.
 

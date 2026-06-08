@@ -9,23 +9,28 @@ status: draft
 # Chapter 17 — MMU and caches
 
 > **What:** build a first-level page table by hand, map our peripherals as Device memory and our RAM as Normal Cacheable, switch on the MMU and both caches, and measure the speed-up.
+> **MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 >
 > **Why:** The MMU and caches are the last hardware blocks Linux abstracts from you. Turn them on once by hand and every kernel page-table operation looks like a variation on this.
 >
 > **Focus:** the short-descriptor format: a 4096-entry first-level table covering 4 GiB in 1 MiB sections, with per-section permissions and memory attributes. LPAE (3 levels, 40-bit PA) is overkill for our 512 MiB DRAM.
+
 
 ## 17.1  What we are not doing
 
 We will use *only the first-level page table*, mapping the entire 4 GiB virtual space in 1 MiB sections. Specifically:
 
 - **No L2 tables** — we don't need 4 KiB page granularity for bare-metal.
-- **No ASIDs** — single address space; one global mapping.
+- **No ASIDs** — single address space. one global mapping.
 - **No process isolation** — that's a Linux concern.
 - **No LPAE** — short-descriptor format is sufficient.
 
 What we *are* doing:
 
 - Define which 1 MiB regions are Device memory (peripherals: AIPS, GIC, MMDC registers) and which are Normal cacheable (OCRAM, DRAM).
+MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+**GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
+**MMDC** - the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
 - Build a 16 KiB table containing 4096 first-level entries.
 - Point TTBR0 at our table.
 - Enable the MMU, then I-cache, then D-cache.
@@ -44,7 +49,7 @@ Each L1 entry is 32 bits:
 └──────────┴────┴────┴────┴────┴────┴──────┴───────┴───┴──────┴───┴───┴─────┘
 ```
 
-(`type = 0b10` selects "section"; `type = 0b01` selects "page-table pointer" — not used here.)
+(`type = 0b10` selects "section". `type = 0b01` selects "page-table pointer" — not used here.)
 
 (There are also other entry types: page-table pointer, supersection. We use only "section" — type bits = `0b10`.)
 
@@ -53,6 +58,7 @@ For our purposes, three fields matter most:
 - **AP[2:0]** (Access Permissions) — combines AP2 (bit 15), AP[1:0] (bits 11:10). For "full access at PL1, no access at PL0," AP = `0b001` → AP2=0, AP[1:0]=01. For "full access at PL1 and PL0," AP = `0b011`.
 - **TEX[2:0]C B** (memory attributes) — selects Device vs Normal-Strongly-Ordered vs Normal-Cacheable.
 - **XN** (eXecute Never) — bit 4. Set to 1 for peripherals to prevent the CPU from speculatively fetching from MMIO.
+**MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 
 Common combinations we will use:
 
@@ -199,7 +205,7 @@ void mmu_enable(void)
 A few notes:
 
 - **`__attribute__((aligned(16384)))`** ensures the table starts at a 16 KiB boundary, which TTBR requires. Skip it and TTBR drops the low 14 bits silently, leaving your MMU pointing at garbage.
-- **`DACR = 0x55555555`** sets every domain to "client," which means accesses respect AP bits. The other valid value is "manager" (`0xFFFFFFFF`), which ignores AP entirely. Linux uses client; we follow.
+- **`DACR = 0x55555555`** sets every domain to "client," which means accesses respect AP bits. The other valid value is "manager" (`0xFFFFFFFF`), which ignores AP entirely. Linux uses client. We follow.
 - **Order matters at enable time.** Invalidate the caches *before* enabling them. Otherwise pre-MMU stale lines stay valid and corrupt your data.
 - **The set/way D-cache invalidate** in `invalidate_dcache_all` uses the Cortex-A7 cache geometry: 32 KB L1-D, 4-way set-associative, 64-byte lines → **128 sets**, 4 ways. On a different CPU, look up the geometry from `CCSIDR`.
 
@@ -257,9 +263,11 @@ For the rest of Part II, we leave the MMU on. Chapter 18's bare-metal peripheral
 
 ## 17.6  Cache maintenance — when you must intervene
 
-The MMU handles attributes; the cache handles its own coherency for ordinary loads/stores. But sometimes you must explicitly maintain:
+The MMU handles attributes. The cache handles its own coherency for ordinary loads/stores. But sometimes you must explicitly maintain:
 
 - **Before a DMA peripheral reads from a buffer**, the CPU must **clean** the buffer's cache lines so the DMA sees the latest data.
+MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 - **After a DMA peripheral writes to a buffer**, the CPU must **invalidate** the buffer's cache lines so the next load sees the new data and not stale L1 contents.
 - **After writing instructions**, the CPU must **clean D-cache** (so I-cache sees them in unified memory) and **invalidate I-cache** (so it re-fetches).
 
@@ -345,20 +353,20 @@ The 10× difference is why Linux brings caches up early in arch_setup.
 ## 17.9  Lab
 
 1. **Build, run, observe speedup.** Confirm memtest goes from ~30 ms to ~4 ms.
-2. **Try mapping DRAM as Device.** Change `mmu_build_table` to mark DRAM as Device. Re-run. The memtest will succeed but at ~25 ms (the slow-DRAM-access path); compare with no-MMU. Demonstrates that the MMU itself isn't the speedup — the cache attribute is.
+2. **Try mapping DRAM as Device.** Change `mmu_build_table` to mark DRAM as Device. Re-run. The memtest will succeed but at ~25 ms (the slow-DRAM-access path). compare with no-MMU. Demonstrates that the MMU itself isn't the speedup — the cache attribute is.
 3. **Try mapping peripherals as Normal Cacheable.** Predict the failure mode. Implement it. Observe — UART output may stop, or characters appear bunched, or `tick_ms()` stops advancing. **Restore.**
-4. **Cache-line aliasing experiment.** Write to a buffer, then read it from a *different virtual address* that maps to the same physical address. (Construct this by adding a second mapping in your page table.) Confirm the read sees the right value despite VIPT cache being involved — Linux handles this for you in the page allocator; here you can see the issue raw.
+4. **Cache-line aliasing experiment.** Write to a buffer, then read it from a *different virtual address* that maps to the same physical address. (Construct this by adding a second mapping in your page table.) Confirm the read sees the right value despite VIPT cache being involved — Linux handles this for you in the page allocator. here you can see the issue raw.
 5. **Implement `dcache_clean_range`** and verify with a flush-then-DMA-style pattern.
 
 ## 17.10  Pitfalls
 
-- **Page table not 16 KiB aligned.** Symptom: enabling MMU traps to data abort. Cause: TTBR's low 14 bits are reserved zero; if your table address has any of them set, the actual base is silently truncated.
-- **Forgetting `dsb; isb` around MMU/cache changes.** Required by the architecture. Symptom: works most of the time; fails intermittently.
+- **Page table not 16 KiB aligned.** Symptom: enabling MMU traps to data abort. Cause: TTBR's low 14 bits are reserved zero. If your table address has any of them set, the actual base is silently truncated.
+- **Forgetting `dsb. isb` around MMU/cache changes.** Required by the architecture. Symptom: works most of the time. fails intermittently.
 - **Cache enabled with stale lines.** Invalidate before enable. Always.
-- **Peripheral mapped Normal Cacheable.** Diagnosed above; pernicious. Bare-metal habit: peripheral writes always followed by a `dsb` if the next access depends on the write actually reaching the device.
-- **Wrong cache geometry.** Cortex-A7 L1-D is **128 sets × 4 ways × 64-byte lines** (32 KB total). The exact geometry is in `CCSIDR`; portable code reads `CCSIDR` rather than hardcoding.
+- **Peripheral mapped Normal Cacheable.** Diagnosed above. pernicious. Bare-metal habit: peripheral writes always followed by a `dsb` if the next access depends on the write actually reaching the device.
+- **Wrong cache geometry.** Cortex-A7 L1-D is **128 sets × 4 ways × 64-byte lines** (32 KB total). The exact geometry is in `CCSIDR`. portable code reads `CCSIDR` rather than hardcoding.
 - **TTBCR misconfigured.** Setting `N != 0` splits the address space between TTBR0 and TTBR1. We use `N = 0` to put everything under TTBR0.
-- **DACR with manager domain.** Manager-domain entries ignore AP. Useful for kernel; dangerous for user-facing code. Use "client" (0b01 per domain).
+- **DACR with manager domain.** Manager-domain entries ignore AP. Useful for kernel. dangerous for user-facing code. Use "client" (0b01 per domain).
 
 ## 17.11  Going deeper
 
@@ -368,4 +376,6 @@ The 10× difference is why Linux brings caches up early in arch_setup.
 - **`Documentation/arm/memory.txt`** in the Linux kernel tree. Describes the virtual memory layout.
 - *Computer Architecture: A Quantitative Approach* (Hennessy & Patterson), Chapter 5, for the cache theory.
 
-> Next chapter: **Chapter 18 — Optional bare-metal peripherals.** I²C and SPI bare-metal, just enough to prove we can. Chapter 18 ends the required path of Part II. After that, three supplementary chapters (18A Project organization, 18B Button + beep, 18C Bare-metal RTC) are inserted for readers who want to fully match the Point Atom-style depth of bare-metal coverage before moving to U-Boot in Part III. They are independent of each other; skip any.
+> Next chapter: **Chapter 18 — Optional bare-metal peripherals.** I²C and SPI bare-metal, just enough to prove we can. Chapter 18 ends the required path of Part II. After that, three supplementary chapters (18A Project organization, 18B Button + beep, 18C Bare-metal RTC) are inserted for readers who want to fully match the Point Atom-style depth of bare-metal coverage before moving to U-Boot in Part III. They are independent of each other. skip any.
+> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.

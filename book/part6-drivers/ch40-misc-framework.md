@@ -12,7 +12,8 @@ status: draft
 >
 > **Why:** the Ch 37–38 pattern (alloc_chrdev_region + cdev_init + cdev_add + class_create + device_create) is correct but verbose. The misc framework is the kernel's pre-canned version. Many real drivers — `/dev/watchdog`, `/dev/hwrng`, `/dev/rfkill`, `/dev/btrfs-control`, `/dev/loop-control` — use it. Knowing when to use it saves you the chardev boilerplate.
 >
-> **Focus:** **misc is just chardev with shared major 10**. There's no new mechanism — the kernel reserves major 10 for "miscellaneous" devices and the misc framework hands out minor numbers within that major. Your driver provides just minor + name + fops; the rest is done for you.
+> **Focus:** **misc is just chardev with shared major 10**. There's no new mechanism — the kernel reserves major 10 for "miscellaneous" devices and the misc framework hands out minor numbers within that major. Your driver provides just minor + name + fops. The rest is done for you.
+
 
 ## 40.1  When to use misc (and when not to)
 
@@ -20,12 +21,17 @@ Use misc when:
 
 - You need a chardev for a single device (or a small fixed number of them).
 - The device doesn't fit any existing subsystem (LED, RTC, GPIO, input, sound, etc.). If it does fit, register with that subsystem instead — you get richer integration (sysfs attributes, common ioctls, user-space tooling).
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 - You don't need to publish custom class-level attributes (those go on `/sys/class/<your-class>/`).
 
 Don't use misc when:
 
 - You need *many* dynamically-numbered instances (loop devices, USB serial ports). Misc minor space is limited.
-- You're writing a driver that should integrate with a framework (LED → `leds-class`; input device → `input_register_device`; sound → ALSA/ASoC; network → `netdev`). The Part VI subsystem chapters will cover these.
+- You're writing a driver that should integrate with a framework (LED → `leds-class`. input device → `input_register_device`. sound → ALSA/ASoC. network → `netdev`). The Part VI subsystem chapters will cover these.
+**ASoC** - ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
+**ALSA** - Linux's kernel and user-space audio stack.
 
 For these in-between cases — simple chardev, one or two instances, no matching framework — misc fits.
 

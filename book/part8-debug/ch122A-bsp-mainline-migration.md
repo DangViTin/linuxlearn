@@ -7,12 +7,18 @@ status: draft
 ---
 
 # Chapter 122A — BSP → mainline migration playbook
+**PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
+**PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+**IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+**ASoC** - ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
 
 > **What:** the **systematic procedure** for taking an inherited vendor BSP (NXP `linux-imx 4.1.15`, ST's `stm32mp1 4.19`, TI's `ti-linux-5.10`, …) and moving the product to a **mainline** Linux kernel that's supportable for the product's lifetime. We cover the patch inventory + classification, the subsystem-by-subsystem migration order (the safest path through the dependency graph), the test-coverage strategy, the parallel-tree maintenance during the migration, the upstreaming of recoverable bits, and the "do not migrate" decision criterion.
 >
-> **Why:** you join a project; the existing kernel is Linux 4.1.15 from NXP's 2017 BSP; the product ships for 8 more years; security CVEs accumulate weekly; mainline is at 6.6+; and the BSP is *frozen* — no upstream updates because the vendor moved on. This is a project-defining decision. This chapter is the playbook for getting it right.
+> **Why:** you join a project. The existing kernel is Linux 4.1.15 from NXP's 2017 BSP. The product ships for 8 more years. security CVEs accumulate weekly. mainline is at 6.6+. and the BSP is *frozen* — no upstream updates because the vendor moved on. This is a project-defining decision. This chapter is the playbook for getting it right.
 >
-> **Focus:** **classify every vendor patch into mainline-merged (delete), mainline-equivalent (replace), still-needed (forward-port), or vendor-only (decide individually); migrate subsystem-by-subsystem in dependency order; maintain BOTH trees in parallel during the transition; CI on both**. The hardest part isn't technical. `git rebase` handles most of the code work. The hardest part is cultural — convincing management that six months of kernel work, with no new features, pays back over the product's lifetime.
+> **Focus:** **classify every vendor patch into mainline-merged (delete), mainline-equivalent (replace), still-needed (forward-port), or vendor-only (decide individually). migrate subsystem-by-subsystem in dependency order. maintain BOTH trees in parallel during the transition. CI on both**. The hardest part isn't technical. `git rebase` handles most of the code work. The hardest part is cultural — convincing management that six months of kernel work, with no new features, pays back over the product's lifetime.
+
 
 ## 122A.1  Why migration is hard
 
@@ -25,7 +31,12 @@ A typical 2017-era NXP BSP:
 
 Plus there's a toolchain problem. gcc 6.x won't compile a mainline 6.6 kernel cleanly. The kernel's hard minimum is gcc 5.1 (see `Documentation/process/changes.rst`), but newer features need gcc 11+. Most distros ship gcc 12+ for embedded cross-builds.
 - Old U-Boot 2017.04 doesn't speak modern FIT.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**FIT** - Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 - Old Buildroot/Yocto recipes pinned to old library versions.
+**Yocto** - a metadata-driven build system for producing custom Linux distributions.
+**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 - Old GStreamer 1.10 doesn't speak to mainline V4L2 drivers, which now use newer APIs.
 
 Staying on 4.1.15 means accumulated CVEs go unfixed:
@@ -37,6 +48,7 @@ Staying on 4.1.15 means accumulated CVEs go unfixed:
 Migrating to mainline 6.6+ LTS buys:
 - 6 years of security maintenance from kernel.org.
 - Modern features (eBPF, io_uring, PREEMPT_RT, USB4, ...).
+**PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 - Predictable LTS cycle.
 - Upstream-able fixes.
 
@@ -117,9 +129,11 @@ Migrate subsystems in dependency order, **most-isolated first**. The graph:
 ```
 
 For each phase:
-1. **Phase 1 (week 1–4)**: clk, pinctrl, gpio — the *foundation* every other subsystem uses. Most BSP-vs-mainline divergence; lots of NXP-internal pinmux files to merge.
+1. **Phase 1 (week 1–4)**: clk, pinctrl, gpio — the *foundation* every other subsystem uses. Most BSP-vs-mainline divergence. lots of NXP-internal pinmux files to merge.
 2. **Phase 2 (week 5–8)**: i2c, spi controllers + the *trivial* sensors hanging off them. Easy wins to build confidence.
 3. **Phase 3 (week 9–12)**: PMIC, regulators, eMMC, USB host. The "boot reliably" phase.
+MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+**PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 4. **Phase 4 (week 13–16)**: Ethernet, network stack. Verify customer-facing connectivity.
 5. **Phase 5 (week 17–20)**: Audio, display, camera, GPU. The "rich apps work" phase. Hardest because of vendor's binary blobs (Vivante GPU on i.MX) and downstream GStreamer integrations.
 6. **Phase 6 (week 21–24)**: Application port. Update Buildroot/Yocto recipes for newer library versions.
@@ -131,7 +145,7 @@ Each phase: **bring up subsystem on mainline, run integration tests, only then m
 For each subsystem:
 
 1. **Identify divergence**: `git diff bsp-frozen..mainline-6.6 -- drivers/foo/`. What's different?
-2. **Determine which patches still apply**: try `git cherry-pick` each. Many trivially conflict; mainline has refactored the file.
+2. **Determine which patches still apply**: try `git cherry-pick` each. Many trivially conflict. mainline has refactored the file.
 3. **For each conflict, decide**: (a) BSP patch is dead — code mainline replaced it. Drop. (b) BSP patch is still needed — port to mainline's new structure. (c) Mainline is missing functionality — extract to a separate patch, upstream.
 4. **Test on hardware**. Each subsystem migrated must pass its tests before moving on.
 
@@ -142,17 +156,21 @@ Tools that help:
 
 ## 122A.6  The "pinned driver" problem
 
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
+
 Some vendor drivers are pinned to BSP-API versions and rewriting them is hard. Examples:
 - Vivante GPU's userspace blob expects vendor's GLES driver, which talks to vendor's kernel DRM driver. Mainline has `etnaviv` (reverse-engineered) — but vendor app may not support etnaviv's slightly different EGL config.
-- VPU (Video Processing Unit) for hardware H.264 decode: vendor proprietary blob; mainline `coda` driver covers some chips.
-- ISP (Image Signal Processor): vendor blob; little mainline support.
+- VPU (Video Processing Unit) for hardware H.264 decode: vendor proprietary blob. mainline `coda` driver covers some chips.
+- ISP (Image Signal Processor): vendor blob. little mainline support.
 
 For each "pinned" component, options:
 - **Replace with mainline equivalent + accept feature reduction** (etnaviv for Vivante).
 - **Run vendor driver as out-of-tree module** + accept the maintenance cost.
 - **Switch to a different SoC** in your next product revision where mainline has full support.
 
-The first option is best long-term; the second is a stopgap; the third is the strategic decision.
+The first option is best long-term. The second is a stopgap. The third is the strategic decision.
 
 ## 122A.7  Maintaining two trees in parallel
 
@@ -170,14 +188,14 @@ Plan the cutover. Pick a date. After that date, new customer shipments use the m
 
 ## 122A.8  When NOT to migrate
 
-If any of these is true: **don't migrate; manage CVEs manually on the BSP**:
+If any of these is true: **don't migrate. manage CVEs manually on the BSP**:
 
 - Product is end-of-life within 12 months.
 - Critical hardware silicon has no mainline driver (and you can't write one in 6 months).
 - Vendor SDK / app stack only works with BSP version (and rewriting the app is out of scope).
 - Customer regulatory certification requires the specific kernel version + binary build (re-cert costs more than CVE backports).
 
-In these cases: have someone watch CVE feeds (oss-security, kernel.org); backport critical fixes manually; document the deviation from upstream for compliance.
+In these cases: have someone watch CVE feeds (oss-security, kernel.org). backport critical fixes manually. document the deviation from upstream for compliance.
 
 ## 122A.9  Worked example — NXP iMX6ULL 4.1.15 → 6.6 mainline
 
@@ -231,11 +249,11 @@ For i.MX6ULL specifically: mainline support is *excellent* as of 6.6 — most BS
 
 ## 122A.10  Lab
 
-1. **Inventory a real BSP.** Download NXP's `linux-imx 4.1.15`; `git log --oneline v4.1.15..` to see the patch count; sample 10 patches; classify each into the 4 categories.
+1. **Inventory a real BSP.** Download NXP's `linux-imx 4.1.15`. `git log --oneline v4.1.15..` to see the patch count. sample 10 patches. classify each into the 4 categories.
 2. **Cross-reference with mainline.** For each "still-needed" patch, search mainline (`git log -p` on the file): is the same fix already merged?
-3. **Port the trivial subsystem.** Pick gpio or i2c; verify the BSP patches are all merged in mainline 6.6. Confirm: no porting needed for this subsystem.
+3. **Port the trivial subsystem.** Pick gpio or i2c. verify the BSP patches are all merged in mainline 6.6. Confirm: no porting needed for this subsystem.
 4. **Find an unmerged patch.** Pick one that's not in mainline. Investigate why (was it submitted? rejected? never submitted?). Read the Lore archive (Ch 120A).
-5. **Upstream candidate.** Take a BSP patch that's a clear improvement; clean it; submit to mainline per Ch 120A. (Even if rejected, the experience is valuable.)
+5. **Upstream candidate.** Take a BSP patch that's a clear improvement. clean it. submit to mainline per Ch 120A. (Even if rejected, the experience is valuable.)
 6. **Compile mainline for your board.** Use mainline 6.6's imx6ull defconfig. Build zImage + DTB. Boot on the Point Atom MINI.
 7. **Run-time comparison.** Boot the same hardware on BSP 4.1.15 and mainline 6.6. Compare: boot time, dmesg output count, kernel size, RAM usage at idle.
 8. **CVE diff.** Use `cve-checker` (or NIST CVE search) to count CVEs against 4.1.15 vs 6.6 LTS. The number will shock.
@@ -246,12 +264,15 @@ For i.MX6ULL specifically: mainline support is *excellent* as of 6.6 — most BS
 - **Underestimating scope.** "It's just a kernel upgrade." A 7000-patch migration is **6 person-months minimum**. Plan accordingly.
 - **Migrating to non-LTS mainline.** Mainline rolls every 9 weeks. Pick an LTS (currently 6.6, supported until 2028). Don't pick the bleeding-edge.
 - **Skipping subsystem isolation.** "Let me bring up everything at once" → debug becomes impossible. Phase-by-phase.
-- **Forgetting userspace compatibility.** Mainline 6.6 expects glibc 2.35+; your BSP rootfs has glibc 2.24. Rebuild rootfs too.
+- **Forgetting userspace compatibility.** Mainline 6.6 expects glibc 2.35+. your BSP rootfs has glibc 2.24. Rebuild rootfs too.
+MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 - **DT bindings drift.** A binding that "worked in 4.1.15" may have been refactored in mainline. Update DT to match.
-- **Out-of-tree drivers break.** Every kernel API change risks your custom driver. Keep custom drivers minimal; upstream them when possible.
-- **Toolchain ABI mismatch.** gcc 13 produces slightly different code than gcc 6; some assumptions in old assembly break.
-- **Customer regression.** Sometimes a behavior the customer relies on was a BSP-only "feature" not in mainline. Document; communicate; sometimes you have to accept regression.
-- **Management commitment fades.** "It's 4 months in, no new features yet, can we go back?" Plan for this; have weekly visible progress milestones; show CVE-burndown charts.
+- **Out-of-tree drivers break.** Every kernel API change risks your custom driver. Keep custom drivers minimal. upstream them when possible.
+- **Toolchain ABI mismatch.** gcc 13 produces slightly different code than gcc 6. some assumptions in old assembly break.
+**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
+- **Customer regression.** Sometimes a behavior the customer relies on was a BSP-only "feature" not in mainline. Document. communicate. sometimes you have to accept regression.
+- **Management commitment fades.** "It's 4 months in, no new features yet, can we go back?" Plan for this. have weekly visible progress milestones. show CVE-burndown charts.
 - **Going halfway.** Migrating half the subsystems = the worst of both worlds (now you have two trees forever). Commit to the cutover.
 - **Not migrating despite need.** "Easier to backport CVEs." After 100+ CVEs, the backport effort exceeds the migration effort. Track this.
 

@@ -9,10 +9,14 @@ status: draft
 # Chapter 35 — Buildroot, after you can do it by hand
 
 > **What:** Buildroot — a make-driven build system that produces a complete root filesystem (optionally + bootloader + kernel + cross-toolchain) from one `make` command and one `.config` file. By the end you will have built a working rootfs that boots on the i.MX6ULL, then customised it with extra packages, and learned where to look when the build fails.
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 >
-> **Why:** Chapter 31 took us 22 pages and a dozen hand-typed commands to get a BusyBox shell. Buildroot does the same in twenty minutes of compile time and one menuconfig session. On top of that it offers 3000+ optional packages (Qt, alsa-utils, openssh, mosquitto, nodejs, ...). Chapter 31 was for understanding; this chapter is for speed.
+> **Why:** Chapter 31 took us 22 pages and a dozen hand-typed commands to get a BusyBox shell. Buildroot does the same in twenty minutes of compile time and one menuconfig session. On top of that it offers 3000+ optional packages (Qt, alsa-utils, openssh, mosquitto, nodejs, ...). Chapter 31 was for understanding. This chapter is for speed.
 >
 > **Focus:** **the `output/` tree** — every artefact Buildroot produces lives in one place under `output/`, with a predictable layout. Once you know `output/`, debugging a failed build is a directed search instead of a hunt.
+
 
 ## 35.1  What Buildroot is
 
@@ -26,13 +30,14 @@ Buildroot is a **make-driven** build system written almost entirely in GNU Make 
 Three things Buildroot is *good* at:
 
 1. **Tiny minimal images.** A no-extras BusyBox rootfs from Buildroot is ~3 MB. Same Yocto build is ~30 MB.
+**Yocto** - a metadata-driven build system for producing custom Linux distributions.
 2. **Reproducible builds.** Same `.config` + same source versions → bit-identical output (usually).
 3. **Fast development cycle.** Type one command, get a `rootfs.tar` in 10–30 minutes.
 
 Three things Buildroot is *not* good at:
 
 1. **Per-package customisation.** Patching a package is doable but awkward.
-2. **Concurrent multi-config builds.** Each `make` is one config; switching configs means rebuilding.
+2. **Concurrent multi-config builds.** Each `make` is one config. switching configs means rebuilding.
 3. **Long-term maintenance of many products.** Yocto / OpenEmbedded scales to many product variants better.
 
 Buildroot is the right tool for learning, and for single-purpose products with simple package needs. Yocto is the right tool for commercial product lines with many variants. Most engineers learn Buildroot first.
@@ -46,7 +51,7 @@ $ tar xzf buildroot-2024.02.tar.gz
 $ cd buildroot-2024.02
 ```
 
-LTS releases are tagged `<year>.02` and `<year>.08`. Use the latest LTS for a real project; the latest non-LTS for personal experiments.
+LTS releases are tagged `<year>.02` and `<year>.08`. Use the latest LTS for a real project. The latest non-LTS for personal experiments.
 
 ```sh
 $ ls
@@ -98,7 +103,7 @@ What happens, in order:
 
 1. `make` parses Kconfig + `.config`, builds a list of selected packages.
 2. Downloads every required tarball to `dl/`.
-3. Builds the cross-toolchain (the first build only; about 8 minutes).
+3. Builds the cross-toolchain (the first build only. about 8 minutes).
 4. Extracts and builds each package, in dependency order.
 5. Assembles the rootfs in `output/target/`.
 6. Packages it into `output/images/rootfs.<format>`.
@@ -114,6 +119,10 @@ rootfs.ext4 → rootfs.ext2                rootfs.tar    SPL    u-boot-dtb.imx  
 ```
 
 The whole stack — SPL, U-Boot, kernel, DTB, rootfs in multiple formats — produced by one `make`. The defconfig enables `BR2_TARGET_UBOOT` and `BR2_LINUX_KERNEL`. Turn both off when you only need the rootfs.
+MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ## 35.4  The output/ tree
 
@@ -358,17 +367,19 @@ The hand-built path taught the structure. Buildroot is what you ship. The rest o
 ## 35.10  Lab
 
 1. **Build the imx6ullevk defconfig.** Boot the resulting `rootfs.tar` over NFS. Compare with your Chapter 31 rootfs — what's there that you didn't have? (Hint: `getty`, `udev` instead of `mdev`, `dropbear` ssh, more BusyBox applets enabled.)
+**NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
+**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 2. **Disable the in-Buildroot kernel and U-Boot builds.** Use your own from earlier chapters.
 3. **Add three packages.** `htop`, `tmux`, `mosquitto`. Verify each works.
 4. **Write an overlay.** Drop a `motd` file at `/etc/motd` so logging in prints a greeting. Drop an `S99hello` script that echoes "hello" at boot.
 5. **Save a defconfig.** Commit your customised defconfig to a git repo. Have someone else clone it, run `make myproduct_defconfig && make`, and verify they get a working rootfs.
-6. **Read `output/build/busybox-*/`.** That's the extracted busybox source. Compare against a fresh tarball; identify any patches Buildroot applied (look in `package/busybox/`).
-7. **Use the Buildroot manual.** `docs/manual/manual.html` — load it in a browser. The section on writing custom packages is the canonical reference; bookmark it.
+6. **Read `output/build/busybox-*/`.** That's the extracted busybox source. Compare against a fresh tarball. identify any patches Buildroot applied (look in `package/busybox/`).
+7. **Use the Buildroot manual.** `docs/manual/manual.html` — load it in a browser. The section on writing custom packages is the canonical reference. bookmark it.
 
 ## 35.11  Pitfalls
 
 - **`make clean` is not enough.** Buildroot has many levels of "clean":
-  - `make clean` — remove `output/`; tarballs in `dl/` remain.
+  - `make clean` — remove `output/`. tarballs in `dl/` remain.
   - `make distclean` — remove `output/` and `.config`.
   - `make <pkg>-dirclean` — clean *one* package.
   - `make <pkg>-rebuild` — force rebuild without dirty clean.
@@ -377,7 +388,7 @@ The hand-built path taught the structure. Buildroot is what you ship. The rest o
 - **Modifying files under `output/target/` directly.** They will be overwritten the next time `make` runs. Use overlay or post-build scripts.
 - **Linux kernel built by Buildroot may not match yours.** If you enabled `BR2_LINUX_KERNEL` and pointed it at a custom branch, but also reused your own kernel binary outside Buildroot, your `modules_install` may collide. Disable Buildroot's kernel build OR commit to using only Buildroot's.
 - **`/etc/inittab` from Buildroot's skeleton is different from §31.5.** Buildroot uses `system/skeleton/etc/inittab`. If your overlay's inittab doesn't completely replace it, Buildroot may keep parts of its own.
-- **Package version pinning.** Buildroot pins each package to a specific version (in the `.mk` file). To upgrade, you edit the `.mk` to bump the version and possibly update the checksum file. Don't try to upgrade the package from inside `output/build/`; the next clean rebuild wipes it.
+- **Package version pinning.** Buildroot pins each package to a specific version (in the `.mk` file). To upgrade, you edit the `.mk` to bump the version and possibly update the checksum file. Don't try to upgrade the package from inside `output/build/`. The next clean rebuild wipes it.
 
 ## 35.12  Going deeper
 

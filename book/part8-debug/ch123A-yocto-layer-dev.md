@@ -9,6 +9,11 @@ status: draft
 # Chapter 123A — Yocto layer development in depth
 
 > **What:** the **Yocto layer design** that production vendors use. We build a 3-layer stack: **`meta-mybsp`** (board + BSP — kernel + U-Boot + DT for `imx6ull-myboard`), **`meta-mybsp-mini`** (board variant — same SoC, smaller display), **`meta-mybsp-myapp`** (application layer — your in-house Qt app, MQTT daemon, OTA config). Plus a separate **distro layer** (`meta-mybsp-distro`) that pins package versions + DISTRO_FEATURES. We walk every meaningful concept: layer priorities, bbappend patterns, machine config, `IMAGE_FEATURES`/`DISTRO_FEATURES`, `wic` for image partitioning, `RAUC`/SWUpdate integration, and the `SRC_URI` cache so reproducible builds work offline.
+> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
+> **RAUC** - an embedded update framework for signed A/B image installation and rollback.
+> **Yocto** - a metadata-driven build system for producing custom Linux distributions.
+> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Why:** Ch 123 chose Yocto. Now the meat of the work is *writing layers properly*. A bad layer organization makes every change a hunt across the metadata tree. A good one isolates your product from upstream, keeps variants simple, and survives upstream layer updates. Done well, Yocto becomes a tool you'd recommend. Done badly, it becomes the build system everyone hates.
 >
@@ -20,6 +25,7 @@ status: draft
 > - **image recipes** — "this final shipped image contains these packages."
 >
 > Get these separations right and a 5-machine, 3-distro, 10-app matrix becomes manageable. Mix them up (machine-specific stuff in distro config) and you build a tar pit.
+
 
 ## 123A.1  Layer anatomy
 
@@ -98,7 +104,7 @@ WKS_FILE = "imx6ull-myboard.wks"
 SERIAL_CONSOLES = "115200;ttymxc0"
 ```
 
-`require` includes shared SoC config from upstream `meta-freescale`'s `imx6ull.inc`; your machine adds board-specific overrides. The `KERNEL_DEVICETREE` selects the DT; `UBOOT_CONFIG` selects the U-Boot defconfig.
+`require` includes shared SoC config from upstream `meta-freescale`'s `imx6ull.inc`. your machine adds board-specific overrides. The `KERNEL_DEVICETREE` selects the DT. `UBOOT_CONFIG` selects the U-Boot defconfig.
 
 ## 123A.3  Image recipes
 
@@ -130,6 +136,8 @@ IMAGE_OVERHEAD_FACTOR = "1.1"
 ```
 
 `bitbake myapp-image` builds the rootfs with these packages, applies any IMAGE_FEATURES (ssh-server-dropbear adds dropbear ssh), produces a `.wic.bz2` for SD/eMMC flashing.
+MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 Variant for debug:
 
@@ -142,7 +150,7 @@ IMAGE_INSTALL += "gdb gdbserver strace ltrace perf valgrind dropbear"
 IMAGE_FEATURES += "debug-tweaks"
 ```
 
-`bitbake myapp-debug-image` builds the same base image + debug tools. One-line difference; fully separate output artifact.
+`bitbake myapp-debug-image` builds the same base image + debug tools. One-line difference. fully separate output artifact.
 
 ## 123A.4  Custom recipe — your app
 
@@ -180,15 +188,15 @@ FILES:${PN} += "${systemd_unitdir}/system/myapp.service ${sysconfdir}/myapp/"
 What's happening:
 - `inherit cmake` adds `do_configure/compile/install` for CMake.
 - `inherit systemd` enables auto-registration of the systemd service.
-- `DEPENDS` = build-time deps; `RDEPENDS:${PN}` = runtime deps.
+- `DEPENDS` = build-time deps. `RDEPENDS:${PN}` = runtime deps.
 - `do_install:append` adds extra install steps (the systemd unit + config file).
 - `FILES:${PN}` declares which paths go in the main package (vs `-dev`, `-dbg`).
 
-Now `bitbake myapp` builds your app; `bitbake myapp-image` includes it in the rootfs.
+Now `bitbake myapp` builds your app. `bitbake myapp-image` includes it in the rootfs.
 
 ## 123A.5  bbappend — extending upstream recipes
 
-You need to enable an extra kernel config option. Don't fork the kernel recipe; bbappend it:
+You need to enable an extra kernel config option. Don't fork the kernel recipe. bbappend it:
 
 `recipes-kernel/linux/linux-imx_%.bbappend`:
 
@@ -207,7 +215,7 @@ CONFIG_IIO_RFM69=y
 CONFIG_WIREGUARD=y
 ```
 
-BitBake applies the patch and the config fragment automatically. You haven't forked `meta-imx`'s kernel recipe; you've augmented it. The change survives upstream layer updates.
+BitBake applies the patch and the config fragment automatically. You haven't forked `meta-imx`'s kernel recipe. You've augmented it. The change survives upstream layer updates.
 
 ## 123A.6  Distro vs machine vs image — separation of concerns
 
@@ -223,7 +231,7 @@ If you mix these (for example, putting a machine-specific kernel module into the
 - A second machine's image gets that module unnecessarily.
 - Debugging "why does machine X have this kernel module" leads you on a wild goose chase.
 
-Always: machine-specific stuff in `machine/*.conf`; distro-wide policy in `distro/*.conf`; image content in `images/*.bb`.
+Always: machine-specific stuff in `machine/*.conf`. distro-wide policy in `distro/*.conf`. image content in `images/*.bb`.
 
 ## 123A.7  Layer priorities for variant management
 
@@ -327,7 +335,7 @@ For reproducible-at-time-X builds: archive downloads + sstate-cache + pinned lay
 
 ## 123A.11  bbappend recipes for production
 
-Common pattern: a vendor recipe almost-does-what-you-want; you bbappend to tweak.
+Common pattern: a vendor recipe almost-does-what-you-want. You bbappend to tweak.
 
 ```python
 # recipes-connectivity/openssh/openssh_%.bbappend
@@ -347,38 +355,42 @@ Place `sshd_config` in `recipes-connectivity/openssh/openssh/sshd_config`. Yocto
 
 1. **Create a layer.** `bitbake-layers create-layer ../meta-mybsp`. Add it to `bblayers.conf`. Verify it's in the build.
 2. **Add a machine.** Write `imx6ull-myboard.conf`. Set MACHINE in `local.conf`. `bitbake -e core-image-minimal | grep ^MACHINE` to verify it took.
-3. **Add a custom kernel patch.** Write `linux-imx_%.bbappend` with a config fragment. Rebuild kernel; verify your config is enabled.
+3. **Add a custom kernel patch.** Write `linux-imx_%.bbappend` with a config fragment. Rebuild kernel. verify your config is enabled.
 4. **Custom recipe.** Write a `.bb` for a hello-world C program. `bitbake myapp`. Verify it builds.
 5. **Image recipe.** Write `myapp-image.bb`. `bitbake myapp-image`. Verify rootfs contains your binary.
-6. **wic image.** Write a .wks. Build a .wic image. `dd` it to an SD; boot.
-7. **Variant via bbappend.** Add `meta-mybsp-mini` with priority 12; bbappend the kernel to disable a peripheral the MINI doesn't have. Verify per-machine differentiation.
-8. **Distro layer.** Create `meta-mybsp-distro`; set OpenSSL pinned to 3.x; verify all your packages use it.
-9. **SRC_URI mirror.** Run `bitbake --runall=fetch`; archive downloads; rebuild on an offline VM.
-10. **Reproducibility.** Build the same image twice; `diff` the `.wic` files — should be byte-identical with `BB_HASHSERVE` set up.
+6. **wic image.** Write a .wks. Build a .wic image. `dd` it to an SD. boot.
+7. **Variant via bbappend.** Add `meta-mybsp-mini` with priority 12. bbappend the kernel to disable a peripheral the MINI doesn't have. Verify per-machine differentiation.
+8. **Distro layer.** Create `meta-mybsp-distro`. set OpenSSL pinned to 3.x. verify all your packages use it.
+9. **SRC_URI mirror.** Run `bitbake --runall=fetch`. archive downloads. rebuild on an offline VM.
+10. **Reproducibility.** Build the same image twice. `diff` the `.wic` files — should be byte-identical with `BB_HASHSERVE` set up.
 
 ## 123A.13  Pitfalls
 
 - **Recipe in wrong layer.** Recipe for an upstream package living in your BSP layer = drifts from upstream. Use bbappend instead.
 - **Hardcoded paths.** `/home/dev/yocto/...` in a recipe = breaks on every other dev's machine. Always use `${WORKDIR}` and similar variables.
 - **bbappend without `FILESEXTRAPATHS:prepend`.** BitBake can't find your patches. Add the prepend.
-- **Layer priority too high.** Overrides everything; surprising consequences. Use minimum priority needed.
-- **`SRCREV = "${AUTOREV}"`.** Builds use latest HEAD; non-reproducible. Pin to specific commit hashes.
+- **Layer priority too high.** Overrides everything. surprising consequences. Use minimum priority needed.
+- **`SRCREV = "${AUTOREV}"`.** Builds use latest HEAD. non-reproducible. Pin to specific commit hashes.
 - **Caching across layer changes.** sstate-cache may keep using old object. `bitbake -c cleansstate <recipe>` after edits.
 - **`do_install` install with wrong owner.** Resulting rootfs has files owned by build user, breaking installers. Use `install -m 0755 ...` not `cp`.
-- **DEPENDS vs RDEPENDS confusion.** DEPENDS at build time; RDEPENDS at run time. Forgetting RDEPENDS means missing libs at runtime.
-- **Recipe order: do_compile before do_configure.** Yocto's task order is fixed; if you `addtask` you must specify ordering.
+- **DEPENDS vs RDEPENDS confusion.** DEPENDS at build time. RDEPENDS at run time. Forgetting RDEPENDS means missing libs at runtime.
+- **Recipe order: do_compile before do_configure.** Yocto's task order is fixed. If you `addtask` you must specify ordering.
 - **machine.conf assumes a kernel feature not enabled.** `KERNEL_DEVICETREE = "x.dtb"` but the dtb isn't in your kernel's Makefile. Bitbake fails late.
 - **PR (Package Revision).** Bumping `PR = "r1"` on a recipe lets package managers (OPKG, etc.) know to upgrade. Easy to forget on bugfix recipes.
 - **License license license.** Every recipe needs a `LICENSE` and `LIC_FILES_CHKSUM`. Proprietary stuff: use `LICENSE = "Proprietary"` + `LICENSE_FLAGS` for legal compliance.
 
 ## 123A.14  Going deeper
 
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
+
 - **Yocto Mega-Manual** — https://docs.yoctoproject.org/singleindex.html.
 - **Yocto Reference Manual** — variables, classes, tasks.
 - **`bitbake-layers`** — `create-layer`, `add-layer`, `show-layers`.
 - **`devtool`** — for iterative recipe development (`devtool modify`, `devtool finish`).
 - **`oe-pkgdata-util`** — query the package database.
-- **`bitbake -g <image>; cat task-depends.dot`** — visualize task dependencies.
+- **`bitbake -g <image>. cat task-depends.dot`** — visualize task dependencies.
 - **`pyrex`** — containerized Yocto builds.
 - **Konsulko + Pengutronix Yocto consulting reports** — for production-grade patterns.
 - **`meta-virtualization`** — for containers in Yocto.
@@ -389,3 +401,4 @@ Place `sshd_config` in `recipes-connectivity/openssh/openssh/sshd_config`. Yocto
 ---
 
 > Next chapter: **Chapter 124 — Secure boot (HAB) and OP-TEE**.
+> **HAB** - High Assurance Boot, NXP's ROM-enforced secure boot mechanism on i.MX SoCs.

@@ -7,14 +7,22 @@ status: draft
 ---
 
 # Chapter 119 — Kernel debugging without JTAG
+**ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
+**Device Tree** - a data file that describes board hardware to the Linux kernel instead of hard-coding it in C.
+MCU bridge: Think of Device Tree like a board-level hardware description table that replaces hard-coded #define LED_PORT GPIOA decisions. Unlike an MCU header, the kernel parses it at boot and matches it to drivers.
 
 > **What:** the **software-only kernel debugging toolkit** that works on a deployed device with no hardware debug access. **printk**'s deeper toolbox (`pr_debug`, `dynamic_debug`, ring-buffer levels), **ftrace** (function tracer + `function_graph` + tracepoint events), **trace-cmd** + **KernelShark** (record + GUI), **bpftrace** and **bcc** (eBPF for live kernel introspection), **kgdb** over serial (when you do want a debugger but only have UART), and the **oops decoder** workflow (`addr2line`, `scripts/decode_stacktrace.sh`).
 >
-> **Why:** JTAG is for bench work. This chapter covers what you can run on a deployed device with no debug header. You can't ship a fleet with a JTAG cable attached; you can ship a fleet with ftrace enabled. If a customer's device hangs once every three days, you need to know what the kernel was doing in the second before the freeze. ftrace's persistent buffer plus the oops decoder answers that. eBPF lets you attach a probe to `tcp_retransmit_skb` on a production server and count retransmits per remote address, without recompiling the kernel.
+> **Why:** JTAG is for bench work. This chapter covers what you can run on a deployed device with no debug header. You can't ship a fleet with a JTAG cable attached. You can ship a fleet with ftrace enabled. If a customer's device hangs once every three days, you need to know what the kernel was doing in the second before the freeze. ftrace's persistent buffer plus the oops decoder answers that. eBPF lets you attach a probe to `tcp_retransmit_skb` on a production server and count retransmits per remote address, without recompiling the kernel.
+> **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 >
 > **Focus:** match the tool to the symptom. Too much output in `dmesg`: use `dynamic_debug` to filter. "It worked once, now hangs": ftrace `function_graph` on the suspect subsystem. "What system calls is this app making?": a bpftrace one-liner. "Kernel oops on customer device": save dmesg and run decode_stacktrace.sh against the matching vmlinux. "I want to breakpoint and step a remote production kernel": kgdb over serial (rare, but sometimes the right call).
 >
-> **Tooling.** **Target:** `trace-cmd` (for ftrace), optional `bpfcc-tools` / `bpftrace` (eBPF — better on aarch64 / newer kernels). **Host:** `kernelshark` to visualise ftrace dumps; `crash(8)` for vmcore analysis. Ubuntu install: `apt install trace-cmd kernelshark bpfcc-tools bpftrace`. Buildroot: `BR2_PACKAGE_TRACE_CMD=y`, `BR2_PACKAGE_BCC=y`, `BR2_PACKAGE_BPFTRACE=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> **Tooling.** **Target:** `trace-cmd` (for ftrace), optional `bpfcc-tools` / `bpftrace` (eBPF — better on aarch64 / newer kernels). **Host:** `kernelshark` to visualise ftrace dumps. `crash(8)` for vmcore analysis. Ubuntu install: `apt install trace-cmd kernelshark bpfcc-tools bpftrace`. Buildroot: `BR2_PACKAGE_TRACE_CMD=y`, `BR2_PACKAGE_BCC=y`, `BR2_PACKAGE_BPFTRACE=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+
 
 ## 119.1  printk
 
@@ -31,7 +39,7 @@ pr_info("informational\n");               /* KERN_INFO, 6 */
 pr_debug("debug-level\n");                /* KERN_DEBUG, 7 */
 ```
 
-`dmesg -w` (follow) shows the live ring buffer. `dmesg -l err,warn` filters. The ring buffer is bounded (default ~128 KB; configurable via `CONFIG_LOG_BUF_SHIFT`).
+`dmesg -w` (follow) shows the live ring buffer. `dmesg -l err,warn` filters. The ring buffer is bounded (default ~128 KB. configurable via `CONFIG_LOG_BUF_SHIFT`).
 
 Console log level (which prints to console vs only-ring-buffer):
 
@@ -79,7 +87,7 @@ cat trace | head -50
 # ...
 ```
 
-This is *every kernel function called by any process* during the trace window. The buffer fills fast (~MB/sec); use filters:
+This is *every kernel function called by any process* during the trace window. The buffer fills fast (~MB/sec). Use filters:
 
 ```sh
 echo ext4_* > set_ftrace_filter         # trace only ext4_ functions
@@ -105,7 +113,7 @@ cat trace
 #  3) + 45.012 us   |  }
 ```
 
-Indentation shows call depth; duration per call (`us`); markers (`!` = >100 µs, `+` = >10 µs) draw attention to slow paths. Useful for performance investigation.
+Indentation shows call depth. duration per call (`us`). markers (`!` = >100 µs, `+` = >10 µs) draw attention to slow paths. Useful for performance investigation.
 
 ### Events — predefined tracepoints
 
@@ -146,7 +154,7 @@ KernelShark gives a timeline-per-CPU view with function-graph trees and event fl
 
 ## 119.3  eBPF
 
-eBPF lets you attach safe (verified) C-like programs to thousands of kernel hook points. `bpftrace` is the high-level DSL; `bcc` (Python+C) is the lower-level library.
+eBPF lets you attach safe (verified) C-like programs to thousands of kernel hook points. `bpftrace` is the high-level DSL. `bcc` (Python+C) is the lower-level library.
 
 ```sh
 apt install bpftrace
@@ -166,11 +174,12 @@ bpftrace -e 'tracepoint:syscalls:sys_enter_execve { printf("%s %s\n", comm, str(
 
 eBPF programs are production-safe. The in-kernel verifier rejects infinite loops, bad memory access, and anything that would crash the kernel. You can run them on a live customer device.
 
-For embedded — i.MX6ULL is technically a Cortex-A7 (32-bit) and eBPF support on 32-bit ARM is limited; better tooling on aarch64. The principle is the same; consider arm64 SoCs for newer designs where eBPF is the primary debug tool.
+For embedded — i.MX6ULL is technically a Cortex-A7 (32-bit) and eBPF support on 32-bit ARM is limited. better tooling on aarch64. The principle is the same. consider arm64 SoCs for newer designs where eBPF is the primary debug tool.
 
 ## 119.4  kgdb — GDB over serial
 
 When you do want full GDB on a deployed device but have no JTAG:
+**GDB** - the debugger. in cross-debugging it runs on the host while controlling code on the target.
 
 ```sh
 # Build kernel with CONFIG_KGDB=y, CONFIG_KGDB_SERIAL_CONSOLE=y
@@ -185,11 +194,11 @@ arm-linux-gnueabihf-gdb vmlinux
 ```
 
 Limitations:
-- The console is taken; you can't `dmesg` from a serial terminal while kgdb owns it.
+- The console is taken. You can't `dmesg` from a serial terminal while kgdb owns it.
 - A scheduled-out task can't be inspected (only the currently-running one + scheduled queues).
 - Performance overhead — every breakpoint is a serial round-trip.
 
-Most useful for: a kernel that hangs early-boot (you set `kgdbwait`); a deployed device with a specific reproducible bug; a CI test runner that can attach gdb on test failure.
+Most useful for: a kernel that hangs early-boot (you set `kgdbwait`). a deployed device with a specific reproducible bug. a CI test runner that can attach gdb on test failure.
 
 ## 119.5  Kernel oops
 
@@ -257,40 +266,46 @@ crash> rd 0x80c00000 32       # read kernel memory
 crash> log                    # dmesg
 ```
 
-`crash` is RH's tool; takes some learning, but for oopses you can't reproduce, it's the right tool.
+`crash` is RH's tool. takes some learning, but for oopses you can't reproduce, it's the right tool.
 
-Embedded systems often lack the disk space for vmcore (200+ MB); skip kdump and rely on ftrace + oops decoder.
+Embedded systems often lack the disk space for vmcore (200+ MB). skip kdump and rely on ftrace + oops decoder.
 
 ## 119.7  Lab
 
-1. **dyndbg.** Enable all `pr_debug` in `net/wireless/`; watch a `wpa_supplicant` connection; see the previously-hidden debug output.
-2. **ftrace function_graph.** Trace `ext4_file_read` for a `cat /etc/passwd`; identify which function dominates the time.
-3. **trace-cmd capture.** Record `sched/sched_switch + irq/* + block/block_rq*` during a `dd` write; open in KernelShark; visualize.
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
+1. **dyndbg.** Enable all `pr_debug` in `net/wireless/`. watch a `wpa_supplicant` connection. see the previously-hidden debug output.
+2. **ftrace function_graph.** Trace `ext4_file_read` for a `cat /etc/passwd`. identify which function dominates the time.
+3. **trace-cmd capture.** Record `sched/sched_switch + irq/* + block/block_rq*` during a `dd` write. open in KernelShark. visualize.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 4. **bpftrace one-liner: top syscalls.**
    ```sh
    bpftrace -e 'tracepoint:raw_syscalls:sys_enter { @[comm, args->id] = count(); }'
    ```
-   Run for 30 s; identify which process is hammering which syscall.
-5. **bpftrace TCP retransmits.** Run the example; pull the network cable mid-transfer; watch retransmit counts climb per IP.
-6. **kgdb on early boot.** Boot kernel with `kgdbwait` + `kgdboc=ttymxc0`; attach GDB; step through `start_kernel`.
-7. **Force an oops.** Write a kernel module that dereferences NULL in `init`. `insmod` it; capture the oops; decode with `decode_stacktrace.sh`.
-8. **vmcore capture.** Set up kdump on the i.MX6ULL (challenging — small RAM); trigger an oops; capture vmcore; analyze with `crash` on host.
-9. **Permanent ftrace.** Configure ftrace to run from boot, recording sched + IRQ events; on next oops, save the ftrace buffer with the oops. (Use `ftrace_dump_on_oops=1` kernel cmdline.)
-10. **dynamic_debug at boot.** Add `dyndbg="file drivers/usb/* +p"` to cmdline; see all USB debug prints during enumeration.
+   Run for 30 s. identify which process is hammering which syscall.
+5. **bpftrace TCP retransmits.** Run the example. pull the network cable mid-transfer. watch retransmit counts climb per IP.
+6. **kgdb on early boot.** Boot kernel with `kgdbwait` + `kgdboc=ttymxc0`. attach GDB. step through `start_kernel`.
+7. **Force an oops.** Write a kernel module that dereferences NULL in `init`. `insmod` it. capture the oops. decode with `decode_stacktrace.sh`.
+8. **vmcore capture.** Set up kdump on the i.MX6ULL (challenging — small RAM). trigger an oops. capture vmcore. analyze with `crash` on host.
+9. **Permanent ftrace.** Configure ftrace to run from boot, recording sched + IRQ events. on next oops, save the ftrace buffer with the oops. (Use `ftrace_dump_on_oops=1` kernel cmdline.)
+10. **dynamic_debug at boot.** Add `dyndbg="file drivers/usb/* +p"` to cmdline. see all USB debug prints during enumeration.
 
 ## 119.8  Pitfalls
 
-- **dmesg buffer wraps.** Default 128 KB; verbose drivers eat it in seconds. Bump to 1 MB with `CONFIG_LOG_BUF_SHIFT=20`.
+- **dmesg buffer wraps.** Default 128 KB. verbose drivers eat it in seconds. Bump to 1 MB with `CONFIG_LOG_BUF_SHIFT=20`.
 - **printk during fast path.** A printk in an IRQ context with `loglevel >= 4` blocks for 1+ ms (UART transmission). Don't `pr_info` in hot paths.
 - **ftrace overhead.** Function tracer adds ~50 ns per traced kernel call. Realistic kernel function rates under load on a Cortex-A7 are 1–10 M/s, so unfiltered tracing typically costs 5–10 % CPU. Always use `set_ftrace_filter` to scope.
-- **ftrace buffer fills in seconds.** Default 1 KB per CPU; bump to `echo 8192 > buffer_size_kb` for usable durations.
+- **ftrace buffer fills in seconds.** Default 1 KB per CPU. bump to `echo 8192 > buffer_size_kb` for usable durations.
 - **lost trace events.** When the buffer fills, oldest events drop. Check `cat /sys/kernel/tracing/per_cpu/cpu0/stats` for lost_events.
-- **dynamic_debug requires CONFIG_DYNAMIC_DEBUG=y.** Most distros have it; verify.
+- **dynamic_debug requires CONFIG_DYNAMIC_DEBUG=y.** Most distros have it. verify.
 - **kgdb console conflict.** Once kgdb attaches, the same UART can't be used for dmesg. Use a second serial port or USB-serial.
-- **bpftrace BTF requirement.** Modern bpftrace expects BTF info in vmlinux; older kernels without `CONFIG_DEBUG_INFO_BTF=y` can't be probed by BTF-typed programs.
-- **eBPF on 32-bit ARM.** Limited support; many newer features are arm64-only. i.MX6ULL is 32-bit; use ftrace/trace-cmd instead.
+- **bpftrace BTF requirement.** Modern bpftrace expects BTF info in vmlinux. older kernels without `CONFIG_DEBUG_INFO_BTF=y` can't be probed by BTF-typed programs.
+- **eBPF on 32-bit ARM.** Limited support. many newer features are arm64-only. i.MX6ULL is 32-bit. Use ftrace/trace-cmd instead.
 - **vmlinux without DEBUG_INFO.** Oops decoding fails silently — addresses can't be mapped to symbols. Build with `CONFIG_DEBUG_INFO=y`.
-- **module addresses changing.** Each `insmod` chooses a different load address; can't reuse oops decoder output across loads. Capture both oops and `/proc/modules` simultaneously.
+- **module addresses changing.** Each `insmod` chooses a different load address. can't reuse oops decoder output across loads. Capture both oops and `/proc/modules` simultaneously.
 
 ## 119.9  Going deeper
 

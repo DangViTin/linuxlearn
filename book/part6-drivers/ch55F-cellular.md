@@ -17,13 +17,19 @@ status: draft
 > **Tooling.** This chapter uses `ppp` (`pppd`, `chat`), `ModemManager` (`mmcli`), `libqmi-utils` (`qmicli`).
 > - **Ubuntu-base (target):** `apt install ppp modemmanager libqmi-utils`
 > - **Buildroot:** `BR2_PACKAGE_PPP=y BR2_PACKAGE_MODEM_MANAGER=y BR2_PACKAGE_LIBQMI=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 55F.1  Hardware connection
 
 USB modems plug into a USB host port (i.MX6ULL USB OTG configured as host). They draw 1–2 A during TX bursts — your power supply must handle it. Most bench-test failures are power-related.
 
 UART modems wire to a UART (typically 115200 baud + flow control). Plus an "enable" GPIO and a "status" GPIO.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 55F.2  USB EC25 (QMI mode)
 
@@ -34,7 +40,7 @@ After plugging in, `lsusb` shows:
 Bus 001 Device 002: ID 2c7c:0125 Quectel Wireless Solutions Co., Ltd. EC25 LTE modem
 ```
 
-The driver `qmi_wwan` handles QMI; `option` provides AT-command serial ports.
+The driver `qmi_wwan` handles QMI. `option` provides AT-command serial ports.
 
 ```
 [root@pa-mini:~]# dmesg | tail -20
@@ -159,20 +165,20 @@ PPP is slow (~10 Mbit/s max) and adds latency. Use only for old modems without U
 ## 55F.6  Lab
 
 1. **Plug in an EC25.** Verify `lsusb`, `ttyUSB*`, `wwan0`, `cdc-wdm0` all appear.
-2. **ModemManager connect.** `mmcli --simple-connect`; verify `ip` is up, ping works.
+2. **ModemManager connect.** `mmcli --simple-connect`. verify `ip` is up, ping works.
 3. **AT-command echo.** Open `/dev/ttyUSB2`, send `AT`, get `OK`. Try `AT+CSQ`, `AT+QSPN`.
-4. **SMS send.** `mmcli --modem=0 --messaging-create-sms="text='hello',number='+...'`; `--send`. (SMS cost is around $0.05 per message on most carriers.)
-5. **Failover to WiFi.** Write a script that periodically pings the gateway; switch routes if cellular fails.
+4. **SMS send.** `mmcli --modem=0 --messaging-create-sms="text='hello',number='+...'`. `--send`. (SMS cost is around $0.05 per message on most carriers.)
+5. **Failover to WiFi.** Write a script that periodically pings the gateway. switch routes if cellular fails.
 6. **Power consumption.** Measure idle vs RX vs TX-burst current. Plan your battery accordingly.
 
 ## 55F.7  Pitfalls
 
-- **USB power.** EC25 spikes to >1.5 A on TX bursts. 5V/2A is the minimum; less = USB resets at the worst moments.
+- **USB power.** EC25 spikes to >1.5 A on TX bursts. 5V/2A is the minimum. less = USB resets at the worst moments.
 - **Wrong USB mode.** EC25 boots in RNDIS by default in some firmware. Switch to QMI: `AT+QCFG="usbnet",0`.
 - **APN wrong / missing.** Carriers reject your registration silently. Cross-check with your SIM provider.
 - **Regulatory.** Some bands are illegal in some countries. Use a regional-specific modem variant.
 - **Antenna SWR.** Bad antenna match = poor signal. Cellular antennas matter as much as WiFi antennas.
-- **`raw_ip` mode trap.** EC25 needs `raw_ip` mode. ModemManager sets it; manual QMI must too.
+- **`raw_ip` mode trap.** EC25 needs `raw_ip` mode. ModemManager sets it. manual QMI must too.
 
 ## 55F.8  Going deeper
 

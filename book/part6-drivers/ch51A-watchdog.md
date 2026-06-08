@@ -14,11 +14,12 @@ status: draft
 >
 > **Focus:** **the keepalive contract**. Some user-space process *must* write to `/dev/watchdog` (or call the right ioctl) before the timer expires, forever. If that process dies, hangs, or gets stuck on disk I/O, the watchdog fires and the system resets. Picking *which* process should hold this responsibility — and what "alive" means to it — is the design decision.
 
+
 ## 51A.1  Hardware vs software watchdog
 
 Two kinds exist:
 
-**Hardware watchdog** — a SoC peripheral or external IC. Independent of the CPU. Counts down a register; on zero, asserts the system's RESET signal. Survives kernel hangs because it's not running kernel code. i.MX6ULL has two: WDOG1 and WDOG2 (in SNVS). External ICs like TPS3823, MAX6369 provide an even more independent watchdog (someone else's silicon, on a separate power rail).
+**Hardware watchdog** — a SoC peripheral or external IC. Independent of the CPU. Counts down a register. on zero, asserts the system's RESET signal. Survives kernel hangs because it's not running kernel code. i.MX6ULL has two: WDOG1 and WDOG2 (in SNVS). External ICs like TPS3823, MAX6369 provide an even more independent watchdog (someone else's silicon, on a separate power rail).
 
 **Software watchdog** (`softdog` module) — a kernel timer-based watchdog. Useful for testing but useless against a kernel that's truly stuck (the timer is part of the kernel that hung). Don't ship products with only softdog.
 
@@ -36,6 +37,8 @@ Two kinds exist:
 ```
 
 `fsl,ext-reset-output` exports the WDOG_B pin so an external chip (PMIC) can react to the reset. Required if your PMIC supplies CPU power and needs an explicit reset signal.
+MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+**PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 
 The driver is `imx2_wdt` (mainline). Once enabled, `/dev/watchdog` appears (also `/dev/watchdog0`).
 
@@ -71,7 +74,7 @@ close(fd);
 
 **Magic close**: With `CONFIG_WATCHDOG_NOWAYOUT=y` (the usual default), once `/dev/watchdog` is opened, it cannot be safely closed. To disable it on close, write a `'V'` first. Closing without the `'V'` leaves it armed. This prevents a buggy daemon from accidentally disabling the watchdog by exiting.
 
-For production builds, leave `NOWAYOUT=y` — your keepalive process is supposed to live forever; if it dies, you *want* the watchdog to fire.
+For production builds, leave `NOWAYOUT=y` — your keepalive process is supposed to live forever. If it dies, you *want* the watchdog to fire.
 
 ## 51A.4  Picking a keepalive process
 
@@ -88,7 +91,7 @@ WatchdogSec=30s
 Restart=always
 ```
 
-The unit becomes responsible: it must call `sd_notify(0, "WATCHDOG=1")` periodically; if it doesn't, systemd assumes the unit is hung and restarts it. systemd as a whole is hung → kernel resets.
+The unit becomes responsible: it must call `sd_notify(0, "WATCHDOG=1")` periodically. If it doesn't, systemd assumes the unit is hung and restarts it. systemd as a whole is hung → kernel resets.
 
 Layered watchdog: hardware → systemd → application.
 
@@ -101,7 +104,7 @@ For non-systemd setups, BusyBox has a `watchdog` command:
 /sbin/watchdog -t 5 /dev/watchdog
 ```
 
-`-t 5` says "feed every 5 seconds." It runs forever, writing to `/dev/watchdog`. Simple but dumb — it only checks if `watchdog` itself is running; it can't tell if the application is hung.
+`-t 5` says "feed every 5 seconds." It runs forever, writing to `/dev/watchdog`. Simple but dumb — it only checks if `watchdog` itself is running. It can't tell if the application is hung.
 
 ### Pattern C — application-aware feeder
 
@@ -181,23 +184,28 @@ return devm_watchdog_register_device(&pdev->dev, wdd);
 ```
 
 The core handles `/dev/watchdog`, ioctls, and sysfs. You just implement the four ops.
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 ## 51A.7  Lab
 
-1. **Enable the i.MX2 watchdog in your DT.** Verify `/dev/watchdog` exists; `cat /sys/class/watchdog/watchdog0/status`.
-2. **Write a minimal keepalive daemon.** Open `/dev/watchdog`, set 10 s timeout, `WDIOC_KEEPALIVE` every 5 s. Then `kill -9` the daemon; verify the system resets 10 s later.
+1. **Enable the i.MX2 watchdog in your DT.** Verify `/dev/watchdog` exists. `cat /sys/class/watchdog/watchdog0/status`.
+2. **Write a minimal keepalive daemon.** Open `/dev/watchdog`, set 10 s timeout, `WDIOC_KEEPALIVE` every 5 s. Then `kill -9` the daemon. verify the system resets 10 s later.
 3. **Set up ramoops.** Reserve memory, enable the `ramoops` driver. After a forced watchdog reset, find the saved dmesg in `/sys/fs/pstore/`.
 4. **Application-aware feeder.** Write a feeder that watches a "heartbeat file" updated by your app every 2 s. If the file is stale by > 30 s, stop feeding the watchdog (and let the system reset).
 5. **systemd integration.** Convert the feeder to a systemd unit with `WatchdogSec=`. Use `sd_notify(0, "WATCHDOG=1")` from your code.
-6. **External watchdog IC.** Optional — wire up a TPS3823 with a GPIO output as the reset trigger; feed it from your driver. Compare against the on-chip watchdog.
+6. **External watchdog IC.** Optional — wire up a TPS3823 with a GPIO output as the reset trigger. feed it from your driver. Compare against the on-chip watchdog.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 51A.8  Pitfalls
 
 - **`CONFIG_WATCHDOG_NOWAYOUT=n` in production.** A buggy daemon `close()`s the device → watchdog disabled → product hangs forever. Always `=y` in shipped kernels.
 - **Forgetting to feed during heavy I/O.** If your keepalive process gets stuck on disk I/O (D state), it can't feed. Worst case: watchdog fires during normal operation. Tune timeout to be longer than longest expected I/O burst.
 - **Pre-init watchdog**. The bootloader (U-Boot) can start the watchdog before the kernel boots. If the kernel takes longer to boot than the timeout, watchdog fires during boot. Either U-Boot disables it before jumping, or kernel takes over fast.
-- **Multiple processes opening `/dev/watchdog`.** First open arms it; later opens get -EBUSY (in most drivers). Stick to one feeder process.
-- **Watchdog during suspend.** Suspended kernel can't feed. Most watchdog drivers stop the timer on suspend automatically; verify your specific driver's behavior.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+- **Multiple processes opening `/dev/watchdog`.** First open arms it. later opens get -EBUSY (in most drivers). Stick to one feeder process.
+- **Watchdog during suspend.** Suspended kernel can't feed. Most watchdog drivers stop the timer on suspend automatically. verify your specific driver's behavior.
 - **Short timeouts.** A 2-second timeout has no slack for slow user-space ops. 30 seconds is a saner default. Some products use 5–10 minutes (high-availability gear with long expected blocking ops).
 - **Forgetting ramoops region from kernel cmdline.** `mem=...` cuts off the reserved area. Tune carefully so ramoops's physical address is *inside* the visible-to-kernel memory map.
 

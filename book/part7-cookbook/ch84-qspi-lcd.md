@@ -14,6 +14,7 @@ status: draft
 >
 > **Focus:** **QSPI display = MIPI-DBI commands sent over 4 data lanes**. The command model is identical to Ch 83 (CASET/RASET/RAMWR), but each byte's 8 bits are spread across 4 IO lines (2 bits per line per clock), so pixels stream 4× faster. The challenge is that the i.MX6ULL QSPI controller is designed for *flash*, not displays — using it for a display means working within its command-LUT model.
 
+
 ## 84.1  Why QSPI for displays
 
 Bandwidth math for a full-frame refresh at 16-bit color:
@@ -63,10 +64,11 @@ For a display, this is awkward:
 - The flash-oriented driver assumes memory-mapped reads (XIP). Displays are write-only streams.
 - The LUT model doesn't naturally fit "send command on 1 lane, then stream N KB of pixels on 4 lanes."
 - Mainline `fsl-quadspi.c` (the MTD driver) doesn't expose a display path.
+**MTD** - Memory Technology Device, Linux's raw flash subsystem for eraseblock-based storage.
 
 Two practical approaches on i.MX6ULL:
 
-1. **Use the QSPI in `spi-mem` mode.** Recent kernels expose the QSPI controller via the `spi_mem` API, which `mipi_dbi` can drive for quad transfers. The mainline `spi-nxp-fspi.c` (for i.MX8) supports this; the older `fsl-quadspi.c` (i.MX6) has limited support. Check your kernel.
+1. **Use the QSPI in `spi-mem` mode.** Recent kernels expose the QSPI controller via the `spi_mem` API, which `mipi_dbi` can drive for quad transfers. The mainline `spi-nxp-fspi.c` (for i.MX8) supports this. The older `fsl-quadspi.c` (i.MX6) has limited support. Check your kernel.
 2. **Bit-bang or use a different SoC.** If the QSPI controller can't do display-style transfers, you're stuck with plain SPI on i.MX6ULL. QSPI displays are more at home on i.MX8M / RP2040 / ESP32-S3 which have flexible QSPI/PIO peripherals.
 
 Honest assessment: the i.MX6ULL is *not* a great host for QSPI displays. Its QSPI is flash-centric. For a product needing a QSPI AMOLED, an i.MX8M Mini (with FlexSPI) or a dedicated display co-processor is a better fit. We still cover the topic. The displays are increasingly common, and you will likely meet them on a more capable SoC.
@@ -111,8 +113,8 @@ For the i.MX6ULL reader: **prefer parallel RGB (Ch 82) for big/fast displays, pl
 
 1. **Bandwidth measurement.** On your plain-SPI ST7789 from Ch 83, measure full-frame update time. Compute the theoretical QSPI improvement (4×).
 2. **Check QSPI spi_mem support.** On your i.MX6ULL kernel, look for whether the QSPI controller registers as a `spi_mem` controller capable of quad data-out. `dmesg | grep -i qspi` and inspect `drivers/spi/spi-fsl-qspi.c` capabilities.
-3. **If on a capable SoC** (i.MX8M, etc.): wire a QSPI round display; adapt the Ch 83 driver's data path to quad `spi_mem_op`; measure the frame-rate improvement.
-4. **Round-display geometry.** A round display still has a square framebuffer; the corners are simply not visible. Verify your UI accounts for the circular visible area (draw within the inscribed circle).
+3. **If on a capable SoC** (i.MX8M, etc.): wire a QSPI round display. adapt the Ch 83 driver's data path to quad `spi_mem_op`. measure the frame-rate improvement.
+4. **Round-display geometry.** A round display still has a square framebuffer. The corners are simply not visible. Verify your UI accounts for the circular visible area (draw within the inscribed circle).
 5. **Comparison writeup.** Document, for your specific board, whether QSPI display is feasible. If not, justify the fallback (plain SPI / parallel RGB).
 
 ## 84.7  Pitfalls
@@ -120,8 +122,12 @@ For the i.MX6ULL reader: **prefer parallel RGB (Ch 82) for big/fast displays, pl
 - **Assuming i.MX6ULL QSPI does displays well.** It doesn't — it's flash-centric. Verify `spi_mem` quad-out support before committing to a QSPI display on this SoC.
 - **Quad-mode lane order.** The bit-to-lane mapping (which bits go on IO0 vs IO3) varies. A wrong mapping gives scrambled pixels. Match the controller's convention.
 - **Command vs data lane count.** Commands usually go on 1 lane, pixels on 4. Sending the command on 4 lanes confuses the controller. The `spi_mem_op` cmd/data buswidth fields must be set per phase.
-- **Pull-ups on IO2/IO3.** In single-lane mode, IO2/IO3 may double as /WP and /HOLD; for display use they're data. Ensure no conflicting pulls.
-- **Frame tearing at high fps.** Without vsync/TE-pin synchronization, fast full-frame updates tear. Many QSPI AMOLEDs have a TE (tearing-effect) output; wire it to a GPIO IRQ and sync updates.
+- **Pull-ups on IO2/IO3.** In single-lane mode, IO2/IO3 may double as /WP and /HOLD. For display use they're data. Ensure no conflicting pulls.
+- **Frame tearing at high fps.** Without vsync/TE-pin synchronization, fast full-frame updates tear. Many QSPI AMOLEDs have a TE (tearing-effect) output. wire it to a GPIO IRQ and sync updates.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - **Power: AMOLED inrush.** QSPI AMOLEDs can draw significant current when displaying bright white. Budget the rail accordingly.
 - **Init sequence length.** AMOLED init sequences are long (50–100 commands) with vendor-specific gamma/voltage. Get the exact sequence from the module vendor.
 

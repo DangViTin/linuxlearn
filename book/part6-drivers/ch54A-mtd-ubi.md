@@ -8,7 +8,9 @@ status: draft
 
 # Chapter 54A — MTD / UBI for raw NAND
 
-> **What:** the **MTD** (Memory Technology Devices) subsystem and the **UBI** (Unsorted Block Images) layer that sits on top of it. MTD partitions and exposes raw NAND/NOR flash to the kernel; UBI handles wear-levelling, bad-block management, and exposes UBI *volumes* that look like static block devices.
+> **What:** the **MTD** (Memory Technology Devices) subsystem and the **UBI** (Unsorted Block Images) layer that sits on top of it. MTD partitions and exposes raw NAND/NOR flash to the kernel. UBI handles wear-levelling, bad-block management, and exposes UBI *volumes* that look like static block devices.
+> **UBI** - Unsorted Block Images, a flash-management layer over raw NAND that handles wear leveling and bad blocks.
+> **MTD** - Memory Technology Device, Linux's raw flash subsystem for eraseblock-based storage.
 >
 > **Why:** Raw NAND is common in industrial embedded — cheaper per GB than eMMC, longer-lived if managed correctly. But NAND is not a block device. It has erase blocks (about 128 KB) and pages (about 2 KB). Bad blocks appear over the device's lifetime. Erase cycles are limited. MTD/UBI is the kernel's solution.
 >
@@ -17,7 +19,11 @@ status: draft
 > **Tooling.** This chapter uses `mtd-utils` (`flash_erase`, `nandwrite`, `flashcp`, `mtdinfo`, `ubinfo`, `ubinize`, `ubiformat`).
 > - **Ubuntu-base (target):** `apt install mtd-utils`
 > - **Buildroot:** `BR2_PACKAGE_MTD=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 54A.1  Three layers
 
@@ -115,7 +121,7 @@ major minor  #blocks  name
   ...
 ```
 
-UBI volumes appear as `/dev/ubi0_0` (root) and `/dev/ubi0_1` (data). To user-space they look like character devices; with a UBI-aware filesystem (UBIFS) on top, they look like filesystems.
+UBI volumes appear as `/dev/ubi0_0` (root) and `/dev/ubi0_1` (data). To user-space they look like character devices. with a UBI-aware filesystem (UBIFS) on top, they look like filesystems.
 
 ```
 [root@pa-mini:~]# mkfs.ubifs -m 2048 -e 126976 -c 1000 -o root.ubifs /path/to/staging
@@ -136,6 +142,8 @@ ubi.mtd=2 root=ubi0:root rootfstype=ubifs
 This says: attach mtd2 as UBI, then mount the UBI volume named "root" as the rootfs.
 
 U-Boot:
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```
 setenv bootargs 'console=ttymxc0,115200 ubi.mtd=2 root=ubi0:root rootfstype=ubifs rw'
@@ -170,7 +178,7 @@ Bad blocks (3 here) are remapped to reserved blocks (40 set aside). Max erase co
 UBIFS is a journalling filesystem designed for UBI. Features:
 - Atomic operations (power-loss safe).
 - Compression (LZO or zstd) — typically 1.5–2× compression of typical embedded filesystems.
-- Read/write performance ~2–3× ext4-on-eMMC for typical workloads (NAND fundamentals; ext4 not designed for NAND).
+- Read/write performance ~2–3× ext4-on-eMMC for typical workloads (NAND fundamentals. ext4 not designed for NAND).
 
 When *not* to use:
 - Random small writes — UBIFS is bad at this.
@@ -178,26 +186,32 @@ When *not* to use:
 
 ## 54A.8  Lab
 
+> **Storage safety:** Before any command that names /dev/sdX, run lsblk -o NAME,SIZE,MODEL,TRAN,TYPE,MOUNTPOINTS.
+> Verify the removable card by size and model, unmount its partitions, and stop if the path is not the target card. Writing the wrong /dev node can destroy the host disk.
+
+
 1. **Identify NAND partitions.** Boot a kernel with GPMI enabled and partitions in DT. `cat /proc/mtd`.
 2. **Format and use UBI.** `ubiformat`, `ubiattach`, `ubimkvol`. Confirm `ubi0` and volumes appear.
 3. **Make a UBIFS rootfs.** From your existing Buildroot output, `mkfs.ubifs`. Flash to NAND.
 4. **Boot from NAND.** Configure U-Boot to load kernel + dtb from NAND, set `bootargs` for ubi root.
-5. **Wear test.** Write a script that writes a 1 MB file in a loop, deleting and recreating. Run for an hour; check max erase counter via `ubinfo`. Verify wear levelling spreads writes.
-6. **Recover from bad block.** Use `nandtest` to mark a block bad; reformat UBI; observe it being remapped.
+5. **Wear test.** Write a script that writes a 1 MB file in a loop, deleting and recreating. Run for an hour. Check max erase counter via `ubinfo`. Verify wear levelling spreads writes.
+6. **Recover from bad block.** Use `nandtest` to mark a block bad. reformat UBI. observe it being remapped.
 
 ## 54A.9  Pitfalls
 
 - **Wrong page/OOB size.** `ubiformat` defaults may not match your chip. Specify `-O 2048 -e 131072` explicitly to match `cat /proc/mtd` output.
 - **Mounting UBIFS over ext4.** "Why does my UBIFS feel slow?" — UBIFS atop a block layer that's atop NAND is double-translation. Use UBIFS directly on a UBI volume.
 - **No bbt (Bad Block Table) reservation.** Pre-existing factory bad blocks become "good" in UBI's view, then fail unpredictably. Always `nand-on-flash-bbt` or `fsl,use-bbt` in DT.
-- **Erasing the wrong partition.** `flash_erase /dev/mtd0` erases U-Boot. Always confirm partition number; back up before erase.
-- **Power-loss during write.** UBIFS handles this well; ext4-on-mtdblock does not. Use UBIFS for writable partitions.
-- **`ubi.mtd=` mismatch with DT partition number.** If you add/remove partitions in DT, the numbering shifts; kernel cmdline gets stale. Lock both at the same time.
+- **Erasing the wrong partition.** `flash_erase /dev/mtd0` erases U-Boot. Always confirm partition number. back up before erase.
+- **Power-loss during write.** UBIFS handles this well. ext4-on-mtdblock does not. Use UBIFS for writable partitions.
+- **`ubi.mtd=` mismatch with DT partition number.** If you add/remove partitions in DT, the numbering shifts. kernel cmdline gets stale. Lock both at the same time.
 
 ## 54A.10  Going deeper
 
 - **`Documentation/filesystems/ubifs.rst`** — UBIFS documentation.
 - **`Documentation/ABI/stable/sysfs-bus-ubi`** — UBI sysfs ABI.
+**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 - **`drivers/mtd/nand/raw/gpmi-nand/`** — i.MX GPMI NAND driver.
 - **`drivers/mtd/ubi/`** — UBI implementation.
 - **`mtd-utils` source** — user-space tools.

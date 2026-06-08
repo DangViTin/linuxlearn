@@ -7,12 +7,15 @@ status: draft
 ---
 
 # Chapter 30A — Kernel lifecycle: mainline, stable, LTS, vendor BSPs
+**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
 
 > **What:** a decision framework for one of the most important architectural choices in any Linux-based product: *which* kernel release do we ship? Mainline tip, the latest stable, an LTS, a vendor BSP frozen years ago, or something curated between them?
+> **BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 >
 > **Why:** the choice determines your security-fix cadence, your driver-update cost, your hardware-support range, and your migration burden for the next five-to-ten years. If you choose well, updates ship easily for years. If you choose poorly, three years from now you are backporting six years of CVEs onto a fork no one upstream maintains.
 >
 > **Focus:** **maintenance economics**, not features. Whatever you pick, you commit to maintaining the gap between it and what the world ships next. If you cannot maintain it yourself, you pay someone who will.
+
 
 ## 30A.1  The six release tracks
 
@@ -43,13 +46,13 @@ For embedded systems, the three that matter are **Mainline**, **LTS**, and **Ven
 
 In 2025, mainline runs at roughly 6.6 → 6.7 → 6.8 → 6.9 across a calendar year, with each minor having ~9-week cadence.
 
-**Lifetime:** none. The day 6.6 ships, 6.7-rc1 is already absorbing the next merge window. There is no concept of "support" for plain mainline; if you ship `6.6.0` and there's a CVE in `6.6.1`, you must either (a) take `6.6.1` (the stable update), (b) cherry-pick the fix yourself, or (c) decline the fix.
+**Lifetime:** none. The day 6.6 ships, 6.7-rc1 is already absorbing the next merge window. There is no concept of "support" for plain mainline. If you ship `6.6.0` and there's a CVE in `6.6.1`, you must either (a) take `6.6.1` (the stable update), (b) cherry-pick the fix yourself, or (c) decline the fix.
 
 **When to choose mainline:**
 
-- **Development.** You're building the next product; you want every recent driver fix and every new feature.
+- **Development.** You're building the next product. You want every recent driver fix and every new feature.
 - **Pre-production hardware bring-up.** Mainline is where the i.MX6ULL gained DT bindings, gained mainline EVK support, gained subsequent fixes. Tracking mainline means you can be confident about what works.
-- **Demo / proof-of-concept devices.** Lifetime doesn't matter; recent features do.
+- **Demo / proof-of-concept devices.** Lifetime doesn't matter. recent features do.
 
 **When *not* to choose mainline:**
 
@@ -63,7 +66,7 @@ Greg KH manages this tree. Stable releases backport **bug fixes and security pat
 
 Releases come out daily-to-weekly with version tags like `v6.6.1`, `v6.6.2`, ..., `v6.6.42`.
 
-**Lifetime:** historically ~6 weeks per minor (one cycle of mainline). The current minor's stable tree continues until the next minor's stable tree starts; the older one is then EOL'd.
+**Lifetime:** historically ~6 weeks per minor (one cycle of mainline). The current minor's stable tree continues until the next minor's stable tree starts. The older one is then EOL'd.
 
 **Exception:** selected stable trees are promoted to **LTS** (next section) and continue for years.
 
@@ -96,7 +99,7 @@ Selected mainline releases are designated **LTS** and get stable-tree backports 
 **When to choose LTS:**
 
 - **Any shipping product with a multi-year field life.** This is the default answer.
-- Cost-sensitive products that can't afford a dedicated kernel maintainer; LTS gives you free upstream backports.
+- Cost-sensitive products that can't afford a dedicated kernel maintainer. LTS gives you free upstream backports.
 - Products that need security-fix updates after end-of-development.
 
 **When *not* to choose LTS:**
@@ -117,6 +120,7 @@ A vendor BSP typically contains:
 The vendor releases new tags periodically (NXP about quarterly). Old tags get little attention.
 
 **The upside.** Every peripheral on the vendor's reference board has a working driver. The vendor's tool — Yocto layer (`meta-imx`), demo image, evaluation kit — assumes their BSP.
+**Yocto** - a metadata-driven build system for producing custom Linux distributions.
 
 **The downside.** Three things you must factor in:
 
@@ -158,7 +162,7 @@ Question 3: Do you have a kernel maintainer on the team?
 
 For our i.MX6ULL on Point Atom MINI:
 
-- **Q1: Does it work on mainline?** Yes; full support since v4.10.
+- **Q1: Does it work on mainline?** Yes. full support since v4.10.
 - **Q2: Product life?** Assume 5 years for an industrial product.
 - **Q3: Maintainer?** This book exists to teach you to be one.
 
@@ -172,6 +176,8 @@ What you would actually be shipping:
 
 - **A kernel from 2017.** Five-plus years of CVE backlog. Even cherry-picking critical fixes is a part-time job.
 - **A driver model from 2017.** Many subsystems (DT bindings YAML, modern clk framework, regmap-everywhere, devm-_* helpers, etc.) have evolved. Code you write against 4.1.15 doesn't transfer to mainline without rewrite.
+MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 - **Toolchain constraints.** 4.1.15 doesn't build with modern gcc (>= 11) without patches. You're committing to an old gcc too.
 - **No upstream support.** Linux 4.1 has been EOL for years. Issues you file get closed as "fixed in 5.x".
 
@@ -192,13 +198,13 @@ Three scenarios:
 ### Scenario B — Industrial PLC, 10-year product life, IEC 61131 certified
 
 - Need: hard real-time (< 100 µs jitter), CAN bus, EtherCAT master, vendor-specific ISP for camera.
-- ISP driver only in NXP's BSP; never upstreamed.
+- ISP driver only in NXP's BSP. never upstreamed.
 - **Decision: Vendor BSP — for now — with mandatory migration plan.** Track NXP's LTS-aligned branch (6.6-based). Allocate budget in year 3 to begin upstreaming the ISP driver. Aim to be on mainline LTS by year 5. Otherwise: pay an external Linux company to extended-LTS your kernel for the remaining lifespan.
 
 ### Scenario C — Hobbyist single-board computer kit
 
-- Need: just works out of the box; users will run their own kernels too.
-- **Decision: Mainline tip, refresh per Yocto release.** Hobbyists expect to be current; nobody's running this kit for 5 years.
+- Need: just works out of the box. users will run their own kernels too.
+- **Decision: Mainline tip, refresh per Yocto release.** Hobbyists expect to be current. nobody's running this kit for 5 years.
 
 The pattern across all three: **the product's field life and the security level required together determine the kernel track.**
 
@@ -207,6 +213,8 @@ The pattern across all three: **the product's field life and the security level 
 1. **Read the LTS announcement** for the current LTS at `lwn.net` or `kernel.org`. Note the maintainer, support window, and any caveats.
 2. **Audit your codebase against an LTS.** Pick a recent commit in mainline that adds a feature you care about (e.g., a new DT binding). Run `git log --oneline v6.6.. -- Documentation/devicetree/bindings/...` to see whether it has been backported to LTS 6.6. Most large features are not.
 3. **Pretend you inherited a 4.14 BSP** with a custom GPIO driver. Look at the mainline-equivalent driver (`drivers/gpio/gpio-mxc.c`) and identify which kernel-API changes have happened since 4.14 that would require rewriting (DT bindings, devm_, the gpio chip api, ...). Make a one-page "migration burden" estimate.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 4. **Set up a CI matrix.** Imagine you need to build the same `defconfig` against three kernels: mainline tip, LTS 6.6, LTS 6.1. Sketch a GitHub Actions / GitLab CI job matrix. Estimate build-time and disk usage.
 5. **Subscribe to two mailing lists.** `linux-kernel-announce@vger.kernel.org` (release announcements only) and `linux-stable@vger.kernel.org` (stable-tree releases). Build the habit of seeing what's happening before it affects you.
 
@@ -215,8 +223,8 @@ The pattern across all three: **the product's field life and the security level 
 - **"Just stay on 5.4 forever."** 5.4 ends in Dec 2025. That is not forever.
 - **"We'll upgrade the kernel later."** "Later" never comes if your code is so deeply intertwined with vendor BSP internals that migration is a major rewrite. Budget the migration *now*, even if you delay execution.
 - **"LTS = no breaking changes."** LTS gets bug fixes and security patches. Behavior fixes can change semantics. Test before deploying.
-- **"Mainline is unstable."** Modern mainline is *very* stable; what's unstable is mainline tip *between releases*. Pick a tagged release (`v6.6` not `master`) and you have what was tested.
-- **"We don't need security fixes; the device isn't on the internet."** This is less and less true. Even isolated devices receive USB sticks. Even airgapped devices face supply-chain attacks. Apply the fixes.
+- **"Mainline is unstable."** Modern mainline is *very* stable. what's unstable is mainline tip *between releases*. Pick a tagged release (`v6.6` not `master`) and you have what was tested.
+- **"We don't need security fixes. The device isn't on the internet."** This is less and less true. Even isolated devices receive USB sticks. Even airgapped devices face supply-chain attacks. Apply the fixes.
 - **"Our customer requires the vendor BSP."** Sometimes true (compliance, IP). Often a habit. Push back on the contractual requirement when the technical justification is weak.
 
 ## 30A.11  Going deeper
@@ -227,5 +235,7 @@ The pattern across all three: **the product's field life and the security level 
 - **Bootlin's "Embedded Linux from Scratch" training** (free online materials) — covers a similar decision framework.
 - **`Documentation/process/stable-kernel-rules.rst`** — what does and doesn't get backported to stable trees.
 - **`drm/kernel-doc-rst` discussions on `linux-rt-users` mailing list** for PREEMPT_RT-specific lifecycle considerations.
+**PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 
 > Next part: **Part V — Root filesystem & user space.** With the kernel sorted, we turn to what runs on top. BusyBox by hand, then Buildroot, then Ubuntu-base — and the production patterns (read-only root, containers) that real shipping products use.
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.

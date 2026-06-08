@@ -8,11 +8,14 @@ status: draft
 
 # Chapter 55D — Block device drivers
 
-> **What:** the **block** layer — `gendisk`, request queues, `blk-mq` (multi-queue block), bio. Most embedded systems consume block devices (eMMC, SD card via MMC subsystem; raw NAND via MTD+UBI). Occasionally you need to *write* one — typically a RAM disk, a loop-style virtual device, or a translation layer over a custom storage chip.
+> **What:** the **block** layer — `gendisk`, request queues, `blk-mq` (multi-queue block), bio. Most embedded systems consume block devices (eMMC, SD card via MMC subsystem. raw NAND via MTD+UBI). Occasionally you need to *write* one — typically a RAM disk, a loop-style virtual device, or a translation layer over a custom storage chip.
+> **UBI** - Unsorted Block Images, a flash-management layer over raw NAND that handles wear leveling and bad blocks.
+> **MTD** - Memory Technology Device, Linux's raw flash subsystem for eraseblock-based storage.
 >
 > **Why:** less common to write than char drivers, but worth knowing because (a) the request-queue model differs significantly from "byte stream" and (b) understanding block lets you debug performance of any storage layer above (filesystem latency, fsync behavior).
 >
 > **Focus:** **bio is the universal request**. A user-space `read(fd, ..., 4096)` becomes one or more `struct bio`s submitted to a `gendisk`. Drivers either submit one I/O per bio or batch into hardware-specific request structures.
+
 
 ## 55D.1  The path from `read()` to your driver
 
@@ -157,12 +160,17 @@ For comparison, an eMMC HS200 hits ~120 MB/s sequential, ~10k IOPS random. NAND 
 ## 55D.5  Lab
 
 1. **Build the ramdisk.** Load, format, mount, write a file, unmount, reload, observe file persistence (RAM-backed only across reload, not reboot).
-2. **Add error injection.** Make every 100th write return `BLK_STS_IOERR`; observe filesystem behavior (ext4 remounts read-only).
-3. **Measure throughput.** dd + fio at various block sizes; build a throughput curve.
+2. **Add error injection.** Make every 100th write return `BLK_STS_IOERR`. observe filesystem behavior (ext4 remounts read-only).
+3. **Measure throughput.** dd + fio at various block sizes. build a throughput curve.
 4. **Inspect with `iostat -x 1`.** While running fio, watch await, %util, IOPS.
 5. **Add a sysfs attribute.** Expose stats: total reads, total writes, bytes transferred.
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 ## 55D.6  Pitfalls
+
+> **Storage safety:** Before any command that names /dev/sdX, run lsblk -o NAME,SIZE,MODEL,TRAN,TYPE,MOUNTPOINTS.
+> Verify the removable card by size and model, unmount its partitions, and stop if the path is not the target card. Writing the wrong /dev node can destroy the host disk.
+
 
 - **Forgetting to `blk_mq_start_request`.** Driver does work, calls `end_request`, but the request was never marked started — corrupted statistics, possible deadlock.
 - **Block-aligned constraint violations.** Modern kernels require sector-aligned bios. Requests smaller than a sector get split. Honor `bvec` offsets.

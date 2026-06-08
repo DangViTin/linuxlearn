@@ -9,12 +9,22 @@ status: draft
 # Chapter 118 — JTAG, OpenOCD, GDB at every layer
 
 > **What:** the **hardware-level debug stack**: **JTAG adapters** (FT2232H-based generic, J-Link, SEGGER pro), **OpenOCD** as the software bridge between adapter and target, and **GDB** as the user interface. We wire JTAG to the i.MX6ULL's debug header, write an OpenOCD config, halt the CPU at the very first reset vector instruction, single-step through U-Boot, attach to the running kernel with full `vmlinux` symbol resolution, and inspect a kernel module's variables interactively.
+> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
+> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **OpenOCD** - the host program that talks to a JTAG adapter and exposes a GDB server.
 >
 > **Why:** when the LED doesn't blink and `printk` isn't an option (the kernel hasn't started yet), JTAG is the only way in. The same is true when U-Boot hangs in DCD execution, or the kernel oopses before serial init. JTAG lets you read every register, dump every memory region, set hardware breakpoints, and step a single instruction at a time — at any layer (bare-metal, bootloader, kernel, user-space). It's the difference between guessing the boot fails somewhere in CCM init, and seeing that XTAL_24M is at 0 mV because the crystal isn't running.
+> **CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
+> **DCD** - Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
 >
-> **Focus:** **OpenOCD is the bridge: it speaks USB to the JTAG adapter and exposes a GDB-server on TCP; GDB connects, fetches symbols from your ELF, and gives you the familiar `b`, `n`, `s`, `p` commands**. The tricky parts are: getting the adapter's USB-IDs right for OpenOCD, choosing the right *target* config (Cortex-A7 vs Cortex-M differ massively), handling Cortex-A's complications (multi-CPU, secure-vs-non-secure world, MMU on/off), and giving GDB the right symbol files at the right times (one ELF for bare-metal, another for U-Boot, another for kernel + per-module symbols).
+> **Focus:** **OpenOCD is the bridge: it speaks USB to the JTAG adapter and exposes a GDB-server on TCP. GDB connects, fetches symbols from your ELF, and gives you the familiar `b`, `n`, `s`, `p` commands**. The tricky parts are: getting the adapter's USB-IDs right for OpenOCD, choosing the right *target* config (Cortex-A7 vs Cortex-M differ massively), handling Cortex-A's complications (multi-CPU, secure-vs-non-secure world, MMU on/off), and giving GDB the right symbol files at the right times (one ELF for bare-metal, another for U-Boot, another for kernel + per-module symbols).
+> **ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
 >
 > **Tooling.** **Host:** `openocd`, `gdb-multiarch` (or `arm-linux-gnueabihf-gdb` from your cross-toolchain). **Target:** nothing — gdb attaches via OpenOCD over JTAG, no on-target software needed. Ubuntu-host install: `apt install openocd gdb-multiarch`. Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 118.1  JTAG basics — the 4-wire debug bus
 
@@ -29,9 +39,10 @@ JTAG (IEEE 1149.1) is a serial scan chain. Four mandatory wires + 1 optional + 1
    SRST — System Reset   (optional; resets the SoC itself)
 ```
 
-The target has a TAP (Test Access Port) state machine; TMS steers it through states (Run-Test-Idle, Shift-IR, Shift-DR, etc.). The host sends bits via TDI, sees them shifted back via TDO. Higher-level commands (read register, read memory, halt CPU, single-step) are encoded as sequences of these primitives.
+The target has a TAP (Test Access Port) state machine. TMS steers it through states (Run-Test-Idle, Shift-IR, Shift-DR, etc.). The host sends bits via TDI, sees them shifted back via TDO. Higher-level commands (read register, read memory, halt CPU, single-step) are encoded as sequences of these primitives.
 
-ARM Cortex-A debug uses the **CoreSight** extension on top of JTAG (or SWD on Cortex-M; Cortex-A uses JTAG). Within CoreSight, **DAP** (Debug Access Port), **ETM** (trace), **TPIU** (trace output) live.
+ARM Cortex-A debug uses the **CoreSight** extension on top of JTAG (or SWD on Cortex-M. Cortex-A uses JTAG). Within CoreSight, **DAP** (Debug Access Port), **ETM** (trace), **TPIU** (trace output) live.
+**CoreSight** - ARM's debug and trace block family behind JTAG debugging on Cortex-A.
 
 ## 118.2  Adapter comparison
 
@@ -52,7 +63,7 @@ ARM Cortex-A debug uses the **CoreSight** extension on top of JTAG (or SWD on Co
 
 ## 118.3  Wiring JTAG to the Point Atom
 
-The Point Atom MINI exposes the JTAG header on a 2.54 mm 10-pin connector (or 20-pin Cortex JTAG; check your specific board revision). Pinout (10-pin Cortex):
+The Point Atom MINI exposes the JTAG header on a 2.54 mm 10-pin connector (or 20-pin Cortex JTAG. Check your specific board revision). Pinout (10-pin Cortex):
 
 ```
    1  VTREF       — target voltage reference (3.3 V on i.MX6ULL)
@@ -69,9 +80,13 @@ The Point Atom MINI exposes the JTAG header on a 2.54 mm 10-pin connector (or 20
 
 Wire to the adapter's matching connector (often it's the same Cortex pinout).
 
-**Important**: VTREF must be 3.3 V; the adapter senses this and adjusts its IO level. Misconfigured VTREF (5 V into a 3.3 V SoC) = blown JTAG pins on the SoC. Permanent.
+**Important**: VTREF must be 3.3 V. The adapter senses this and adjusts its IO level. Misconfigured VTREF (5 V into a 3.3 V SoC) = blown JTAG pins on the SoC. Permanent.
 
 ## 118.4  OpenOCD config
+
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
 
 OpenOCD needs three things: interface config (adapter), target config (CPU), and board config (memory map, reset behavior).
 
@@ -156,6 +171,8 @@ r1  ...
 ```
 
 Single-step a literal assembly program. Watch registers change. See exactly which instruction flips the GPIO bit.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 This is how you learn the bare-metal layer: step every instruction and match it to the reference manual.
 
@@ -176,7 +193,7 @@ Breakpoint 1, board_init_f (boot_flags=0) at common/board_f.c:880
 
 You're now stepping through U-Boot's C code, single-line at a time, in the same way as gdb on a user-space binary. Set breakpoints in `board_init_r`, in `cmd_bootm`, anywhere.
 
-U-Boot is built without `-O2` if you `make DEBUG=1`; with default `-O2` some variables are optimized out — debug builds give cleaner GDB experience.
+U-Boot is built without `-O2` if you `make DEBUG=1`. with default `-O2` some variables are optimized out — debug builds give cleaner GDB experience.
 
 ## 118.7  GDB on the running kernel — `vmlinux` + KASLR
 
@@ -235,7 +252,7 @@ Cortex-A7 has 6 hardware breakpoints and 4 watchpoints (counts may vary). GDB us
 (gdb) rwatch global_var                # break on read
 ```
 
-Hardware breakpoints are needed for read-only memory (you can't replace the instruction with a breakpoint trap if the memory is in flash/ROM). Software breakpoints (default `break`) replace the instruction with the ARM `BKPT` (A32: `0xE1200070`; Thumb-2: `0xBE00`). The CPU traps to the prefetch-abort vector. The kernel/debugger sees a debug-exception, and gdb regains control.
+Hardware breakpoints are needed for read-only memory (you can't replace the instruction with a breakpoint trap if the memory is in flash/ROM). Software breakpoints (default `break`) replace the instruction with the ARM `BKPT` (A32: `0xE1200070`. Thumb-2: `0xBE00`). The CPU traps to the prefetch-abort vector. The kernel/debugger sees a debug-exception, and gdb regains control.
 
 ## 118.10  Reset behavior — the trickiest part
 
@@ -250,33 +267,44 @@ OpenOCD's `reset halt` does:
 To debug ROM execution: from `reset halt` state, set a breakpoint on the first DCD-runtime address, `resume`, watch ROM execute DCD then jump to your image.
 
 `reset init` runs OpenOCD's TCL "init" hooks first (typically configure clocks/DDR via OpenOCD before loading your binary) — useful for debugging code that requires DDR but you don't want to depend on the Boot ROM doing it.
+**DDR** - external DRAM that must be configured and trained before most software can run from it.
 
 ## 118.11  Lab
 
-1. **OpenOCD up.** Wire JTAG (FT2232H breakout). Run OpenOCD with your config; verify TAP IDCODE.
-2. **Halt + dump.** `telnet :4444`; `reset halt`; `mdw 0x900000 16` — see what's in OCRAM.
-3. **Single-step bare-metal LED.** Load Ch 9's bare-metal binary; set breakpoint on first instruction; step every instruction; observe register changes.
-4. **Bare-metal DDR debug.** Run Ch 14's DDR3 init. Set breakpoint on `mmdc_init` first instruction. Step through; verify MMDC registers reach expected values. If DRAM doesn't work, this is *the* way to find which MDCFGn value was wrong.
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
+
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
+1. **OpenOCD up.** Wire JTAG (FT2232H breakout). Run OpenOCD with your config. verify TAP IDCODE.
+2. **Halt + dump.** `telnet :4444`. `reset halt`. `mdw 0x900000 16` — see what's in OCRAM.
+3. **Single-step bare-metal LED.** Load Ch 9's bare-metal binary. set breakpoint on first instruction. step every instruction. observe register changes.
+4. **Bare-metal DDR debug.** Run Ch 14's DDR3 init. Set breakpoint on `mmdc_init` first instruction. Step through. verify MMDC registers reach expected values. If DRAM doesn't work, this is *the* way to find which MDCFGn value was wrong.
+**MMDC** - the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
 5. **U-Boot stepping.** Build U-Boot with `-O0` if needed. Halt at `_start`, step into SPL init, watch DRAM come up, watch relocation copy U-Boot to high DRAM.
-6. **Kernel attach.** Boot kernel from SD; from another shell, run `gdb vmlinux` + `target remote`. Use `lx-dmesg` to see the kernel log. Set a soft breakpoint on `printk`; trigger a printk from `/proc/sysrq-trigger`; see it hit.
-7. **Module debugging.** `insmod` a kernel module of your own (Ch 36's hello-LKM). `lx-symbols`; `break my_init`; `rmmod` then `insmod` → breakpoint hits.
-8. **Watch a corruption.** Set a watchpoint on a kernel structure (e.g., `init_task.comm`); write to it from user-space via `/proc/self/comm`; see watchpoint trigger.
+**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
+6. **Kernel attach.** Boot kernel from SD. From another shell, run `gdb vmlinux` + `target remote`. Use `lx-dmesg` to see the kernel log. Set a soft breakpoint on `printk`. trigger a printk from `/proc/sysrq-trigger`. see it hit.
+7. **Module debugging.** `insmod` a kernel module of your own (Ch 36's hello-LKM). `lx-symbols`. `break my_init`. `rmmod` then `insmod` → breakpoint hits.
+8. **Watch a corruption.** Set a watchpoint on a kernel structure (e.g., `init_task.comm`). write to it from user-space via `/proc/self/comm`. see watchpoint trigger.
 9. **Production fuse.** Look up the i.MX6ULL "JTAG disable" fuse. Read it via OpenOCD. Verify it's *not* blown (or you've bricked debug access). In production: blow this fuse to prevent attacker debug, but accept the support cost.
 
 ## 118.12  Pitfalls
 
 - **VTREF wrong.** Adapter at 5 V into 3.3 V SoC fries the JTAG pins. Always confirm VTREF before connecting.
 - **JTAG disabled by fuse.** Some boards ship with the SJC_DISABLE eFuse blown for security. JTAG silently doesn't connect. Verify with a fresh chip.
-- **SRST not wired.** Without SRST, OpenOCD's `reset` is a soft-reset (TMS sequence); some states (CPU in WFI) can't be reset this way. Wire SRST for production debug.
-- **TCK too fast for unhardened wiring.** Long flying-wire JTAG (>10 cm) needs slower TCK (≤ 1 MHz). Start at 1 MHz; ramp up only if reliable.
-- **Multi-core target.** If your SoC is multi-core (i.MX6ULL is single-core; most newer chips are multi), OpenOCD config must declare each core separately.
-- **Cortex-A MMU on — virtual vs physical addresses.** After MMU is enabled, `mdw 0x80100000` queries virtual address; sometimes you want physical. Use `mdw phys 0x80100000` in OpenOCD.
-- **GDB `monitor` commands.** You can run OpenOCD commands from GDB via `monitor`: `monitor reset halt`; useful when you don't want to switch windows.
-- **Symbols missing for kernel module.** `lx-symbols` works only on debug-built kernels; check `CONFIG_GDB_SCRIPTS=y`.
+- **SRST not wired.** Without SRST, OpenOCD's `reset` is a soft-reset (TMS sequence). some states (CPU in WFI) can't be reset this way. Wire SRST for production debug.
+- **TCK too fast for unhardened wiring.** Long flying-wire JTAG (>10 cm) needs slower TCK (≤ 1 MHz). Start at 1 MHz. ramp up only if reliable.
+- **Multi-core target.** If your SoC is multi-core (i.MX6ULL is single-core. Most newer chips are multi), OpenOCD config must declare each core separately.
+- **Cortex-A MMU on — virtual vs physical addresses.** After MMU is enabled, `mdw 0x80100000` queries virtual address. sometimes you want physical. Use `mdw phys 0x80100000` in OpenOCD.
+- **GDB `monitor` commands.** You can run OpenOCD commands from GDB via `monitor`: `monitor reset halt`. useful when you don't want to switch windows.
+- **Symbols missing for kernel module.** `lx-symbols` works only on debug-built kernels. Check `CONFIG_GDB_SCRIPTS=y`.
 - **KASLR.** Kernel address randomization shifts vmlinux symbols at each boot. Disable for debug (`nokaslr` boot arg) or use `add-symbol-file` with the runtime offset.
-- **OpenOCD config drift.** Each OpenOCD version slightly different config syntax; tested-known-good configs in your repo save hours.
-- **Adapter unplugged mid-session.** OpenOCD doesn't recover; restart it. GDB needs `target remote :3333` again.
-- **HW breakpoint exhaustion.** Cortex-A7 has 6 HW breakpoints; if you set 7, GDB silently uses software for the 7th, which fails on ROM/flash.
+- **OpenOCD config drift.** Each OpenOCD version slightly different config syntax. tested-known-good configs in your repo save hours.
+- **Adapter unplugged mid-session.** OpenOCD doesn't recover. restart it. GDB needs `target remote :3333` again.
+- **HW breakpoint exhaustion.** Cortex-A7 has 6 HW breakpoints. If you set 7, GDB silently uses software for the 7th, which fails on ROM/flash.
 
 ## 118.13  Going deeper
 

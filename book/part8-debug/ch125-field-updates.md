@@ -8,12 +8,24 @@ status: draft
 
 # Chapter 125 — Field updates
 
-> **What:** **over-the-air (OTA) firmware update** systems for shipped embedded Linux products. Three options compared: **RAUC** (Robust Auto-Update Client — German rail-grade, simple, well-fit Yocto), **SWUpdate** (Toradex-originated, flexible, complex), **Mender** (commercial-style with hosted backend; also self-host). Each implements **A/B partitioning** + atomic update + rollback. We design a complete OTA flow: build → sign → host → device pulls + verifies + installs → reboots into new partition → marks "good" if boot completes → fall-back to other partition if not.
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
+
+> **What:** **over-the-air (OTA) firmware update** systems for shipped embedded Linux products. Three options compared: **RAUC** (Robust Auto-Update Client — German rail-grade, simple, well-fit Yocto), **SWUpdate** (Toradex-originated, flexible, complex), **Mender** (commercial-style with hosted backend. also self-host). Each implements **A/B partitioning** + atomic update + rollback. We design a complete OTA flow: build → sign → host → device pulls + verifies + installs → reboots into new partition → marks "good" if boot completes → fall-back to other partition if not.
+> **RAUC** - an embedded update framework for signed A/B image installation and rollback.
+> **Yocto** - a metadata-driven build system for producing custom Linux distributions.
 >
 > **Why:** most shipping products need a way to deliver updates. Bug fixes, security patches, new features — all delivered after the box leaves your hand. The risk: a botched update bricks 10,000 devices. The mitigation: atomic A/B updates + rollback on boot failure. Get the OTA architecture right and you can ship updates weekly. Get it wrong and one bad update can disable thousands of devices in the field.
 >
 > **Focus:** A/B is the standard pattern:
 > - two rootfs partitions;
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > - the running kernel mounts one;
 > - an update writes to the other;
 > - the bootloader switches to the new one on next reboot;
@@ -31,7 +43,9 @@ status: draft
 > **Tooling.** This chapter uses `rauc` *or* `swupdate` *or* `mender-client` (pick one), plus `casync` for delta-update chunking.
 > - **Ubuntu-base (target):** `apt install rauc casync  # or: swupdate, or mender-client`
 > - **Buildroot:** `BR2_PACKAGE_RAUC=y BR2_PACKAGE_CASYNC=y  # or BR2_PACKAGE_SWUPDATE=y / BR2_PACKAGE_MENDER=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+
 
 ## 125.1  Comparison
 
@@ -50,9 +64,9 @@ status: draft
 | Use case | EU industrial; vendor-rolled-back-end | Toradex ecosystem; complex updates | "I want a hosted SaaS" or "I want it just to work" |
 
 **Pick guide:**
-- **RAUC** — control freaks; you write your own backend; LGPL OK.
+- **RAUC** — control freaks. You write your own backend. LGPL OK.
 - **SWUpdate** — complex update scenarios (e.g., updating only FPGAs, only a partition's worth of files).
-- **Mender** — fastest time-to-deployment; willing to pay for hosted backend; or self-host the open-source server.
+- **Mender** — fastest time-to-deployment. willing to pay for hosted backend. or self-host the open-source server.
 
 ## 125.2  A/B partition design
 
@@ -76,10 +90,10 @@ status: draft
 ```
 
 The bootloader knows: "current slot = A or B". Read from env var. Update flow:
-1. Currently running A. Download new image; write to B.
-2. Set env var: "next boot = B; previous = A".
+1. Currently running A. Download new image. write to B.
+2. Set env var: "next boot = B. previous = A".
 3. Reboot.
-4. U-Boot reads env; boots B's kernel.
+4. U-Boot reads env. boots B's kernel.
 5. Once Linux reaches a known-good state — a specific service reports active — it signals boot success via a U-Boot environment variable.
 6. If step 5 doesn't happen within N seconds, U-Boot reverts to A on next power-cycle (watchdog auto-reset).
 
@@ -117,7 +131,7 @@ BOOT_A_LEFT=3
 BOOT_B_LEFT=3
 ```
 
-`BOOT_X_LEFT` counts down with each failed boot attempt; reaches 0 → fall back to the other slot.
+`BOOT_X_LEFT` counts down with each failed boot attempt. reaches 0 → fall back to the other slot.
 
 U-Boot script:
 
@@ -202,7 +216,7 @@ If something fails (e.g., your watchdog daemon never says "OK"), U-Boot reverts 
                                   if newer → rauc install <url>
 ```
 
-You build the "device polling" daemon yourself; RAUC provides the install primitive but no scheduler / staging logic.
+You build the "device polling" daemon yourself. RAUC provides the install primitive but no scheduler / staging logic.
 
 For staged rollouts: serve different `latest.json` to different device IDs (canary 10 %, then 50 %, then 100 %).
 
@@ -210,7 +224,7 @@ For privacy, each device authenticates with its own client TLS certificate, prov
 
 ## 125.5  Delta updates with casync
 
-A 1 GB rootfs is too big to push over LTE every week. **casync** (Lennart Poettering's tool) chunks images; only changed chunks transfer:
+A 1 GB rootfs is too big to push over LTE every week. **casync** (Lennart Poettering's tool) chunks images. only changed chunks transfer:
 
 ```sh
 # Build a casync index
@@ -290,35 +304,35 @@ Each has a trade-off:
 
 Pattern in production: combine 2–3. "Service started + heartbeat seen + ≥1 user request processed in 10 min" → mark good.
 
-If conditions not met: watchdog fires; reboot; U-Boot reverts; you're back on the previous version; alert sent.
+If conditions not met: watchdog fires. reboot. U-Boot reverts. You're back on the previous version. alert sent.
 
 ## 125.9  Lab
 
-1. **Set up A/B partitions.** Modify your .wks to create rootfs.A and rootfs.B partitions; flash; verify both exist (`lsblk`).
-2. **U-Boot env for slot selection.** Add the `BOOT_ORDER`/`BOOT_A_LEFT` env vars; write a U-Boot bootcmd that selects based on them.
+1. **Set up A/B partitions.** Modify your .wks to create rootfs.A and rootfs.B partitions. flash. verify both exist (`lsblk`).
+2. **U-Boot env for slot selection.** Add the `BOOT_ORDER`/`BOOT_A_LEFT` env vars. write a U-Boot bootcmd that selects based on them.
 3. **Install RAUC.** `IMAGE_INSTALL += "rauc"`. Build. Verify `rauc status` runs on the target.
 4. **Build a bundle.** Bitbake the `myapp-bundle.bb`. Inspect with `rauc info myapp-bundle-1.0.raucb`.
 5. **Local install.** Copy bundle to target via scp. `rauc install`. Reboot. Verify other slot is now active.
-6. **Mark good.** After verifying the new slot is healthy, `rauc status mark-good`. Reboot; verify still on new slot.
-7. **Force a bad update.** Build a bundle whose `myapp` crashes immediately. Install. Reboot. Watchdog should fire; U-Boot reverts.
-8. **HTTPS pull.** Set up nginx with a self-signed cert; serve a bundle. Device pulls via `rauc install https://...`.
-9. **Delta update.** Enable casync in your bundle build. Compare bundle sizes before/after; reach 5–10× smaller delta.
-10. **Mender stretch.** Self-host the Mender server (Docker compose); register a device; push a deployment from the UI.
+6. **Mark good.** After verifying the new slot is healthy, `rauc status mark-good`. Reboot. verify still on new slot.
+7. **Force a bad update.** Build a bundle whose `myapp` crashes immediately. Install. Reboot. Watchdog should fire. U-Boot reverts.
+8. **HTTPS pull.** Set up nginx with a self-signed cert. serve a bundle. Device pulls via `rauc install https://...`.
+9. **Delta update.** Enable casync in your bundle build. Compare bundle sizes before/after. reach 5–10× smaller delta.
+10. **Mender stretch.** Self-host the Mender server (Docker compose). register a device. push a deployment from the UI.
 
 ## 125.10  Pitfalls
 
 - **No watchdog → no rollback enforcement.** If your "mark good" check doesn't run, U-Boot still boots the new slot forever. Watchdog (Ch 51A) is mandatory for safe OTA.
-- **Power loss mid-update.** If you write to the inactive partition + lose power mid-write, the inactive partition is corrupt. Next boot uses the *active* (= old) slot; old still works → no harm. But: if you flip the bootloader pointer *before* writing finishes, you brick. Write-then-flip ordering matters.
-- **Bundle signed with wrong key.** Device's keyring doesn't include this key; install rejected. Verify keys deployed to fleet match signing keys.
-- **Key compromise.** Same as Ch 124: stolen signing key = attacker can ship arbitrary firmware. Use HSMs; rotate.
+- **Power loss mid-update.** If you write to the inactive partition + lose power mid-write, the inactive partition is corrupt. Next boot uses the *active* (= old) slot. old still works → no harm. But: if you flip the bootloader pointer *before* writing finishes, you brick. Write-then-flip ordering matters.
+- **Bundle signed with wrong key.** Device's keyring doesn't include this key. install rejected. Verify keys deployed to fleet match signing keys.
+- **Key compromise.** Same as Ch 124: stolen signing key = attacker can ship arbitrary firmware. Use HSMs. rotate.
 - **Anti-rollback missing.** Attacker can install old (vulnerable) versions. Add version-number check in update logic.
 - **Persistent data clobbered.** `/data` lost because update wrote new image and didn't preserve it. Keep `/data` in a separate partition.
-- **Network failure mid-download.** RAUC's HTTPS streaming handles resume; bundle downloads can survive disconnect. Test it.
+- **Network failure mid-download.** RAUC's HTTPS streaming handles resume. bundle downloads can survive disconnect. Test it.
 - **Bundle larger than rootfs partition.** Won't fit. Provision rootfs partitions 1.5× expected size to allow growth.
 - **Bundle version not incremented.** Device says "I already have 1.0.0, nothing to do." Always increment.
 - **Rolling out untested update.** Stage: dev → 10 % canary → 50 % → 100 %, with auto-pause on >5 % failure rate.
-- **Cellular fleet downloading 500 MB each.** Use delta updates (casync); else your data bill is shocking.
-- **Updates breaking customer's customizations.** A user-modified `/etc/foo` is overwritten by the update. Document; warn customers; provide a /etc/local-overrides mechanism.
+- **Cellular fleet downloading 500 MB each.** Use delta updates (casync). else your data bill is shocking.
+- **Updates breaking customer's customizations.** A user-modified `/etc/foo` is overwritten by the update. Document. warn customers. provide a /etc/local-overrides mechanism.
 
 ## 125.11  Going deeper
 

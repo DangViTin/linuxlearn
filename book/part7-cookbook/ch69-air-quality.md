@@ -7,12 +7,16 @@ status: draft
 ---
 
 # Chapter 69 — Air quality, gas, particulate matter
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 
 > **What:** three radically different "what's in the air" sensors: **Sensirion SCD30** (NDIR CO₂, I²C with clock-stretching), **AMS CCS811** (metal-oxide TVOC + eCO₂, I²C with interrupt), **Plantower PMS5003** (laser-scattering PM, UART). Each represents a different sensing physics, a different bus, a different protocol shape. For each: physics, protocol, the mainline driver, plus a from-scratch UART-based PMS5003 driver (since it's the most pedagogically interesting and the existing IIO support is fragmented).
+> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
-> **Why:** the air-quality market is exploding (post-pandemic; IAQ in offices; outdoor pollution dashboards). These three sensors together cover the dimensions that matter: CO₂ (occupancy, ventilation), VOCs (cleaning chemicals, paint, formaldehyde), particulate matter (combustion, dust, wildfire smoke). Knowing which chip claims to measure what — and what it *actually* measures — separates a useful product from a placebo.
+> **Why:** the air-quality market is exploding (post-pandemic. IAQ in offices. outdoor pollution dashboards). These three sensors together cover the dimensions that matter: CO₂ (occupancy, ventilation), VOCs (cleaning chemicals, paint, formaldehyde), particulate matter (combustion, dust, wildfire smoke). Knowing which chip claims to measure what — and what it *actually* measures — separates a useful product from a placebo.
 >
 > **Focus:** **NDIR measures physics directly. Metal-oxide infers from a correlation. Laser scatter counts particles. Three very different things wearing the label 'air quality sensor.'** NDIR (CO₂): direct absorbance measurement, traceable to the molecule. MOX (CCS811): a tin-oxide film whose resistance changes with reducing gases — the "eCO₂" is *inferred* from VOC trends, **not** actually measured. PM: literally counting particles flowing through a laser beam. Once you see this hierarchy, an "eCO₂" reading reads as "rough VOC trend that someone scaled into CO₂-looking numbers," not as a CO₂ measurement.
+
 
 ## 69.1  Sensor comparison
 
@@ -56,7 +60,7 @@ CO₂ absorbs strongly at 4.26 µm. The chip contains an IR emitter, a small cha
    ratio of detectors → directly tied to CO₂ concentration via Beer-Lambert law
 ```
 
-The chamber is ~10 cm long; gas diffuses in passively (no pump). The two-detector design rejects emitter intensity drift and dust. **The output is calibrated CO₂ ppm**, traceable to NIST CO₂ standards.
+The chamber is ~10 cm long. gas diffuses in passively (no pump). The two-detector design rejects emitter intensity drift and dust. **The output is calibrated CO₂ ppm**, traceable to NIST CO₂ standards.
 
 ### CCS811 — MOX (Metal-OXide gas sensor)
 
@@ -68,13 +72,13 @@ A heated SnO₂ film. In dry air, oxygen ions adsorb on the film, raising its re
 
 The chip's firmware maps resistance to two output numbers:
 - **TVOC** (Total Volatile Organic Compounds, ppb).
-- **eCO₂** (equivalent CO₂, ppm) — *not* CO₂; it's an estimate based on the assumption that human-occupancy CO₂ rise tracks human-occupancy VOC rise. **Inaccurate by construction** whenever a VOC source other than human breath is present — cooking, cleaning, painting all corrupt it.
+- **eCO₂** (equivalent CO₂, ppm) — *not* CO₂. It's an estimate based on the assumption that human-occupancy CO₂ rise tracks human-occupancy VOC rise. **Inaccurate by construction** whenever a VOC source other than human breath is present — cooking, cleaning, painting all corrupt it.
 
 The film "burns in" over the first 48 hours (chemistry stabilises), drifts over months (poisoning), and ages over years.
 
 ### PMS5003 — Laser scattering
 
-A small laser shines across a sample stream pulled through by a fan. Particles passing through scatter light; a photodiode at an angle catches the scatter. The chip's controller analyses pulse height (→ particle size) and pulse count rate (→ particle density). Output: counts per size bin, plus three "summary" estimates (PM1.0, PM2.5, PM10 µg/m³).
+A small laser shines across a sample stream pulled through by a fan. Particles passing through scatter light. a photodiode at an angle catches the scatter. The chip's controller analyses pulse height (→ particle size) and pulse count rate (→ particle density). Output: counts per size bin, plus three "summary" estimates (PM1.0, PM2.5, PM10 µg/m³).
 
 ```
    ┌───────────────┐    fan (suction)
@@ -99,7 +103,7 @@ SCD30 uses a Sensirion-style command set: 2-byte commands with optional 2-byte p
 | `0x03 00` | none, returns 18 bytes | Read measurement |
 | `0xD0 04` | none | Reset |
 
-Key gotcha: SCD30 uses **I²C clock stretching** — it holds SCL low for tens of milliseconds while doing internal work. Many SoC I²C controllers handle this fine; some (notably Broadcom's BCM2835 on Raspberry Pi) do not. **i.MX6ULL handles clock-stretching correctly**, but verify your `clock-frequency` is ≤ 400 kHz.
+Key gotcha: SCD30 uses **I²C clock stretching** — it holds SCL low for tens of milliseconds while doing internal work. Many SoC I²C controllers handle this fine. some (notably Broadcom's BCM2835 on Raspberry Pi) do not. **i.MX6ULL handles clock-stretching correctly**, but verify your `clock-frequency` is ≤ 400 kHz.
 
 A read of CO₂+T+H:
 
@@ -148,7 +152,7 @@ The CRC verification is what makes SCD30/SHT3x drivers heavier than BME280 — e
 
 ## 69.4  Protocol — CCS811 I²C with /WAKE pin
 
-CCS811 has a register map (similar to BME280) but a quirk: the **/WAKE pin must be held low** when communicating. Internal sleep saves power; the host wakes the chip with /WAKE = low, transacts, then releases /WAKE.
+CCS811 has a register map (similar to BME280) but a quirk: the **/WAKE pin must be held low** when communicating. Internal sleep saves power. The host wakes the chip with /WAKE = low, transacts, then releases /WAKE.
 
 | Register | Purpose |
 |----------|---------|
@@ -160,13 +164,13 @@ CCS811 has a register map (similar to BME280) but a quirk: the **/WAKE pin must 
 | 0xF4 APP_START | "Boot from firmware"; mandatory at startup |
 
 Bring-up sequence:
-1. Power on; chip is in boot mode.
+1. Power on. chip is in boot mode.
 2. Wait ≥ 70 ms.
 3. Issue `0xF4` (no data) — switch to app mode.
 4. Wait 70 ms.
 5. Write `0x01 = 1` to MEAS_MODE.
-6. From now on, the chip measures every 1 s; poll STATUS for DATA_READY bit.
-7. Read `0x02` (8 bytes) on data-ready; bytes 0-1 = eCO₂ ppm, bytes 2-3 = TVOC ppb.
+6. From now on, the chip measures every 1 s. poll STATUS for DATA_READY bit.
+7. Read `0x02` (8 bytes) on data-ready. bytes 0-1 = eCO₂ ppm, bytes 2-3 = TVOC ppb.
 
 ### Mainline CCS811 driver
 
@@ -212,6 +216,10 @@ The driver also implements an **environmental compensation** hook — feed it te
 
 ## 69.5  PMS5003 — UART protocol
 
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
+
 PMS5003 isn't I²C — it's a 9600-baud UART with a custom binary framing. No mainline IIO driver as of writing (a SerDev-based driver exists out-of-tree, but mainline support is fragmented). Perfect for a from-scratch implementation.
 
 ### Frame format
@@ -238,7 +246,7 @@ Every frame is 32 bytes:
    30      2      checksum (sum of bytes 0..29)
 ```
 
-The chip auto-sends a frame every ~800 ms when active. So a driver doesn't *request* data; it listens for frames.
+The chip auto-sends a frame every ~800 ms when active. So a driver doesn't *request* data. It listens for frames.
 
 ### A from-scratch UART driver
 
@@ -450,7 +458,7 @@ Driver is ~150 lines including IIO. The whole protocol is a state machine over a
 
 ### Why SerDev?
 
-SerDev — kernel/SerDev — is the "I want a UART-attached device, not a tty" subsystem. Before SerDev, drivers either polled a `/dev/ttyN` from user space (ugly), or set up a custom `line discipline` (painful kernel API). SerDev lets a kernel driver bind to a DT-described UART port; the framework handles the tty plumbing, exposes a small API (`set_baudrate`, `set_flow_control`, `receive_buf`), and the driver gets clean byte streams.
+SerDev — kernel/SerDev — is the "I want a UART-attached device, not a tty" subsystem. Before SerDev, drivers either polled a `/dev/ttyN` from user space (ugly), or set up a custom `line discipline` (painful kernel API). SerDev lets a kernel driver bind to a DT-described UART port. The framework handles the tty plumbing, exposes a small API (`set_baudrate`, `set_flow_control`, `receive_buf`), and the driver gets clean byte streams.
 
 Many UART-protocol devices fit this mould: GPS NMEA receivers, Bluetooth HCI, LoRa modules, Nextion displays, PMS5003. SerDev makes them all tractable.
 
@@ -475,32 +483,34 @@ User-space reads all of them via IIO + serdev, feeds an MQTT topic, plots in Gra
 
 ## 69.7  Lab
 
-1. **SCD30 NDIR with i2c-tools.** `i2cdetect -y 1` (should show 0x61). Manually issue `0x0300` and read 18 bytes; verify CRCs; decode the first 4 bytes as float — your CO₂ reading.
-2. **CCS811 bring-up.** Wire up with the /WAKE pin to a GPIO; verify probe in dmesg; read eCO₂ before and after a window-open / hot-meal scenario. Watch it climb when cooking.
-3. **PMS5003 from scratch.** Build `mypms5003.ko`; verify frame parsing; expose `in_massconcentration_pm2p5_input`.
-4. **PMS5003 with a smoke source.** Light a match near the sensor (carefully); watch PM2.5 spike 100× then settle over 30 s.
-5. **Cross-correlate.** Run all three sensors for an hour; log to CSV. After cooking, see CO₂ rise (people present), TVOC rise (cooking emissions), PM2.5 rise (smoke). Three signals from three physics.
+1. **SCD30 NDIR with i2c-tools.** `i2cdetect -y 1` (should show 0x61). Manually issue `0x0300` and read 18 bytes. verify CRCs. decode the first 4 bytes as float — your CO₂ reading.
+2. **CCS811 bring-up.** Wire up with the /WAKE pin to a GPIO. verify probe in dmesg. read eCO₂ before and after a window-open / hot-meal scenario. Watch it climb when cooking.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+3. **PMS5003 from scratch.** Build `mypms5003.ko`. verify frame parsing. expose `in_massconcentration_pm2p5_input`.
+4. **PMS5003 with a smoke source.** Light a match near the sensor (carefully). watch PM2.5 spike 100× then settle over 30 s.
+5. **Cross-correlate.** Run all three sensors for an hour. log to CSV. After cooking, see CO₂ rise (people present), TVOC rise (cooking emissions), PM2.5 rise (smoke). Three signals from three physics.
 6. **Mainline SCD30**. Switch from manual i2c-tools to the mainline driver via `compatible = "sensirion,scd30"`. Verify same numbers.
 
 ## 69.8  Pitfalls
 
 - **Calling eCO₂ "CO₂".** It isn't. CCS811's eCO₂ is calibrated to track human-occupancy *if and only if* there are no other VOC sources. Cooking, paint, cleaning products, smoking — all corrupt it. If your product advertises "CO₂ sensor," use SCD30, not CCS811.
-- **CCS811 24-hour burn-in.** Brand-new chip reports nonsense for the first 20 minutes; reasonable after 24 hours of continuous operation. Document this; don't show users readings during burn-in.
+- **CCS811 24-hour burn-in.** Brand-new chip reports nonsense for the first 20 minutes. reasonable after 24 hours of continuous operation. Document this. don't show users readings during burn-in.
 - **SCD30 ASC corrupting calibration.** Auto self-calibration assumes your room reaches outdoor CO₂ (400 ppm) sometime each week — fails for hermetically sealed environments. Disable ASC via the FRC command if the room never opens up.
 - **PMS5003 fan failure.** Particle count silently goes to zero or near-zero. Detect by: count is identically zero for > 10 frames in a row → likely fan failure. Most products bring out a "fan power" pin. Toggle it off and on to reset the fan.
-- **PMS5003 in dust storms.** The chip's saturation limit is ~500 µg/m³. In actual dust storms (Sahara, wildfire heart) values can hit 1500+; PMS5003 will report 500 forever.
-- **SCD30 clock-stretching beyond timeout.** I²C controllers vary in their max-stretch tolerance. i.MX6ULL is fine at 400 kHz; some bridges fail. Use scope to check SCL low durations if reads are flaky.
+- **PMS5003 in dust storms.** The chip's saturation limit is ~500 µg/m³. In actual dust storms (Sahara, wildfire heart) values can hit 1500+. PMS5003 will report 500 forever.
+- **SCD30 clock-stretching beyond timeout.** I²C controllers vary in their max-stretch tolerance. i.MX6ULL is fine at 400 kHz. some bridges fail. Use scope to check SCL low durations if reads are flaky.
 - **CCS811 /WAKE polarity.** Active low. Tying it permanently low works (no sleep), but increases power. For battery products, GPIO it.
-- **PM2.5 standard vs atmospheric**. Two columns in the frame; the "atmospheric" one is calibrated against standard EPA reference. Use that one. The "standard" column is uncalibrated.
+- **PM2.5 standard vs atmospheric**. Two columns in the frame. The "atmospheric" one is calibrated against standard EPA reference. Use that one. The "standard" column is uncalibrated.
 - **Mixing PM2.5 µg/m³ with AQI.** AQI is a country-specific transformation (US EPA different from China MEE). Don't confuse the two.
 
 ## 69.9  Going deeper
 
 - **`drivers/iio/chemical/scd30_core.c`** + **`scd30_i2c.c`** — the SCD30 mainline driver.
 - **`drivers/iio/chemical/ccs811.c`** — CCS811.
-- **`drivers/iio/chemical/sps30_i2c.c`** — Sensirion SPS30 PM driver (the higher-end alternative to PMS5003; full IIO support).
-- **SCD30 Interface Description (Sensirion)** — protocol reference; command list with CRCs.
-- **CCS811 datasheet (AMS)** — register map; warm-up notes.
+- **`drivers/iio/chemical/sps30_i2c.c`** — Sensirion SPS30 PM driver (the higher-end alternative to PMS5003. full IIO support).
+- **SCD30 Interface Description (Sensirion)** — protocol reference. command list with CRCs.
+- **CCS811 datasheet (AMS)** — register map. warm-up notes.
 - **PMS5003 / PMS7003 manual** (search "PMS5003 transport protocol") — frame format and command list.
 - **`Documentation/networking/serdev.rst`** — SerDev framework reference.
 - **EPA AQI definition** — for converting µg/m³ to the human-friendly index.

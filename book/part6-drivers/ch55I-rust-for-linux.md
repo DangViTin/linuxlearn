@@ -14,6 +14,7 @@ status: draft
 >
 > **Focus:** **the borrow checker, applied to kernel code**. The trade-off: more compile errors, fewer runtime errors. For a chapter on i.MX6ULL device drivers, the value is "you can do it for new drivers if you want, with caveats."
 
+
 ## 55I.1  Status as of late 2025 / early 2026
 
 - **In mainline**: since 6.1 (October 2022).
@@ -21,7 +22,7 @@ status: draft
 - **What's written in Rust**: a small handful of drivers (NVMe, GPU, etc.). Adoption is slow.
 - **What it takes**: nightly-ish Rust toolchain, bindgen, `CONFIG_RUST=y`.
 
-**On the i.MX6ULL specifically**, Rust is not usable yet — ARM32 is not supported. This chapter is about *the model*; you'd apply it on a different SoC (i.MX8M, Raspberry Pi 4, etc.) where Rust-for-Linux works today.
+**On the i.MX6ULL specifically**, Rust is not usable yet — ARM32 is not supported. This chapter is about *the model*. You'd apply it on a different SoC (i.MX8M, Raspberry Pi 4, etc.) where Rust-for-Linux works today.
 
 ## 55I.2  Toolchain
 
@@ -180,7 +181,7 @@ Kernel APIs are exposed to Rust as Rust modules under `kernel::`. Currently avai
 - Most subsystem-specific APIs (input, sound, drm, networking).
 - Lots of platform-specific helpers.
 
-The list grows monthly; check `rust/kernel/` in mainline.
+The list grows monthly. Check `rust/kernel/` in mainline.
 
 ## 55I.6  Trade-offs
 
@@ -197,11 +198,12 @@ The list grows monthly; check `rust/kernel/` in mainline.
 - More upfront design for the type system.
 
 **For an embedded project**: if you're writing a new driver for a chip that doesn't exist in mainline, and you control the build environment, Rust is worth considering on Rust-supported architectures. For maintaining 4.1 BSP code or anything on ARM32, not yet.
+**BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 
 ## 55I.7  Lab
 
 1. **Check rustavailable**. On a Rust-supported arch + recent kernel, verify `make rustavailable` says yes.
-2. **Build rust_hello**. Use the example above; load it; verify dmesg output.
+2. **Build rust_hello**. Use the example above. load it. verify dmesg output.
 3. **Add a module parameter**. Look up `kernel::module_param!` usage.
 4. **Convert a small chardev to Rust**. Use `kernel::miscdev::Registration`.
 5. **Provoke a compile error**. Pass a moved value somewhere. Note the borrow-check diagnostic.
@@ -211,10 +213,14 @@ The list grows monthly; check `rust/kernel/` in mainline.
 - **Toolchain version mismatch.** Each kernel pins specific rustc/bindgen versions. Use exactly what `Documentation/rust/quick-start.rst` says.
 - **`unsafe` overuse.** Wrapping every C call in `unsafe { }` defeats the safety goal. Write thin safe wrappers around C APIs.
 - **Trying to use std**. Kernel Rust is `#![no_std]`. Heap allocations go through specific kernel allocators.
-- **Long compile times.** First build of a Rust module is slow (~30 s); incremental is fast.
-- **Linking issues with mixed C/Rust modules.** Currently uncommon; if you need it, follow the kernel maintainers' examples.
+- **Long compile times.** First build of a Rust module is slow (~30 s). incremental is fast.
+- **Linking issues with mixed C/Rust modules.** Currently uncommon. If you need it, follow the kernel maintainers' examples.
 
 ## 55I.9  Going deeper
+
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
 
 - **`Documentation/rust/`** — the Rust-for-Linux documentation.
 - **`rust/kernel/`** — the in-kernel Rust support crate.
@@ -225,6 +231,17 @@ The list grows monthly; check `rust/kernel/` in mainline.
 ---
 
 > **End of Part VI — Driver Development.** From the smallest kernel module (Ch 36) to Rust-for-Linux (Ch 55I), you now have the full vocabulary: load/unload, chardev, hot-plug, platform binding, locking, blocking I/O, interrupts, GPIO, input, I²C, SPI, PWM/RTC, IIO, regmap, DMA, watchdog, PM, network, RT, audio, LCD, MTD/UBI, V4L2, USB, timers, async, CAN, block, WiFi, cellular, multi-touch, HDMI, Rust.
+> MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
+> **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **UBI** - Unsorted Block Images, a flash-management layer over raw NAND that handles wear leveling and bad blocks.
+> **MTD** - Memory Technology Device, Linux's raw flash subsystem for eraseblock-based storage.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 >
 > The next Part is the **Device Cookbook (Part VII)** — Ch 64 onwards — where these subsystem chapters get applied to real chips: 2–3 representative chips per category, with schematics, DT, drivers, labs, and pitfalls per chip.
 

@@ -14,6 +14,7 @@ status: draft
 >
 > **Focus:** the **trade-off triangle**: simplicity, capability, and footprint. BusyBox wins on simplicity and footprint. Systemd wins on capability. Sysvinit is the historical middle. For most embedded products in 2025, BusyBox init is the right answer. Knowing *why* is the goal of this chapter.
 
+
 ## 33.1  What PID 1 actually does
 
 The minimum PID-1 job description:
@@ -33,15 +34,15 @@ We've been using this since Chapter 29. It is **~1500 lines of C**, statically l
 Features it has:
 
 - `inittab`-based: `sysinit`, `respawn`, `askfirst`, `once`, `wait`, `shutdown`, etc. (the 8 actions from Ch 31)
-- Reads `/etc/inittab` once at boot; re-reads on SIGHUP
-- Reaps zombies; signals shutdown properly
+- Reads `/etc/inittab` once at boot. re-reads on SIGHUP
+- Reaps zombies. signals shutdown properly
 
 Features it does *not* have:
 
 - No service dependency tracking. If service A needs service B running, you have to encode that in shell scripts yourself.
 - No automatic restart count limit. If a service crashes 1000 times in 1 second, busybox-init dutifully restarts it 1000 times.
-- No socket activation. (Systemd's headline feature; nice to have for embedded? Rarely.)
-- No structured logging. `printf` to the console; that's it.
+- No socket activation. (Systemd's headline feature. nice to have for embedded? Rarely.)
+- No structured logging. `printf` to the console. that's it.
 - No cgroup-based resource isolation per service.
 
 **When to choose BusyBox init:**
@@ -59,7 +60,7 @@ The classical Unix init from the 80s/90s. Still around, still on some Debian sys
 
 The model:
 
-- `/etc/inittab` (different syntax from BusyBox; runs `/etc/rc.d/rc <N>` for each runlevel)
+- `/etc/inittab` (different syntax from BusyBox. runs `/etc/rc.d/rc <N>` for each runlevel)
 - `/etc/init.d/` — one shell script per service. Each script accepts `start`, `stop`, `restart`, `status` as arguments.
 - `/etc/rc<N>.d/` — symlinks to `/etc/init.d/` scripts, named `S<NN><name>` (start) or `K<NN><name>` (kill). Init runs them in numeric order when entering runlevel N.
 
@@ -110,7 +111,7 @@ The `LSB info` block in the comment header gives dependency hints — sysvinit c
 
 **When *not* to choose sysvinit:**
 
-- You're starting fresh in 2025. BusyBox init does the same job with one tenth the bytes; systemd does *more* if you need it. Sysvinit has little reason to exist in a new design.
+- You're starting fresh in 2025. BusyBox init does the same job with one tenth the bytes. systemd does *more* if you need it. Sysvinit has little reason to exist in a new design.
 
 ## 33.4  systemd
 
@@ -141,16 +142,18 @@ What you get:
 - **A few hundred more features.**
 
 The cost is footprint. Systemd itself plus its required satellites (`udev`, `systemd-journald`, `systemd-logind`, …) is **~6 MB on disk and ~30 MB RAM at idle** on a minimal install. On i.MX6ULL's 512 MB DRAM that's tolerable but not negligible.
+**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 
 **When to choose systemd:**
 
-- Your rootfs is **Ubuntu-base** or **Debian** (Chapter 35A). They already use systemd; fighting it is more work than embracing it.
+- Your rootfs is **Ubuntu-base** or **Debian** (Chapter 35A). They already use systemd. fighting it is more work than embracing it.
 - You need socket activation, advanced sandboxing, or per-service cgroup limits.
 - Your team is Linux-distro-experienced and `systemctl status` is muscle memory.
 
 **When *not* to choose systemd:**
 
 - You're on a Buildroot or yocto-core-image-minimal-style image. They default to BusyBox init for good reason.
+**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 - Your boot-time budget is < 2 seconds. systemd needs 3-5 seconds on i.MX6ULL just for itself.
 - RAM is tight (< 256 MB).
 
@@ -212,10 +215,10 @@ For the rest of this book — and for most readers' real products — **BusyBox 
 
 ## 33.9  Pitfalls
 
-- **Zombies accumulating.** Some daemons double-fork and detach. The grandchild then gets reparented to PID 1. If PID 1's `wait()` loop is correct, the kernel hands it the SIGCHLD and the child is reaped. BusyBox init does this correctly. Custom PID-1 binaries often forget the `wait()` loop; the symptom is `<defunct>` processes piling up in `ps`.
-- **Respawn storm.** A `respawn` line for a service that immediately exits causes infinite restart loop, burning CPU. BusyBox init doesn't rate-limit; add a `sleep 5` to your service or use systemd's `RestartSec=`.
-- **`/etc/inittab` syntax differences.** sysvinit uses runlevels in the second field; BusyBox ignores that field entirely. Don't copy/paste between init implementations.
-- **`init=` cmdline overrides everything.** Even if `/sbin/init` exists, if you boot with `init=/bin/sh`, the kernel runs the shell directly. Useful for recovery; surprising if you forgot you set it.
+- **Zombies accumulating.** Some daemons double-fork and detach. The grandchild then gets reparented to PID 1. If PID 1's `wait()` loop is correct, the kernel hands it the SIGCHLD and the child is reaped. BusyBox init does this correctly. Custom PID-1 binaries often forget the `wait()` loop. The symptom is `<defunct>` processes piling up in `ps`.
+- **Respawn storm.** A `respawn` line for a service that immediately exits causes infinite restart loop, burning CPU. BusyBox init doesn't rate-limit. add a `sleep 5` to your service or use systemd's `RestartSec=`.
+- **`/etc/inittab` syntax differences.** sysvinit uses runlevels in the second field. BusyBox ignores that field entirely. Don't copy/paste between init implementations.
+- **`init=` cmdline overrides everything.** Even if `/sbin/init` exists, if you boot with `init=/bin/sh`, the kernel runs the shell directly. Useful for recovery. surprising if you forgot you set it.
 - **systemd in a 256 MB system.** It will boot but everything will be sluggish. Choose BusyBox or sysvinit instead.
 - **systemd unit-file ordering bugs.** Putting both `After=` and `Wants=` on a unit can produce unexpected orderings if the targets aren't carefully chosen. When in doubt, read `systemd.unit(5)`.
 

@@ -9,10 +9,16 @@ status: draft
 # Chapter 45 — Input subsystem
 
 > **What:** the **input subsystem** — the kernel framework that turns "a GPIO went low" or "an I²C read returned a touch coordinate" into a standardised event stream consumed by `evdev`, X11, Wayland, framebuffer toolkits, and command-line tools. We'll build a `gpio-keys` derivative — the canonical "GPIO as keyboard key" driver — and walk every byte from the IRQ handler to `evtest` reading `/dev/input/eventN`.
+> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Why:** every input device on a Linux box — keyboard, mouse, touchscreen, joystick, IR remote — goes through the input subsystem. Once you understand `input_register_device` and `input_event`, *every* input driver in the kernel looks familiar. The framework handles event multiplexing, queueing, sysfs/`evdev` integration, autorepeat, and userspace device-node creation — your driver just calls `input_report_key()` and `input_sync()`.
+> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
 > **Focus:** **type, code, value** — the three-element tuple that describes every input event. Once that triple makes sense — `EV_KEY` + `KEY_ENTER` + `1` means "Enter was pressed" — the rest of the input subsystem (abs axes, relative motion, multi-touch slots) is just different combinations of type/code/value.
+
 
 ## 45.1  The picture
 
@@ -34,9 +40,13 @@ When you press a key on a USB keyboard:
    X11 / Wayland / your application: "Enter was pressed"
 ```
 
-The driver's only job is to call `input_report_*()` and `input_sync()`. The core handles queueing, multiplexing, and user-space delivery. **Your driver feeds events into the type/code/value protocol**; the input core delivers them to user-space. You never talk to user-space directly.
+The driver's only job is to call `input_report_*()` and `input_sync()`. The core handles queueing, multiplexing, and user-space delivery. **Your driver feeds events into the type/code/value protocol**. The input core delivers them to user-space. You never talk to user-space directly.
 
 ## 45.2  Event types and codes
+
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
 
 `#include <linux/input.h>` — defines hundreds of `EV_*`, `KEY_*`, `BTN_*`, `ABS_*`, `REL_*`, `SW_*`, `LED_*`, `SND_*`, `MSC_*` constants.
 
@@ -226,9 +236,9 @@ Done. Button is a real keyboard key.
 
 ## 45.5  Auto-repeat, debounce, and key mapping
 
-The `input` core provides **autorepeat** for free: register `EV_REP` capability and the core will generate repeat events (value=2) while a key is held. `gpio-keys` does this automatically; our minimal driver doesn't bother.
+The `input` core provides **autorepeat** for free: register `EV_REP` capability and the core will generate repeat events (value=2) while a key is held. `gpio-keys` does this automatically. our minimal driver doesn't bother.
 
-**Debounce** is software (or hardware). `gpio-keys` uses a timer (`debounce-interval` ms) — on the falling edge, schedule a delayed work; only report the event if the GPIO is still low after the delay. Implementing this in our driver is an exercise. The pattern: cancel the previous delayed work, schedule a new one for the debounce interval, only `input_report_key` from the work handler.
+**Debounce** is software (or hardware). `gpio-keys` uses a timer (`debounce-interval` ms) — on the falling edge, schedule a delayed work. only report the event if the GPIO is still low after the delay. Implementing this in our driver is an exercise. The pattern: cancel the previous delayed work, schedule a new one for the debounce interval, only `input_report_key` from the work handler.
 
 **Key mapping.** The `KEY_*` codes are *logical* — `KEY_ENTER` is the same value regardless of whether the user's keymap is US QWERTY or Dvorak. The user-space keymap translates `KEY_*` to characters. For embedded devices with only a few buttons, you pick meaningful `KEY_*` codes:
 
@@ -237,7 +247,7 @@ The `input` core provides **autorepeat** for free: register `EV_REP` capability 
 - `KEY_HOME`, `KEY_BACK`, `KEY_MENU` for navigation.
 - `KEY_WAKEUP` for a wakeup-from-suspend button.
 
-The full list is in `include/uapi/linux/input-event-codes.h`. Pick a code that matches the *role* of the button; user-space will know what to do with it.
+The full list is in `include/uapi/linux/input-event-codes.h`. Pick a code that matches the *role* of the button. user-space will know what to do with it.
 
 ## 45.6  Absolute axes — touchscreens and joysticks
 
@@ -285,9 +295,9 @@ struct input_event {
 };
 ```
 
-Read one record per event. The most common tool is `evtest` (interactive) for debugging; for production, applications either use `libevdev` (a thin wrapper) or higher-level libraries:
+Read one record per event. The most common tool is `evtest` (interactive) for debugging. For production, applications either use `libevdev` (a thin wrapper) or higher-level libraries:
 
-- **`libinput`** — used by Wayland and modern X11; handles gesture recognition, palm rejection, tap-to-click, etc.
+- **`libinput`** — used by Wayland and modern X11. handles gesture recognition, palm rejection, tap-to-click, etc.
 - **`libevdev`** — minimal wrapper for reading raw events.
 - **`/dev/input/eventN` directly** — fine for embedded with one app.
 
@@ -302,21 +312,21 @@ $ sudo cat /dev/input/event2 | hexdump -C
 
 1. **Build and load the button-input driver.** Verify `evtest` shows `KEY_ENTER` events.
 2. **Add a second button** with `KEY_VOLUMEUP`. Update DT to use two `button-gpios`, modify driver to allocate one `input_dev` with both keys (or two devices — the kernel allows both).
-3. **Add debounce.** Schedule a `delayed_work` from the IRQ handler with a 30 ms delay; only report the event from the work-handler.
+3. **Add debounce.** Schedule a `delayed_work` from the IRQ handler with a 30 ms delay. only report the event from the work-handler.
 4. **Compare to `gpio-keys`.** Drop your driver, configure DT with `compatible = "gpio-keys"` and `linux,code = <KEY_ENTER>;`. Confirm identical behavior. Look at `drivers/input/keyboard/gpio_keys.c` — note how much more it handles (autorepeat, wakeup, runtime PM).
 5. **Touchscreen simulator.** Adapt your driver to emit `ABS_X` / `ABS_Y` / `BTN_TOUCH` events with random values once per second. Verify `evtest` shows touch events. This is the foundation for a real touchscreen driver (Ch 55G).
 6. **Power-button integration.** Reconfigure your button to emit `KEY_POWER`. With systemd, a long press should trigger a graceful shutdown.
 
 ## 45.10  Pitfalls
 
-- **Forgetting `input_sync`.** Events are buffered until `SYN_REPORT`; without it, user-space never sees them. After any group of `input_report_*` calls, call `input_sync`.
+- **Forgetting `input_sync`.** Events are buffered until `SYN_REPORT`. Without it, user-space never sees them. After any group of `input_report_*` calls, call `input_sync`.
 - **Reporting an unsupported event.** If you `input_report_key(input, KEY_ENTER, 1)` but didn't `input_set_capability(..., EV_KEY, KEY_ENTER)`, the event is silently dropped. Always declare capabilities first.
 - **Not using `devm_input_allocate_device`.** Forgetting `input_free_device` in error paths leaks the device. `devm_` handles it.
 - **Calling `input_register_device` before setting capabilities.** Capabilities must be set *before* register. Order: alloc → set_capability → register.
 - **Mixing `input_allocate_device` with separate `input_register_device`.** Both can fail, at different points. Use standard `goto` cleanup, or just use `devm_input_allocate_device` to avoid the problem.
-- **Confusing absolute and relative axes.** Mice use `EV_REL` (delta motion); touchscreens use `EV_ABS` (absolute position). Mixing them gives weird user-space behavior.
+- **Confusing absolute and relative axes.** Mice use `EV_REL` (delta motion). touchscreens use `EV_ABS` (absolute position). Mixing them gives weird user-space behavior.
 - **Multi-touch with single-touch protocol.** Don't try to emit `ABS_X` for multiple fingers — that's not how it works. Use the MT-B slot protocol (Ch 55G).
-- **Repeating events that haven't actually changed.** The core does *not* dedupe; every `input_report_key(..., 1)` followed by `input_sync` is one event. Polling a held button without state-tracking spams the queue.
+- **Repeating events that haven't actually changed.** The core does *not* dedupe. every `input_report_key(..., 1)` followed by `input_sync` is one event. Polling a held button without state-tracking spams the queue.
 - **IRQ flag `IRQF_TRIGGER_FALLING` without `IRQF_TRIGGER_RISING`** — you only get press events, not release. For a press/release-capable button, request *both* edges (`IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING`).
 
 ## 45.11  Going deeper

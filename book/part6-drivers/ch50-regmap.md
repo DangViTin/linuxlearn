@@ -8,11 +8,16 @@ status: draft
 
 # Chapter 50 — regmap
 
-> **What:** **regmap** — the register-access layer that sits between your driver and the bus (I²C, SPI, MMIO, or a custom one). You describe the chip's register layout once; regmap gives you `regmap_read(rm, reg, &val)` and `regmap_write(rm, reg, val)` that just work, with optional caching, locking, debugging, and bulk transfers all handled for you.
+> **What:** **regmap** — the register-access layer that sits between your driver and the bus (I²C, SPI, MMIO, or a custom one). You describe the chip's register layout once. regmap gives you `regmap_read(rm, reg, &val)` and `regmap_write(rm, reg, val)` that just work, with optional caching, locking, debugging, and bulk transfers all handled for you.
+> **MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
+> **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 >
 > **Why:** before regmap (~2011), every driver duplicated the same boilerplate: an I²C wrapper, an SPI wrapper, register-cache invalidation, byte-swap dances, mutex protection. The same 40 lines were copy-pasted across hundreds of drivers, with subtle bugs each time. Regmap factored it out. A modern driver — especially an audio codec or PMIC with hundreds of registers — uses regmap exclusively and is half as long as it would have been pre-regmap.
+> MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 >
 > **Focus:** **declare-then-use**. You provide a `regmap_config` describing your chip's registers (bit widths, ranges, which are volatile vs cached, which are read-only) and a one-call regmap_init for your bus. From there every register access goes through the same two functions. Get the config right and the rest is bookkeeping.
+
 
 ## 50.1  Why regmap exists
 
@@ -84,7 +89,7 @@ static int my_probe(struct i2c_client *client)
 }
 ```
 
-That's the whole pattern. `devm_regmap_init_i2c(client, &config)` creates a regmap bound to this I²C client; `regmap_read` / `regmap_write` do all the bus dancing.
+That's the whole pattern. `devm_regmap_init_i2c(client, &config)` creates a regmap bound to this I²C client. `regmap_read` / `regmap_write` do all the bus dancing.
 
 For SPI, the only change is the init call:
 
@@ -130,7 +135,7 @@ When you call `regmap_read(rm, 0x40, &val)`, regmap actually sends `0xC0` on the
 
 ### Volatile / writable / readable ranges
 
-Not every register is the same. ID registers are read-only; status registers change without you writing; some addresses are reserved. Regmap can cache writeable, non-volatile registers — saving bus traffic.
+Not every register is the same. ID registers are read-only. status registers change without you writing. some addresses are reserved. Regmap can cache writeable, non-volatile registers — saving bus traffic.
 
 ```c
 static bool my_readable(struct device *dev, unsigned int reg)
@@ -165,9 +170,9 @@ This last point — `regcache_sync` — is a huge win for power management. Afte
 
 Three cache types:
 
-- `REGCACHE_NONE` — no caching; every access hits the bus. Default.
-- `REGCACHE_RBTREE` — red-black tree; sparse register space, good for chips with thousands of registers used sparsely.
-- `REGCACHE_FLAT` — flat array; dense register space, fastest, good for chips with <128 registers all used.
+- `REGCACHE_NONE` — no caching. every access hits the bus. Default.
+- `REGCACHE_RBTREE` — red-black tree. sparse register space, good for chips with thousands of registers used sparsely.
+- `REGCACHE_FLAT` — flat array. dense register space, fastest, good for chips with <128 registers all used.
 
 ### Default values
 
@@ -286,6 +291,7 @@ static int mysensor_probe(struct i2c_client *client, ...)
 ```
 
 Around 200 lines total. The same chip without regmap or IIO would be 600+. The frameworks save you that code.
+**IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 
 ## 50.6  Debug: /sys/kernel/debug/regmap
 
@@ -316,11 +322,15 @@ For interactive driver debugging during bring-up, this is the tool you reach for
 
 ## 50.7  Lab
 
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
 1. **Convert a previous driver to regmap.** Take your AT24 driver from Ch 46 — replace the `i2c_transfer` calls with regmap. Compare line count.
-2. **Add a register cache.** Mark which registers are volatile; build a regmap with `REGCACHE_RBTREE`. Observe (via `cache_only`) what gets cached.
+2. **Add a register cache.** Mark which registers are volatile. build a regmap with `REGCACHE_RBTREE`. Observe (via `cache_only`) what gets cached.
 3. **Use `regmap_update_bits`.** Find a chip with bitfield-packed registers (e.g., MCP23017 — IODIRA is direction per pin in 8 bits). Set one bit without reading the rest manually.
 4. **Inspect with debugfs.** `cat /sys/kernel/debug/regmap/<name>/registers`. Flip cache modes and observe behavior.
-5. **regcache_sync after suspend.** In an `.suspend` callback, `regcache_mark_dirty(regmap)`; in `.resume`, `regcache_sync(regmap)`. Confirm the chip's registers are restored after a `echo mem > /sys/power/state` cycle.
+5. **regcache_sync after suspend.** In an `.suspend` callback, `regcache_mark_dirty(regmap)`. in `.resume`, `regcache_sync(regmap)`. Confirm the chip's registers are restored after a `echo mem > /sys/power/state` cycle.
 
 ## 50.8  Pitfalls
 
@@ -345,5 +355,11 @@ For interactive driver debugging during bring-up, this is the tool you reach for
 ---
 
 > **End of Phase 2 (Ch 44–50).** You now have the seven foundational subsystems: GPIO/pinctrl, input, I²C, SPI, PWM/RTC, IIO, regmap. With these, almost every peripheral driver in the kernel becomes legible. The remaining Part VI chapters (51–55I) layer on DMA, watchdog, power management, networking, sound, display, USB, kernel timers, and PREEMPT_RT — but the *shape* of every one of those drivers is now familiar.
+> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
+> **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 
 > Next chapter: **Chapter 51 — DMA.** When CPU-driven memcpy is too slow, the DMA controller takes over. The kernel's `dmaengine` framework gives drivers a portable API to set up and submit transfers across any SoC's DMA hardware.

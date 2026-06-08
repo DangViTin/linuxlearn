@@ -8,11 +8,17 @@ status: draft
 
 # Chapter 52A — PREEMPT_RT
 
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
+
 > **What:** **PREEMPT_RT** — fully merged into the mainline kernel since **v6.12** (December 2024) — is the kernel configuration that turns Linux into a hard-real-time OS, where worst-case interrupt-to-thread latency is measured in tens of microseconds on a Cortex-A7 instead of milliseconds. No out-of-tree patch is needed on v6.12 or later. We cover the four core changes (preemptible spinlocks, threaded IRQs by default, priority inheritance, high-resolution timers), how to enable it on the i.MX6ULL, and how to measure latency with `cyclictest`.
+> **PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 >
 > **Why:** standard Linux has a few-millisecond worst-case scheduling latency under load. That's fine for general computing but disqualifies it from motor control, audio processing, industrial PLCs, and anything that needs deterministic response. PREEMPT_RT bridges that gap. Many industrial products run PREEMPT_RT Linux today — CNCs, robotic arms, real-time camera inference.
 >
 > **Focus:** **the deterministic-latency contract**. PREEMPT_RT promises that a high-priority thread will run within a bounded time after its waking event, regardless of what lower-priority threads or kernel code are doing. What "bounded" actually means, and what breaks it, is the main thing to learn.
+
 
 ## 52A.1  What "real-time" means here
 
@@ -33,13 +39,15 @@ Four big changes:
 
 In standard Linux, holding a `spin_lock` *disables preemption*. A higher-priority task can't run until the lock is released. PREEMPT_RT converts most spinlocks to "rt_mutex" — sleeping locks that *can be preempted*. A high-priority task can interrupt a lower-priority task even mid-lock.
 
-The exception: `raw_spinlock` — the few critical locks that genuinely need to disable preemption (the scheduler's own lock, IRQ disable code). These stay non-preemptible. PREEMPT_RT's correctness depends on the kernel using `raw_spinlock_t` *only* where strictly required, and `spinlock_t` (now preemptible) everywhere else. The conversion has been mostly upstreamed; what remains is a small bounded set.
+The exception: `raw_spinlock` — the few critical locks that genuinely need to disable preemption (the scheduler's own lock, IRQ disable code). These stay non-preemptible. PREEMPT_RT's correctness depends on the kernel using `raw_spinlock_t` *only* where strictly required, and `spinlock_t` (now preemptible) everywhere else. The conversion has been mostly upstreamed. what remains is a small bounded set.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ### 2. Threaded interrupts by default
 
-Standard Linux runs IRQ handlers in IRQ context: atomic, fast, but blocking other IRQs at the same priority. PREEMPT_RT runs every IRQ handler as a kernel thread. The scheduler treats them like any other thread. A real-time thread can preempt an IRQ handler thread; SCHED_FIFO priorities determine order.
+Standard Linux runs IRQ handlers in IRQ context: atomic, fast, but blocking other IRQs at the same priority. PREEMPT_RT runs every IRQ handler as a kernel thread. The scheduler treats them like any other thread. A real-time thread can preempt an IRQ handler thread. SCHED_FIFO priorities determine order.
 
-You already use `request_threaded_irq` (Ch 43); PREEMPT_RT extends this to *every* IRQ, even ones registered with `request_irq`. The primary handler becomes vestigial.
+You already use `request_threaded_irq` (Ch 43). PREEMPT_RT extends this to *every* IRQ, even ones registered with `request_irq`. The primary handler becomes vestigial.
 
 ### 3. Priority inheritance for all mutexes
 
@@ -75,7 +83,7 @@ $ make menuconfig    # enable Full Preemption
 $ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- zImage modules dtbs -j8
 ```
 
-For new work in 2025+, target v6.12 LTS or newer and skip the patch step entirely. Boot the new kernel; `uname -a` will show `PREEMPT_RT` in the version string.
+For new work in 2025+, target v6.12 LTS or newer and skip the patch step entirely. Boot the new kernel. `uname -a` will show `PREEMPT_RT` in the version string.
 
 ## 52A.4  Measuring latency with cyclictest
 
@@ -157,9 +165,9 @@ int main(void) {
 ## 52A.6  Pitfalls
 
 - **Mixing SCHED_FIFO at priority 99 with the kernel's own RT threads.** Your code can starve kernel watchdogs / scheduler maintenance. Cap user RT priorities below 90.
-- **Driver still has a raw_spinlock with too much code inside it.** A long raw_spinlock critical section blocks RT. Mostly upstream code is clean; out-of-tree drivers are the usual culprits.
+- **Driver still has a raw_spinlock with too much code inside it.** A long raw_spinlock critical section blocks RT. Mostly upstream code is clean. out-of-tree drivers are the usual culprits.
 - **`IRQF_NO_THREAD` flag on `request_irq`.** Forces top-half-only handling. Don't use unless absolutely necessary.
-- **`spin_lock` in code that calls `kmalloc(GFP_KERNEL)`.** Works under standard Linux (kmalloc tries not to sleep); under PREEMPT_RT, the kmalloc *can* sleep, causing weirdness. Always use `GFP_ATOMIC` in critical sections.
+- **`spin_lock` in code that calls `kmalloc(GFP_KERNEL)`.** Works under standard Linux (kmalloc tries not to sleep). under PREEMPT_RT, the kmalloc *can* sleep, causing weirdness. Always use `GFP_ATOMIC` in critical sections.
 - **VFS / page fault latency on first access.** Read a file, the kernel may fault pages from storage. mlockall + warmup avoids this.
 - **Hardware quirks.** Some i.MX6ULL peripherals (SDMA, USB) introduce latency. Profile with `ftrace` to find the culprit.
 
@@ -167,10 +175,12 @@ int main(void) {
 
 1. **Build PREEMPT_RT kernel** for i.MX6ULL. Boot, verify `uname -a` shows PREEMPT_RT.
 2. **Run cyclictest at idle.** Get a baseline Max latency.
-3. **Run cyclictest under load.** `stress-ng` + cyclictest in parallel; record worst case.
+3. **Run cyclictest under load.** `stress-ng` + cyclictest in parallel. record worst case.
 4. **Tune.** Try `isolcpus` (no-op single-core), `processor.max_cstate=0`, mlockall in cyclictest source. Measure improvement.
-5. **Compare with standard kernel.** Build same kernel with `CONFIG_PREEMPT_NONE`; run cyclictest under same load. Note the 30–100× worse worst case.
-6. **Real workload.** Run a 1 kHz GPIO toggle from a SCHED_FIFO thread; scope the period jitter. Tune until jitter is < 50 µs.
+5. **Compare with standard kernel.** Build same kernel with `CONFIG_PREEMPT_NONE`. run cyclictest under same load. Note the 30–100× worse worst case.
+6. **Real workload.** Run a 1 kHz GPIO toggle from a SCHED_FIFO thread. scope the period jitter. Tune until jitter is < 50 µs.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 52A.8  Going deeper
 
@@ -181,3 +191,5 @@ int main(void) {
 - **Open Source Automation Development Lab (OSADL) latency archives** — long-running latency plots across many hardware platforms.
 
 > Next chapter: **Chapter 53 — Sound (ALSA + ASoC).** Ethernet behind us, audio next: one of the most layered subsystems in the kernel, with three drivers (machine, codec, CPU-DAI) cooperating to make a single `aplay` work.
+> **ASoC** - ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
+> **ALSA** - Linux's kernel and user-space audio stack.

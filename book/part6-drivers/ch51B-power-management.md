@@ -7,12 +7,15 @@ status: draft
 ---
 
 # Chapter 51B — Power management
+**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 
 > **What:** Linux's three power-management layers — **runtime PM** (drivers autonomously gate clocks and rails when idle), **DVFS** (CPU frequency-and-voltage scaling under load) and **system sleep** (suspend-to-RAM / standby / hibernation). By the end your driver participates in runtime PM, the system suspends to RAM cleanly, and the CPU clocks down when idle.
 >
-> **Why:** On battery-powered products, PM tuning is a large fraction of the work. Saving 50 mA in idle means 5× battery life on a 1 Ah cell. For mains-powered embedded, it's still meaningful: less heat, smaller heatsinks, lower fan noise. Linux's PM framework is rich and *opt-in* — drivers that don't implement it don't suspend; the whole device fails to enter suspend until you fix them.
+> **Why:** On battery-powered products, PM tuning is a large fraction of the work. Saving 50 mA in idle means 5× battery life on a 1 Ah cell. For mains-powered embedded, it's still meaningful: less heat, smaller heatsinks, lower fan noise. Linux's PM framework is rich and *opt-in* — drivers that don't implement it don't suspend. The whole device fails to enter suspend until you fix them.
 >
-> **Focus:** **the three layers are mostly independent**. Runtime PM is "this peripheral is idle; gate its clock now." DVFS is "the CPU isn't busy; scale to 396 MHz." System sleep is "the user pressed the suspend button; stop everything safely, resume on a wake source." Implement them one at a time; don't tangle them up.
+> **Focus:** **the three layers are mostly independent**. Runtime PM is "this peripheral is idle. gate its clock now." DVFS is "the CPU isn't busy. scale to 396 MHz." System sleep is "the user pressed the suspend button. stop everything safely, resume on a wake source." Implement them one at a time. don't tangle them up.
+
 
 ## 51B.1  Runtime PM
 
@@ -70,6 +73,7 @@ Sequence:
 The result: between bursts of use, the device's clock is gated and rail is dropped, automatically. No user-space involvement.
 
 Inspect from sysfs:
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 ```
 [root@pa-mini:~]# cat /sys/devices/platform/.../power/runtime_status
@@ -82,7 +86,7 @@ suspended
 
 ## 51B.2  DVFS — CPU frequency scaling
 
-The i.MX6ULL CPU can run at 396, 528, or 696 MHz. Higher frequency = more performance + more power; lower = the reverse. **DVFS** (Dynamic Voltage and Frequency Scaling) picks the frequency dynamically based on load.
+The i.MX6ULL CPU can run at 396, 528, or 696 MHz. Higher frequency = more performance + more power. lower = the reverse. **DVFS** (Dynamic Voltage and Frequency Scaling) picks the frequency dynamically based on load.
 
 CPU operating points in DT:
 
@@ -110,7 +114,7 @@ cpu0_opp_table: opp-table {
 };
 ```
 
-Each OPP is a frequency + the voltage required to run at that frequency. The DVFS framework reads this table, picks an OPP, and applies the change. When raising the clock, the regulator goes up first, then the clock; when lowering, the reverse. This ensures the CPU is always supplied with enough voltage for its current speed.
+Each OPP is a frequency + the voltage required to run at that frequency. The DVFS framework reads this table, picks an OPP, and applies the change. When raising the clock, the regulator goes up first, then the clock. when lowering, the reverse. This ensures the CPU is always supplied with enough voltage for its current speed.
 
 User-space pick the **governor** (the algorithm that decides when to scale):
 
@@ -129,8 +133,8 @@ schedutil
 Governors:
 - **performance** — always max frequency. Lowest latency.
 - **powersave** — always min frequency. Lowest power.
-- **schedutil** — modern default; uses scheduler hints (utilisation) to scale.
-- **ondemand** — older; reacts to CPU load.
+- **schedutil** — modern default. uses scheduler hints (utilisation) to scale.
+- **ondemand** — older. reacts to CPU load.
 - **conservative** — slower-reacting version of ondemand.
 
 For embedded products, `schedutil` is almost always right. Performance for benchmarks, powersave for "device is on standby waiting for an event."
@@ -142,6 +146,8 @@ Three system-level sleep states (described in `/sys/power/state`):
 - **freeze** — userspace frozen, devices left running. Lowest latency wake (microseconds), modest power savings.
 - **standby** — devices suspended, CPU clock gated. Medium savings.
 - **mem** — full suspend-to-RAM. RAM in self-refresh, CPU off, only PMIC and SoC suspend domain active. Lowest power, ~1–2 second wake latency.
+MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+**PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 
 Trigger:
 
@@ -152,8 +158,12 @@ Trigger:
 The kernel:
 1. Freezes all userspace processes (sends SIGSTOP-equivalent).
 2. For each device (in topological order — leaves first), calls `pm_ops.suspend`. Drivers save state, gate clocks, idle hardware.
-3. The CPU is parked; only the wakeup-capable peripherals remain powered.
+3. The CPU is parked. only the wakeup-capable peripherals remain powered.
 4. A wakeup event fires (RTC alarm, GPIO IRQ, etc.).
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 5. Resume in reverse order: devices first, then userspace thaws.
 
 For your driver to participate:
@@ -203,7 +213,7 @@ Set an RTC alarm wake:
 
 ## 51B.4  Measuring impact
 
-You changed something to save power; how do you measure?
+You changed something to save power. how do you measure?
 
 **External**: a USB current meter (e.g., USB Type-A inline meter) or a benchtop power analyzer at the SoC supply. Best for absolute numbers.
 
@@ -228,31 +238,37 @@ The order of operations for "make this product 3× longer-lasting":
 3. **Enable runtime PM in all peripheral drivers.** Each one off saves a few mA.
 4. **Configure DVFS to powersave when idle.** Or schedutil — let scheduler decide.
 5. **Use `mem` suspend during long idle periods.** A few seconds of wake-up latency for a battery-life multiplier.
-6. **Set wakeup-only inputs.** Don't poll sensors; let them IRQ on data-ready.
+6. **Set wakeup-only inputs.** Don't poll sensors. let them IRQ on data-ready.
 7. **Drop USB/Ethernet PHY power when unused.** `ip link set eth0 down` actually drops the PHY's clock.
+**PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
+**MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
 8. **Compile out unused subsystems.** A smaller kernel boots faster, holds less in cache.
 
 Each step saves a few mA. Together they take a 1 Ah cell from 4 hours to 4 days.
 
 ## 51B.6  Lab
 
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
 1. **Add runtime PM to a driver.** Take your fastadc / I²C / SPI driver. Implement `runtime_suspend`/`resume`. Verify `/sys/.../power/runtime_status` shows `suspended` between accesses.
 2. **DVFS sweep.** Run a CPU-heavy workload at each governor (`performance`, `powersave`, `schedutil`). Time the run and measure current. Build the trade-off curve.
-3. **System suspend.** `echo mem > /sys/power/state` from console; wake via `wakealarm` set for 30 s. Verify devices come back up correctly.
-4. **Catch a suspend failure.** Deliberately omit `regcache_sync` in resume; observe that the chip's config is wrong after wake. Add it back.
+3. **System suspend.** `echo mem > /sys/power/state` from console. wake via `wakealarm` set for 30 s. Verify devices come back up correctly.
+4. **Catch a suspend failure.** Deliberately omit `regcache_sync` in resume. observe that the chip's config is wrong after wake. Add it back.
 5. **`powertop` baseline.** Get powertop output at idle. Tune until wake-ups are < 5/s.
 6. **Measure absolute current.** With a USB meter or INA219, record current at: 696 MHz busy, 396 MHz idle, suspended. Compare.
 
 ## 51B.7  Pitfalls
 
-- **`pm_runtime_get_sync` from atomic context.** It may sleep waiting for resume. Use `pm_runtime_get` (async; check status) instead.
+- **`pm_runtime_get_sync` from atomic context.** It may sleep waiting for resume. Use `pm_runtime_get` (async. Check status) instead.
 - **Forgetting to enable runtime PM.** `pm_runtime_enable(dev)` must be called once at probe. Without it, all the get/put calls are no-ops.
-- **Driver that never calls `pm_runtime_get/put`.** The device is permanently "active" from PM's view; runtime suspend never runs.
+- **Driver that never calls `pm_runtime_get/put`.** The device is permanently "active" from PM's view. runtime suspend never runs.
 - **System suspend on a driver without suspend ops.** Kernel logs "noop_suspend" and proceeds, but your peripheral may be left in a bad state on resume. Always provide ops or use `pm_ptr` to inherit reasonable defaults.
-- **Clock left enabled across suspend.** PMIC may try to drop rails while clock is still toggling, which can violate the chip's spec sheet. Order: gate clock first, then drop rail, on the way down; reverse on resume.
+- **Clock left enabled across suspend.** PMIC may try to drop rails while clock is still toggling, which can violate the chip's spec sheet. Order: gate clock first, then drop rail, on the way down. reverse on resume.
 - **DVFS without proper regulator support.** If `cpu-supply` is wrong, the kernel may raise the clock before voltage settles. Execution becomes unreliable. Always specify `operating-points-v2` with matched microvolt entries.
 - **Wakeup source enabled but `IRQ_TYPE_LEVEL_HIGH` instead of `IRQ_TYPE_EDGE`.** Some SoCs only wake on edge IRQs from certain banks. Confirm against datasheet.
-- **`wakealarm` set in the past.** Kernel ignores; system suspends indefinitely. Always compute as `$(date +%s) + N`.
+- **`wakealarm` set in the past.** Kernel ignores. system suspends indefinitely. Always compute as `$(date +%s) + N`.
 
 ## 51B.8  Going deeper
 

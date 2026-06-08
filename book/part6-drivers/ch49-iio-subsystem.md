@@ -9,10 +9,15 @@ status: draft
 # Chapter 49 — IIO subsystem (ADCs, sensors)
 
 > **What:** **Industrial I/O** (IIO) — the kernel framework that everything sensor-related lives in. ADCs, DACs, temperature/humidity/pressure/light/proximity sensors, IMUs (accel + gyro + mag), color sensors, particulate-matter sensors, current sensors — all expose themselves through one consistent API: `/sys/bus/iio/devices/iio:deviceN/in_<type>_<index>_raw` for one-shot reads, `/dev/iio:deviceN` for streamed buffers.
+> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
 > **Why:** before IIO (~2011), every sensor driver invented its own sysfs layout. Reading an ADXL345 was completely different from reading an LIS3DH despite both being 3-axis accelerometers. IIO standardised the interface: every accelerometer reports `in_accel_x_raw` in the same units after `_scale` is applied. User-space tools (`iio-utils`, libiio, gnuplot wrappers) work generically. **Every chip in Part VII's sensor cookbook is an IIO driver.**
+> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
 > **Focus:** **channels, scale, and triggers**. A *channel* is one measurable thing (accel-x, temp, ADC-in-3). A *scale* converts raw value to engineering units. A *trigger* is what causes a coordinated sample to be taken (a timer, an IRQ, a sysfs poke). Get those three concepts right and the rest of IIO follows.
+> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+
 
 ## 49.1  Architecture
 
@@ -67,7 +72,7 @@ real_value_in_SI_units = (raw + offset) × scale
 For example, a temperature sensor might report `in_temp_raw = 25420`, `in_temp_scale = 0.001`, `in_temp_offset = -2048`. The cooked value is `(25420 + (-2048)) × 0.001 = 23.372` °C.
 
 User-space reads either:
-- The raw value and computes itself: `cat in_temp_raw → 25420; cat in_temp_scale → 0.001; ...`.
+- The raw value and computes itself: `cat in_temp_raw → 25420. cat in_temp_scale → 0.001. ...`.
 - A processed value if available: `cat in_temp_input → 23372` (in milli-units).
 
 ## 49.3  Defining channels in a driver
@@ -225,7 +230,7 @@ The orchestration:
 3. User-space writes `buffer/length` to set the kfifo depth.
 4. User-space binds a **trigger** via `trigger/current_trigger` — typically `hrtimer-N` (a kernel high-resolution timer firing at a set rate).
 5. User-space writes `buffer/enable = 1`.
-6. The trigger fires; the driver's trigger handler reads a coordinated set of samples and pushes them.
+6. The trigger fires. The driver's trigger handler reads a coordinated set of samples and pushes them.
 7. User-space `read(/dev/iio:deviceN, ...)` returns the bytes.
 
 ```
@@ -238,7 +243,7 @@ The orchestration:
 [root@pa-mini:~]# dd if=/dev/iio:device0 of=samples.bin bs=$((6*100)) count=10
 ```
 
-Six bytes per sample (3 axes × 2 bytes), 100 samples per read, 10 reads. The trigger drives the cadence; the driver pushes; user-space drains.
+Six bytes per sample (3 axes × 2 bytes), 100 samples per read, 10 reads. The trigger drives the cadence. The driver pushes. user-space drains.
 
 We come back to triggers and buffers in Ch 70/71 (IMUs), where they become essential.
 
@@ -273,17 +278,21 @@ static const struct iio_chan_spec mcp3008_channels[] = {
 2. **Add the scale and offset attributes.** Make `in_temp_scale = 0.1`, verify user-space sees `0.100000`.
 3. **Try a real chip.** Wire a BME280 (or any I²C sensor with mainline IIO driver). Enable the driver in kconfig. Verify `/sys/bus/iio/devices/iio:device0/` populates correctly.
 4. **Buffered capture.** Use an IMU (MPU6050 or LSM6DSO) with mainline IIO driver. Configure scan elements, hrtimer-trigger, capture 1024 samples to a file. Plot with gnuplot.
-5. **Inspect with iio-utils.** Install `libiio-utils`. `iio_info -a` shows every IIO device on the system; `iio_readdev` streams samples.
+5. **Inspect with iio-utils.** Install `libiio-utils`. `iio_info -a` shows every IIO device on the system. `iio_readdev` streams samples.
 6. **Compare cooked vs raw.** Some drivers provide `in_temp_input` (pre-cooked) alongside `in_temp_raw`. Diff the two on the same physical reading.
 
 ## 49.9  Pitfalls
 
-- **Wrong `realbits` / `storagebits` in `scan_type`.** Buffered reads return junk; user-space can't decode. For a 10-bit signed value stored in 16 bits, `sign='s', realbits=10, storagebits=16, shift=0`.
-- **Forgetting `INDIO_DIRECT_MODE`.** A driver with no `modes` set behaves as "buffer-only"; sysfs `_raw` reads return -EBUSY when no trigger is active. For sensors you want polled, always set `INDIO_DIRECT_MODE`.
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
+
+- **Wrong `realbits` / `storagebits` in `scan_type`.** Buffered reads return junk. user-space can't decode. For a 10-bit signed value stored in 16 bits, `sign='s', realbits=10, storagebits=16, shift=0`.
+- **Forgetting `INDIO_DIRECT_MODE`.** A driver with no `modes` set behaves as "buffer-only". sysfs `_raw` reads return -EBUSY when no trigger is active. For sensors you want polled, always set `INDIO_DIRECT_MODE`.
 - **`indexed=1` vs `indexed=0`.** Without `indexed=1`, the sysfs file is `in_voltage_raw` (singular). With it and `.channel = 3`, it's `in_voltage3_raw`. Use indexed for multi-channel ADCs.
 - **Returning the wrong `IIO_VAL_*` from `read_raw`.** User-space sees a non-numeric "0.000000" or garbled value. Cross-check the value type with what you store in `*val`/`*val2`.
 - **Trigger / channel ordering mismatch.** With buffered capture, the bytes in `/dev/iio:deviceN` are packed in the order of `scan_index`. Make sure your driver pushes in that order.
-- **Forgetting `iio_priv()`.** Recovering your private struct via `idev->dev.parent_data` or whatever doesn't work; use `iio_priv(idev)`. The alignment of priv data is also handled correctly only via the `_alloc(sizeof(priv))` form.
+- **Forgetting `iio_priv()`.** Recovering your private struct via `idev->dev.parent_data` or whatever doesn't work. Use `iio_priv(idev)`. The alignment of priv data is also handled correctly only via the `_alloc(sizeof(priv))` form.
 - **Two drivers competing for the same DT node.** Sometimes both `hwmon` and IIO drivers exist for the same chip. IIO is the modern choice. Pick one and disable the other in kconfig.
 
 ## 49.10  Going deeper
@@ -291,7 +300,11 @@ static const struct iio_chan_spec mcp3008_channels[] = {
 - **`Documentation/iio/`** — the IIO subsystem documentation.
 - **`drivers/iio/`** — hundreds of drivers, mostly straightforward. Best ones to read: `pressure/bmp280-i2c.c` + `bmp280-core.c` (BME280 family), `imu/mpu6050/`, `adc/mcp320x.c`.
 - **`Documentation/ABI/testing/sysfs-bus-iio*`** — official sysfs ABI for each channel/info combo.
-- **`libiio`** at <https://github.com/analogdevicesinc/libiio> — high-level user-space library; bindings for Python, C++, etc.
+**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
+- **`libiio`** at <https://github.com/analogdevicesinc/libiio> — high-level user-space library. bindings for Python, C++, etc.
 - **`Documentation/iio/iio_configfs.rst`** — how to add a software-only IIO device (useful for trigger configuration).
 
 > Next chapter: **Chapter 50 — regmap.** Almost every chip with registers is now talked to via the regmap abstraction. Once you know regmap, writing the I²C / SPI / MMIO half of a driver becomes mechanical — you declare a register layout and the framework handles the rest.
+> MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
+> **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.

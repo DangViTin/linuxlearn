@@ -8,11 +8,21 @@ status: draft
 
 # Chapter 32 — /proc, /sys, devtmpfs
 
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
 > **What:** the three virtual filesystems through which user space sees and pokes the kernel — `procfs` (process & system info), `sysfs` (the modern device model), and `devtmpfs` (device nodes). Each is RAM-backed and populated by the kernel.
+> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
 > **Why:** every later chapter pokes `/proc` or `/sys` somewhere — to read a sensor, to set a GPIO, to inspect a driver. Knowing which virtual filesystem holds what is what makes the difference between following a tutorial and debugging an unfamiliar problem.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
-> **Focus:** **the file-as-interface pattern.** In Unix everything is a file; the kernel takes that literally. `cat /proc/cpuinfo` reads CPU info; `echo 1 > /sys/class/leds/led0/brightness` turns on an LED; `cat /proc/interrupts` shows IRQ counts. Once you know this idiom, a lot of debugging needs no code.
+> **Focus:** **the file-as-interface pattern.** In Unix everything is a file. The kernel takes that literally. `cat /proc/cpuinfo` reads CPU info. `echo 1 > /sys/class/leds/led0/brightness` turns on an LED. `cat /proc/interrupts` shows IRQ counts. Once you know this idiom, a lot of debugging needs no code.
+> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+
 
 ## 32.1  Three virtual filesystems, three jobs
 
@@ -33,7 +43,7 @@ All three are **virtual** — RAM-backed, no physical storage. They are populate
 1   116  2    33   45   685  9          consoles    cpuinfo   ...
 ```
 
-Numbered directories are processes. `1` is `init`; `2` is `kthreadd`; later entries are everything else.
+Numbered directories are processes. `1` is `init`. `2` is `kthreadd`. later entries are everything else.
 
 Inside a process directory:
 
@@ -122,7 +132,7 @@ kernel.osrelease = 6.6.0
 [root@pa-mini:~]# sysctl -w net.ipv4.ip_forward=1
 ```
 
-The values are the same; `sysctl` adds value-validation and persistence support via `/etc/sysctl.conf`.
+The values are the same. `sysctl` adds value-validation and persistence support via `/etc/sysctl.conf`.
 
 ## 32.3  sysfs — the modern device model
 
@@ -149,7 +159,7 @@ Each is a different *view* of the same underlying graph:
 
 ### Walking a device
 
-The on-chip ADC (Chapter 49 will be all about this; here is a teaser):
+The on-chip ADC (Chapter 49 will be all about this. here is a teaser):
 
 ```
 [root@pa-mini:~]# ls /sys/bus/iio/devices/
@@ -169,7 +179,7 @@ in_voltage0_raw   in_voltage_scale   power       subsystem      uevent
 1453
 ```
 
-That's the ADC reading channel 0 as a raw 12-bit value, with a known scale factor to convert to volts: `1453 × 0.806884765 / 1000 = 1.172 V`. No code; one `cat`.
+That's the ADC reading channel 0 as a raw 12-bit value, with a known scale factor to convert to volts: `1453 × 0.806884765 / 1000 = 1.172 V`. No code. one `cat`.
 
 ### Controlling a device
 
@@ -221,7 +231,7 @@ Freescale i.MX6 ULL 14x14 EVK Board
 fsl,imx6ul-uartfsl,imx6q-uartfsl,imx21-uart
 ```
 
-Each DT property is a file; each node is a directory. Mirrors the DT structure exactly.
+Each DT property is a file. each node is a directory. Mirrors the DT structure exactly.
 
 ## 32.4  devtmpfs — where device nodes live
 
@@ -275,6 +285,7 @@ It creates device *nodes*, not the metadata around them. For things like:
 - Running scripts when a device appears (e.g., auto-mount a USB stick)
 
 …you need either **`udev`** (full-featured but heavy) or **`mdev`** (BusyBox's tiny alternative).
+**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 
 ### `mdev` — BusyBox's user-space helper
 
@@ -306,14 +317,14 @@ i2c-[0-9]+             root:i2c    0660
 mmcblk[0-9]p[0-9]      root:root   0660  @/etc/mdev/auto-mount.sh
 ```
 
-The `@` prefix runs the command *after* the node is created (`$` runs *before*; `*` both).
+The `@` prefix runs the command *after* the node is created (`$` runs *before*. `*` both).
 
 ## 32.5  Lab
 
 1. **Tour `/proc`.** Run `cat /proc/cpuinfo`, `/proc/meminfo`, `/proc/version`, `/proc/cmdline`, `/proc/interrupts`. Match each output line to what you know about the hardware.
-2. **Tour `/sys/class/`.** `ls` each subdirectory; identify which one corresponds to your LED, your network interface, your I²C buses.
+2. **Tour `/sys/class/`.** `ls` each subdirectory. identify which one corresponds to your LED, your network interface, your I²C buses.
 3. **Manually toggle the LED via sysfs.** `echo 1 > /sys/class/leds/led0/brightness` should turn the LED on.
-4. **Read the ADC.** `cat /sys/bus/iio/devices/iio:device0/in_voltage0_raw` — get a raw value. Apply the scale; compute volts. Touch the ADC pin and re-read; see it change.
+4. **Read the ADC.** `cat /sys/bus/iio/devices/iio:device0/in_voltage0_raw` — get a raw value. Apply the scale. compute volts. Touch the ADC pin and re-read. see it change.
 5. **Find the device tree.** Walk `/sys/firmware/devicetree/base/` and find the I²C controller's `compatible` string. Verify it matches what's in `imx6ull.dtsi`.
 6. **Make mdev set audio permissions.** Add `snd/[!c].*` to `/etc/mdev.conf` (with a group that exists). Reboot. `ls -l /dev/snd/*` should show the new permissions.
 
@@ -322,10 +333,10 @@ The `@` prefix runs the command *after* the node is created (`$` runs *before*; 
 - **`/proc/` writes that don't take effect.** Some `/proc/sys/` entries are read-only on certain configurations. Symptom: `echo 1 > /proc/sys/...` succeeds, but `cat` still shows the old value. Use `sysctl -w` and check the return code.
 - **`sysfs` attribute file write that hangs.** If a `store` callback in the driver does something blocking (e.g., reset the chip), the `echo` shell command appears to hang. It's not hung — it's waiting for the kernel callback to complete. Normal.
 - **devtmpfs not mounted.** Without `CONFIG_DEVTMPFS_MOUNT=y`, the kernel doesn't auto-mount at boot. Either set that config or mount manually in early `rcS`. Otherwise `/dev/console` may not exist and you get the dreaded "Warning: unable to open an initial console" message.
-- **Confusing `/proc/<pid>/mem` with `/proc/<pid>/maps`.** `maps` is the *layout* (text, addresses, permissions); `mem` is the raw bytes. Reading `mem` without `ptrace` is usually denied.
+- **Confusing `/proc/<pid>/mem` with `/proc/<pid>/maps`.** `maps` is the *layout* (text, addresses, permissions). `mem` is the raw bytes. Reading `mem` without `ptrace` is usually denied.
 - **`/proc/sys/kernel/hotplug` overwritten.** If you `echo /sbin/mdev > /proc/sys/kernel/hotplug` and later run something that sets it to something else (rare but possible), mdev stops working. Check the file's value at runtime.
-- **Forgetting that `/sys` paths are case-sensitive.** `/sys/class/Leds/` won't work; it's `leds`.
-- **Sysfs path stability assumptions.** Don't hard-code paths under `/sys/devices/`; they rename across kernel versions. Use `/sys/class/...` in scripts.
+- **Forgetting that `/sys` paths are case-sensitive.** `/sys/class/Leds/` won't work. It's `leds`.
+- **Sysfs path stability assumptions.** Don't hard-code paths under `/sys/devices/`. they rename across kernel versions. Use `/sys/class/...` in scripts.
 
 ## 32.7  Going deeper
 

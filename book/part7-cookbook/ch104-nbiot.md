@@ -9,10 +9,14 @@ status: draft
 # Chapter 104 — NB-IoT / Cat-M1
 
 > **What:** the **low-power-cellular** subset of LTE — **NB-IoT (Cat-NB1/NB2)** and **LTE-M (Cat-M1)**. Modules: **Quectel BC95-G** (NB-IoT only, ~$8), **Quectel BC26** (NB-IoT + GNSS), **SimCom SIM7080G** (NB-IoT + Cat-M1, multi-region). We cover the PHY differences from LTE Cat-1+, the PSM and eDRX features that let a 19 Ah Li-SOCl2 cell run a sensor for up to ten years, the AT command set, MQTT/CoAP profiles tailored for low data rates, and an end-to-end battery-powered sensor that hits 10 mA average over a 1-uplink-per-hour cycle.
+> **PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
 >
 > **Why:** standard LTE (Ch 102/103) wakes the radio, registers, transmits, idles — total energy per uplink ~5 Joules. NB-IoT/Cat-M1, with PSM, parks the radio in "deep sleep" between uplinks while keeping its network registration alive. The result: ~1 J per uplink → years of battery life. This is the technology behind smart water meters, GPS livestock trackers, vending-machine telemetry, and rural emergency call-boxes. If your product needs cellular + battery for years (not days), this is the only path.
 >
-> **Focus:** PSM is the primary power saver; eDRX is a smaller secondary saving. Use PSM correctly or your battery life estimate is wrong by orders of magnitude. The cycle is: TX, wait for the downlink ACK, then enter PSM. The radio and modem are off, but the network still considers the device registered (IP, PDP context, and security keys are kept). On the next wake — by timer or external GPIO — the device resumes immediately, with no re-registration. The 19 Ah → 10 year math depends on TX every hour at 50 bytes and PSM at <5 µA between. If the AT commands are wrong, the modem stays at 100 mA always-on. Battery life drops by a factor of 1000.
+> **Focus:** PSM is the primary power saver. eDRX is a smaller secondary saving. Use PSM correctly or your battery life estimate is wrong by orders of magnitude. The cycle is: TX, wait for the downlink ACK, then enter PSM. The radio and modem are off, but the network still considers the device registered (IP, PDP context, and security keys are kept). On the next wake — by timer or external GPIO — the device resumes immediately, with no re-registration. The 19 Ah → 10 year math depends on TX every hour at 50 bytes and PSM at <5 µA between. If the AT commands are wrong, the modem stays at 100 mA always-on. Battery life drops by a factor of 1000.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+
 
 ## 104.1  NB-IoT vs LTE-M vs LTE Cat-1
 
@@ -36,7 +40,7 @@ status: draft
 **Pick guide:**
 - **NB-IoT (BC95-G)** — your sensor sends < 1 kB/day, stationary, lives in a basement/manhole/field for 10 years. Cheapest.
 - **Cat-M1 (SIM7080G)** — needs mobility (asset tracker on a truck), faster latency (alarm system), or occasional firmware update (1 MB OTA over the air in < 30 min vs hours on NB-IoT).
-- **Multi-mode (SIM7080G)** — falls back to whichever the carrier supports; best for products shipped to multiple regions.
+- **Multi-mode (SIM7080G)** — falls back to whichever the carrier supports. best for products shipped to multiple regions.
 
 ## 104.2  PSM, eDRX, and the power model
 
@@ -67,7 +71,7 @@ Negotiation via `AT+CPSMS=1,,,"00000100","00000010"`:
 
 Carrier-side caveat: the network may grant less than requested. Always `AT+CPSMS?` after activation to see the *granted* values.
 
-**eDRX** (extended DRX) is an alternative for slightly less power saving but faster downlink response — the modem sleeps for up to 2.92 hours but wakes briefly to listen for paging. Use eDRX when you need occasional downlink commands; PSM when you only need uplinks + scheduled wake.
+**eDRX** (extended DRX) is an alternative for slightly less power saving but faster downlink response — the modem sleeps for up to 2.92 hours but wakes briefly to listen for paging. Use eDRX when you need occasional downlink commands. PSM when you only need uplinks + scheduled wake.
 
 ## 104.3  Bringing up NB-IoT on the BC95-G
 
@@ -111,7 +115,7 @@ The `+NSOST` command takes hex-encoded payload — verbose but simple. For large
 
 ## 104.4  Cat-M1 on the SIM7080G
 
-Cat-M1 supports IP networking like Cat-1; you can use PPP (Ch 103) or the simpler AT-socket interface. SimCom calls these `+CASOPEN`, `+CASEND`, `+CIPSEND` depending on firmware version.
+Cat-M1 supports IP networking like Cat-1. You can use PPP (Ch 103) or the simpler AT-socket interface. SimCom calls these `+CASOPEN`, `+CASEND`, `+CIPSEND` depending on firmware version.
 
 ```sh
 # Power on, wait for "+CPIN: READY"
@@ -168,10 +172,10 @@ Ten years on one D-cell with no maintenance is achievable. The engineering is en
 ## 104.6  Lab
 
 1. **BC95-G bring-up.** Wire UART + PWRKEY. Confirm `Neul` boot URC. Run AT bring-up checklist.
-2. **Force a specific band.** `AT+NBAND=?` to list supported; pick one your carrier uses; `AT+NBAND=8`. Reboot.
+2. **Force a specific band.** `AT+NBAND=?` to list supported. pick one your carrier uses. `AT+NBAND=8`. Reboot.
 3. **Send a UDP packet.** `AT+NSOCR` + `AT+NSOST`. Capture on a server with `nc -ul 5683`.
-4. **PSM enable + verify.** Set T3324=4 s. Watch the modem's PWR_IND pin — should drop within 5 s of idle. Measure VBAT current; should drop to <10 µA.
-5. **Measure full uplink cycle energy.** Insert a 1 Ω shunt + scope on VBAT. Capture the full TX cycle; integrate area to get charge.
+4. **PSM enable + verify.** Set T3324=4 s. Watch the modem's PWR_IND pin — should drop within 5 s of idle. Measure VBAT current. should drop to <10 µA.
+5. **Measure full uplink cycle energy.** Insert a 1 Ω shunt + scope on VBAT. Capture the full TX cycle. integrate area to get charge.
 6. **10-year sensor.** Implement: wake STM32 → read BME280 → wake BC95 → send UDP → re-enter PSM. Project battery life from measured energy + 1 cycle/hour.
 7. **Cat-M1 with MQTT.** On a SIM7080G, configure MQTT URL, publish a sensor value, sleep. Compare cycle energy with NB-IoT (Cat-M1 is ~1.5–2× per cycle but faster latency).
 8. **eDRX vs PSM.** Configure eDRX (`AT+CEDRXS=1,5,"0010"`) instead of PSM. Verify downlink latency improves (≤30 s) at cost of higher idle current.
@@ -181,12 +185,12 @@ Ten years on one D-cell with no maintenance is achievable. The engineering is en
 ## 104.7  Pitfalls
 
 - **PSM not granted by carrier.** Your `AT+CPSMS?` after registration shows `T3412 = default`. Some carriers (US Verizon) restrict PSM to certain plans. Without it, your "10 year battery" sensor is a "3 week" sensor.
-- **NB-IoT not deployed by your carrier.** US carriers (Verizon, AT&T) have NB-IoT in some bands but not all; check before committing.
-- **Wrong band for the region.** NB-IoT band 8 (EU 900) doesn't work in NA; need band 5/12/13 (US). Per-region SKUs avoid this.
-- **PSM wakes too often for TAU.** T3412 of 24 h is the max in most networks; carriers may grant only 1 h. Recalculate battery budget accordingly.
-- **Modem-side TCP timeout drops the link.** Long PSM intervals + an open TCP socket = the network's NAT entry expires. Always close sockets before sleep; reopen on wake. UDP is friendlier for this.
+- **NB-IoT not deployed by your carrier.** US carriers (Verizon, AT&T) have NB-IoT in some bands but not all. Check before committing.
+- **Wrong band for the region.** NB-IoT band 8 (EU 900) doesn't work in NA. need band 5/12/13 (US). Per-region SKUs avoid this.
+- **PSM wakes too often for TAU.** T3412 of 24 h is the max in most networks. carriers may grant only 1 h. Recalculate battery budget accordingly.
+- **Modem-side TCP timeout drops the link.** Long PSM intervals + an open TCP socket = the network's NAT entry expires. Always close sockets before sleep. reopen on wake. UDP is friendlier for this.
 - **TX power higher than expected.** NB-IoT can transmit at up to +23 dBm (200 mW) for coverage extension. Battery budget collapses if you assume 100 mW. Measure real currents.
-- **Voltage drop at cold temp.** Li-SOCl2 cells passivate; first pulse after a long sleep can drop to 2.7 V momentarily. Add a "wake-warmer" — a 100 ms low-current pre-pulse before the modem TX — to depassivate.
+- **Voltage drop at cold temp.** Li-SOCl2 cells passivate. first pulse after a long sleep can drop to 2.7 V momentarily. Add a "wake-warmer" — a 100 ms low-current pre-pulse before the modem TX — to depassivate.
 - **No coverage indicator.** Without a +CEREG event listener, your firmware doesn't know it lost the network until a TX fails. Subscribe to URCs.
 - **Firmware bugs in PSM transition.** Some BC95 firmware revisions enter PSM but don't wake on the GPIO trigger. Update modem firmware before relying on PSM hardware wake.
 - **Wrong APN for IoT plan.** IoT SIMs often use a separate APN (e.g., `iot.1nce.net`). Using the default consumer APN may register but fail to get an IP.

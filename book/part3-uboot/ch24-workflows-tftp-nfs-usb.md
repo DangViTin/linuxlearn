@@ -7,12 +7,18 @@ status: draft
 ---
 
 # Chapter 24 — Workflows — TFTP, NFS, USB-OTG
+**FIT** - Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
 
 > **What:** stop reflashing the SD card. From this chapter on, every kernel change and every rootfs change is visible on the board within seconds, over the wire — TFTP for the kernel + DTB, NFS for the rootfs, USB-OTG (`uuu`) for recovery.
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
+> **TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 >
 > **Why:** Iteration speed bounds productivity. SD-reflash takes 1–2 minutes per cycle. TFTP+NFS takes 5–10 seconds. Across hundreds of kernel builds in Parts IV–VI, that adds up to days. The workflow in this chapter is what the rest of the book assumes.
 >
 > **Focus:** the single mental loop: edit a file on the host, the target sees it immediately. That loop is what turns embedded Linux from a build-and-flash cycle into real development.
+
 
 ## 24.1  Three transports, three jobs
 
@@ -80,6 +86,9 @@ Save these into `bootcmd`:
 ```
 
 Now the boot sequence is: power on → ROM → SPL → U-Boot → TFTP → kernel. No SD-card writes, ever.
+MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ### Speed
 
@@ -96,7 +105,8 @@ $ cat /etc/exports
 /home/you/imx6ull/rootfs *(rw,sync,no_root_squash,no_subtree_check)
 ```
 
-Populate the rootfs in the exported directory (we'll do this properly in Part V; for now a Buildroot-generated rootfs works):
+Populate the rootfs in the exported directory (we'll do this properly in Part V. For now a Buildroot-generated rootfs works):
+**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 
 ```sh
 $ tar -xf ~/buildroot-output/rootfs.tar -C ~/imx6ull/rootfs/
@@ -136,7 +146,11 @@ Now: edit a file in `~/imx6ull/rootfs/etc/...` on the host. The target sees the 
 
 ### What can't be on NFS
 
-- **Kernel modules.** Modules loaded by `modprobe` come from `/lib/modules/...` on the rootfs, which *is* NFS — that works. But the *running kernel* itself is not from NFS; it was TFTP-loaded.
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
+- **Kernel modules.** Modules loaded by `modprobe` come from `/lib/modules/...` on the rootfs, which *is* NFS — that works. But the *running kernel* itself is not from NFS. It was TFTP-loaded.
 - **Device tree blobs.** Same — TFTP, not NFS.
 - **The bootloader.** SD card or eMMC.
 
@@ -171,7 +185,7 @@ FB: ucmd mmc dev 0
 FB: ucmd mmc write ${fastboot_buffer} 0x2000 0x6000   # write zImage to MMC
 ```
 
-(Real recipes are more involved; this is the structure.)
+(Real recipes are more involved. This is the structure.)
 
 Run from the host:
 
@@ -185,7 +199,7 @@ The board needs to be in SDP mode (boot switch in the "USB" position, USB-OTG ca
 
 - **First-time flashing** a fresh board (or a fresh SD card).
 - **Recovery** after corrupting U-Boot or SPL on the persistent storage.
-- **Automated production line** — `uuu` can flash N boards in parallel; standard NXP practice for factory programming.
+- **Automated production line** — `uuu` can flash N boards in parallel. standard NXP practice for factory programming.
 
 For day-to-day development, you do not need `uuu`. TFTP + NFS is faster and easier. `uuu` is the safety net.
 
@@ -287,6 +301,10 @@ sdboot=load mmc 0:1 ${loadaddr} zImage; \
 
 ## 24.7  Lab
 
+> **Storage safety:** Before any command that names /dev/sdX, run lsblk -o NAME,SIZE,MODEL,TRAN,TYPE,MOUNTPOINTS.
+> Verify the removable card by size and model, unmount its partitions, and stop if the path is not the target card. Writing the wrong /dev node can destroy the host disk.
+
+
 1. **Set up TFTP boot.** Get a kernel loaded from `/srv/tftp/zImage` and booting on the target. Time the load.
 2. **Set up NFS-root.** Boot to a shell whose root is the host's directory. Confirm by editing a file on the host and seeing it on the target.
 3. **Touch a kernel source file** (`echo "no-op" >> drivers/tty/serial/imx.c`), `make zImage`, reboot the board. Verify the new kernel is running (a date in the version banner or a custom string you added).
@@ -295,13 +313,15 @@ sdboot=load mmc 0:1 ${loadaddr} zImage; \
 
 ## 24.8  Pitfalls
 
-- **Firewall on the host blocking UDP/69 (TFTP) or TCP/2049 (NFS).** `sudo ufw status`; `sudo ufw allow tftp`; `sudo ufw allow nfs`. Or disable UFW on the dev host.
+- **Firewall on the host blocking UDP/69 (TFTP) or TCP/2049 (NFS).** `sudo ufw status`. `sudo ufw allow tftp`. `sudo ufw allow nfs`. Or disable UFW on the dev host.
 - **NFS `root_squash`.** Without `no_root_squash`, the target's root user is mapped to nobody, and file permissions break. Always include `no_root_squash` in `/etc/exports` for development. *Never* on a public network.
-- **NFS v4 by default on modern distros.** v4 has different semantics (especially around stale file handles). For embedded, v3 is more reliable; specify `vers=3` in the mount options.
+- **NFS v4 by default on modern distros.** v4 has different semantics (especially around stale file handles). For embedded, v3 is more reliable. specify `vers=3` in the mount options.
 - **Wrong IP on the target side.** `ip=` cmdline must match the host's NIC config (Chapter 3 §3.10). Mismatched netmask = silent failure to mount.
 - **TFTP path includes a directory.** Some `tftpd-hpa` configs disable directories for security. Use `--secure` and serve from `/srv/tftp/` directly.
 - **`uuu` cannot find the device.** Check with `lsusb | grep 15a2`. If absent: boot switch wrong, USB-OTG cable wrong (some are charge-only), or `udev` rule from Chapter 3 §3.8 missing.
+**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 - **Slow Ethernet PHY auto-negotiation.** Some PHYs take 2–3 seconds to come up. Add `rootwait` to bootargs and ignore the warning.
+**PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
 
 ## 24.9  Going deeper
 

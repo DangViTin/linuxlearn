@@ -14,6 +14,7 @@ status: draft
 >
 > **Focus:** **The magnet matters as much as the chip — get it wrong and the chip reads garbage.** AS5048 needs a *diametrically magnetised* 2-pole magnet, axially mounted, 0.5–3 mm above the chip die. Wrong magnet, wrong distance, wrong polarisation = the chip reports nonsense or a low-resolution mess. Most "AS5048 doesn't work" threads online trace back to the wrong magnet.
 
+
 ## 74.1  Sensor comparison
 
 | | AMS AS5048A | Allegro A1324 | Infineon TLE5012B |
@@ -317,6 +318,7 @@ myas5048a spi3.0: AS5048 magnitude: 5482 (typical 5000-6000 with good magnet)
 ```
 
 Driver is ~150 lines. The 14-bit absolute angle is in IIO, ready for any application that needs it.
+**IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 
 ## 74.5  A1324 — analog linear Hall
 
@@ -333,9 +335,13 @@ For "is there a magnet nearby?" (lid open/closed, latch position): A1324 + ADC +
 
 ## 74.6  TLE5012B — the safety variant
 
-TLE5012B is functionally similar to AS5048 but with two independent dies on the same package. Each gets its own SPI access; you cross-check the two readings; any divergence indicates fault. ASIL-B (SIL-2) capable.
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
 
-Mainline driver: `drivers/iio/position/iqs62x.c` covers some Iqs sensors; TLE5012 has out-of-tree drivers from Infineon. The protocol is more elaborate (16-bit SPI with a "SSC" auto-mode option for continuous streaming).
+
+TLE5012B is functionally similar to AS5048 but with two independent dies on the same package. Each gets its own SPI access. You cross-check the two readings. any divergence indicates fault. ASIL-B (SIL-2) capable.
+
+Mainline driver: `drivers/iio/position/iqs62x.c` covers some Iqs sensors. TLE5012 has out-of-tree drivers from Infineon. The protocol is more elaborate (16-bit SPI with a "SSC" auto-mode option for continuous streaming).
 
 For non-safety-critical use, AS5048 is the cheaper, equally-accurate choice.
 
@@ -361,25 +367,25 @@ After load: `/sys/bus/iio/devices/iio:device0/in_angl_raw` plus `_scale` for con
 ## 74.8  Lab
 
 1. **Magnet check.** Use a real diametric magnet (e.g., 6×2.5 mm disc). Verify orientation: the magnet's N-S axis should be in the *plane* of the chip's surface.
-2. **Build and load `myas5048a.ko`.** Verify magnitude > 4000 (good magnet); read angle while rotating.
-3. **360° sweep.** Rotate slowly; log raw values; verify monotonic 0 → 16383 → 0 wraparound.
-4. **Resolution test.** With chip stationary, read 100 samples; standard deviation should be < 5 LSB (0.1°).
-5. **Distance sweep.** Move the magnet from 0.5 mm to 5 mm. Magnitude rises then falls; angle stays valid throughout the recommended range.
+2. **Build and load `myas5048a.ko`.** Verify magnitude > 4000 (good magnet). read angle while rotating.
+3. **360° sweep.** Rotate slowly. log raw values. verify monotonic 0 → 16383 → 0 wraparound.
+4. **Resolution test.** With chip stationary, read 100 samples. standard deviation should be < 5 LSB (0.1°).
+5. **Distance sweep.** Move the magnet from 0.5 mm to 5 mm. Magnitude rises then falls. angle stays valid throughout the recommended range.
 6. **Mainline switch.** Use `compatible = "ams,as5048a"`. Same data, plus rich diagnostic attributes.
-7. **A1324 with ADC.** Wire A1324 output to i.MX6ULL ADC1 channel; verify IIO ADC reading changes when bringing a magnet near.
-8. **Servo controller demo.** Hook the AS5048's angle to a PID loop driving a motor; verify the system closes to a setpoint within 1°.
+7. **A1324 with ADC.** Wire A1324 output to i.MX6ULL ADC1 channel. verify IIO ADC reading changes when bringing a magnet near.
+8. **Servo controller demo.** Hook the AS5048's angle to a PID loop driving a motor. verify the system closes to a setpoint within 1°.
 
 ## 74.9  Pitfalls
 
 - **Wrong magnet.** Axial magnetisation = chip sees constant field, no rotation signal. Diametric is mandatory.
 - **Magnet off-axis.** Even 0.5 mm off-axis adds significant non-linearity (>1° error). Mechanical fixturing matters.
-- **Magnet too close.** Chip saturates; angle clamps or wraps. The datasheet specifies a typical air gap of 1–3 mm.
-- **Magnet too far / weak.** Magnitude register low; angle is noisy. Use a stronger magnet or move closer.
+- **Magnet too close.** Chip saturates. angle clamps or wraps. The datasheet specifies a typical air gap of 1–3 mm.
+- **Magnet too far / weak.** Magnitude register low. angle is noisy. Use a stronger magnet or move closer.
 - **SPI mode wrong.** AS5048A is mode 1 (CPOL=0, CPHA=1). Mode 0 returns 0xFFFF every read.
-- **Forgetting the two-frame protocol.** A read result is in the *next* frame. First read returns junk; second returns the answer.
-- **Parity ignored on critical applications.** The chip can return bad data due to bus noise; parity is your sanity check. Always validate in safety-critical code.
+- **Forgetting the two-frame protocol.** A read result is in the *next* frame. First read returns junk. second returns the answer.
+- **Parity ignored on critical applications.** The chip can return bad data due to bus noise. parity is your sanity check. Always validate in safety-critical code.
 - **Magnetic interference from motor.** If the AS5048 is on the motor's shaft, motor magnets/coils may bleed through. Use shielding or magnetic isolation.
-- **Hot-plug / start-up race.** The chip needs about 10 ms after VCC rises. A read earlier returns junk. The mainline driver handles this delay; the from-scratch driver must too.
+- **Hot-plug / start-up race.** The chip needs about 10 ms after VCC rises. A read earlier returns junk. The mainline driver handles this delay. The from-scratch driver must too.
 
 ## 74.10  Going deeper
 
@@ -389,6 +395,8 @@ After load: `/sys/bus/iio/devices/iio:device0/in_angl_raw` plus `_scale` for con
 - **TLE5012B datasheet (Infineon)** — SSC protocol, safety features.
 - **AMS app note AN53048-A1** — magnet selection and mechanical mounting recommendations.
 - **`Documentation/ABI/testing/sysfs-bus-iio` (channel type IIO_ANGL)** — angle channel ABI.
+**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 ---
 

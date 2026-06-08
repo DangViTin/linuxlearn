@@ -7,23 +7,32 @@ status: draft
 ---
 
 # Chapter 25 — Building mainline Linux for i.MX6ULL
+**GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
+MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+**ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
+**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 
-> **What:** clone the mainline Linux source, build a `zImage` + device tree blobs + modules for the i.MX6ULL, and inspect the artefacts. Stop just short of booting; that is Chapter 26.
+> **What:** clone the mainline Linux source, build a `zImage` + device tree blobs + modules for the i.MX6ULL, and inspect the artefacts. Stop just short of booting. that is Chapter 26.
 >
 > **Why:** every later chapter assumes a built kernel tree on disk. The build is mechanical. What matters is the artefacts it produces and the source-tree layout you will use in every later chapter.
 >
 > **Focus:** the four build artefacts you actually use (`vmlinux`, `zImage`, `*.dtb`, `*.ko`) and the four directories you will visit most (`arch/arm/`, `drivers/`, `include/`, `Documentation/`).
 
+
 ## 25.1  Why mainline
 
 The Linux kernel ships under several release tracks:
 
-- **Mainline** at `git.kernel.org/torvalds/linux.git` — Linus's tree. The current development tip; new releases roughly every 9 weeks (the "x.y" releases like 6.6, 6.7).
+- **Mainline** at `git.kernel.org/torvalds/linux.git` — Linus's tree. The current development tip. new releases roughly every 9 weeks (the "x.y" releases like 6.6, 6.7).
 - **Stable** — Greg KH backports bug fixes to each mainline release for about 6 weeks. Tags look like `6.6.1`, `6.6.2`, and so on.
 - **Long-Term Support (LTS)** — selected mainline releases get fix backports for 2 or 6 years. As of 2026 the active LTS lines are `6.6`, `6.1`, `5.15`, `5.10`, `5.4`.
-- **Vendor BSPs** — NXP, ST, TI, and other silicon vendors ship forks pinned to a specific kernel minor with thousands of patches on top. NXP forks mainline into `linux-imx`. Active branches are pinned to `5.15` and `6.6`; older branches exist for legacy products.
+- **Vendor BSPs** — NXP, ST, TI, and other silicon vendors ship forks pinned to a specific kernel minor with thousands of patches on top. NXP forks mainline into `linux-imx`. Active branches are pinned to `5.15` and `6.6`. older branches exist for legacy products.
 
-We build from **mainline** (or LTS where stability matters). The i.MX6ULL has had full support in mainline since v4.10 (released 2017); every silicon revision and DT change is upstreamed. Chapter 30A goes deeper on when each track is appropriate.
+We build from **mainline** (or LTS where stability matters). The i.MX6ULL has had full support in mainline since v4.10 (released 2017). every silicon revision and DT change is upstreamed. Chapter 30A goes deeper on when each track is appropriate.
 
 ## 25.2  Clone the source
 
@@ -94,7 +103,7 @@ linux/
 └── usr/                 # initramfs cpio packager
 ```
 
-Every subsystem follows the same layout: top-level is the subsystem, next level is the vendor, and the lowest level is the SoC or board. The i.MX6ULL UART driver lives at `drivers/tty/serial/imx.c`; its DT binding is at `Documentation/devicetree/bindings/serial/fsl-imx-uart.yaml`; its register definitions are inside the driver file. This pattern repeats for every subsystem.
+Every subsystem follows the same layout: top-level is the subsystem, next level is the vendor, and the lowest level is the SoC or board. The i.MX6ULL UART driver lives at `drivers/tty/serial/imx.c`. its DT binding is at `Documentation/devicetree/bindings/serial/fsl-imx-uart.yaml`. its register definitions are inside the driver file. This pattern repeats for every subsystem.
 
 The four directories you will spend the most time in over the rest of this book:
 
@@ -106,6 +115,7 @@ The four directories you will spend the most time in over the rest of this book:
 ## 25.3  Defconfig and the kernel's config system
 
 Like U-Boot, the kernel uses Kconfig + a `.config` file. The `arch/arm/configs/` directory holds default starting points:
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```sh
 $ ls arch/arm/configs/ | grep imx
@@ -136,7 +146,7 @@ CONFIG_SOC_IMX6Q=y
 ...
 ```
 
-Every entry in `.config` is either compiled in (`=y`) or compiled as a loadable module (`=m`). The set of options is enormous (~7000 for a v6.6 kernel); for now we trust `imx_v6_v7_defconfig`'s defaults. Chapter 30 returns to specific knobs.
+Every entry in `.config` is either compiled in (`=y`) or compiled as a loadable module (`=m`). The set of options is enormous (~7000 for a v6.6 kernel). For now we trust `imx_v6_v7_defconfig`'s defaults. Chapter 30 returns to specific knobs.
 
 ## 25.4  Build
 
@@ -189,7 +199,11 @@ You do *not* ship `vmlinux` to the target — it is 20× the size of `zImage`. Y
 
 ### Module installation to the rootfs
 
-The `.ko` files are scattered across the build tree; before they are useful on the target, they need to be collected into a `/lib/modules/<version>/` hierarchy:
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
+The `.ko` files are scattered across the build tree. before they are useful on the target, they need to be collected into a `/lib/modules/<version>/` hierarchy:
 
 ```sh
 $ make INSTALL_MOD_PATH=~/imx6ull/rootfs modules_install
@@ -206,6 +220,9 @@ bluetooth
 ```
 
 `INSTALL_MOD_PATH=~/imx6ull/rootfs` is the path that becomes `/` on the target — usually your NFS-exported rootfs directory (Chapter 24). The `make` rule also generates `modules.dep`, `modules.alias`, and a few other index files so `modprobe` works on the target.
+MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+**NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
+**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 ## 25.5  zImage vs vmlinux vs Image — what compresses what
 
@@ -233,7 +250,7 @@ When U-Boot `bootz`'s a `zImage`:
 2. U-Boot transfers control to the first instruction of `zImage`, which is the **decompressor stub** in `arch/arm/boot/compressed/head.S`.
 3. The stub copies itself out of the way, sets up a small workspace, and decompresses the gzipped kernel into the final run-from address.
 4. The stub jumps to the decompressed kernel's entry point `stext` (Chapter 28). You see the famous *"Uncompressing Linux... done, booting the kernel."* message.
-5. The decompressor stub is now discarded; the kernel runs from where the stub decompressed it to.
+5. The decompressor stub is now discarded. The kernel runs from where the stub decompressed it to.
 
 This is why the kernel works regardless of whether you store it compressed or not — the kernel image carries its own decompressor.
 
@@ -297,17 +314,21 @@ $ make O=~/imx6ull/build/kernel INSTALL_MOD_PATH=~/imx6ull/rootfs modules_instal
 ## 25.8  Lab
 
 1. **Clone, defconfig, build.** Time the build. On a modern 4-core / 8-thread host, expect 5-8 minutes for a fresh build and under 30 seconds for an incremental change.
-2. **Inspect the boot logo string.** Run `grep -n linux_banner init/version.c` to find the banner format. (On v6.6 the banner is in `init/version.c`; `init/version-timestamp.c` exists only conditionally.) Edit it to add `(yourname)`, rebuild *just* `zImage` (`make -j$(nproc) zImage`), and verify the boot message changes when you run it in Chapter 26.
+2. **Inspect the boot logo string.** Run `grep -n linux_banner init/version.c` to find the banner format. (On v6.6 the banner is in `init/version.c`. `init/version-timestamp.c` exists only conditionally.) Edit it to add `(yourname)`, rebuild *just* `zImage` (`make -j$(nproc) zImage`), and verify the boot message changes when you run it in Chapter 26.
 3. **Build for the EVK and the Colibri.** Both `.dtb`s come out of one build. Verify by re-running `ls arch/arm/boot/dts/nxp/imx/imx6ull-*.dtb` after `make dtbs` and comparing against the list of `imx6ull-*` `.dts` source files in the same directory. *(Pre-v6.5 kernels keep the dts directly under `arch/arm/boot/dts/` — adjust accordingly.)*
 4. **Quantify the compression.** Compare sizes: `ls -l arch/arm/boot/{Image,zImage}` and `vmlinux`. The ratios tell you something about kernel content (lots of string tables, dictionaries, …).
 5. **Make distclean and reconfigure.** `make distclean` wipes `.config` and everything else. Re-run the defconfig and the build. The second build is almost as fast as an incremental build. If you have `ccache` installed, that is why. If not, it is still about the same.
 
 ## 25.9  Pitfalls
 
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
+
 - **Forgetting `ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf-`.** `make` will build a host x86-64 kernel and fail somewhere deep in arch code. Always export both before invoking `make`.
 - **Building from the source tree without `O=`.** Works, but `git status` becomes useless because every `make` populates the source tree with `.o` files. Out-of-tree builds keep the source pristine.
 - **Wrong defconfig.** `make imx_v6_v7_defconfig` not `make x86_64_defconfig`. The latter happens when you forget to export `ARCH=arm` — Linux helpfully picks the host default.
-- **Old gcc-toolchain miscompile.** Mainline kernels usually require a fairly recent gcc (≥ 5.1 for v6.x; ≥ 4.9 for older). Distribution `gcc-arm-linux-gnueabihf` is fine. Custom-built ancient toolchains sometimes miscompile RCU or AAPCS-sensitive code paths.
+- **Old gcc-toolchain miscompile.** Mainline kernels usually require a fairly recent gcc (≥ 5.1 for v6.x. ≥ 4.9 for older). Distribution `gcc-arm-linux-gnueabihf` is fine. Custom-built ancient toolchains sometimes miscompile RCU or AAPCS-sensitive code paths.
 - **`make modules_install` to a system location.** By default `make modules_install` writes to `/lib/modules/$(uname -r)/`. **Always** pass `INSTALL_MOD_PATH=...` when cross-building or you will overwrite your host's modules.
 - **Mismatch between `zImage` and `modules`.** Modules built against kernel version X will refuse to load on a running kernel built from version Y (they check the version's "vermagic" string). If you rebuild the kernel, rebuild + reinstall modules.
 

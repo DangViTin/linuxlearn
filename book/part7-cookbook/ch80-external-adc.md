@@ -7,12 +7,16 @@ status: draft
 ---
 
 # Chapter 80 — External ADCs
+**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 
 > **What:** four external analog-to-digital converters spanning the price/precision spectrum: **TI ADS1115** (16-bit, I²C, programmable-gain, 4-channel), **TI ADS1256** (24-bit, SPI, ultra-low-noise, 8-channel), **Microchip MCP3008** (10-bit, SPI, cheap, 8-channel), **Analog Devices AD7606** (16-bit, 8-channel *simultaneous-sampling*). For each: protocol, the IIO ADC channel model, and a from-scratch ADS1115 IIO driver. Plus ratiometric measurement (load cells, RTDs) — the trick that cancels reference-voltage error.
+> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
 > **Why:** the i.MX6ULL's internal ADCs (two 12-bit SAR blocks, each multiplexing up to 10 pins, ~1 MS/s aggregate) are ±a few LSB noisy and share the SoC's noisy power rails. For precision measurement — a load-cell scale, a 4-20 mA industrial loop, a thermocouple, simultaneous 3-phase power sampling — you need an external ADC with a clean reference, more bits, or true simultaneity. Knowing which external ADC fits saves you from chasing noise that the silicon will never let you remove.
 >
 > **Focus:** Bits, speed, channels, and simultaneity are independent design axes. **ADS1115** is high-bit, slow, and multiplexed. **MCP3008** is low-bit, medium-speed, and cheap. **ADS1256** is very-high-bit, low-noise, and slow. **AD7606** is high-bit, fast, and *simultaneous* (all channels sampled at the same instant — critical for phase measurement). Pick by which axis matters most for your application.
+
 
 ## 80.1  Chip comparison
 
@@ -30,7 +34,7 @@ status: draft
 | Mainline driver | `ti-ads1015.c` | `ti-ads1256` (recent) | `mcp320x.c` | `ad7606.c` |
 
 **Pick guide:**
-- **MCP3008**: cheapest 8-channel; 10-bit is fine for "read a potentiometer / light sensor / battery divider."
+- **MCP3008**: cheapest 8-channel. 10-bit is fine for "read a potentiometer / light sensor / battery divider."
 - **ADS1115**: 16-bit, PGA, I²C — the standard precision choice. Load cells, 4-20 mA loops.
 - **ADS1256**: 24-bit, lowest noise — strain gauges, lab instruments, weigh scales needing sub-gram resolution.
 - **AD7606**: when channels must sample *at the same instant* — 3-phase power analysis, vibration with multiple accelerometers, phase-sensitive detection.
@@ -43,7 +47,7 @@ The i.MX6ULL has **2 ADC blocks** (ADC1, ADC2), each a 12-bit SAR with up to 10 
 - **Shared noisy rails**: the ADC reference is the SoC's analog supply, polluted by digital switching. The bottom 2 bits are noise.
 - **Only two simultaneous conversions**: even though each ADC block has many input pins, only one channel per block samples at a time, so a multi-sensor product is bottlenecked at the *block* count, not the channel count.
 - **No PGA**: can't amplify a small signal before conversion.
-- **No simultaneity within a block**: SAR ADCs mux; channels on the same ADC are sampled at different instants.
+- **No simultaneity within a block**: SAR ADCs mux. channels on the same ADC are sampled at different instants.
 
 An external ADC with a clean reference, a PGA, and more bits lets you see signals the SoC's internal ADC cannot. The cost is a chip + an I²C/SPI transaction per sample.
 
@@ -342,6 +346,10 @@ DT:
 
 ## 80.7  ADS1256 — 24-bit, low-noise
 
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
+
 ADS1256 is the precision SPI ADC: 24-bit, programmable gain to 64×, 30 kSPS max, but with an excellent noise floor (~22 ENOB at low data rates). For a load cell measuring a few-mV signal, this is the chip.
 
 Protocol: SPI commands (RDATA, WREG, RREG, SYNC), a register set for gain/rate/mux, and a DRDY pin that goes low when a conversion is ready. The mainline driver is `drivers/iio/adc/ti-ads1256.c` (recent kernels) or out-of-tree variants.
@@ -350,7 +358,7 @@ The complexity: ADS1256 has a strict timing relationship between DRDY, the comma
 
 ## 80.8  AD7606 — simultaneous sampling
 
-AD7606 is unique here: **all 8 channels sample at the same instant**. A single CONVST (convert-start) pulse triggers all 8 sample-and-hold circuits simultaneously; then you read the 8 results sequentially (parallel bus or SPI).
+AD7606 is unique here: **all 8 channels sample at the same instant**. A single CONVST (convert-start) pulse triggers all 8 sample-and-hold circuits simultaneously. then you read the 8 results sequentially (parallel bus or SPI).
 
 Why this matters: for 3-phase power measurement, you need voltage and current of all three phases captured at the *same* moment to compute true power and phase angle. A multiplexed ADC samples them microseconds apart — at 50/60 Hz that's a fraction of a degree of phase error, but for harmonics and transients it matters.
 
@@ -361,12 +369,14 @@ Why this matters: for 3-phase power measurement, you need voltage and current of
 ```
 
 The mainline driver `drivers/iio/adc/ad7606.c` uses a GPIO for CONVST, a GPIO IRQ for BUSY, and either parallel-bus or SPI read. The DT specifies range pins, oversampling pins, etc. This is a more involved driver because of the parallel-bus option and the strict CONVST/BUSY handshake.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 80.9  Ratiometric measurement — the noise-cancellation trick
 
 For sensors that are *resistive dividers excited by the ADC's reference* — load cells, RTDs, potentiometers — there's a useful trick: make the measurement *ratiometric*.
 
-A load cell is a Wheatstone bridge. Excite it with voltage Vexc; the output is `Vout = Vexc × (sensitivity × load)`. If you also use Vexc as the ADC's reference, then:
+A load cell is a Wheatstone bridge. Excite it with voltage Vexc. The output is `Vout = Vexc × (sensitivity × load)`. If you also use Vexc as the ADC's reference, then:
 
 ```
 ADC_reading = Vout / Vref = Vout / Vexc = sensitivity × load
@@ -378,23 +388,23 @@ To do this: wire the ADC's REF+ / REF− to the same rail that excites the bridg
 
 ## 80.10  Lab
 
-1. **ADS1115 bring-up.** Wire to I²C1; address 0x48 (ADDR→GND). Feed AIN0 from a potentiometer between 3.3 V and GND.
-2. **Build and load `myads1115.ko`.** Turn the pot; verify `in_voltage0_raw` sweeps 0 → 32767.
-3. **PGA experiment.** Modify the driver to use ±0.256 V range (PGA = 0x5). Feed a small signal (~100 mV); verify the higher resolution.
+1. **ADS1115 bring-up.** Wire to I²C1. address 0x48 (ADDR→GND). Feed AIN0 from a potentiometer between 3.3 V and GND.
+2. **Build and load `myads1115.ko`.** Turn the pot. verify `in_voltage0_raw` sweeps 0 → 32767.
+3. **PGA experiment.** Modify the driver to use ±0.256 V range (PGA = 0x5). Feed a small signal (~100 mV). verify the higher resolution.
 4. **MCP3008 comparison.** Wire an MCP3008 too. Read the same pot via both. Compare 10-bit vs 16-bit resolution side by side.
 5. **Ratiometric load cell.** If you have a load cell + HX711 or ADS1256: wire the ADC reference to the bridge excitation. Verify that varying the supply voltage by ±5 % doesn't change the reading (ratiometric cancellation).
-6. **Switch to mainline.** Use `compatible = "ti,ads1115"`. Verify `in_voltage_scale_available` shows the PGA ranges; write one to change range.
-7. **AD7606 simultaneity** (if available). Sample two phase-shifted sine waves; verify the captured samples preserve the phase relationship (multiplexed ADC would smear it).
+6. **Switch to mainline.** Use `compatible = "ti,ads1115"`. Verify `in_voltage_scale_available` shows the PGA ranges. write one to change range.
+7. **AD7606 simultaneity** (if available). Sample two phase-shifted sine waves. verify the captured samples preserve the phase relationship (multiplexed ADC would smear it).
 
 ## 80.11  Pitfalls
 
-- **ADS1115 OS-bit polarity confusion.** In single-shot: writing OS=1 *starts* a conversion; reading OS=1 means *idle/done*, OS=0 means *converting*. Easy to get backwards. The datasheet's "Operational Status" description is counterintuitive — read it carefully.
+- **ADS1115 OS-bit polarity confusion.** In single-shot: writing OS=1 *starts* a conversion. reading OS=1 means *idle/done*, OS=0 means *converting*. Easy to get backwards. The datasheet's "Operational Status" description is counterintuitive — read it carefully.
 - **PGA range vs input voltage.** If your signal exceeds the PGA range, the reading clips at ±32767. ADS1115's ±0.256 V range clips anything above 256 mV. Pick the range to fit your signal with margin.
 - **Input above VDD.** ADS1115 inputs must be within GND−0.3 V to VDD+0.3 V. A 5 V signal into a 3.3 V-powered ADS1115 damages it. Use a divider.
-- **Ratiometric misunderstanding.** Ratiometric works only when the sensor is excited *by the same reference*. A 4-20 mA loop is *not* ratiometric (it's a current source); use absolute reference there.
+- **Ratiometric misunderstanding.** Ratiometric works only when the sensor is excited *by the same reference*. A 4-20 mA loop is *not* ratiometric (it's a current source). Use absolute reference there.
 - **MCP3008 vref vs vdd.** MCP3008 has separate VDD and VREF pins. If VREF < VDD, the usable input range is limited to VREF. Tie them together for full-range.
 - **SPI clock too fast for MCP3008.** Max 3.6 MHz at 5 V, 1.35 MHz at 2.7 V. Exceeding it gives noise. Stay at 1 MHz to be safe.
-- **ADS1256 DRDY timing.** Must wait for DRDY low before reading; must respect t6 delay after RDATA command. Race conditions give corrupt data.
+- **ADS1256 DRDY timing.** Must wait for DRDY low before reading. must respect t6 delay after RDATA command. Race conditions give corrupt data.
 - **AD7606 oversampling pins.** OS[2:0] pins set hardware oversampling. If left floating, behavior is undefined. Strap or GPIO them.
 - **Grounding.** External ADCs need a clean analog ground separate from digital ground, joined at one point (star ground). A noisy ground negates the precision you paid for.
 
@@ -403,7 +413,7 @@ To do this: wire the ADC's REF+ / REF− to the same rail that excites the bridg
 - **`drivers/iio/adc/ti-ads1015.c`** — production ADS1015/1115 driver.
 - **`drivers/iio/adc/mcp320x.c`** — MCP3008 family.
 - **`drivers/iio/adc/ad7606.c`** — simultaneous-sampling ADC with parallel + SPI variants.
-- **ADS1115 datasheet (TI SBAS444)** — config register bit-fields; OS-bit semantics.
+- **ADS1115 datasheet (TI SBAS444)** — config register bit-fields. OS-bit semantics.
 - **ADS1256 datasheet (TI SBAS288)** — timing diagrams for the DRDY/RDATA handshake.
 - **AD7606 datasheet (ADI)** — CONVST/BUSY handshake.
 - **TI app note SLYT423** — "How delta-sigma ADCs work" (for understanding ADS1256's 24-bit precision).

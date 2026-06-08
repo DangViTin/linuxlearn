@@ -10,9 +10,12 @@ status: draft
 
 > **What:** a character device driver — the kind that backs `/dev/ttyS0`, `/dev/i2c-1`, `/dev/hidraw0`, and most other "stream of bytes you read and write" device files in `/dev/`. We'll build one from scratch: allocate a device number, register a `cdev`, hook up `open`/`read`/`write`/`release`, and copy data safely between user-space and kernel.
 >
-> **Why:** character drivers are how the vast majority of embedded peripheral drivers expose themselves to user-space. UARTs, GPIO chips, I²C/SPI controllers, sensors, fingerprint readers, sound cards' control interfaces — almost all are character devices under the hood. The pattern is identical every time; what changes is the body of `open` / `read` / `write`. Master the pattern in this chapter; everything in Part VI is variations on it.
+> **Why:** character drivers are how the vast majority of embedded peripheral drivers expose themselves to user-space. UARTs, GPIO chips, I²C/SPI controllers, sensors, fingerprint readers, sound cards' control interfaces — almost all are character devices under the hood. The pattern is identical every time. what changes is the body of `open` / `read` / `write`. Master the pattern in this chapter. everything in Part VI is variations on it.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
-> **Focus:** **the user/kernel boundary**. The single most common bug class in driver code is dereferencing a user-space pointer directly. `copy_to_user` and `copy_from_user` are not just safer — they are *correct*; a direct dereference will fault, silently corrupt, or be a security hole. By the end of this chapter the `__user` annotation should feel like a load-bearing part of every function signature.
+> **Focus:** **the user/kernel boundary**. The single most common bug class in driver code is dereferencing a user-space pointer directly. `copy_to_user` and `copy_from_user` are not just safer — they are *correct*. a direct dereference will fault, silently corrupt, or be a security hole. By the end of this chapter the `__user` annotation should feel like a load-bearing part of every function signature.
+
 
 ## 37.1  The picture
 
@@ -55,9 +58,9 @@ crw--w---- 1 root tty 207, 0 May 24  2026 /dev/ttymxc0
 crw-rw---- 1 root i2c  89, 0 May 24  2026 /dev/i2c-0
 ```
 
-The two numbers after the size (`1, 3`, `207, 0`, `89, 0`) are *major, minor*. The kernel uses the major number to dispatch to the right driver; the driver uses the minor number to distinguish among devices that share the driver (e.g., `i2c-0`, `i2c-1`, `i2c-2`).
+The two numbers after the size (`1, 3`, `207, 0`, `89, 0`) are *major, minor*. The kernel uses the major number to dispatch to the right driver. The driver uses the minor number to distinguish among devices that share the driver (e.g., `i2c-0`, `i2c-1`, `i2c-2`).
 
-On Linux, the combined number is a 32-bit `dev_t`: 12 bits major, 20 bits minor. The split is opaque to most code; use the macros:
+On Linux, the combined number is a 32-bit `dev_t`: 12 bits major, 20 bits minor. The split is opaque to most code. Use the macros:
 
 ```c
 dev_t devid = MKDEV(major, minor);
@@ -294,7 +297,9 @@ static ssize_t hello_read(..., char __user *ubuf, ...)
 }
 ```
 
-The `__user` annotation on `ubuf` is a marker for `sparse` (a static analyzer) saying "this pointer is in user-space's address space; do not dereference it directly." On i.MX6ULL there is no MMU domain protection, so a direct dereference might *appear* to work. But it only works when the user buffer is paged in and reachable from kernel mode — not always the case. On systems with **PAN** (Privileged Access Never, an ARMv8 feature; not on i.MX6ULL but on many newer SoCs) a direct dereference faults immediately.
+The `__user` annotation on `ubuf` is a marker for `sparse` (a static analyzer) saying "this pointer is in user-space's address space. do not dereference it directly." On i.MX6ULL there is no MMU domain protection, so a direct dereference might *appear* to work. But it only works when the user buffer is paged in and reachable from kernel mode — not always the case. On systems with **PAN** (Privileged Access Never, an ARMv8 feature. not on i.MX6ULL but on many newer SoCs) a direct dereference faults immediately.
+MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+**MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 
 `copy_to_user` (and its sibling `copy_from_user`) do three things:
 1. **Validate the address** is within user-space (`access_ok`).
@@ -314,7 +319,7 @@ Multiple processes can have your device open at the same time. Two threads doing
 
 We use `mutex_lock_interruptible` rather than `mutex_lock`. The difference: if a signal is pending while we wait for the lock, `_interruptible` returns `-ERESTARTSYS` and the kernel rolls back the syscall so it can restart after the signal handler. `mutex_lock` (uninterruptible) can leave a process unkillable if the lock is held by a buggy other path.
 
-`-ERESTARTSYS` is the conventional return code for "signal pending; please restart me." The VFS handles it correctly.
+`-ERESTARTSYS` is the conventional return code for "signal pending. please restart me." The VFS handles it correctly.
 
 ### Idea 4: Goto-based unwind
 
@@ -357,15 +362,20 @@ hello: major=240 minor=0  (mknod /dev/hello c 240 0)
 ping
 ```
 
-It works. We wrote "ping" into the kernel buffer; `cat` read it back.
+It works. We wrote "ping" into the kernel buffer. `cat` read it back.
 
 A few things to notice:
 
 - The major number (240) is **whatever the kernel picked**. It's not stable across reboots. Next chapter, we'll automate device-file creation with udev/mdev so you don't have to `mknod` by hand.
+**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 - `echo "ping"` writes 5 bytes (4 + newline). `cat` reads all of them. Our buffer correctly tracks `buf_len`.
 - Each new `cat` invocation gets a fresh open, so `*ppos` resets to 0. Within one `cat`, the first `read` returns 5 bytes and the second returns 0 (EOF).
 
 ## 37.6  Testing edge cases
+
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
 
 | Test | Expected | Why |
 |------|----------|-----|
@@ -383,7 +393,7 @@ Notice we manually `mknod /dev/hello c 240 0` to create the device file. That's 
 
 - The major number is dynamic — pick by `alloc_chrdev_region` — but `mknod` requires you to know it.
 - Reboots may renumber.
-- On a tmpfs `/dev` (almost always true now; see Ch 32), the manually-`mknod`'d node disappears at reboot — you'd have to recreate it each boot.
+- On a tmpfs `/dev` (almost always true now. see Ch 32), the manually-`mknod`'d node disappears at reboot — you'd have to recreate it each boot.
 
 Chapter 38 fixes this entirely: with `class_create` + `device_create`, the kernel **broadcasts a hot-plug event** when your driver loads, and udev (or mdev) creates the right file in `/dev/` automatically. Same when you unload: the file disappears.
 
@@ -392,7 +402,7 @@ For now, `mknod` is fine. Just know it's a stopgap.
 ## 37.8  Lab
 
 1. **Build and load `hello_chrdev.ko`.** Confirm the buffer survives writes and reads as expected.
-2. **Concurrency test.** Open two terminal sessions on the target. In each, run `while true; do echo "from-A" > /dev/hello; cat /dev/hello; done` (varying the strings). Watch for any garbled reads. Then remove the mutex from the code and rerun: garbled output now occurs.
+2. **Concurrency test.** Open two terminal sessions on the target. In each, run `while true. do echo "from-A" > /dev/hello. cat /dev/hello. done` (varying the strings). Watch for any garbled reads. Then remove the mutex from the code and rerun: garbled output now occurs.
 3. **Bad pointer.** Pass a bogus pointer:
    ```c
    read(fd, (void *)0xFFFFFFFF, 100);
@@ -401,7 +411,7 @@ For now, `mknod` is fine. Just know it's a stopgap.
 4. **Static buffer size.** Try writing 300 bytes (more than `HELLO_BUFSIZE`). Confirm it truncates to 256 and `write` returns 256.
 5. **Open with `O_RDONLY`.** Now try to `write`. What happens?
    - The VFS layer rejects it before reaching your driver. You can verify by `strace cat /dev/hello`: no `write()` syscall on a read-only fd would reach you anyway, but understanding *where* the rejection happens is useful.
-6. **Inspect with `lsof`.** `lsof /dev/hello` lists all processes holding it open. Stop one such process; observe the open count drop.
+6. **Inspect with `lsof`.** `lsof /dev/hello` lists all processes holding it open. Stop one such process. observe the open count drop.
 
 ## 37.9  Pitfalls
 
@@ -409,6 +419,8 @@ For now, `mknod` is fine. Just know it's a stopgap.
 - **Calling user-space functions inside the kernel.** Kernel code does not have access to glibc. No `printf`, no `malloc`, no `memcpy_s`. Use `printk`/`pr_*`, `kmalloc`/`kfree`, `memcpy` (which exists in the kernel, slightly different optimisation profile).
 - **Stack overflow.** Kernel stacks are **8 KB on ARM32 i.MX6ULL** (16 KB on x86_64 / arm64). Don't put large arrays on the stack. If you need a 4 KB scratch buffer, use `kmalloc(4096, GFP_KERNEL)` and free it at the end of the function.
 - **Allocating with the wrong flag.** `kmalloc(..., GFP_KERNEL)` may sleep — fine in syscall context, not fine in interrupt context. In an IRQ handler, use `GFP_ATOMIC`. We'll cover this in Ch 43.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 - **Returning the wrong type.** `read` and `write` return `ssize_t`. Don't return `int` (compile warning), don't return `size_t` (may hide negative values), and don't return success when you mean count.
 - **Holding a mutex across `copy_to_user`.** `copy_to_user` can sleep (it may need to page in user memory). Sleeping while holding a mutex is fine in principle, but if you hold the mutex too long, every other reader/writer is blocked. For most chardevs this is acceptable.
 - **Not handling `*ppos` correctly.** A misbehaving driver that ignores `*ppos` reads the buffer-from-the-start every read, leading `cat` into an infinite loop. Always advance `*ppos` by the number of bytes you returned.
@@ -416,9 +428,9 @@ For now, `mknod` is fine. Just know it's a stopgap.
 ## 37.10  Going deeper
 
 - **`Documentation/filesystems/vfs.rst`** — how the VFS dispatches operations.
-- **`Documentation/process/coding-style.rst`** — the kernel's coding standards; `checkpatch.pl` enforces them.
+- **`Documentation/process/coding-style.rst`** — the kernel's coding standards. `checkpatch.pl` enforces them.
 - **`drivers/char/mem.c`** — `/dev/null`, `/dev/zero`, `/dev/random`. Real chardev implementations in canonical style.
-- **`drivers/char/misc.c`** — the misc device framework (next chapter — Ch 40); useful to read once you understand chardev basics.
+- **`drivers/char/misc.c`** — the misc device framework (next chapter — Ch 40). useful to read once you understand chardev basics.
 - **LDD3 Chapter 3** — much more on the chardev driver model.
 
 > Next chapter: **Chapter 38 — Auto-creating `/dev/` nodes.** With udev/mdev hot-plug, you stop calling `mknod` by hand. We add `class_create` and `device_create` to the driver.

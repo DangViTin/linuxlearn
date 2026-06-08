@@ -1,4 +1,4 @@
-﻿---
+---
 chapter: 117
 title: External RTC (DS3231, PCF8563, MCP79410)
 part: VII — Device cookbook
@@ -7,17 +7,24 @@ status: draft
 ---
 
 # Chapter 117 — External RTC
+**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 
-> **What:** **external battery-backed real-time clocks**. **Maxim DS3231** (TCXO, ±2 ppm, the highest-accuracy popular choice), **NXP PCF8563** (cheap, common, ±20 ppm), **Microchip MCP79410** (with built-in EEPROM, plus a unique ID). On the i.MX6ULL we wire I²C, walk the kernel `rtc-i2c` family of drivers (`rtc-ds1307` covers DS3231; `rtc-pcf8563` for PCF8563; `rtc-mcp7941x` for Microchip), use `hwclock` to sync between system clock and RTC, configure **alarm interrupts** for wake-from-suspend, and integrate with **Ch 51B's runtime PM** so the i.MX6ULL can sleep for hours and wake exactly on a scheduled RTC alarm.
+> **What:** **external battery-backed real-time clocks**. **Maxim DS3231** (TCXO, ±2 ppm, the highest-accuracy popular choice), **NXP PCF8563** (cheap, common, ±20 ppm), **Microchip MCP79410** (with built-in EEPROM, plus a unique ID). On the i.MX6ULL we wire I²C, walk the kernel `rtc-i2c` family of drivers (`rtc-ds1307` covers DS3231. `rtc-pcf8563` for PCF8563. `rtc-mcp7941x` for Microchip), use `hwclock` to sync between system clock and RTC, configure **alarm interrupts** for wake-from-suspend, and integrate with **Ch 51B's runtime PM** so the i.MX6ULL can sleep for hours and wake exactly on a scheduled RTC alarm.
 >
 > **Why:** the i.MX6ULL has an *internal* RTC in the SNVS (Secure Non-Volatile Storage) domain — it survives reboots but loses time without a backup battery on the VDD_SNVS rail. Many board designs skip the SNVS battery to save 50 cents → the SoC's RTC is useless. The external RTC fix: a $0.50 chip plus a $0.30 coin cell on the I²C bus. The device knows the correct time on every cold boot, runs scheduled alarms even when Linux is off, and stays calibrated for years. For products that schedule actions ("daily sensor upload at 06:00") or need accurate timestamps in logs across power outages, an external RTC isn't optional.
 >
-> **Focus:** The RTC chip is a 32.768 kHz oscillator plus counters, accessed over I²C. The kernel `rtc-*` driver exposes it as `/dev/rtcN`. `hwclock` syncs between the hardware clock and the system clock. `chrony` (or `systemd-timesyncd`) keeps the system clock disciplined from NTP or PPS, and writes the corrected time back to the RTC. Three clock domains coexist (hardware RTC, system clock, NTP source); their interactions are what's tricky. Alarm interrupts let the RTC wake the SoC from suspend. The alarm pin must be wired to a GPIO that the kernel can use as a wake source. This wiring requirement is the most-skipped detail in RTC bring-up.
+> **Focus:** The RTC chip is a 32.768 kHz oscillator plus counters, accessed over I²C. The kernel `rtc-*` driver exposes it as `/dev/rtcN`. `hwclock` syncs between the hardware clock and the system clock. `chrony` (or `systemd-timesyncd`) keeps the system clock disciplined from NTP or PPS, and writes the corrected time back to the RTC. Three clock domains coexist (hardware RTC, system clock, NTP source). their interactions are what's tricky. Alarm interrupts let the RTC wake the SoC from suspend. The alarm pin must be wired to a GPIO that the kernel can use as a wake source. This wiring requirement is the most-skipped detail in RTC bring-up.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Tooling.** This chapter uses `hwclock` (in `util-linux`), `chrony` for time discipline, optional `i2c-tools`.
 > - **Ubuntu-base (target):** `apt install util-linux chrony i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_UTIL_LINUX_HWCLOCK=y BR2_PACKAGE_CHRONY=y BR2_PACKAGE_I2C_TOOLS=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 117.1  Chip comparison
 
@@ -35,8 +42,8 @@ status: draft
 | Kernel driver | `rtc-ds1307` (covers DS3231 too) | `rtc-pcf8563` | `rtc-mcp7941x` |
 
 **Pick guide:**
-- **DS3231** — accuracy matters (logs, scheduling, fleet sync); willing to pay $1.50.
-- **PCF8563** — BOM critical; ±10 min/year drift acceptable; you have NTP to correct.
+- **DS3231** — accuracy matters (logs, scheduling, fleet sync). willing to pay $1.50.
+- **PCF8563** — BOM critical. ±10 min/year drift acceptable. You have NTP to correct.
 - **MCP79410** — when you also want a tiny EEPROM (board serial, calibration data) without adding a separate chip.
 
 ## 117.2  Wiring DS3231
@@ -52,7 +59,7 @@ GPIO  ─┤ INT       ├──────────────────
        └───────────┘                              └──────────┘
 ```
 
-The INT pin is an open-drain output; pull-up to 3.3 V. Wire to a GPIO that maps to a wake source (the i.MX6ULL EXTRBOOT or ONOFF wake pins are ideal; otherwise any GPIO with `wake-up-source` capability).
+The INT pin is an open-drain output. pull-up to 3.3 V. Wire to a GPIO that maps to a wake source (the i.MX6ULL EXTRBOOT or ONOFF wake pins are ideal. otherwise any GPIO with `wake-up-source` capability).
 
 ## 117.3  Device tree
 
@@ -110,7 +117,11 @@ Time zone: hwclock can store the RTC in UTC or local time. UTC is strongly recom
 
 ## 117.5  Alarm interrupts — waking from suspend
 
-DS3231 has two alarms; PCF8563 has one. Set an alarm:
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
+DS3231 has two alarms. PCF8563 has one. Set an alarm:
 
 ```sh
 # Wake in 30 seconds via rtcwake
@@ -123,7 +134,7 @@ rtcwake -m mem -s 30
 2. `echo mem > /sys/power/state` to suspend.
 3. RTC's INT pin pulled low at the alarm time.
 4. INT pin wired to a wake-capable GPIO → ARM core wakes from WFI.
-5. Kernel resumes; alarm is cleared.
+5. Kernel resumes. alarm is cleared.
 
 From C:
 
@@ -146,7 +157,7 @@ system("echo mem > /sys/power/state");
 /* Execution resumes here after wake */
 ```
 
-For a battery-powered sensor: sleep 10 minutes; wake; read sensors; transmit; sleep again. With DVFS + suspend-to-RAM + RTC alarm + power-managed peripherals, the i.MX6ULL idles at < 5 mA between samples.
+For a battery-powered sensor: sleep 10 minutes. wake. read sensors. transmit. sleep again. With DVFS + suspend-to-RAM + RTC alarm + power-managed peripherals, the i.MX6ULL idles at < 5 mA between samples.
 
 ## 117.6  How the rtc-ds1307 driver actually works
 
@@ -270,27 +281,29 @@ The DS3231's built-in thermometer is a useful bonus. It drives the TCXO temperat
 
 ## 117.9  Lab
 
-1. **RTC up.** Wire DS3231; verify in `dmesg` that the kernel finds it (`rtc-ds1307`). `hwclock --show` reads the time.
-2. **Set + persist.** `date -s ...`; `hwclock --systohc`; pull power; reboot; `hwclock --show` — time persists.
-3. **Battery hot-swap test.** Remove the CR2032 with power on; replace; verify time still correct. Then remove battery + power; replace battery; reapply power → time lost. The CR2032 only protects against short *main supply* outages. If both the main supply and the battery are removed at the same time, the RTC loses time.
-4. **From scratch I²C.** Run `ds3231_min.c`; cross-check with `hwclock --show`.
-5. **Alarm wake.** `rtcwake -m mem -s 60` — system suspends; wakes 60 s later. Measure power during the suspended interval (should be < 5 mA if other rails are PMIC-managed).
-6. **Daily scheduled task.** Use a cron-like scheduler: at boot, set an RTC alarm for the next 06:00; suspend; wake at 06:00; run the task; sleep again. Total energy per day: ~30 s of active + 86,370 s of suspend → battery life × 100 vs always-on.
-7. **chrony integration.** Configure chrony with NTP + RTC backup. Disconnect network; reboot; verify time is correct from RTC.
-8. **Drift measurement.** Power up; sync to NTP; wait 7 days; compare RTC time vs NTP. DS3231 should be within ±5 s; PCF8563 within ±100 s.
-9. **Multi-RTC.** If your board has both SNVS RTC and DS3231, configure DS3231 as primary in `/etc/adjtime`; verify `hwclock --show` reads from DS3231.
-10. **Temperature monitor.** Read DS3231's internal temp register every 10 s; log to a CSV; plot a day's worth — see room temperature variation.
+1. **RTC up.** Wire DS3231. verify in `dmesg` that the kernel finds it (`rtc-ds1307`). `hwclock --show` reads the time.
+2. **Set + persist.** `date -s ...`. `hwclock --systohc`. pull power. reboot. `hwclock --show` — time persists.
+3. **Battery hot-swap test.** Remove the CR2032 with power on. replace. verify time still correct. Then remove battery + power. replace battery. reapply power → time lost. The CR2032 only protects against short *main supply* outages. If both the main supply and the battery are removed at the same time, the RTC loses time.
+4. **From scratch I²C.** Run `ds3231_min.c`. cross-check with `hwclock --show`.
+5. **Alarm wake.** `rtcwake -m mem -s 60` — system suspends. wakes 60 s later. Measure power during the suspended interval (should be < 5 mA if other rails are PMIC-managed).
+MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+**PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
+6. **Daily scheduled task.** Use a cron-like scheduler: at boot, set an RTC alarm for the next 06:00. suspend. wake at 06:00. run the task. sleep again. Total energy per day: ~30 s of active + 86,370 s of suspend → battery life × 100 vs always-on.
+7. **chrony integration.** Configure chrony with NTP + RTC backup. Disconnect network. reboot. verify time is correct from RTC.
+8. **Drift measurement.** Power up. sync to NTP. wait 7 days. compare RTC time vs NTP. DS3231 should be within ±5 s. PCF8563 within ±100 s.
+9. **Multi-RTC.** If your board has both SNVS RTC and DS3231, configure DS3231 as primary in `/etc/adjtime`. verify `hwclock --show` reads from DS3231.
+10. **Temperature monitor.** Read DS3231's internal temp register every 10 s. log to a CSV. plot a day's worth — see room temperature variation.
 
 ## 117.10  Pitfalls
 
 - **No backup battery.** Battery socket present but empty. Time resets on every power-cycle. Always populate the battery (or use a supercap with charging circuit).
-- **Battery dead, no monitoring.** CR2032 lasts 6–10 years but does die. After 8 years, the RTC silently loses time on next outage. Monitor the OSF (Oscillator Stop Flag) bit; alert when set.
+- **Battery dead, no monitoring.** CR2032 lasts 6–10 years but does die. After 8 years, the RTC silently loses time on next outage. Monitor the OSF (Oscillator Stop Flag) bit. alert when set.
 - **VBAT < VCC on power-up.** Some RTCs (DS3231) need VCC ≥ VBAT before they start counting. If VCC ramps slowly, RTC may not start. Add a power-good supervisor or check OSF after every boot.
-- **OSF not cleared.** DS3231 latches OSF after VBAT loss; if you don't clear it, the alarm interrupts are inhibited. Clear in CONTROL_STATUS register at boot.
-- **I²C bus pull-up missing or too weak.** DS3231 expects 4.7 kΩ to 10 kΩ pull-ups; weaker = slow edges = errors at 400 kHz.
+- **OSF not cleared.** DS3231 latches OSF after VBAT loss. If you don't clear it, the alarm interrupts are inhibited. Clear in CONTROL_STATUS register at boot.
+- **I²C bus pull-up missing or too weak.** DS3231 expects 4.7 kΩ to 10 kΩ pull-ups. weaker = slow edges = errors at 400 kHz.
 - **Multiple chips at 0x68.** The MPU-6050 IMU also defaults to address 0x68 — bus conflict. The DS3231 address is fixed. Strap the MPU-6050's AD0 pin to move it to 0x69.
-- **BCD vs binary confusion.** Direct register reads return BCD; treating as binary gives nonsense (0x13 read as 19 instead of 13). Convert with bcd2bin.
-- **Year-2100 problem.** Some RTCs store year as 0..99; the "century" bit handles 2000–2099 only. Post-2100 these RTCs roll over to 2000.
+- **BCD vs binary confusion.** Direct register reads return BCD. treating as binary gives nonsense (0x13 read as 19 instead of 13). Convert with bcd2bin.
+- **Year-2100 problem.** Some RTCs store year as 0..99. The "century" bit handles 2000–2099 only. Post-2100 these RTCs roll over to 2000.
 - **INT pin not wake-capable.** GPIO wired but not configurable as a wake source → suspend works but never wakes. Verify with `dmesg | grep wakeup`.
 - **Alarm time wrong fields.** DS3231 alarm requires specific masks (DY/DT bit for day-of-week vs day-of-month). Wrong mask = alarm fires constantly or never.
 - **MCP79410 EEPROM at separate I²C address.** Same chip, but the EEPROM section is at 0x57, not 0x6F (the RTC's address). Easy to miss.
@@ -298,15 +311,19 @@ The DS3231's built-in thermometer is a useful bonus. It drives the TCXO temperat
 
 ## 117.11  Going deeper
 
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
+
 - **Maxim DS3231 Datasheet** — TCXO theory, alarm registers, OSF semantics.
 - **NXP PCF8563 Datasheet** — sibling cheap RTC.
 - **Microchip MCP79410 Datasheet** — RTC + EEPROM + Unique ID.
-- **`drivers/rtc/rtc-ds1307.c`** — covers DS3231 too; readable.
-- **`drivers/rtc/`** — see other RTC drivers; same pattern.
+- **`drivers/rtc/rtc-ds1307.c`** — covers DS3231 too. readable.
+- **`drivers/rtc/`** — see other RTC drivers. same pattern.
 - **`Documentation/rtc.txt`** — RTC subsystem overview.
 - **`hwclock(8)`, `rtcwake(8)`, `chrony.conf(5)`** — the user-space toolchain.
 - **NTPv4 + chrony architecture** — for the multi-source clock discipline math.
-- **Ch 51B** — runtime PM + suspend; the consumer side of "wake on RTC alarm."
+- **Ch 51B** — runtime PM + suspend. The consumer side of "wake on RTC alarm."
 - **Ch 107** — GPS+PPS for the sub-µs precision case where an RTC alone isn't enough.
 
 ---
@@ -314,3 +331,5 @@ The DS3231's built-in thermometer is a useful bonus. It drives the TCXO temperat
 > **End of Part VII — Device Cookbook (Ch 64–117, 54 chapters).** Part VII covers most device classes you will integrate on an i.MX6ULL product, with 2–4 real chips per class, schematics, DT, driver internals, from-scratch implementations, labs, and pitfalls. From the cheapest QSPI flash to a GPS-disciplined time server, most external chips an i.MX6ULL product is likely to integrate are documented here. Use it as a reference: jump to the chapter for the chip in front of you.
 
 > Next: **Part VIII — Debug, production, advanced** — JTAG, kernel debugging, production-grade build infrastructure, secure boot, OTA, mainline patch submission. The chapters that take your Linux skills from "I can make this work" to "I can ship this product."
+> MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
+> **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.

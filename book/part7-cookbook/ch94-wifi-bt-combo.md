@@ -17,7 +17,11 @@ status: draft
 > **Tooling.** This chapter uses `wpa_supplicant`, `iw`, `bluez` (`bluetoothctl`, `hciattach`), combo firmware.
 > - **Ubuntu-base (target):** `apt install wpasupplicant iw bluez bluez-tools`
 > - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y BR2_PACKAGE_BLUEZ5_UTILS=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 94.1  Module comparison
 
@@ -34,7 +38,7 @@ status: draft
 
 **Pick guide:**
 - **AP6212**: best mainline support (brcmfmac + hci_bcm both in-tree). Default for i.MX boards.
-- **RTL8723BS**: cheap, `rtl8723bs` is now in-tree; BT via btrtl. Decent.
+- **RTL8723BS**: cheap, `rtl8723bs` is now in-tree. BT via btrtl. Decent.
 - **AP6256**: when you need 5 GHz / 802.11ac / BT 5.0.
 
 ## 94.2  Two radios, two buses
@@ -184,26 +188,26 @@ Observable effect: run iperf3 over WiFi while streaming BT audio. Without coex, 
 1. **WiFi first** (Ch 91): SDIO + pwrseq + 32 kHz clock + firmware + NVRAM → `wlan0`. Verify it works alone.
 2. **BT second**: UART + serdev BT node + BT firmware patch → `hci0`. Verify it works alone.
 3. **Shared resources**: both halves share the 32 kHz LPO clock (declare it once, reference from both pwrseq and the BT node) and often share power rails. The WL_REG_ON and BT_REG_ON are usually *separate* GPIOs — power each half independently.
-4. **Coexistence test**: run both simultaneously; confirm acceptable performance.
+4. **Coexistence test**: run both simultaneously. confirm acceptable performance.
 
 A common mistake is to get WiFi working and assume the job is done. Then a field unit fails because the BT side was never wired correctly. Test both, separately and together.
 
 ## 94.7  Lab
 
 1. **WiFi half.** Bring up the AP6212 WiFi per Ch 91. Confirm `wlan0` + connect.
-2. **BT half.** Add the serdev `bluetooth` node under your UART. Copy the BT firmware patch. Boot; verify `hci0` via `hciconfig`.
+2. **BT half.** Add the serdev `bluetooth` node under your UART. Copy the BT firmware patch. Boot. verify `hci0` via `hciconfig`.
 3. **BLE scan.** `bluetoothctl` → `scan on`. Discover nearby BLE devices (your phone, a fitness tracker).
-4. **Classic BT.** Pair with a BT speaker or keyboard; verify it connects.
-5. **Coexistence test.** Stream A2DP audio to a BT speaker *while* running iperf3 over WiFi. Measure WiFi throughput with and without BT active; quantify the coex cost.
-6. **Shared LPO clock.** Verify both halves reference the same 32 kHz clock in DT. Remove it from one; observe that half fail.
-7. **Power management.** Suspend; verify both WiFi and BT survive resume (with the wake GPIOs configured).
+4. **Classic BT.** Pair with a BT speaker or keyboard. verify it connects.
+5. **Coexistence test.** Stream A2DP audio to a BT speaker *while* running iperf3 over WiFi. Measure WiFi throughput with and without BT active. quantify the coex cost.
+6. **Shared LPO clock.** Verify both halves reference the same 32 kHz clock in DT. Remove it from one. observe that half fail.
+7. **Power management.** Suspend. verify both WiFi and BT survive resume (with the wake GPIOs configured).
 8. **BD address.** Note the BT controller's BD_ADDR. For production, program a unique one (from your EEPROM, Ch 65) — many modules ship with a default/duplicate address.
 
 ## 94.8  Pitfalls
 
 - **WiFi works, BT forgotten.** The two halves are independent. Test both. A working `wlan0` says nothing about `hci0`.
 - **Missing BT firmware patch.** `hci0` comes up but with reduced functionality or wrong BD address. Copy the `.hcd` (Broadcom) or firmware (Realtek) to `/lib/firmware/brcm/` (or `/rtl_bt/`).
-- **UART without hardware flow control.** BT at 3 Mbps needs RTS/CTS; without `uart-has-rtscts`, you get HCI packet corruption at high baud. Wire and enable flow control.
+- **UART without hardware flow control.** BT at 3 Mbps needs RTS/CTS. Without `uart-has-rtscts`, you get HCI packet corruption at high baud. Wire and enable flow control.
 - **Shared 32 kHz clock declared twice / not at all.** Both halves need the LPO. Declare it once (a `fixed-clock`) and reference from both. Missing it → flaky or dead radios.
 - **Baud-rate switch failure.** BT starts at 115200, then `hci_bcm` switches to 3 Mbps. If the UART or flow control can't handle the switch, BT init fails after the firmware load. Check `dmesg` for the baud-switch step.
 - **Default/duplicate BD address.** Many modules ship with `43:43:A1:00:00:00` or similar. Two devices with the same BD address can't both be paired by one phone. Program a unique address at factory.

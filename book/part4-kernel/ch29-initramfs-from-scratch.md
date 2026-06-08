@@ -11,8 +11,12 @@ status: draft
 > **What:** the absolute minimum user space that a Linux kernel can hand off to — a single statically-linked binary in a cpio archive, ~30 KB, that prints "hello" and reboots. Then a BusyBox-based initramfs with a real shell. Both reachable in under an hour.
 >
 > **Why:** the standard rootfs path (`root=/dev/mmcblk0p2`) hides a lot. Building an initramfs by hand surfaces the actual kernel-to-userspace handoff: what kernel_init's `kernel_execve` does, what `/init` must look like, how cpio archives become a populated filesystem at boot. Once you have done it once, Buildroot and Ubuntu-base in Part V build on the same idea, just with more pieces.
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 >
 > **Focus:** the **cpio archive as a filesystem image** that the kernel unpacks into the initial tmpfs. Once that model is clear, the rest is just commands.
+
 
 ## 29.1  What an initramfs is
 
@@ -22,8 +26,10 @@ The image format is **cpio** (the venerable Unix archive format), optionally com
 
 Two ways to get the cpio archive into kernel memory:
 
-1. **Built into the kernel image.** The kernel's `usr/initramfs_data.cpio.gz` gets linked into `vmlinux` (and therefore into `zImage`). The kernel knows the archive's location; on boot it extracts it.
+1. **Built into the kernel image.** The kernel's `usr/initramfs_data.cpio.gz` gets linked into `vmlinux` (and therefore into `zImage`). The kernel knows the archive's location. on boot it extracts it.
 2. **Loaded separately by the bootloader.** U-Boot reads `initramfs.cpio.gz` into RAM at some address, passes that address via the DT's `/chosen/linux,initrd-start` and `linux,initrd-end` properties (or the legacy ATAGS), and the kernel extracts from there.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 Option 1 is simpler for tiny images. Option 2 is more flexible — you can change the rootfs without rebuilding the kernel — and is the standard choice for anything bigger. We'll do both.
 
@@ -69,7 +75,7 @@ $ ls -lh init
 -rwxr-xr-x 1 you you 480K Jan 22 init
 ```
 
-480 KB statically linked against glibc. That's ten times the size of the program itself; glibc is fat. With **musl** instead:
+480 KB statically linked against glibc. That's ten times the size of the program itself. glibc is fat. With **musl** instead:
 
 ```sh
 $ musl-gcc -static -Os -o init hello.c   # or use arm-linux-musleabihf-gcc
@@ -96,6 +102,7 @@ $ ls -lh ../initramfs.cpio.gz
 ## 29.3  Booting it from U-Boot
 
 Drop `initramfs.cpio.gz` into your TFTP server, then:
+**TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
 
 ```
 => tftp 0x82000000 zImage
@@ -236,7 +243,7 @@ CONFIG_INITRAMFS_SOURCE="/home/you/imx6ull/initramfs.cpio.gz"
 $ make ARCH=arm zImage     # zImage now includes initramfs internally
 ```
 
-The `zImage` grows by the initramfs size; no separate bootloader step. Convenient for a *fixed* initramfs that's part of the kernel's release artifact. Used by single-purpose appliances and by recovery kernels.
+The `zImage` grows by the initramfs size. no separate bootloader step. Convenient for a *fixed* initramfs that's part of the kernel's release artifact. Used by single-purpose appliances and by recovery kernels.
 
 ### Separate file loaded by bootloader
 
@@ -263,13 +270,14 @@ For embedded, **BusyBox init** is the default. We use it in this book through Ch
 3. **Build and run the BusyBox initramfs** from §29.4. Get to a shell. Run `ls /proc`, `cat /proc/meminfo`, `dmesg | tail`.
 4. **Embed the initramfs.** Add `CONFIG_INITRAMFS_SOURCE` to your kernel's `.config`, rebuild, boot with `bootz <kernel> - <dtb>` (no separate initrd address). Verify the kernel boots to the same shell.
 5. **Mount sysfs.** From the BusyBox shell, `ls /sys/class/gpio/`. Confirm devtmpfs and sysfs are populated. Echo a value to `/sys/class/leds/<your-led>/brightness` and observe the LED change.
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 ## 29.8  Pitfalls
 
 - **`/init` must exist at the root and be executable.** Forget either and the kernel panics with "No filesystem could mount root, tried: ramfs". Cpio archives don't error on missing init.
 - **`/init` linked dynamically.** If `/init` depends on `libc.so.6` and `libc.so.6` isn't in the cpio, exec fails silently. Either statically link (recommended) or include the needed `.so` files in `/lib/` of the initramfs.
 - **`init=` vs `rdinit=`.** `init=path` tells the kernel to look on the *root filesystem* (the one specified by `root=`). `rdinit=path` tells it to look on the *initramfs*. For initramfs-only boots, use `rdinit=` or just rely on the default `/init` lookup.
-- **cpio archive built without `-H newc`.** Default cpio format isn't what the kernel expects; the unpacker reports an error and gives up. Always `-H newc`.
+- **cpio archive built without `-H newc`.** Default cpio format isn't what the kernel expects. The unpacker reports an error and gives up. Always `-H newc`.
 - **Trailing slash on `find .`.** `find .` gives relative paths like `./init`, which is what cpio wants. `find /home/you/initramfs` gives absolute paths, so the archive ends up with `/home/you/initramfs/init` and the kernel cannot find `/init`. Always `cd` into the rootfs first.
 - **BusyBox not statically linked.** Built dynamic by default. Forgetting to set static causes the binary to need glibc shared objects you don't have in the initramfs. Symptom: `Kernel panic - not syncing: Attempted to kill init!` because `exec` fails.
 - **No `/dev/console` before `kernel_init` opens it.** Kernel handles this automatically via devtmpfs auto-mount, but if you disable that in `.config`, you'll see `Warning: unable to open an initial console` and lose all stdio in your init. Keep `CONFIG_DEVTMPFS=y` and `CONFIG_DEVTMPFS_MOUNT=y`.
@@ -277,7 +285,7 @@ For embedded, **BusyBox init** is the default. We use it in this book through Ch
 ## 29.9  Going deeper
 
 - **`Documentation/filesystems/ramfs-rootfs-initramfs.rst`** — canonical kernel doc on the initramfs mechanism.
-- **`Documentation/admin-guide/initrd.rst`** — older initrd mechanism (predecessor to initramfs); useful context.
+- **`Documentation/admin-guide/initrd.rst`** — older initrd mechanism (predecessor to initramfs). useful context.
 - **BusyBox manual** at `busybox.net/about.html` and the per-applet `--help`.
 - **`init/initramfs.c`** — the kernel's cpio extractor. Short and readable.
 - **`klibc`** — an even smaller libc-replacement than musl, designed specifically for in-kernel-cpio-initramfs static binaries.

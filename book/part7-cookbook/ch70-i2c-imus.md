@@ -7,12 +7,19 @@ status: draft
 ---
 
 # Chapter 70 — I²C IMUs
+**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 
 > **What:** three I²C inertial measurement units, dissected: **InvenSense MPU6050** (6-axis, the classic), **MPU9250** (9-axis with an AK8963 magnetometer hiding inside via I²C-master mode), **ICM-20948** (modern 9-axis, replaced MPU9250). For each: register map, the sampling-rate trade-offs, the IIO **trigger + buffer** mechanism for high-rate capture, and a from-scratch MPU6050 driver including IIO buffer support.
+> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
 > **Why:** IMUs are everywhere — drones, e-scooters, VR headsets, fitness wearables, industrial vibration monitors. They're also the canonical IIO example of *high-rate buffered capture*: a 1 kHz IMU produces 6–9 measurements per sample, and one sysfs read per sample isn't going to work. The IIO trigger/buffer framework is the answer. Once you understand it, the same pattern works for any high-rate sensor.
+> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
-> **Focus:** **Trigger + buffer is how IIO scales to thousands of samples per second.** A `trigger` (timer or IRQ) tells the driver "now"; the driver atomically samples *all enabled channels*; pushes the coordinated sample into a kfifo; user-space drains the kfifo from `/dev/iio:deviceN`. The whole pipeline is asynchronous and survives microsecond jitter.
+> **Focus:** **Trigger + buffer is how IIO scales to thousands of samples per second.** A `trigger` (timer or IRQ) tells the driver "now". The driver atomically samples *all enabled channels*. pushes the coordinated sample into a kfifo. user-space drains the kfifo from `/dev/iio:deviceN`. The whole pipeline is asynchronous and survives microsecond jitter.
+> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+
 
 ## 70.1  Chip comparison
 
@@ -45,6 +52,10 @@ Adding a magnetometer gives an Earth-field reference: the chip measures the geom
 For drones, AR/VR, robotic-arm control: 9-axis is mandatory. For tap-detection, fall-detection, vibration logging: 6-axis is enough.
 
 ## 70.3  Protocol — MPU6050 register map
+
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
 
 Register layout (most-used subset):
 
@@ -88,11 +99,13 @@ temp_c = (s16)((raw[6] << 8) | raw[7]) / 340.0 + 36.53;
 
 Bring-up sequence:
 
-1. Read WHO_AM_I (0x75); verify it returns 0x68 (or 0x71 for MPU9250, 0xEA for ICM-20948).
+1. Read WHO_AM_I (0x75). verify it returns 0x68 (or 0x71 for MPU9250, 0xEA for ICM-20948).
 2. Write 0x80 to PWR_MGMT_1: soft reset.
 3. Wait ~100 ms.
 4. Write 0x00 to PWR_MGMT_1: wake from sleep, internal 8 MHz clock.
 5. Write 0x01 to PWR_MGMT_1: wake, PLL with X-gyro reference (lower noise).
+MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+**PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 6. Configure DLPF, sample rate, ranges as needed.
 7. Read at the configured cadence — or set up an IRQ on data-ready (bit 0 of INT_STATUS).
 
@@ -160,7 +173,7 @@ echo 1 > .../buffer/enable
 dd if=/dev/iio:device0 of=samples.bin bs=12 count=10000
 ```
 
-10 000 atomic samples land in `samples.bin`. The data layout matches the order of `scan_elements/*_en` toggled on. Each sample's bytes are packed; user-space parses with the driver-declared `scan_type` (bits per sample, byte order).
+10 000 atomic samples land in `samples.bin`. The data layout matches the order of `scan_elements/*_en` toggled on. Each sample's bytes are packed. user-space parses with the driver-declared `scan_type` (bits per sample, byte order).
 
 ### Triggers
 
@@ -168,6 +181,8 @@ A *trigger* is its own IIO object. Two common kinds:
 
 - **hrtimer**: kernel high-resolution timer firing at a programmable rate. Drift-free, suitable for steady sampling. Backed by `drivers/iio/trigger/iio-trig-hrtimer.c`.
 - **interrupt**: an IRQ on a GPIO connected to the chip's INT pin (the chip asserts when it has data ready). Synchronized exactly to the chip's sample clock.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 Drivers may also publish their *own* trigger ("data-ready trigger") that consumer code can bind. The MPU6050 driver does this — its INT pin's IRQ becomes an IIO trigger named `mpu6050-dev0`, and you can bind it to its own buffer or to *another* device's buffer (sync sampling across chips).
 
@@ -307,7 +322,7 @@ When the data-ready trigger is bound:
 
 1. Chip's INT pin goes high → GPIO IRQ on i.MX6ULL.
 2. Kernel calls the IIO trigger's primary handler (the chip driver's "I have data" callback).
-3. Primary handler returns `IRQ_WAKE_THREAD`; the trigger framework schedules the trigger handler (above) as a kernel thread.
+3. Primary handler returns `IRQ_WAKE_THREAD`. The trigger framework schedules the trigger handler (above) as a kernel thread.
 4. Thread runs at SCHED_FIFO priority, drains FIFO, pushes to buffer.
 
 At 1 kHz the CPU wakes once per sample for a few microseconds. Compare to `read()` polling, which is 30 µs per syscall and 6 channels = 180 µs per sample, or 18 % of one CPU. Trigger+buffer is closer to 5 µs per sample, around 0.5 %.
@@ -629,7 +644,7 @@ Two modes:
 1. **Bypass mode**: bit 1 of INT_PIN_CFG (0x37) = 1. The MPU6500 ties its aux I²C lines directly to the host's I²C lines. Host then sees AK8963 at address 0x0C and talks to it directly.
 2. **Aux-bus master mode**: the MPU6500 itself reads AK8963 registers periodically and stores results into its EXT_SENS_DATA registers (0x49..0x60). Host reads those.
 
-Bypass is simpler; aux-master mode is needed when the chip's internal sample-aligned-with-mag synchronisation matters.
+Bypass is simpler. aux-master mode is needed when the chip's internal sample-aligned-with-mag synchronisation matters.
 
 The mainline driver supports both via the `inv_mpu_aux` helper, presenting `/sys/bus/iio/devices/iio:device0/in_magn_*_raw` even though physically the magnetometer is on a hidden bus.
 
@@ -667,7 +682,7 @@ The mainline driver gives you the same `/sys/bus/iio/...` interface plus extra k
 
 ## 70.10  Sensor fusion in user-space
 
-The IMU gives raw measurements; orientation comes from a fusion algorithm. Most common: **Madgwick filter** (a complementary filter with quaternion gradient descent). User-space implementation in ~200 lines of C:
+The IMU gives raw measurements. orientation comes from a fusion algorithm. Most common: **Madgwick filter** (a complementary filter with quaternion gradient descent). User-space implementation in ~200 lines of C:
 
 ```c
 void madgwick_update(quat *q, vec3 gyro, vec3 accel, float dt, float beta)
@@ -694,31 +709,31 @@ void madgwick_update(quat *q, vec3 gyro, vec3 accel, float dt, float beta)
 
 Run once per IMU sample (1 kHz). `beta` tunes the trust-gyro-vs-trust-accel balance (~0.1 is typical). Output: a quaternion describing the chip's orientation in world frame. Drift-free in roll/pitch.
 
-For yaw, add magnetometer; the algorithm extends to "Madgwick AHRS."
+For yaw, add magnetometer. The algorithm extends to "Madgwick AHRS."
 
-Fusion belongs in user-space, not in the driver. The driver delivers clean samples; the application turns them into orientation.
+Fusion belongs in user-space, not in the driver. The driver delivers clean samples. The application turns them into orientation.
 
 ## 70.11  Lab
 
 1. **WHO_AM_I poke.** With i2c-tools: `i2cget -y 1 0x68 0x75`. Should return 0x68 (or 0x71 for MPU9250).
 2. **Build and load `mympu6050.ko`.** Read accel and gyro via sysfs. Hold the chip flat → +1 g on Z. Tilt 90° → +1 g on Y or X.
-3. **Triggered buffered capture.** Configure hrtimer trigger; capture 5000 samples; parse offline. Plot accel-Z while you tap the table — you'll see vibration peaks.
-4. **Madgwick filter.** Compile a user-space Madgwick implementation; feed it samples from `/dev/iio:device0`. Plot the resulting roll/pitch in real-time.
+3. **Triggered buffered capture.** Configure hrtimer trigger. capture 5000 samples. parse offline. Plot accel-Z while you tap the table — you'll see vibration peaks.
+4. **Madgwick filter.** Compile a user-space Madgwick implementation. feed it samples from `/dev/iio:device0`. Plot the resulting roll/pitch in real-time.
 5. **Mainline driver.** Switch to `compatible = "invensense,mpu6050"`. Verify same channels appear.
-6. **Self-test.** Write 0xE0 to GYRO_CONFIG (enable self-test); verify gyro outputs increase by datasheet's expected amount; check pass criteria.
-7. **MPU9250 mag bypass.** If you have an MPU9250, enable bypass mode; access AK8963 directly at 0x0C via i2c-tools.
+6. **Self-test.** Write 0xE0 to GYRO_CONFIG (enable self-test). verify gyro outputs increase by datasheet's expected amount. Check pass criteria.
+7. **MPU9250 mag bypass.** If you have an MPU9250, enable bypass mode. access AK8963 directly at 0x0C via i2c-tools.
 
 ## 70.12  Pitfalls
 
 - **Wrong I²C address.** AD0 strap pin: low = 0x68, high = 0x69. Check schematic.
 - **Forgetting the wake from sleep.** Default after reset is sleep mode (bit 6 of PWR_MGMT_1). Without writing PWR_MGMT_1 = 0, all reads return 0 or stale data.
 - **Wrong byte order.** All IMU output is *big-endian* on the wire. If you misread as little-endian, accel-X and accel-Y appear swapped or scaled wrong.
-- **Scale factor wrong.** Each range setting has a different LSB/g or LSB/(°/s). ±2g = 16384 LSB/g; ±4g = 8192; ±8g = 4096; ±16g = 2048. Off-by-2 = factor-of-2 wrong.
+- **Scale factor wrong.** Each range setting has a different LSB/g or LSB/(°/s). ±2g = 16384 LSB/g. ±4g = 8192. ±8g = 4096. ±16g = 2048. Off-by-2 = factor-of-2 wrong.
 - **DLPF too high BW.** Default 256 Hz BW with ODR 1 kHz means you alias high-frequency noise into your signal. Set DLPF to 1/4 of ODR or lower.
-- **Gyro bias drift not calibrated.** Gyros drift with temperature. Calibrate at startup (chip stationary for 5 seconds; average ⇒ bias). Subtract bias from every sample.
+- **Gyro bias drift not calibrated.** Gyros drift with temperature. Calibrate at startup (chip stationary for 5 seconds. average ⇒ bias). Subtract bias from every sample.
 - **Self-heating.** Continuous-mode chip rises 1-2 °C above ambient. If your application uses chip temperature as a thermometer (don't), this is an offset.
 - **Magnetometer interference.** A buck regulator within 5 cm of MPU9250's mag corrupts readings. Schematic-stage planning matters.
-- **Buffer overrun.** If user-space drains slower than the trigger rate, the IIO buffer overflows (older samples dropped). Check `/sys/bus/iio/devices/iio:device0/buffer/length` is big enough; check `dmesg` for buffer-overrun warnings.
+- **Buffer overrun.** If user-space drains slower than the trigger rate, the IIO buffer overflows (older samples dropped). Check `/sys/bus/iio/devices/iio:device0/buffer/length` is big enough. Check `dmesg` for buffer-overrun warnings.
 
 ## 70.13  Going deeper
 

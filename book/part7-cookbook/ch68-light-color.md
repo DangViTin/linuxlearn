@@ -9,10 +9,12 @@ status: draft
 # Chapter 68 — Light & color sensors
 
 > **What:** four I²C ambient-light sensors, dissected: **Rohm BH1750** (the simplest), **AMS TSL2561** (dual-channel for IR rejection), **Vishay VEML7700** (low-power, modern). Plus the bonus **AMS TCS34725** (RGB+clear color sensor). For each: protocol on the wire, the mainline IIO driver internals, and a from-scratch IIO driver for BH1750.
+> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
 > **Why:** measuring light is harder than it looks. A photodiode's current is roughly proportional to incident photon flux, but the human eye's "lux" response is wavelength-weighted (CIE photopic curve). Different sensors solve this differently. BH1750 uses an analog filter. TSL2561 measures a broadband channel and an IR channel and subtracts. VEML7700 uses an integrated correction. After this chapter you can pick a sensor by its trade-offs, and write a driver for any of them.
 >
 > **Focus:** **integration time controls both noise floor and saturation point**. Light sensors are integrators — current × time → digital count. Long integration: low-light accuracy. Short integration: high-light range. Pick integration time for the range you care about. The IIO `integration_time` attribute exposes this directly.
+
 
 ## 68.1  Sensor comparison
 
@@ -43,9 +45,9 @@ Three sensor strategies:
 
 1. **Optical filter** (BH1750, VEML7700, TCS34725 clear channel): a colored glass cover on the die that approximates the photopic curve. Cheap, fixed.
 2. **Multi-channel + math** (TSL2561): one broadband channel (visible + IR) + one IR-only channel. Compute lux = `(broad − IR) × calibrated_curve`. More accurate, more software.
-3. **R+G+B sensors** (TCS34725): measure each band; can compute lux *and* report color.
+3. **R+G+B sensors** (TCS34725): measure each band. can compute lux *and* report color.
 
-The mainline driver does whichever math the chip needs, and presents user-space with `in_illuminance_input` in lux. The user never sees the wavelength weighting; the driver does it. Just `cat in_illuminance_input` gives lux.
+The mainline driver does whichever math the chip needs, and presents user-space with `in_illuminance_input` in lux. The user never sees the wavelength weighting. The driver does it. Just `cat in_illuminance_input` gives lux.
 
 ## 68.3  Protocol — BH1750 on the wire
 
@@ -72,7 +74,7 @@ A typical sequence:
    START | 0x47 | D[hi] | D[lo] | STOP  (read 2 bytes — 16-bit count)
 ```
 
-(`0x46` = 0x23<<1, write; `0x47` = 0x23<<1 | 1, read.)
+(`0x46` = 0x23<<1, write. `0x47` = 0x23<<1 | 1, read.)
 
 To convert the 16-bit count to lux:
 
@@ -355,7 +357,7 @@ Mainline driver: `drivers/staging/iio/light/tsl2x7x.c` covers TSL2561, TSL2563, 
 
 ## 68.7  VEML7700 — auto-ranging done right
 
-VEML7700 has one channel with **6 integration times** (25 / 50 / 100 / 200 / 400 / 800 ms) and **4 gains** (1x, 2x, 1/4x, 1/8x). The driver can auto-range: start at low gain + short integration; if count saturates, reduce gain; if count is too low, increase integration time.
+VEML7700 has one channel with **6 integration times** (25 / 50 / 100 / 200 / 400 / 800 ms) and **4 gains** (1x, 2x, 1/4x, 1/8x). The driver can auto-range: start at low gain + short integration. If count saturates, reduce gain. If count is too low, increase integration time.
 
 ```c
 /* drivers/iio/light/veml7700.c — simplified auto-range */
@@ -443,17 +445,17 @@ tcs34725@29 { compatible = "amstaos,tcs34725"; reg = <0x29>; };
 3. **Compare against a phone app.** Most smartphone light-meter apps are accurate to ±20 %. Cross-check.
 4. **Add gain control.** Modify `mybh1750.c` to expose `_integration_time` as a writable IIO attribute. Verify writing 1 / 0.5 / 2 changes the effective integration time.
 5. **Switch to mainline.** Unload yours, use `rohm,bh1750`. Verify same scale + raw.
-6. **TSL2561 (if available).** Configure the chip; read both channels; implement the piecewise formula in user-space; cross-check against BH1750 under fluorescent light (where TSL2561's IR rejection should give a tighter lux number).
-7. **TCS34725 color match.** With the bonus chip, hold a red object, a green object, a blue object in front; verify the R/G/B counts respond correspondingly.
+6. **TSL2561 (if available).** Configure the chip. read both channels. implement the piecewise formula in user-space. cross-check against BH1750 under fluorescent light (where TSL2561's IR rejection should give a tighter lux number).
+7. **TCS34725 color match.** With the bonus chip, hold a red object, a green object, a blue object in front. verify the R/G/B counts respond correspondingly.
 
 ## 68.11  Pitfalls
 
-- **BH1750 reading times wrong.** Datasheet says 120 ms typical, 180 ms max for high-res. Use 180 ms to be safe; or check the busy-flag (chip will NACK reads during measurement).
+- **BH1750 reading times wrong.** Datasheet says 120 ms typical, 180 ms max for high-res. Use 180 ms to be safe. or check the busy-flag (chip will NACK reads during measurement).
 - **TSL2561 saturated**. If Ch0 or Ch1 is 0xFFFF, the chip is saturated. Either drop the gain (HIGH → LOW) or reduce integration time. Auto-range or the user will report "lux = 0" in bright sun.
 - **Sensor cover material.** Glass with strong IR-cut coating distorts readings. Use clear glass or a known-spec optical window.
 - **Tinted enclosures.** Dark-tinted plastic over the sensor cuts visible light unevenly. Calibrate against a known reference *with the enclosure in place*.
 - **Direct light vs reflected.** A sensor pointed at the sky reads sky brightness, not ambient. For "what's the light on my desk?" point at the desk, or use a diffuser cover.
-- **VEML7700 auto-range hysteresis.** Switching back and forth between integration times causes flicker in the reported lux. The mainline driver hysteresis suppresses this; rolling your own, leave deadbands.
+- **VEML7700 auto-range hysteresis.** Switching back and forth between integration times causes flicker in the reported lux. The mainline driver hysteresis suppresses this. rolling your own, leave deadbands.
 - **TCS34725 IR contamination.** Even with IR-rejection filter, sunlight's high R-channel reading isn't pure red — there's IR leak. For color-match work, use indoor LED light.
 - **Integration time ≠ sampling rate.** If you read every 100 ms but integration is 800 ms, you get the same value four times in a row. Match the cadence.
 

@@ -17,7 +17,11 @@ status: draft
 > **Tooling.** This chapter uses `ModemManager` + `NetworkManager`, `libqmi-utils` (`qmicli`), `libmbim-utils` (`mbimcli`).
 > - **Ubuntu-base (target):** `apt install modemmanager network-manager libqmi-utils libmbim-utils`
 > - **Buildroot:** `BR2_PACKAGE_MODEM_MANAGER=y BR2_PACKAGE_NETWORK_MANAGER=y BR2_PACKAGE_LIBQMI=y BR2_PACKAGE_LIBMBIM=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 102.1  Module comparison
 
@@ -36,14 +40,14 @@ status: draft
 | Power (peak TX) | 2.5 W | 2.5 W | 2.0 W | 3.0 W |
 
 **Pick guide:**
-- **EC25** — the default for most new designs; well-supported on Linux, widely available, multi-region SKUs (EC25-E for EMEA, EC25-A for North America, EC25-AU for Asia-Pacific…).
-- **EC20** — older but cheaper; identical software.
+- **EC25** — the default for most new designs. well-supported on Linux, widely available, multi-region SKUs (EC25-E for EMEA, EC25-A for North America, EC25-AU for Asia-Pacific…).
+- **EC20** — older but cheaper. identical software.
 - **SIM7600** — slightly cheaper, supports more legacy bands (GSM-only fallback in rural areas).
-- **LM940** — when you need Cat-11 (600 Mbps DL) for video uplink or backhaul; pay the premium.
+- **LM940** — when you need Cat-11 (600 Mbps DL) for video uplink or backhaul. pay the premium.
 
 ## 102.2  What the modem looks like to Linux
 
-Plug in a modem; `lsusb -v` shows something like:
+Plug in a modem. `lsusb -v` shows something like:
 
 ```
 Bus 001 Device 003: ID 2c7c:0125 Quectel Wireless EC25
@@ -71,7 +75,7 @@ If in **ECM** mode:
 - Last interface bound by `cdc_ether` → `usb0` (no SIM control — appears as a simple Ethernet)
 
 If in **PPP** mode (legacy):
-- All interfaces are `option`; `pppd` runs `/dev/ttyUSB3` and brings up `ppp0`
+- All interfaces are `option`. `pppd` runs `/dev/ttyUSB3` and brings up `ppp0`
 
 `lsusb` won't tell you which mode you're in — the **PID** does:
 
@@ -343,38 +347,39 @@ USB modems are autobound — no DT needed beyond ensuring USB-OTG/Host is enable
 };
 ```
 
-The 5 V supply must source ~2.5 A during TX bursts; weak USB power = brownout = modem resets mid-connection.
+The 5 V supply must source ~2.5 A during TX bursts. weak USB power = brownout = modem resets mid-connection.
 
 ## 102.9  Lab
 
-1. **lsusb identify.** Plug in modem; `lsusb -v`; identify the mode from PID. Check `dmesg | grep -E 'option|qmi_wwan|cdc_mbim'` to see which drivers bound.
+1. **lsusb identify.** Plug in modem. `lsusb -v`. identify the mode from PID. Check `dmesg | grep -E 'option|qmi_wwan|cdc_mbim'` to see which drivers bound.
 2. **AT bring-up checklist.** Run all 7 AT checks above. Fix at the failing step.
 3. **Switch USB mode.** Move from default mode to QMI (if not already). Reboot. Verify new PID.
-4. **ModemManager auto.** Install ModemManager; `mmcli -L`; `nmcli c add ... apn ...`; bring up; `curl ifconfig.io` to confirm public IP.
+4. **ModemManager auto.** Install ModemManager. `mmcli -L`. `nmcli c add ... apn ...`. bring up. `curl ifconfig.io` to confirm public IP.
 5. **Manual qmicli bring-up.** Stop ModemManager. Use `qmicli` to start the network manually. Verify `wwan0` data flows.
-6. **Compare MBIM vs QMI.** Switch the modem to MBIM mode; use `mbimcli`. Note same end result, different control protocol.
-7. **PPP fallback.** Force PPP mode; run `pppd`. Note throughput cap of ~1 Mbps.
+6. **Compare MBIM vs QMI.** Switch the modem to MBIM mode. Use `mbimcli`. Note same result, different control protocol.
+7. **PPP fallback.** Force PPP mode. run `pppd`. Note throughput cap of ~1 Mbps.
 8. **GPS data.** While data is up, `cat /dev/ttyUSB1` shows NMEA. Pipe to `gpsd` (Ch 107) to use as a time source.
 9. **Signal degradation.** Watch `mmcli -m 0` while moving the antenna. Note RSSI/RSRP changes.
-10. **Auto-failover.** Pair WiFi (Ch 91) + LTE; configure metric so WiFi wins when up; disconnect WiFi and watch LTE take over within 5 s (NetworkManager handles this with right metric config).
+10. **Auto-failover.** Pair WiFi (Ch 91) + LTE. configure metric so WiFi wins when up. disconnect WiFi and watch LTE take over within 5 s (NetworkManager handles this with right metric config).
 
 ## 102.10  Pitfalls
 
-- **USB power inadequate.** EC25 TX burst hits 2.5 A peaks; many i.MX6ULL boards source 1 A max. Result: random modem resets mid-transmission. Use a powered hub or a board with proper USB power design.
-- **Wrong PID — wrong mode.** Modem in PPP mode but you expected QMI. Check `lsusb -v` first; switch with `AT+QCFG="usbnet"`.
-- **APN typo / wrong.** Carrier-specific APNs are non-obvious (T-Mobile: `fast.t-mobile.com`; AT&T: `broadband`; Vodafone: `internet`). Wrong APN → modem registers but PDP context fails.
+- **USB power inadequate.** EC25 TX burst hits 2.5 A peaks. many i.MX6ULL boards source 1 A max. Result: random modem resets mid-transmission. Use a powered hub or a board with proper USB power design.
+- **Wrong PID — wrong mode.** Modem in PPP mode but you expected QMI. Check `lsusb -v` first. switch with `AT+QCFG="usbnet"`.
+- **APN typo / wrong.** Carrier-specific APNs are non-obvious (T-Mobile: `fast.t-mobile.com`. AT&T: `broadband`. Vodafone: `internet`). Wrong APN → modem registers but PDP context fails.
 - **SIM not seated / locked.** `AT+CPIN?` returns `SIM PIN` → SIM needs unlock with `AT+CPIN=1234`. Returns `NOT INSERTED` → physical contact problem.
-- **Wrong band on a regional SIM.** EC25-E for European bands; EC25-A for NA. Cross-using → registration fails or restricted.
+- **Wrong band on a regional SIM.** EC25-E for European bands. EC25-A for NA. Cross-using → registration fails or restricted.
 - **Antenna missing / SMA loose.** Cellular antennas need a real impedance-matched antenna. A stub wire gives 20 dB worse signal — barely works in dense urban, fails in rural.
 - **Multiple modems → ttyUSB renumbering.** Plug in 2 modems → ttyUSB0..7. udev rules with serial numbers are essential for predictable naming.
-- **CGEV events drop the connection unnoticed.** `AT+CGEREP=2,1` enables PDP event reporting; without it, an `IPv6 routing advertisement` or `PDP DEACT` from the carrier silently kills your `wwan0` and you don't notice until the timeout.
-- **qmi-firmware-update needed.** Some EC25 firmware versions have known bugs; check Quectel's release notes and use `quectel-firmware-flash` to update.
+**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
+- **CGEV events drop the connection unnoticed.** `AT+CGEREP=2,1` enables PDP event reporting. Without it, an `IPv6 routing advertisement` or `PDP DEACT` from the carrier silently kills your `wwan0` and you don't notice until the timeout.
+- **qmi-firmware-update needed.** Some EC25 firmware versions have known bugs. Check Quectel's release notes and use `quectel-firmware-flash` to update.
 - **ModemManager fights with manual scripts.** If you call `qmicli --start-network` while ModemManager is running, the two will race each other and the connection will drop. Stop ModemManager (`systemctl stop ModemManager`) or use only the daemon.
 - **Default route conflict.** With Ethernet + WiFi + wwan0, default-route metric matters. NetworkManager's default policy (Ethernet 100, WiFi 600, GSM 700) means LTE is last-resort. Override per-connection if needed.
 
 ## 102.11  Going deeper
 
-- **Quectel EC25 User Manual + AT Commands Manual** — every modem's AT extension is non-trivial; the manual is the reference.
+- **Quectel EC25 User Manual + AT Commands Manual** — every modem's AT extension is non-trivial. The manual is the reference.
 - **libqmi + libmbim** (`gitlab.freedesktop.org/mobile-broadband/libqmi`) — read `qmicli.c` for the full QMI protocol.
 - **`quectel-CM`** (Quectel's reference QMI connection manager) — a self-contained C reference.
 - **ModemManager + NetworkManager** — the modern integrated path.

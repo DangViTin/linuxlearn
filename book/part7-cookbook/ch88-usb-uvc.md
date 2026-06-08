@@ -17,7 +17,11 @@ status: draft
 > **Tooling.** This chapter uses `v4l-utils`, `gstreamer1.0-tools` + plugins, `ffmpeg`.
 > - **Ubuntu-base (target):** `apt install v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad ffmpeg`
 > - **Buildroot:** `BR2_PACKAGE_V4L_UTILS=y BR2_PACKAGE_GSTREAMER1=y BR2_PACKAGE_FFMPEG=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 88.1  Why UVC is different from CSI
 
@@ -49,7 +53,7 @@ The `uvcvideo` driver parses these descriptors and exposes them through V4L2 —
 
 ### Isochronous vs bulk transfers
 
-UVC video runs over USB **isochronous** transfers. These guarantee bandwidth but never retransmit — a dropped microframe is simply lost. The camera reserves a slice of each USB frame's bandwidth. This is why a UVC camera "claims" bandwidth on enumeration; plugging two high-res cameras into one USB-2.0 bus can fail because the combined isochronous bandwidth exceeds the bus.
+UVC video runs over USB **isochronous** transfers. These guarantee bandwidth but never retransmit — a dropped microframe is simply lost. The camera reserves a slice of each USB frame's bandwidth. This is why a UVC camera "claims" bandwidth on enumeration. plugging two high-res cameras into one USB-2.0 bus can fail because the combined isochronous bandwidth exceeds the bus.
 
 Some cameras support **bulk** transfers (used by a few MJPEG cameras) — best-effort, retransmitted, but no bandwidth guarantee.
 
@@ -77,6 +81,8 @@ MJPEG-compressed (typically ~10:1):
 **Conclusion**: for anything above VGA on USB-2.0, use **MJPEG** (or H.264). Uncompressed YUYV is limited to VGA30 or 720p15. The i.MX6ULL has only USB-2.0 (no USB-3.0), so this ceiling is hard.
 
 The CPU cost: receiving MJPEG is cheap (just DMA). *Decoding* MJPEG to raw (for processing or display) costs CPU — i.MX6ULL software JPEG decode does ~30 fps VGA, ~10 fps 720p. If you only need to *store* or *forward* the MJPEG (e.g., to a network client that decodes), no decode needed — full frame rate.
+MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 ## 88.4  Bring-up — there isn't much
 
@@ -149,14 +155,14 @@ UVC cameras expose standardized controls:
 [root@pa-mini:~]# v4l2-ctl --set-ctrl=exposure_time_absolute=500
 ```
 
-These map to UVC's standardized control requests; `uvcvideo` translates V4L2 control IDs to USB control transfers. Not every camera supports every control — `--list-ctrls` shows what's available.
+These map to UVC's standardized control requests. `uvcvideo` translates V4L2 control IDs to USB control transfers. Not every camera supports every control — `--list-ctrls` shows what's available.
 
 ## 88.6  When UVC doesn't "just work"
 
 - **"Driver needed" cameras**: some cheap cameras claim UVC but ship non-compliant descriptors, or need a vendor driver (rare these days). `dmesg` shows enumeration errors.
 - **Bandwidth contention**: a USB WiFi dongle (Ch 92) + a UVC camera on the same USB-2.0 bus compete. The camera may fail to start, or the WiFi throughput drops. The i.MX6ULL has 2 USB controllers — put bandwidth-heavy devices on separate ones.
 - **Power**: a 2.5 W webcam on a bus-powered hub may brown out. Use a powered hub or wire the camera's VBUS to a beefier rail.
-- **H.264 UVC cameras**: some webcams output H.264. `uvcvideo` exposes it as a pixel format; you save the H.264 stream directly (no decode needed for storage/forwarding).
+- **H.264 UVC cameras**: some webcams output H.264. `uvcvideo` exposes it as a pixel format. You save the H.264 stream directly (no decode needed for storage/forwarding).
 - **Multiple `/dev/videoN` per camera**: many UVC cameras expose two nodes — one for video, one for metadata. The video one is usually the lower-numbered.
 
 ## 88.7  USB gadget side — being a UVC camera
@@ -167,24 +173,28 @@ The inverse: making the i.MX6ULL *appear* as a webcam to a host PC (Ch 55's USB 
 
 1. **Plug in a UVC webcam.** Verify `lsusb`, `dmesg`, `/dev/video0`.
 2. **List capabilities.** `v4l2-ctl --list-formats-ext`. Note which resolutions support which formats and frame rates. Map them to the bandwidth table.
-3. **Capture YUYV VGA.** Save 30 frames; convert one to PNG; verify the image.
-4. **Capture MJPEG 720p.** Save frames; they're already JPEG — open directly.
-5. **Bandwidth limit test.** Try YUYV 720p30; observe it fail or fall back (bandwidth exceeded). Switch to MJPEG 720p30; observe success.
-6. **Controls.** Adjust brightness, exposure, focus; observe changes in captured frames.
-7. **Contention.** Add a USB WiFi dongle on the same bus; stream the camera + run iperf3; observe degradation. Move the camera to the second USB controller; observe improvement.
+3. **Capture YUYV VGA.** Save 30 frames. convert one to PNG. verify the image.
+4. **Capture MJPEG 720p.** Save frames. they're already JPEG — open directly.
+5. **Bandwidth limit test.** Try YUYV 720p30. observe it fail or fall back (bandwidth exceeded). Switch to MJPEG 720p30. observe success.
+6. **Controls.** Adjust brightness, exposure, focus. observe changes in captured frames.
+7. **Contention.** Add a USB WiFi dongle on the same bus. stream the camera + run iperf3. observe degradation. Move the camera to the second USB controller. observe improvement.
 8. **Network stream.** GStreamer: camera MJPEG → RTP → UDP to a desktop running VLC. No decode on the i.MX6ULL (forward the JPEG directly).
 
 ## 88.9  Pitfalls
 
 - **Uncompressed above VGA on USB-2.0.** Won't fit. Use MJPEG. The bandwidth table is the design constraint.
-- **Software decode is the bottleneck, not the bus.** Receiving MJPEG is cheap; decoding it to raw for display/processing on the GPU-less i.MX6ULL is slow. Forward the MJPEG undecoded where possible.
+- **Software decode is the bottleneck, not the bus.** Receiving MJPEG is cheap. decoding it to raw for display/processing on the GPU-less i.MX6ULL is slow. Forward the MJPEG undecoded where possible.
 - **Bus-power brownout.** High-res webcams draw 1–2.5 W. Bus-powered hubs may not deliver it. Use a powered hub or dedicate a USB port with a strong VBUS rail.
 - **Two bandwidth-heavy USB devices on one controller.** Camera + WiFi/Ethernet contend. Spread across the i.MX6ULL's two USB controllers.
 - **`uvcvideo` quirks.** Some cameras need quirk flags (`uvcvideo.quirks=`). `dmesg` hints at enumeration issues. The `uvcvideo` source has a quirks table for known-bad cameras.
-- **Frame drops on isochronous.** Isochronous has no retransmission; a missed USB microframe = a dropped/corrupt frame. Under heavy system load, frames drop silently. PREEMPT_RT (Ch 52A) helps for deterministic capture.
+- **Frame drops on isochronous.** Isochronous has no retransmission. a missed USB microframe = a dropped/corrupt frame. Under heavy system load, frames drop silently. PREEMPT_RT (Ch 52A) helps for deterministic capture.
 - **MJPEG is not a true video codec.** It is per-frame JPEG with no compression between frames. Typical ratio is 10:1, against H.264's 100:1. For bandwidth-critical streams, pick an H.264 UVC camera.
 
 ## 88.10  Going deeper
+
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
 
 - **`drivers/media/usb/uvc/`** — the `uvcvideo` driver. `uvc_driver.c` has the quirks table.
 - **`Documentation/userspace-api/media/v4l/`** — V4L2 API (same as for CSI cameras).
@@ -198,3 +208,4 @@ The inverse: making the i.MX6ULL *appear* as a webcam to a host PC (Ch 55's USB 
 > **End of Group I — Cameras (Ch 87–88).** Parallel CSI (custom driver, you control the sensor) vs USB UVC (class-compliant, plug-and-play, camera does compression). On the GPU/VPU-less i.MX6ULL, UVC's hardware compression often wins for anything above VGA.
 
 > Next chapter: **Chapter 89 — I²S audio codecs.** Group J (Audio) — the codec chips (WM8960, SGTL5000, ES8388, TLV320) that give the i.MX6ULL line-in/line-out/headphone/mic, and the ASoC machine driver that wires them up.
+> **ASoC** - ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.

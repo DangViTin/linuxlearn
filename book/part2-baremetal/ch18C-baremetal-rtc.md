@@ -10,9 +10,10 @@ status: draft
 
 > **What:** access the **SNVS** (Secure Non-Volatile Storage) RTC on i.MX6ULL: set the wall-clock time, read it back at runtime, and watch it survive a deliberate main-power brown-out.
 >
-> **Why:** Any product that needs to log timestamps, run scheduled actions, or check license expiration relies on an RTC that survives power cycles. SNVS is the only always-on domain on i.MX6ULL; we need to know how to talk to it.
+> **Why:** Any product that needs to log timestamps, run scheduled actions, or check license expiration relies on an RTC that survives power cycles. SNVS is the only always-on domain on i.MX6ULL. We need to know how to talk to it.
 >
 > **Focus:** the separate power domain. SNVS has its own supply pin (`VDD_SNVS_IN`, usually tied to a coin cell or supercap), its own 32.768 kHz oscillator, and its own counter. When the rest of the SoC sleeps or browns out, SNVS keeps counting.
+
 
 ## 18C.1  What the SNVS provides
 
@@ -53,9 +54,9 @@ SNVS base = `0x020CC000` (RM ch. 47).
 | `SNVS_LPTAR` | `+0x58` | Alarm register |
 | `SNVS_LPGPR0..5` | `+0x68..7C` | 24 bytes of scratch SRAM |
 
-The actual counter ticks at **32 kHz**, but the architectural view splits it: bit 14 of `LPSRTCLR` increments at 2 Hz; treat **upper 32 bits of the 48-bit concatenation** as seconds.
+The actual counter ticks at **32 kHz**, but the architectural view splits it: bit 14 of `LPSRTCLR` increments at 2 Hz. treat **upper 32 bits of the 48-bit concatenation** as seconds.
 
-For the purposes of this chapter we use a simpler model: read `LPSRTCMR` and `LPSRTCLR`, concatenate as 48 bits, shift right by 15 to get seconds. (Why 15: 32768 = 2^15, so each tick is 1/2^15 of a second; shifting right by 15 divides ticks by 32768.) Verify the exact bit layout against your RM revision.
+For the purposes of this chapter we use a simpler model: read `LPSRTCMR` and `LPSRTCLR`, concatenate as 48 bits, shift right by 15 to get seconds. (Why 15: 32768 = 2^15, so each tick is 1/2^15 of a second. shifting right by 15 divides ticks by 32768.) Verify the exact bit layout against your RM revision.
 
 ## 18C.4  Driver
 
@@ -208,7 +209,7 @@ int main(void)
 Run this lab to see SNVS in action.
 
 1. Boot, set the wall clock, observe the counter ticking up.
-2. Power-cycle the board (just unplug VBUS; keep the coin cell installed).
+2. Power-cycle the board (just unplug VBUS. keep the coin cell installed).
 3. Re-power. Observe the counter resumes from where it left off, *plus* the ~2 seconds you spent unplugged.
 
 The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, increment every reboot, and observe an "n-th boot" indicator that the SoC reset cannot clear. Useful in production for tamper detection and reboot accounting.
@@ -217,13 +218,13 @@ The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, 
 
 1. **Build and run §18C.5.** Confirm the counter advances at 1 Hz.
 2. **Brown-out test.** As described above. Don't expect millisecond accuracy across the power cycle. The first read after power-on may show 1–2 seconds of slack while SNVS internals settle.
-3. **Boot counter.** Add a `boot_count = rtc_scratch_read(1); rtc_scratch_write(1, boot_count + 1);` to `main`. Print it at startup. Power-cycle 10 times; confirm it counts up.
+3. **Boot counter.** Add a `boot_count = rtc_scratch_read(1). rtc_scratch_write(1, boot_count + 1);` to `main`. Print it at startup. Power-cycle 10 times. confirm it counts up.
 4. **Lose VBAT.** If your coin cell is removable, pop it out, power-cycle the main rail, observe the SNVS reset (boot_count back to 0, scratch RAM at `0xDEADBEEF` lost).
-5. **Wall-clock UNIX time.** Have the user enter `t=1716595200\n` over UART; call `rtc_set_seconds`. Then print the date in a real human-readable form (`gmtime`-style). This is a small but pleasant integration exercise.
+5. **Wall-clock UNIX time.** Have the user enter `t=1716595200\n` over UART. call `rtc_set_seconds`. Then print the date in a real human-readable form (`gmtime`-style). This is a small but pleasant integration exercise.
 
 ## 18C.8  Pitfalls
 
-- **Reading the counter without rollover protection.** Without the `do { hi1 = ...; lo = ...; hi2 = ...; } while (hi1 != hi2);` pattern, you can occasionally read a stale `hi` paired with an already-incremented `lo`. The error is rare (~once per 2^15 reads) but real.
+- **Reading the counter without rollover protection.** Without the `do { hi1 = .... lo = .... hi2 = .... } while (hi1 != hi2);` pattern, you can occasionally read a stale `hi` paired with an already-incremented `lo`. The error is rare (~once per 2^15 reads) but real.
 - **Forgetting that scratch SRAM is only 24 bytes.** Six 32-bit words. Allocate carefully.
 - **Writing to LPSRTC while it's running.** The RM requires you to clear `LPCR_SRTC_ENV` first. Our `rtc_set_seconds` does this.
 - **No VBAT supply.** Behavior is identical until you power-cycle. Then SNVS resets. Symptom: the boot-counter mysteriously resets to zero only on power-cycle, not on warm-reset. The fix is in hardware.
@@ -238,6 +239,8 @@ The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, 
 
 ---
 
-End of Part II's inserted chapters. Part II proper ends with Chapter 18. Chapters 18A–C are supplementary deep-dives; read them in any order, or skip them entirely.
+End of Part II's inserted chapters. Part II proper ends with Chapter 18. Chapters 18A–C are supplementary deep-dives. read them in any order, or skip them entirely.
 
 > Next chapter: **Chapter 19 — U-Boot from source, first boot.** With the bare-metal foundation in place, we move from writing it ourselves to reading a real bootloader that does the same things.
+> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.

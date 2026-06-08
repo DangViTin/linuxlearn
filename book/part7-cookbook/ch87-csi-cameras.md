@@ -17,7 +17,11 @@ status: draft
 > **Tooling.** This chapter uses `v4l-utils`, `gstreamer1.0-tools` + plugins, `i2c-tools`.
 > - **Ubuntu-base (target):** `apt install v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_V4L_UTILS=y BR2_PACKAGE_GSTREAMER1=y BR2_PACKAGE_GST1_PLUGINS_BASE=y BR2_PACKAGE_I2C_TOOLS=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 87.1  Sensor comparison
 
@@ -35,11 +39,13 @@ status: draft
 | Mainline driver | `ov5640.c` | `ov772x.c` | `gc2145.c` (recent) |
 
 **i.MX6ULL CSI bandwidth**: the parallel CSI captures 8-bit data at the sensor's pixel clock (typically up to ~96 MHz). For 5 MP at full res, the data rate exceeds what the i.MX6ULL can comfortably DMA to DRAM — practical use is QVGA/VGA streaming or occasional full-res stills.
+MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 **Pick guide:**
 - **OV5640**: when you need quality + the built-in ISP (auto-exposure, auto-white-balance). The default.
 - **OV7725**: VGA is enough, want simplicity and high frame rate.
-- **GC2145**: cheap 2 MP; the budget option.
+- **GC2145**: cheap 2 MP. The budget option.
 
 ## 87.2  The dual-bus camera model
 
@@ -60,8 +66,10 @@ A parallel camera sensor has *two* connections to the SoC:
 
 Two roles:
 - **I²C**: the host configures the sensor — resolution, output format, exposure, gain, test patterns. Hundreds of register writes.
-- **Parallel bus**: the sensor *continuously* streams pixels (like the RGB LCD of Ch 82, but inbound). The sensor is the *master* of the pixel clock (it generates PCLK); the CSI captures on each PCLK edge when HREF+VSYNC indicate valid data.
-- **MCLK**: the SoC provides the sensor's master clock (typically 24 MHz); the sensor's internal PLL multiplies it up to the pixel clock.
+- **Parallel bus**: the sensor *continuously* streams pixels (like the RGB LCD of Ch 82, but inbound). The sensor is the *master* of the pixel clock (it generates PCLK). The CSI captures on each PCLK edge when HREF+VSYNC indicate valid data.
+- **MCLK**: the SoC provides the sensor's master clock (typically 24 MHz). The sensor's internal PLL multiplies it up to the pixel clock.
+MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+**PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 
 The sensor needs its MCLK running *before* I²C communication works (the sensor's logic is clocked by MCLK). This is a common bring-up gotcha.
 
@@ -80,7 +88,7 @@ V4L2 models a capture pipeline as a graph of **entities** connected by **pads** 
    on its source pad      stream → DRAM          frames here
 ```
 
-- **Sub-device** (`v4l2_subdev`): a sensor or a processing block. The OV5640 is a subdev; the CSI is a subdev. Subdevs have **pads** (source = output, sink = input).
+- **Sub-device** (`v4l2_subdev`): a sensor or a processing block. The OV5640 is a subdev. The CSI is a subdev. Subdevs have **pads** (source = output, sink = input).
 - **Video device** (`/dev/video0`): the user-space-facing node where frames are dequeued.
 - **Media controller** (`/dev/media0`): the graph topology. `media-ctl` inspects and configures links.
 
@@ -162,7 +170,7 @@ static const struct v4l2_subdev_pad_ops ov5640_pad_ops = {
 };
 ```
 
-`s_stream(1)` writes the registers to start the sensor outputting pixels; `set_fmt` programs the resolution + format registers. The sensor's "pad format" tells the CSI bridge what to expect.
+`s_stream(1)` writes the registers to start the sensor outputting pixels. `set_fmt` programs the resolution + format registers. The sensor's "pad format" tells the CSI bridge what to expect.
 
 ### The register init tables
 
@@ -514,33 +522,35 @@ gst-launch-1.0 v4l2src device=/dev/video0 num-buffers=1 ! jpegenc ! filesink loc
 gst-launch-1.0 v4l2src device=/dev/video0 ! jpegenc ! rtpjpegpay ! udpsink host=192.168.1.100 port=5000
 ```
 
-i.MX6ULL has no GPU/VPU, so JPEG/H.264 encoding is software — slow. Practical: ~5–10 fps at VGA for encoded streams; raw capture is faster.
+i.MX6ULL has no GPU/VPU, so JPEG/H.264 encoding is software — slow. Practical: ~5–10 fps at VGA for encoded streams. raw capture is faster.
 
 ## 87.8  Lab
 
 1. **Power + clock first.** Verify the sensor's MCLK is present (scope CSI_MCLK) before debugging I²C. Without MCLK, the sensor won't ACK I²C.
 2. **Detect the sensor.** `i2cdetect -y 1` — OV5640 at 0x3C, OV7725 at 0x21. Read the chip-id register.
 3. **From-scratch subdev.** Build `mysensor.ko` (adapt the chip-id + init to your actual sensor). Verify it appears in `media-ctl -p`.
-4. **Capture raw.** `v4l2-ctl --stream-to=frames.raw --stream-count=10`. Convert a YUYV frame to PNG with ffmpeg; verify you see an image.
-5. **Mainline OV5640.** Switch to `compatible = "ovti,ov5640"`. Configure full pipeline; capture; verify the built-in AE/AWB give a properly-exposed image.
+4. **Capture raw.** `v4l2-ctl --stream-to=frames.raw --stream-count=10`. Convert a YUYV frame to PNG with ffmpeg. verify you see an image.
+5. **Mainline OV5640.** Switch to `compatible = "ovti,ov5640"`. Configure full pipeline. capture. verify the built-in AE/AWB give a properly-exposed image.
 6. **Resolution change.** With the OV5640, set QVGA, VGA, 720p. Note the frame-rate and bandwidth changes.
-7. **Exposure control.** `v4l2-ctl --set-ctrl=exposure_auto=1` then manual exposure; observe brightness changes.
-8. **GStreamer display.** Pipe the camera to the LCD via fbdevsink; live preview.
+7. **Exposure control.** `v4l2-ctl --set-ctrl=exposure_auto=1` then manual exposure. observe brightness changes.
+8. **GStreamer display.** Pipe the camera to the LCD via fbdevsink. live preview.
 
 ## 87.9  Pitfalls
 
-- **MCLK not running before I²C.** The sensor's logic is clocked by MCLK; no MCLK = no I²C ACK. Enable the xclk in power-on *before* the chip-id read.
-- **Reset/powerdown GPIO polarity.** Wrong polarity holds the sensor in reset; I²C-detect fails.
+- **MCLK not running before I²C.** The sensor's logic is clocked by MCLK. no MCLK = no I²C ACK. Enable the xclk in power-on *before* the chip-id read.
+- **Reset/powerdown GPIO polarity.** Wrong polarity holds the sensor in reset. I²C-detect fails.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - **Pad format mismatch through the pipeline.** Sensor emits YUYV but CSI configured for RGB → no frames or garbage. Use `media-ctl` to verify each pad's format matches.
 - **Parallel bus timing (hsync/vsync/pclk polarity).** Wrong polarity in the endpoint properties → torn/shifted/blank frames. Match the sensor datasheet.
 - **Bandwidth exceeds CSI capability.** 5 MP at 30 fps is ~220 MB/s — i.MX6ULL can't sustain it. Use lower res or lower frame rate.
 - **No GPU/VPU.** Software JPEG/H.264 on i.MX6ULL is slow. Budget for raw capture or low-fps encoded streams.
-- **Sensor lens not focused.** Fixed-focus modules have a screw-adjustable lens; ship-from-factory focus may be off. Adjust for your working distance.
-- **async subdev never binds.** If the of_graph link is wrong, the CSI bridge never finds the sensor; `/dev/video0` may not appear or has no source. Check `dmesg` for v4l2-async timeout warnings.
+- **Sensor lens not focused.** Fixed-focus modules have a screw-adjustable lens. ship-from-factory focus may be off. Adjust for your working distance.
+- **async subdev never binds.** If the of_graph link is wrong, the CSI bridge never finds the sensor. `/dev/video0` may not appear or has no source. Check `dmesg` for v4l2-async timeout warnings.
 
 ## 87.10  Going deeper
 
-- **`drivers/media/i2c/ov5640.c`** — the production OV5640 driver. The mode tables are the bulk; the subdev ops match the from-scratch version's shape.
+- **`drivers/media/i2c/ov5640.c`** — the production OV5640 driver. The mode tables are the bulk. The subdev ops match the from-scratch version's shape.
 - **`drivers/staging/media/imx/`** — the i.MX CSI/IPU capture drivers.
 - **`Documentation/userspace-api/media/v4l/`** — the V4L2 API reference.
 - **`Documentation/driver-api/media/v4l2-subdev.rst`** — the subdev model.

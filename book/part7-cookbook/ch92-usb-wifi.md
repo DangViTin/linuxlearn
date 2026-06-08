@@ -8,6 +8,10 @@ status: draft
 
 # Chapter 92 — USB WiFi
 
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
+
 > **What:** USB WiFi dongles — the plug-in alternative to soldered SDIO WiFi (Ch 91). Three chips compared: **Realtek RTL8188EUS** (the ubiquitous cheap dongle), **MediaTek MT7601** (common in $3 dongles), **Ralink RT5370** (older, very mainline-friendly). The big theme here is in-tree versus out-of-tree drivers. Some dongles just work. Others need a constantly-rebuilt DKMS module. Plus bandwidth contention with other USB devices on the i.MX6ULL's USB-2.0 bus.
 >
 > **Why:** USB WiFi is the *fastest* way to add WiFi to a board that has a spare USB port — no SDIO bring-up, no NVRAM, no 32 kHz clock. The catch is driver support: some chips have excellent in-tree drivers, others need out-of-tree modules that break on every kernel upgrade. Chip choice is most of the work.
@@ -17,7 +21,11 @@ status: draft
 > **Tooling.** This chapter uses `wpa_supplicant`, `iw`, chip firmware blob (Realtek/MediaTek/Ralink).
 > - **Ubuntu-base (target):** `apt install wpasupplicant iw firmware-realtek firmware-misc-nonfree`
 > - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 92.1  Chip comparison & driver status
 
@@ -64,6 +72,7 @@ Plug in → `wlan0` appears. Firmware (`rt2870.bin`) is loaded automatically fro
 Total bring-up is three steps. Insert the dongle. Copy the firmware if it is not present. Connect. About five minutes.
 
 RT5370 and MT7601 are *soft-MAC* chips. They use mac80211: the kernel does the 802.11 MAC, the chip is just a radio. This is why integration is clean. mac80211 and cfg80211 handle the protocol work, and the chip driver is a thin USB-to-radio shim.
+**MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
 
 ## 92.3  The painful case (RTL8188EUS)
 
@@ -154,7 +163,7 @@ rsn_pairwise=CCMP
 # Add a DHCP server (dnsmasq) + IP forwarding for a full hotspot.
 ```
 
-This turns your i.MX6ULL into a WiFi hotspot — useful for "configure-the-device-from-your-phone" setup flows. RT5370 and MT7601 support this in-tree; RTL8188EUS needs the out-of-tree driver for AP mode.
+This turns your i.MX6ULL into a WiFi hotspot — useful for "configure-the-device-from-your-phone" setup flows. RT5370 and MT7601 support this in-tree. RTL8188EUS needs the out-of-tree driver for AP mode.
 
 ## 92.7  Lab
 
@@ -162,15 +171,15 @@ This turns your i.MX6ULL into a WiFi hotspot — useful for "configure-the-devic
 2. **Compare an RTL8188EUS.** Insert one. With the in-tree `r8188eu`, verify station mode works. Note any AP-mode limitation.
 3. **Out-of-tree build (RTL8188EUS).** Build the aircrack-ng `rtl8188eus` driver against your kernel. Load it. Test AP mode.
 4. **Kernel-upgrade pain demo.** Note the out-of-tree driver's kernel-version assumptions. (Conceptually: a kernel bump may break it.)
-5. **Bandwidth contention.** Run iperf3 over USB WiFi while streaming a UVC camera on the *same* USB controller; measure degradation. Move to the second controller; measure improvement.
-6. **AP mode.** With RT5370, run hostapd + dnsmasq; connect a phone to your i.MX6ULL hotspot.
+5. **Bandwidth contention.** Run iperf3 over USB WiFi while streaming a UVC camera on the *same* USB controller. measure degradation. Move to the second controller. measure improvement.
+6. **AP mode.** With RT5370, run hostapd + dnsmasq. connect a phone to your i.MX6ULL hotspot.
 7. **Power.** Measure idle current with the USB dongle vs an SDIO module. USB dongles (especially RTL out-of-tree) often run hotter / draw more.
 
 ## 92.8  Pitfalls
 
 - **Buying RTL8188EUS expecting it to "just work."** The most common dongle, the most painful driver. For a product, prefer RT5370/MT7601.
 - **Out-of-tree driver + kernel upgrade.** Breaks. Pin the kernel, use DKMS with a compatible version, or — better — switch to an in-tree chip.
-- **Missing firmware.** `rt2800usb` needs `rt2870.bin`; `mt7601u` needs `mt7601u.bin`. Copy from linux-firmware. Symptom: chip detected, no `wlan0`.
+- **Missing firmware.** `rt2800usb` needs `rt2870.bin`. `mt7601u` needs `mt7601u.bin`. Copy from linux-firmware. Symptom: chip detected, no `wlan0`.
 - **Bandwidth contention.** Camera + WiFi on one USB controller → both degrade. Spread across the two controllers.
 - **Bus-power limits.** Some dongles draw 400+ mA on TX. A weak VBUS rail browns out → disconnects. Ensure adequate USB power.
 - **Counterfeit chips.** A dongle sold as "RT5370" may contain an RTL8188 (or vice versa). Always `lsusb` to confirm the actual chip before committing a design.
@@ -191,6 +200,6 @@ This turns your i.MX6ULL into a WiFi hotspot — useful for "configure-the-devic
 
 ---
 
-> **Note on Group K so far:** SDIO WiFi (Ch 91) for soldered, low-power, in-tree (AP6212); USB WiFi (Ch 92) for quick/swappable but watch the driver story (prefer RT5370/MT7601 in-tree over RTL8188EUS out-of-tree). The next two chapters cover the hosted approach (Ch 93: WiFi via an ESP32 co-processor) and WiFi+BT combo modules (Ch 94).
+> **Note on Group K so far:** SDIO WiFi (Ch 91) for soldered, low-power, in-tree (AP6212). USB WiFi (Ch 92) for quick/swappable but watch the driver story (prefer RT5370/MT7601 in-tree over RTL8188EUS out-of-tree). The next two chapters cover the hosted approach (Ch 93: WiFi via an ESP32 co-processor) and WiFi+BT combo modules (Ch 94).
 
 > Next chapter: **Chapter 93 — Hosted WiFi via ESP32 / ESP8266.** When the SoC has no SDIO and no spare USB — offload WiFi to an ESP co-processor over UART or SPI.

@@ -10,9 +10,10 @@ status: draft
 
 > **What:** the **MT-B** (slot-based multi-touch) protocol, the kernel's standard for reporting per-finger touch coordinates, and the **Goodix GT911** — the common I²C capacitive touch controller that ships with most off-the-shelf RGB-parallel LCDs (ATK4384, ATK7016, ATK10261).
 >
-> **Why:** for any product with a touch panel, this is the input. The mainline `goodix` driver covers GT911, GT9110, GT9271 and other variants; you usually just configure DT correctly. Calibration is rarely needed for capacitive (unlike resistive); the panel's coordinate frame is wired in DT.
+> **Why:** for any product with a touch panel, this is the input. The mainline `goodix` driver covers GT911, GT9110, GT9271 and other variants. You usually just configure DT correctly. Calibration is rarely needed for capacitive (unlike resistive). The panel's coordinate frame is wired in DT.
 >
-> **Focus:** **MT-B is slot-based**. Each tracked finger gets a *slot*; the driver reports per-slot position. Older code uses MT-A. Current code uses MT-B.
+> **Focus:** **MT-B is slot-based**. Each tracked finger gets a *slot*. The driver reports per-slot position. Older code uses MT-A. Current code uses MT-B.
+
 
 ## 55G.1  MT-B vs MT-A
 
@@ -70,7 +71,7 @@ GT911 needs:
 - VDD (3.3V).
 - GND.
 - SDA, SCL.
-- INT (touch-event interrupt; also doubles as I²C-address-select at reset).
+- INT (touch-event interrupt. also doubles as I²C-address-select at reset).
 - RST.
 
 The driver bring-up sequence for RST and INT selects the I²C address. The driver handles this for you.
@@ -104,7 +105,7 @@ Event: time 12345.67, type 1 (EV_KEY), code 330 (BTN_TOUCH), value 1
 Event: time 12345.67, ------------ SYN_REPORT ---------
 ```
 
-Touch is now reported through standard input events; user-space tools (X11, Wayland, Qt eglfs/linuxfb) consume them.
+Touch is now reported through standard input events. user-space tools (X11, Wayland, Qt eglfs/linuxfb) consume them.
 
 ## 55G.5  Coordinate frame fixes
 
@@ -118,24 +119,24 @@ Try combinations until the touch matches the cursor on screen. For resistive tou
 
 ## 55G.6  Firmware
 
-GT911 boots from internal ROM but accepts firmware updates via I²C. Some boards ship a firmware file; the driver auto-loads from `/lib/firmware/goodix_911.fw` if present. Without it, the chip uses its ROM firmware — usually adequate.
+GT911 boots from internal ROM but accepts firmware updates via I²C. Some boards ship a firmware file. The driver auto-loads from `/lib/firmware/goodix_911.fw` if present. Without it, the chip uses its ROM firmware — usually adequate.
 
 ## 55G.7  Lab
 
 1. **Bring up GT911 on a known LCD.** Verify probe in dmesg, touch event on evtest.
 2. **Fix orientation.** Trial-and-error the `inverted-*` and `swapped` flags until touch matches LCD.
 3. **Five-finger test.** Watch slot 0–4 fill as you put fingers down.
-4. **Adapt for a different LCD.** Change `touchscreen-size-x/y` for a different panel; verify proportions are correct.
-5. **Long-press detection.** In user-space, time how long ABS_MT_TRACKING_ID stays non-(-1); after 500 ms, emit a "long-press" event.
+4. **Adapt for a different LCD.** Change `touchscreen-size-x/y` for a different panel. verify proportions are correct.
+5. **Long-press detection.** In user-space, time how long ABS_MT_TRACKING_ID stays non-(-1). after 500 ms, emit a "long-press" event.
 6. **Gestures.** Write a libinput-based program that detects swipes.
 
 ## 55G.8  Pitfalls
 
 - **Wrong I²C address.** RST/INT timing at reset selects 0x5d vs 0x14. If the driver's expected address doesn't match, no probe.
-- **Missing reset-gpios.** Chip never wakes up; I²C-detect fails.
+- **Missing reset-gpios.** Chip never wakes up. I²C-detect fails.
 - **Polling instead of IRQ.** Without `interrupts`, driver polls (slow, laggy). Always wire and declare the IRQ.
-- **`touchscreen-size-x/y` wrong.** Touch coordinates reported in wrong range; user-space scales weirdly.
-- **Touch latency from kernel.** Default `goodix` driver is good; if you have weird latency, check `evtest` timestamps against vsync.
+- **`touchscreen-size-x/y` wrong.** Touch coordinates reported in wrong range. user-space scales weirdly.
+- **Touch latency from kernel.** Default `goodix` driver is good. If you have weird latency, check `evtest` timestamps against vsync.
 - **Two touchscreens conflict.** XPT2046 + GT911 both on the same panel? Pick one in DT.
 
 ## 55G.9  Going deeper

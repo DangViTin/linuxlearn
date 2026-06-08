@@ -8,16 +8,20 @@ status: draft
 
 # Chapter 55C — CAN bus (SocketCAN + FlexCAN)
 
-> **What:** **SocketCAN** — Linux's abstraction that exposes a CAN interface as a network device (`can0`) and CAN frames as `struct sockaddr_can` / `struct can_frame` over a normal socket. The **FlexCAN** driver covers i.MX6ULL's 2 FlexCAN controllers; user-space speaks the socket API. By the end you can `cansend can0 123#DEADBEEF` and watch the frame on a scope.
+> **What:** **SocketCAN** — Linux's abstraction that exposes a CAN interface as a network device (`can0`) and CAN frames as `struct sockaddr_can` / `struct can_frame` over a normal socket. The **FlexCAN** driver covers i.MX6ULL's 2 FlexCAN controllers. user-space speaks the socket API. By the end you can `cansend can0 123#DEADBEEF` and watch the frame on a scope.
 >
-> **Why:** CAN is the dominant bus in automotive and a strong second in industrial automation. The SocketCAN abstraction means you write CAN apps with `socket()` / `sendto()` / `recvmsg()` — same APIs as TCP/UDP. No proprietary library; tools work across all CAN hardware on Linux.
+> **Why:** CAN is the dominant bus in automotive and a strong second in industrial automation. The SocketCAN abstraction means you write CAN apps with `socket()` / `sendto()` / `recvmsg()` — same APIs as TCP/UDP. No proprietary library. tools work across all CAN hardware on Linux.
 >
 > **Focus:** **CAN looks like a network device.** Once `can0` is "up," everything is generic — Wireshark, tcpdump-equivalent (`candump`), `iproute2` configuration, even SO_TIMESTAMP for nanosecond-accurate receive timestamps.
 >
 > **Tooling.** This chapter uses `can-utils` + `iproute2` (`ip link set canX type can ...`).
 > - **Ubuntu-base (target):** `apt install can-utils iproute2`
 > - **Buildroot:** `BR2_PACKAGE_CAN_UTILS=y BR2_PACKAGE_IPROUTE2=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 55C.1  CAN basics
 
@@ -29,7 +33,7 @@ status: draft
 
 **CAN-FD** (Flexible Data-rate) extends payload to 64 bytes and allows 5 Mbps data-phase. i.MX6ULL FlexCAN supports CAN-FD on the newer revisions.
 
-Physical layer needs a *transceiver* between SoC and bus: TJA1051 (5V), TJA1463 (CAN-FD), MCP2562. The SoC speaks 3.3V TTL CAN_TX/CAN_RX; the transceiver speaks differential CAN_H/CAN_L.
+Physical layer needs a *transceiver* between SoC and bus: TJA1051 (5V), TJA1463 (CAN-FD), MCP2562. The SoC speaks 3.3V TTL CAN_TX/CAN_RX. The transceiver speaks differential CAN_H/CAN_L.
 
 ## 55C.2  i.MX FlexCAN in DT
 
@@ -164,25 +168,25 @@ When the bus goes bus-off, restart it:
 ip link set can0 type can restart-ms 100      # auto-restart 100 ms after bus-off
 ```
 
-Or do it manually with `ip link set can0 down; ip link set can0 up;` after sorting the wiring/termination.
+Or do it manually with `ip link set can0 down. ip link set can0 up;` after sorting the wiring/termination.
 
 ## 55C.7  Lab
 
 1. **Bring up FlexCAN1.** DT, bitrate 500 kbit, `ip link set can0 up`.
 2. **Loop two nodes.** Connect can0 on i.MX6ULL to a USB-CAN adapter on a host PC, terminated with 60 Ω each end. Send frames with `cansend` from one side, watch `candump` on the other.
 3. **Throughput test.** `cangen can0 -g 0 -I 0x123 -L 8` floods at maximum rate. `canbusload can0 500000` reports utilization.
-4. **Filter receive.** Set up two sockets with different filters; verify each receives only matching frames.
-5. **ISO-TP echo.** Write a small ISO-TP server that replies with what it received; client sends 50-byte payloads.
-6. **Bus-off recovery.** Disconnect transceiver during transmission; observe bus-off error frame; verify `restart-ms` auto-recovers.
+4. **Filter receive.** Set up two sockets with different filters. verify each receives only matching frames.
+5. **ISO-TP echo.** Write a small ISO-TP server that replies with what it received. client sends 50-byte payloads.
+6. **Bus-off recovery.** Disconnect transceiver during transmission. observe bus-off error frame. verify `restart-ms` auto-recovers.
 
 ## 55C.8  Pitfalls
 
 - **Missing/wrong terminations.** Without 120 Ω termination at each end of the bus (60 Ω total), signal integrity collapses. For a single-node bench setup, put one 120 Ω resistor across CAN_H/CAN_L. Robustness is lower but it works.
 - **Wrong bitrate on one end.** Symptom: all frames error. Both sides must agree.
 - **CAN_TX/RX swapped at transceiver.** Symptom: no transmit. Verify schematic.
-- **No transceiver supply.** Many transceivers need their own VCC; without it, no signaling.
+- **No transceiver supply.** Many transceivers need their own VCC. Without it, no signaling.
 - **Bus-off and no restart-ms.** Bus stuck off after first error storm. Set `restart-ms`.
-- **Different CAN-FD speeds.** Old nodes can't handle CAN-FD speed-shift frames; bus collapses. Use CAN-FD only on segments where all nodes support it.
+- **Different CAN-FD speeds.** Old nodes can't handle CAN-FD speed-shift frames. bus collapses. Use CAN-FD only on segments where all nodes support it.
 
 ## 55C.9  Going deeper
 

@@ -1,4 +1,4 @@
-﻿---
+---
 chapter: 10
 title: C + startup.S + linker script
 part: II — Bare-metal i.MX6ULL
@@ -7,12 +7,15 @@ status: draft
 ---
 
 # Chapter 10 — C + startup.S + linker script
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 
 > **What:** the same blinking LED as Chapter 9, but with `main()` written in C. To get there we need a proper startup that sets the stack, zeroes `.bss`, copies `.data` from its load address to its run address, then branches to `main`. We also write our first real linker script.
 >
-> **Why:** every later chapter in Part II is in C. C demands an environment — initialized globals, zeroed uninitialized globals, a stack, a stable entry point. The toolchain does *not* provide these on bare-metal; you do. This chapter is the one place where we set these up once so the next eight chapters can ignore them.
+> **Why:** every later chapter in Part II is in C. C demands an environment — initialized globals, zeroed uninitialized globals, a stack, a stable entry point. The toolchain does *not* provide these on bare-metal. You do. This chapter is the one place where we set these up once so the next eight chapters can ignore them.
 >
 > **Focus:** the **LMA vs VMA** distinction for `.data` (introduced in Chapter 6, made concrete here). If you can answer where the initial value of a global lives and how it reaches RAM, you understand startup.
+
 
 ## 10.1  What `int x = 7;` actually needs
 
@@ -25,6 +28,7 @@ const int z = 42;      // const + initialized → .rodata
 ```
 
 On a hosted system (your Linux laptop), the loader reads the ELF, mmaps `.data` and `.rodata` from disk, allocates and zero-fills `.bss`, and your program starts. On bare-metal, *there is no loader*. We are loaded as a flat blob into OCRAM (or DRAM, later). Whoever loaded us is done. The rest is on us.
+**ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
 
 So we, ourselves, must:
 
@@ -36,6 +40,12 @@ So we, ourselves, must:
 Optionally, also: set up exception vectors, configure caches, enable the FPU. We do these later as we need them.
 
 ## 10.2  A linker script worth keeping
+
+> **Template warning:** This block contains placeholder values.
+> Replace compatible strings, GPIO numbers, addresses, and paths with values from your board before using it.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+
 
 The Chapter 9 program had no `.data` and no `.bss`. We slapped `-Ttext=0x00907400` on the command line and let it ride. For C code, we need a real script. Save it as `link.ld`:
 
@@ -89,11 +99,11 @@ SECTIONS
 
 Decoded line by line:
 
-- **`ENTRY(_start)`** — names the symbol that `objdump` and `gdb` will treat as the executable entry. The Boot ROM does not consult this; it uses the IVT's `entry` field. But debuggers do, and getting it right keeps `gdb` from being puzzled.
+- **`ENTRY(_start)`** — names the symbol that `objdump` and `gdb` will treat as the executable entry. The Boot ROM does not consult this. It uses the IVT's `entry` field. But debuggers do, and getting it right keeps `gdb` from being puzzled.
 - **`MEMORY { OCRAM ... }`** — describes our one available region. ORIGIN is the load address. LENGTH is conservative: 128 KB total OCRAM, minus the first 28 KB the ROM uses for its working area = ~99 KB free starting at `0x00907400`.
 - **`. = ORIGIN(OCRAM);`** — the location counter starts at the region's base.
 - **`.text` section** — gathers all `.text*`, `.rodata*`, plus a `KEEP(*(.vectors))` placeholder for a future vector table. `KEEP` tells the linker not to garbage-collect this even if no symbol references it. `ALIGN(4)` keeps us word-aligned.
-- **`_etext = .;`** — captures the location counter. This is where `.text` ends; it is also where the `.data` *load image* will be placed (see next line).
+- **`_etext = .;`** — captures the location counter. This is where `.text` ends. It is also where the `.data` *load image* will be placed (see next line).
 - **`.data` section with `AT(_etext)`** — the magic line. `AT(addr)` specifies a different LMA for the section. The VMA still flows from the location counter (immediately after `.text` in this case), but the load-address-stored content starts at `_etext`. Because in our layout both are equal, this is currently a no-op — but the *machinery* is in place for when we move `.data` to DRAM later.
 - **`_sdata` / `_edata`** — boundary symbols our startup uses to know how much to copy.
 - **`.bss (NOLOAD)`** — `NOLOAD` means: the linker does not write any bytes into the image for this section. The boundary symbols `_sbss` / `_ebss` are still exported so startup can zero the region.
@@ -172,13 +182,17 @@ hang:
 
 A few notes on the assembly choices:
 
-- **`cpsid if, #0x13`** is a `cps` instruction with the side effect of setting the mode bits to `0b10011` (SVC) and the I and F mask bits. One instruction; three guarantees.
+- **`cpsid if, #0x13`** is a `cps` instruction with the side effect of setting the mode bits to `0b10011` (SVC) and the I and F mask bits. One instruction. three guarantees.
 - **`strlo r2, [r0], #4`** is post-indexed: store, *then* add 4 to r0. `lo` (= `cc` = unsigned less-than) is the AAPCS-comparison flag that pairs with `cmp` in our loop. This conditional store/post-increment idiom is so common in ARM startup that you should be able to read it instantly.
 - **`bl main`** is *branch-and-link*: it sets LR to the return address before branching. If `main` does return, we fall through to `hang`. The `wfi` (Wait For Interrupt) instruction makes the core idle in a low-power state instead of busy-spinning at 396 MHz, which is at least polite to the power budget.
 - **`.section .text.startup`** puts our startup code in a named subsection. The linker script's `*(.text*)` matches `.text.startup` and pulls it in early. We could just put it in plain `.text` — naming it explicitly is hygiene, not necessity.
 - The vector table at the top is mostly placeholder `b .` (branch-to-self). In Chapter 15 we replace those self-loops with real handlers.
 
 ## 10.4  `main.c` — the LED, again
+
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
 
 ```c
 #include <stdint.h>
@@ -214,6 +228,7 @@ int main(void)
 Three things that look small but matter:
 
 - **`volatile` on the cast.** Without `volatile`, the optimizer is free to assume `REG(GPIO1_DR)` reads always return the same value, and to elide the second read entirely in a tight loop. With `volatile`, the compiler emits a real load-store every time. Every MMIO access in this book is `volatile`.
+**MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 - **`volatile` on `delay`'s argument.** Same reason: prevents the compiler from observing that the loop has no side effects and deleting it. The `asm volatile ("nop")` inside is belt-and-braces — even if the optimizer somehow folded the decrement, the nop forces a barrier.
 - **`(3u << 26)` not `(3 << 26)`.** `26` plus a signed `3` is fine on 32-bit but the `u` suffix silences certain `-Wconversion` warnings cleanly. House style.
 
@@ -259,7 +274,7 @@ A couple of flags worth highlighting:
 
 - **`-fno-common`** — forces every uninitialized global into `.bss` instead of "common" symbols. Without this, two files declaring `int foo;` would silently coalesce, which is convenient on hosted Linux and dangerous on bare-metal.
 - **`-Werror=implicit-function-declaration`** — we never tolerate "I forgot to include the header." It is one of the cheapest bugs to prevent.
-- **`-O2 -g`** together — optimize but keep DWARF. The `-g` does not affect the binary; it only enlarges the ELF.
+- **`-O2 -g`** together — optimize but keep DWARF. The `-g` does not affect the binary. It only enlarges the ELF.
 
 ## 10.6  Building and running
 
@@ -298,7 +313,7 @@ $ arm-none-eabi-size led.elf
     296       4       0     300     12c led.elf
 ```
 
-`data` is 4. The copy loop in `startup.S` now copies 4 bytes from LMA to VMA. Same end behavior; meaningful test of the machinery.
+`data` is 4. The copy loop in `startup.S` now copies 4 bytes from LMA to VMA. Same end behavior. meaningful test of the machinery.
 
 Wrap into `.imx` (same `wrap.sh` from Chapter 9) and push:
 
@@ -325,7 +340,7 @@ Find `_start`. You will see the four blocks:
 4. The `.data` copy loop.
 5. The `bl main`.
 
-The literal pool follows the function; you can see the resolved addresses there.
+The literal pool follows the function. You can see the resolved addresses there.
 
 If you change the linker script's `OCRAM` origin, *every* literal-pool address changes — and that is what `ldr ... =const` is for. Try it: change ORIGIN to `0x00908000`, rebuild, redump. Confirm the literals updated. Then change it back.
 
@@ -371,7 +386,7 @@ Rule: **every memory-mapped register access uses `volatile`. Every one.** Macroi
 2. **Inspect the ELF.** `objdump -h led.elf` — list every section. Match each against the linker script. Note that `.bss` reports a size > 0 (if you added the `led_mask` variant) but is `NOBITS` type, meaning no file bytes.
 3. **Add a `.bss` global.** Add `static uint32_t counter;` and increment it in the loop. Confirm `.bss` grows by 4 bytes in `size led.elf` and that the program still works (i.e., your zero-loop is doing its job).
 4. **Break the zero-loop on purpose.** Comment out the `.bss` zero loop in startup. Re-add the counter. Now `counter`'s initial value is whatever was in OCRAM. Observe non-deterministic behavior across power cycles. Restore.
-5. **Break the data-copy loop on purpose.** Initialize `static uint32_t led_mask = (1u << 3);` again, and comment out the copy loop. Without the copy, `led_mask` reads whatever was in OCRAM at boot. Observe failure; restore.
+5. **Break the data-copy loop on purpose.** Initialize `static uint32_t led_mask = (1u << 3);` again, and comment out the copy loop. Without the copy, `led_mask` reads whatever was in OCRAM at boot. Observe failure. restore.
 
 ## 10.11  Pitfalls
 
@@ -380,7 +395,7 @@ Rule: **every memory-mapped register access uses `volatile`. Every one.** Macroi
 - **Stack not aligned at function entry.** AAPCS requires SP to be 8-byte aligned at every public function entry. `_stack_top = ORIGIN + LENGTH` aligns naturally as long as LENGTH is a multiple of 8. Change LENGTH to an odd value and expect crashes inside libgcc helpers.
 - **`-fno-common` not set.** Two `int foo;` declarations in two `.c` files silently merge into one symbol. Sometimes the result works, sometimes it corrupts memory. Always enable.
 - **Forgot `volatile`.** Discussed above.
-- **Linker script does not declare `.rodata`.** GCC may emit string literals into `.rodata`, which falls through to the next region. We folded `.rodata` into `.text` here; if you split them out, make sure both are placed in OCRAM.
+- **Linker script does not declare `.rodata`.** GCC may emit string literals into `.rodata`, which falls through to the next region. We folded `.rodata` into `.text` here. If you split them out, make sure both are placed in OCRAM.
 - **`_sbss` is not 4-byte aligned.** Our `ALIGN(4)` on `.bss` handles this. If you ever remove it, the `strlo r2, [r0], #4` in startup will hit an unaligned-address fault.
 
 ## 10.12  Going deeper
@@ -389,7 +404,9 @@ Rule: **every memory-mapped register access uses `volatile`. Every one.** Macroi
 - LLVM's `lld` manual has a much shorter introduction to the same concepts, useful for the second-time reader.
 - `arm-linux-gnueabihf-gcc -E -P -x c /dev/null -include <stdint.h>` — see what `stdint.h` actually defines on your target.
 - *Mastering ARM Embedded Programming* (Marwedel, 2018) — the chapter on startup code is excellent.
-- The U-Boot source's `arch/arm/lib/crt0.S` — read it after this chapter; the patterns are the same.
+- The U-Boot source's `arch/arm/lib/crt0.S` — read it after this chapter. The patterns are the same.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ## Sidebar — `REG(addr)` macro vs the NXP SDK header
 
@@ -413,6 +430,6 @@ Both styles compile to identical machine code. The trade-offs:
 | Debugger view | `*(uint32_t *)0x020E0068` | `IOMUXC->SW_MUX_CTL_PAD_GPIO1_IO03` |
 | Learning value | Maximum (you see the addresses) | Lower (you trust the header) |
 
-In Chapter 18A we refactor a few chapters' code to show the SDK style side-by-side. For learning, we recommend the raw style; for production, the SDK style.
+In Chapter 18A we refactor a few chapters' code to show the SDK style side-by-side. For learning, we recommend the raw style. For production, the SDK style.
 
 > Next chapter: **Chapter 11 — Hand-building a Boot ROM-acceptable image.** We promote `wrap.sh` into a real tool, decode every byte of the IVT, and `dd` an SD card by hand.

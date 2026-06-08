@@ -9,10 +9,13 @@ status: draft
 # Chapter 72 — Distance & proximity sensors
 
 > **What:** three radically different "how far away is that object" sensors: **STMicro VL53L0X** (I²C, laser time-of-flight, mm precision, requires firmware-blob upload at probe), **HC-SR04** (GPIO, ultrasonic, famously hard to time accurately under Linux), **Sharp GP2Y0A** (analog IR, ADC-fed). For each: physics, protocol, the mainline driver, and a from-scratch driver for VL53L0X (the most interesting case) plus a clear-eyed look at why HC-SR04 is hard on Linux.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Why:** distance sensing is in every robot, every parking assist, every smart-lighting fixture. The three classes cover the practical price/accuracy spectrum: $0.50 IR analog → $3 ultrasonic → $8 ToF laser. Knowing the trade-offs lets you pick correctly and not promise users a ranging accuracy you cannot actually deliver.
 >
 > **Focus:** Time-of-flight measures with electronics. Ultrasonic measures with sound. IR measures with reflected brightness. Three different physics. ToF measures photon round-trip directly (mm-accurate, fast, expensive). Ultrasonic measures sound round-trip (cm-accurate, slow, cheap). IR measures reflected intensity then maps to a non-linear curve (poor accuracy, very cheap). Each driver's complexity tracks the physics.
+
 
 ## 72.1  Sensor comparison
 
@@ -30,14 +33,14 @@ status: draft
 
 **Pick guide:**
 - **VL53L0X**: indoor robotics, gesture detection, gauging — where mm precision matters.
-- **HC-SR04**: low-cost cm-precision; outdoor (it tolerates sun); cheap robots, parking sensors.
+- **HC-SR04**: low-cost cm-precision. outdoor (it tolerates sun). cheap robots, parking sensors.
 - **GP2Y0A**: rough proximity ("is there a wall in front?"), trip-wire, line-following robots.
 
 ## 72.2  The three physics
 
 ### VL53L0X — Time-of-Flight
 
-A pulsed 940 nm VCSEL (vertical-cavity surface-emitting laser) emits ~10 ns pulses; a Single-Photon Avalanche Diode (SPAD) array detects returning photons. The chip times the round-trip with picosecond resolution → distance = c × t / 2.
+A pulsed 940 nm VCSEL (vertical-cavity surface-emitting laser) emits ~10 ns pulses. a Single-Photon Avalanche Diode (SPAD) array detects returning photons. The chip times the round-trip with picosecond resolution → distance = c × t / 2.
 
 Range is 2 m in indoor light. In direct sunlight it drops to ~0.6 m because 940 nm ambient noise dominates. The chip is accurate and fast, but more complex than the alternatives.
 
@@ -51,11 +54,11 @@ Robust to light, fails on soft / angled / tiny targets (poor acoustic reflection
 
 An IR LED emits a 5 ms pulse. A linear PSD (position-sensitive detector) measures *where* the reflected spot lands on the sensor (not how bright). The angle of return → distance via triangulation.
 
-Non-linear output curve (output voltage *not* monotonic with distance — has a peak around 80 mm). Datasheet provides a piecewise table. Cheap and good enough for "object near" detection; bad for precise ranging.
+Non-linear output curve (output voltage *not* monotonic with distance — has a peak around 80 mm). Datasheet provides a piecewise table. Cheap and good enough for "object near" detection. bad for precise ranging.
 
 ## 72.3  Protocol — VL53L0X
 
-VL53L0X is unusual: it needs a long initial register-write sequence — effectively a firmware blob — uploaded at every probe. Unlike most I²C devices that have a fixed register-set behavior, VL53L0X needs to be initialized by uploading **160 separate register writes** at probe — calibration constants, internal-state-machine setup, and tuning parameters. STMicro's API ships these as a long list in their reference code; the kernel driver embeds them too.
+VL53L0X is unusual: it needs a long initial register-write sequence — effectively a firmware blob — uploaded at every probe. Unlike most I²C devices that have a fixed register-set behavior, VL53L0X needs to be initialized by uploading **160 separate register writes** at probe — calibration constants, internal-state-machine setup, and tuning parameters. STMicro's API ships these as a long list in their reference code. The kernel driver embeds them too.
 
 Register map (just the headlines):
 
@@ -97,7 +100,7 @@ static const u8 vl53l0x_default_tuning[] = {
 };
 ```
 
-Each pair is `(register, value)`. The driver writes them sequentially. The values are STMicro's IP — they're a calibrated "factory good" state-machine config for the SPAD array. Don't try to derive them from datasheet; they aren't documented.
+Each pair is `(register, value)`. The driver writes them sequentially. The values are STMicro's IP — they're a calibrated "factory good" state-machine config for the SPAD array. Don't try to derive them from datasheet. they aren't documented.
 
 ### A measurement cycle
 
@@ -113,6 +116,7 @@ Distance = `(buf[0] << 8) | buf[1]` mm. Range status (0x14) tells you about erro
 ## 72.4  How the mainline `vl53l0x` driver works
 
 Source: `drivers/iio/proximity/vl53l0x-i2c.c` (~600 lines).
+**IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 
 Surprisingly compact for a chip with a firmware-blob-equivalent. The driver embeds STMicro's tuning data as a const u8 array and writes it at probe. The init code uses `regmap_multi_reg_write` for the tuning dump.
 
@@ -413,14 +417,17 @@ But measuring a pulse of variable duration (60 µs to ~23 ms) with µs accuracy 
 
 - Standard kernel preemption: any other ISR or higher-priority thread can delay your edge measurement by 100+ µs → 17 mm error.
 - The GPIO IRQ → user-space wakeup latency is typically 50–200 µs, even more under load.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 - `gpiomon` from libgpiod has the same problem.
 
 The honest options:
 
 1. **PREEMPT_RT + threaded IRQ + ktime_get_ns** in driver: latency ~20 µs typical, ~150 µs worst case. → 5 mm worst-case error. Usable.
-2. **Capture-input timer hardware** (a TIM block on the SoC configured to capture-compare on the ECHO edge). i.MX6ULL's GPT has this; very accurate (~10 ns), but requires writing a driver for the GPT capture mode — substantial work.
+**PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
+2. **Capture-input timer hardware** (a TIM block on the SoC configured to capture-compare on the ECHO edge). i.MX6ULL's GPT has this. very accurate (~10 ns), but requires writing a driver for the GPT capture mode — substantial work.
 3. **Dedicated MCU helper** (an ESP32 or STM32 doing the timing, talking back to i.MX6ULL via I²C). The right answer for production systems.
-4. **PRU/Cortex-M co-processor** on SoCs that have one (TI Sitara, NXP i.MX7/8). i.MX6ULL has Cortex-M4 in some variants; not in i.MX6ULL.
+4. **PRU/Cortex-M co-processor** on SoCs that have one (TI Sitara, NXP i.MX7/8). i.MX6ULL has Cortex-M4 in some variants. not in i.MX6ULL.
 
 A from-scratch HC-SR04 driver for Linux that gives reasonable but unspectacular results:
 
@@ -457,15 +464,15 @@ static int sr04_measure(struct sr04 *s, int *out_cm)
 }
 ```
 
-The kernel busy-waits in two loops here. That keeps one CPU pinned for the full ~25 ms measurement. With PREEMPT_RT and a SCHED_FIFO priority, accuracy improves; without, it's still ±2 cm in the typical case.
+The kernel busy-waits in two loops here. That keeps one CPU pinned for the full ~25 ms measurement. With PREEMPT_RT and a SCHED_FIFO priority, accuracy improves. Without, it's still ±2 cm in the typical case.
 
 In short: do not ship products with HC-SR04 wired directly to Linux GPIO. Either use a co-processor or pick a different sensor.
 
 ## 72.7  GP2Y0A — analog needs an ADC
 
-GP2Y0A21YK outputs 0–3 V proportional to distance via a non-linear curve. You read with an ADC; in Linux that means an external I²C/SPI ADC (Ch 80) or the SoC's internal ADC.
+GP2Y0A21YK outputs 0–3 V proportional to distance via a non-linear curve. You read with an ADC. In Linux that means an external I²C/SPI ADC (Ch 80) or the SoC's internal ADC.
 
-i.MX6ULL has ADC1/ADC2 — 12-bit, ~1 MS/s, mainline driver `drivers/iio/adc/vf610_adc.c`. Wire GP2Y0A's output to an ADC channel; in IIO:
+i.MX6ULL has ADC1/ADC2 — 12-bit, ~1 MS/s, mainline driver `drivers/iio/adc/vf610_adc.c`. Wire GP2Y0A's output to an ADC channel. in IIO:
 
 ```sh
 [root@pa-mini:~]# cat /sys/bus/iio/devices/iio:device0/in_voltage0_raw
@@ -475,9 +482,9 @@ i.MX6ULL has ADC1/ADC2 — 12-bit, ~1 MS/s, mainline driver `drivers/iio/adc/vf6
 # → V = 1834 × 0.732 / 1000 = 1.343 V
 ```
 
-User-space converts voltage to mm via the datasheet's piecewise table or polynomial. The non-linearity peaks ~80 mm; below that distance, voltage *decreases* again — a single voltage maps to two distances. **Always combine with a hard minimum bracket** (mechanically prevent the target from being closer than 100 mm).
+User-space converts voltage to mm via the datasheet's piecewise table or polynomial. The non-linearity peaks ~80 mm. below that distance, voltage *decreases* again — a single voltage maps to two distances. **Always combine with a hard minimum bracket** (mechanically prevent the target from being closer than 100 mm).
 
-This is the only case where the "driver" is just the IIO ADC driver; the sensor-specific math lives in user-space.
+This is the only case where the "driver" is just the IIO ADC driver. The sensor-specific math lives in user-space.
 
 ## 72.8  Now: the mainline driver
 
@@ -499,34 +506,34 @@ DT for VL53L0X:
 
 Kernel config: `CONFIG_VL53L0X_I2C=y`.
 
-For multi-chip setups (3 VL53L0X looking forward/left/right), the chips share I²C address 0x29 by default. Use XSHUT to hold all-but-one off at boot; each one is brought up sequentially and reassigned to a unique address before the next is woken. This sequencing happens in the driver via `xshut-gpios`.
+For multi-chip setups (3 VL53L0X looking forward/left/right), the chips share I²C address 0x29 by default. Use XSHUT to hold all-but-one off at boot. each one is brought up sequentially and reassigned to a unique address before the next is woken. This sequencing happens in the driver via `xshut-gpios`.
 
 ## 72.9  Lab
 
 1. **VL53L0X bring-up.** Wire it on I²C1 at 0x29. Verify probe in dmesg.
-2. **Build and load `myvl53l0x.ko`.** Wave a hand at 100–500 mm; verify reasonable readings. Compare to ruler.
+2. **Build and load `myvl53l0x.ko`.** Wave a hand at 100–500 mm. verify reasonable readings. Compare to ruler.
 3. **Test extreme range.** At < 30 mm (below min range): observe garbage or zero. At > 2 m: similarly garbage. Add a sanity check in user-space.
 4. **HC-SR04 attempt.** Wire one up. Write a user-space `gpiomon`-based reader. Compare its accuracy to a tape measure. Note variance under CPU load (`stress-ng &`).
 5. **HC-SR04 with PREEMPT_RT.** Boot RT kernel. Retest. Variance should drop.
-6. **GP2Y0A on ADC.** Wire to i.MX6ULL ADC1 channel; verify IIO ADC reading; write a polynomial-fit converter in user-space.
-7. **Multi-VL53L0X.** Wire three on the same bus with separate XSHUT GPIOs. Use mainline driver; configure in DT; verify three `iio:device0/1/2` appear with separate addresses.
+6. **GP2Y0A on ADC.** Wire to i.MX6ULL ADC1 channel. verify IIO ADC reading. write a polynomial-fit converter in user-space.
+7. **Multi-VL53L0X.** Wire three on the same bus with separate XSHUT GPIOs. Use mainline driver. configure in DT. verify three `iio:device0/1/2` appear with separate addresses.
 
 ## 72.10  Pitfalls
 
 - **VL53L0X under sunlight.** Range collapses to ~60 cm. If outdoor use is required, pick ultrasonic.
 - **VL53L0X behind glass.** The chip's emitter reflects off the inner surface of the glass, and you read 0 mm forever. Use a recessed window or tilt the cover slightly.
 - **VL53L0X minimum range.** Below 30 mm, readings are nonsense. Don't trust them.
-- **HC-SR04 narrow targets.** Sound wave is ~25° cone; a thin pole reflects little — readings drop out. Hold a flat board for testing.
-- **HC-SR04 echo from the floor.** In open setups, the floor reflects ultrasound; you read floor distance, not target. Angle the sensor slightly upward.
+- **HC-SR04 narrow targets.** Sound wave is ~25° cone. a thin pole reflects little — readings drop out. Hold a flat board for testing.
+- **HC-SR04 echo from the floor.** In open setups, the floor reflects ultrasound. You read floor distance, not target. Angle the sensor slightly upward.
 - **GP2Y0A double-valued zone.** Voltage isn't monotonic with distance below ~80 mm. Constrain mechanically.
 - **GP2Y0A ambient light.** Strong IR (sunlight, incandescent bulb) saturates the receiver. Indoor use only.
-- **VL53L0X I²C address conflict.** Default 0x29; if your board has another chip there, sequence with XSHUT.
-- **Pulsing TRIG too fast on HC-SR04.** Min 60 ms between measurements. Faster = sensor is still listening for previous echo; readings get confused.
+- **VL53L0X I²C address conflict.** Default 0x29. If your board has another chip there, sequence with XSHUT.
+- **Pulsing TRIG too fast on HC-SR04.** Min 60 ms between measurements. Faster = sensor is still listening for previous echo. readings get confused.
 
 ## 72.11  Going deeper
 
 - **`drivers/iio/proximity/vl53l0x-i2c.c`** — production VL53L0X driver. Read the tuning blob comments.
-- **STMicro VL53L0X API source** at <https://www.st.com/en/embedded-software/stsw-img005.html>. The full reference C implementation; ~10000 lines. Useful for understanding what the kernel driver's minimal init omits.
+- **STMicro VL53L0X API source** at <https://www.st.com/en/embedded-software/stsw-img005.html>. The full reference C implementation. ~10000 lines. Useful for understanding what the kernel driver's minimal init omits.
 - **VL53L0X datasheet (STMicro DS33054)** — register summary, calibration overview.
 - **HC-SR04 module documentation** (multiple vendors, all roughly the same) — timing diagram.
 - **GP2Y0A21YK datasheet (Sharp)** — non-linear curve table (page 5).

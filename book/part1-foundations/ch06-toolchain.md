@@ -1,4 +1,4 @@
-﻿---
+---
 chapter: 6
 title: The toolchain
 part: I — Foundations
@@ -12,7 +12,9 @@ status: draft
 >
 > **Why:** every later chapter ends with "now build it." If "build" is a black box, every failure will be too.
 >
-> **Focus:** **(a)** that `gcc` is a *driver* over half a dozen smaller tools; **(b)** that **ELF** is the universal container, and the linker decides where every byte ends up; **(c)** that the **ABI** is the contract that every function call in your program follows.
+> **Focus:** **(a)** that `gcc` is a *driver* over half a dozen smaller tools. **(b)** that **ELF** is the universal container, and the linker decides where every byte ends up. **(c)** that the **ABI** is the contract that every function call in your program follows.
+> **ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
+> **ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
 
 ## 6.1  `gcc` is not one program
 
@@ -164,10 +166,11 @@ Five things to notice:
 1. `ENTRY(_start)` tells the linker which symbol is the entry. The Boot ROM does not consult this — it jumps to a fixed offset. But debuggers and tooling care.
 2. `MEMORY` declares one region called `OCRAM` of ~100 KB. Permissions (`rwx`) are advisory for now.
 3. `SECTIONS` orders the input sections into output sections, attached `> OCRAM` to lay each at the next available address inside OCRAM.
-4. `_sbss = .; ... _ebss = .;` exports the bounds of `.bss` so our startup code can clear it.
+4. `_sbss = .. ... _ebss = .;` exports the bounds of `.bss` so our startup code can clear it.
 5. `_stack_top` is computed at link time as "one past the end of OCRAM" — our startup code loads SP from this.
 
-We will revise this script over the next chapters as we move to DDR. The format does not change; only the regions do.
+We will revise this script over the next chapters as we move to DDR. The format does not change. only the regions do.
+**DDR** - external DRAM that must be configured and trained before most software can run from it.
 
 ## 6.5  The ABI: what makes function calls work
 
@@ -194,17 +197,17 @@ The core rules (simplified):
 | s0–s15 / d0–d7 | First eight FP arguments / FP return. Caller-saved. |
 | s16–s31 / d8–d15 | Callee-saved FP. |
 
-Why this matters: when you write a function in assembly and call it from C (or vice versa), you **must** obey AAPCS or memory corruption follows. The toolchain assumes it; you must too.
+Why this matters: when you write a function in assembly and call it from C (or vice versa), you **must** obey AAPCS or memory corruption follows. The toolchain assumes it. You must too.
 
 ### Hard-float vs soft-float
 
 Three flavors of FP ABI exist:
 
-- **soft-float** (`-mfloat-abi=soft`) — FP ops are emulated in libgcc; FP arguments go in integer registers. Slow but universally compatible.
+- **soft-float** (`-mfloat-abi=soft`) — FP ops are emulated in libgcc. FP arguments go in integer registers. Slow but universally compatible.
 - **softfp** (`-mfloat-abi=softfp`) — FP ops use the FPU, but FP arguments still go in integer registers. Compromise — used when linking soft-float libraries with code that has an FPU.
-- **hard-float** (`-mfloat-abi=hard`) — FP ops use the FPU; FP arguments use FP registers. Fastest.
+- **hard-float** (`-mfloat-abi=hard`) — FP ops use the FPU. FP arguments use FP registers. Fastest.
 
-The triplet suffix tells you which: `arm-linux-gnueabi` (soft), `arm-linux-gnueabihf` (hard). **You cannot link a soft-float `.o` with a hard-float `.o`**; the linker refuses.
+The triplet suffix tells you which: `arm-linux-gnueabi` (soft), `arm-linux-gnueabihf` (hard). **You cannot link a soft-float `.o` with a hard-float `.o`**. The linker refuses.
 
 Linux on i.MX6ULL is universally hard-float in 2026. So is everything we build.
 
@@ -238,6 +241,9 @@ When we write bare-metal code, *none of this is available*. There is no `malloc`
 ## 6.7  Make, in working depth
 
 `make` is older than most engineers reading this, but for the bare-metal projects in Part II — and for every kernel / U-Boot / Buildroot build later — it is the tool you will use. This section is longer than it looks. Every later chapter references it, but once you have it down, you do not need to revisit it.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 
 ### 6.7.1  Rule shape
 
@@ -357,7 +363,7 @@ $ make -j$(nproc)            # use all available cores
 $ make -j8                    # 8 jobs in parallel
 ```
 
-For our bare-metal builds (~10 files), `-j` makes no measurable difference. For the kernel (~30 000 files) it cuts build time by ~7× on an 8-core host. Always use it for kernel work; harmless for everything else.
+For our bare-metal builds (~10 files), `-j` makes no measurable difference. For the kernel (~30 000 files) it cuts build time by ~7× on an 8-core host. Always use it for kernel work. harmless for everything else.
 
 ### 6.7.8  A complete Makefile for the Chapter 9 LED
 
@@ -407,10 +413,12 @@ Every flag in `CFLAGS` matters:
 
 Two ways to combine your code with libraries:
 
-- **Static.** Library code is copied into your binary at link time. The binary is self-contained; no `libfoo.so` is needed at runtime. Bigger file; faster startup.
-- **Dynamic.** Library code lives in `.so` files on disk; your binary references them by name; the dynamic loader (`/lib/ld-linux-armhf.so.3`) resolves them at process start.
+- **Static.** Library code is copied into your binary at link time. The binary is self-contained. no `libfoo.so` is needed at runtime. Bigger file. faster startup.
+- **Dynamic.** Library code lives in `.so` files on disk. your binary references them by name. The dynamic loader (`/lib/ld-linux-armhf.so.3`) resolves them at process start.
 
-Default on a Linux distro: dynamic. Default on a tight embedded system with a known rootfs: often static (saves space if you only have a few binaries; saves disk IO at startup).
+Default on a Linux distro: dynamic. Default on a tight embedded system with a known rootfs: often static (saves space if you only have a few binaries. saves disk IO at startup).
+MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 To force static:
 
@@ -464,7 +472,7 @@ When `gdb` says "no debug info, no symbols", it means the binary was stripped (`
 
 ## 6.10  Lab
 
-Two builds; both reproducible from a clean checkout.
+Two builds. both reproducible from a clean checkout.
 
 ### Lab A — Host hello world, inspected
 
@@ -482,12 +490,12 @@ $ arm-linux-gnueabihf-objdump -d hello-arm | grep -A 5 '<main>:'
 
 Read the disassembly. Find the `bl puts` instruction (or its inline equivalent). Find where `r0` is loaded with the address of the string `"hello"`.
 
-### Lab B — Bare-metal LED skeleton (build only; we'll add the LED code in Ch 9)
+### Lab B — Bare-metal LED skeleton (build only. We'll add the LED code in Ch 9)
 
 Create `~/imx6ull/src/ch06-skeleton/` with:
 
 - `startup.S` — a minimal startup that sets SP and branches to `main`.
-- `main.c` — `int main(void){ while(1); return 0; }`.
+- `main.c` — `int main(void){ while(1). return 0. }`.
 - `link.ld` — the minimal script from §6.4.
 - `Makefile` — from §6.7.
 
@@ -509,24 +517,25 @@ In your journal, answer:
 3. What is the address of `_start`?
 4. What is the address `nm` reports for `_stack_top`? Does it match `ORIGIN(OCRAM) + LENGTH(OCRAM)`?
 
-Compare your work against the listings above; experimenting with `readelf -a` is the answer.
+Compare your work against the listings above. experimenting with `readelf -a` is the answer.
 
 ## 6.11  Pitfalls
 
-- **Mixing `arm-none-eabi-` and `arm-linux-gnueabihf-` outputs.** They cannot be linked. The compiler will not warn; the linker will.
+- **Mixing `arm-none-eabi-` and `arm-linux-gnueabihf-` outputs.** They cannot be linked. The compiler will not warn. The linker will.
 - **`-nostdlib` silently dropping libgcc.** If your code uses 64-bit integer division on a target without HW divide, `gcc` emits a call to `__aeabi_uldivmod` — provided by `libgcc`. With `-nostdlib`, you must explicitly add `-lgcc` after your objects.
 - **Linker script orders matter.** `*(.text*)` after `*(.text.startup)` makes the startup come first. Get this wrong and the wrong code runs first. We will be deliberate about this in Ch 9.
 - **`.bss` zeroing.** If your startup forgets to zero `.bss`, every uninitialized global is whatever was in memory at boot — which on i.MX6ULL OCRAM is often a useful-looking pattern, leading to bugs that "work fine" except when ROM cleans differently next boot.
-- **Wrong `-march`/`-mcpu`.** `arm-linux-gnueabihf-gcc` defaults to `armv7-a` but the exact flags vary by distribution. Always specify `-mcpu=cortex-a7` explicitly for Cortex-A7 code; the compiler then schedules instructions for that pipeline.
-- **`strip` on the binary you wanted to debug.** Keep an unstripped copy. A useful convention in your Makefile: `$(NAME).elf` is unstripped (for `gdb`/`objdump`); `$(NAME).stripped.elf` is the smaller deliverable.
+- **Wrong `-march`/`-mcpu`.** `arm-linux-gnueabihf-gcc` defaults to `armv7-a` but the exact flags vary by distribution. Always specify `-mcpu=cortex-a7` explicitly for Cortex-A7 code. The compiler then schedules instructions for that pipeline.
+- **`strip` on the binary you wanted to debug.** Keep an unstripped copy. A useful convention in your Makefile: `$(NAME).elf` is unstripped (for `gdb`/`objdump`). `$(NAME).stripped.elf` is the smaller deliverable.
 
 ## 6.12  Going deeper
 
 - *Linkers and Loaders* by John Levine. The canonical book on what `ld` actually does.
-- *The ELF Specification* (latest is the System V ABI ed. 4.1; the AAPCS additions are in ARM IHI 0042).
+- *The ELF Specification* (latest is the System V ABI ed. 4.1. The AAPCS additions are in ARM IHI 0042).
 - The GCC manual — at least the section on language-independent options.
 - *Procedure Call Standard for the Arm Architecture* (AAPCS32) — ARM IHI 0042.
 - `man elf`, `man 5 elf`, `man 1 ld`, `man 1 ld.so`.
-- LWN: "How programs get run" (the kernel `exec` path; relevant when you write a `binfmt`).
+- LWN: "How programs get run" (the kernel `exec` path. relevant when you write a `binfmt`).
 
 > Next chapter: **Chapter 7 — The Boot ROM, IVT, DCD, and BootData.** With the toolchain understood, we can now build images that survive the Boot ROM's scrutiny.
+> **DCD** - Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.

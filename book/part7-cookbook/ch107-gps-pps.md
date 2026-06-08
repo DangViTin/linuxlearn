@@ -9,6 +9,8 @@ status: draft
 # Chapter 107 — GPS / GNSS + PPS
 
 > **What:** **GNSS receivers** (GPS + GLONASS + BeiDou + Galileo) and the **PPS (Pulse-Per-Second)** time-discipline signal. We compare **u-blox NEO-6M** (legacy, GPS-only), **NEO-8M** (multi-constellation), **NEO-9M** (concurrent multi-band, lower power, GNSS RAW data), and the cheap **ATGM336H** (BeiDou+GPS+GLONASS). On Linux, we parse **NMEA-0183**, decode u-blox's binary **UBX** protocol, bring up **gpsd** as the central daemon, and wire the **PPS GPIO** to **chrony** for sub-microsecond NTP — turning a $5 receiver into a **stratum-1 time server**.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Why:** GPS receivers do two things, both critical for embedded products:
 > 1. **Position** for asset tracking, geo-fencing, fleet management, anti-theft.
@@ -16,12 +18,16 @@ status: draft
 >
 > The same PPS technique works for any time-domain measurement on Linux: synchronised audio between boards, distributed instruments, IP-connected oscilloscopes.
 >
-> **Focus:** NMEA reports the wall-clock second, but it arrives 50–500 ms after the actual second. PPS is the nanosecond-accurate edge. A naïve "set the clock from `$GPRMC`" gets you to ±100 ms. With PPS, the kernel timestamps each GPIO edge using the hardware clock. Chrony combines two streams: NMEA, which is slow but tells you *which* second this is; PPS, which is fast but does not name the second. Together they reach ±100 ns. The PPS path is the key: GPS pin → kernel `pps_gpio` driver → `/dev/pps0` → chrony refclock. Get this right and you have sub-microsecond GPS time. Skip the PPS and you have NMEA-only ±100 ms.
+> **Focus:** NMEA reports the wall-clock second, but it arrives 50–500 ms after the actual second. PPS is the nanosecond-accurate edge. A naïve "set the clock from `$GPRMC`" gets you to ±100 ms. With PPS, the kernel timestamps each GPIO edge using the hardware clock. Chrony combines two streams: NMEA, which is slow but tells you *which* second this is. PPS, which is fast but does not name the second. Together they reach ±100 ns. The PPS path is the key: GPS pin → kernel `pps_gpio` driver → `/dev/pps0` → chrony refclock. Get this right and you have sub-microsecond GPS time. Skip the PPS and you have NMEA-only ±100 ms.
 >
 > **Tooling.** This chapter uses `gpsd` + `gpsd-clients` (`gpspipe`, `cgps`, `gpsmon`), `chrony`, `pps-tools` (`ppstest`).
 > - **Ubuntu-base (target):** `apt install gpsd gpsd-clients chrony pps-tools`
 > - **Buildroot:** `BR2_PACKAGE_GPSD=y BR2_PACKAGE_CHRONY=y BR2_PACKAGE_PPS_TOOLS=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 107.1  GNSS module comparison
 
@@ -68,16 +74,20 @@ $GPRMC,123519.00,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A
 | `$GPGLL` | lat/lon only |
 | `$GNRMC` etc. | `GN` prefix = multi-constellation fix |
 
-The checksum is XOR of all bytes between `$` and `*`, in hex. Parsers should always verify it; corrupt UART bytes (no flow control on most modules) flip bits silently.
+The checksum is XOR of all bytes between `$` and `*`, in hex. Parsers should always verify it. corrupt UART bytes (no flow control on most modules) flip bits silently.
 
 NMEA's three weaknesses for time sync:
-1. **Latent**: sentence is generated some time *after* the second; transmission at 9600 baud takes ~70 ms.
+1. **Latent**: sentence is generated some time *after* the second. transmission at 9600 baud takes ~70 ms.
 2. **Inconsistent**: different modules emit GPRMC at different points in the second.
 3. **Verbose**: parsing ASCII costs CPU you don't need.
 
 Hence PPS for sub-second timing.
 
 ## 107.3  UBX — u-blox binary protocol
+
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
 
 u-blox's native protocol is binary and **labels each message with the exact GPS time the position is valid for**. Frame:
 
@@ -106,7 +116,7 @@ Switching to UBX-only at startup reduces UART traffic 5× and gives you nanoseco
 
 ## 107.4  PPS — the sub-microsecond signal
 
-The PPS pin pulses high for ~100 ms exactly on the UTC second boundary. The receiver synchronizes its 1 kHz timepulse generator to its GNSS-derived clock; jitter is ~20–50 ns.
+The PPS pin pulses high for ~100 ms exactly on the UTC second boundary. The receiver synchronizes its 1 kHz timepulse generator to its GNSS-derived clock. jitter is ~20–50 ns.
 
 ```
    GNSS receiver
@@ -116,6 +126,8 @@ The PPS pin pulses high for ~100 ms exactly on the UTC second boundary. The rece
 ```
 
 Linux kernel side: `drivers/pps/`. The `pps_gpio` driver registers an IRQ on the GPIO, and on each edge records a hardware timestamp (`ktime_get_ts()`) plus the GPIO event time. User-space (chrony) reads `/dev/pps0` ioctl-style to get the latest edge timestamp and computes the offset between GPIO-edge-time and system-clock-time.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 DT binding:
 
@@ -202,7 +214,7 @@ chronyc sources -v
 # #* PPS                     0    4   377    14   -100ns[ -100ns] +/-   200ns
 ```
 
-The `*` next to PPS means it's the chosen reference; the offset is < 200 ns. The system clock is now disciplined to GPS time at sub-microsecond accuracy. `date +%N.%9N` shows nanosecond-precise time.
+The `*` next to PPS means it's the chosen reference. The offset is < 200 ns. The system clock is now disciplined to GPS time at sub-microsecond accuracy. `date +%N.%9N` shows nanosecond-precise time.
 
 To serve NTP to your LAN:
 
@@ -283,18 +295,18 @@ int main(void) {
 }
 ```
 
-Run this; you'll see each fix printed with the exact GPS-derived UTC time it was valid for. Compare with the PPS-disciplined system clock to verify they agree.
+Run this. You'll see each fix printed with the exact GPS-derived UTC time it was valid for. Compare with the PPS-disciplined system clock to verify they agree.
 
 ## 107.8  Lab
 
-1. **Antenna + first fix.** Wire the module's UART; place the antenna with sky view. Launch `cat /dev/ttymxc3`; watch NMEA stream; wait for `$GPGGA` with non-zero "fix quality" — TTFF should be < 60 s outdoors.
-2. **gpsd up.** Configure gpsd; run `cgps -s` to see live position. Indoors near a window may work for u-blox; ATGM336H usually won't.
-3. **PPS wired.** Add the DT pps-gpio node; reboot; verify `/dev/pps0`; run `ppstest /dev/pps0`. Each pulse should print one second later.
-4. **chrony stratum-1.** Configure refclock SHM+PPS; restart chrony; `chronyc sources` should show PPS selected. `date +%N.%9N` should show stable sub-µs precision.
-5. **UBX binary mode.** Use `ubxtool -p MON-VER` to verify u-blox; then `ubxtool -e UBX -d NMEA` to disable NMEA + enable UBX. Verify with `ubxtool -p NAV-PVT`.
+1. **Antenna + first fix.** Wire the module's UART. place the antenna with sky view. Launch `cat /dev/ttymxc3`. watch NMEA stream. wait for `$GPGGA` with non-zero "fix quality" — TTFF should be < 60 s outdoors.
+2. **gpsd up.** Configure gpsd. run `cgps -s` to see live position. Indoors near a window may work for u-blox. ATGM336H usually won't.
+3. **PPS wired.** Add the DT pps-gpio node. reboot. verify `/dev/pps0`. run `ppstest /dev/pps0`. Each pulse should print one second later.
+4. **chrony stratum-1.** Configure refclock SHM+PPS. restart chrony. `chronyc sources` should show PPS selected. `date +%N.%9N` should show stable sub-µs precision.
+5. **UBX binary mode.** Use `ubxtool -p MON-VER` to verify u-blox. then `ubxtool -e UBX -d NMEA` to disable NMEA + enable UBX. Verify with `ubxtool -p NAV-PVT`.
 6. **NTP client benchmark.** From another Linux box, `chronyc -h <gpsbox> sources` should show your box at stratum 1, offset < 1 µs.
-7. **Cold-start time.** Power-cycle the module; measure TTFF outdoors vs indoors-by-window. Multi-constellation modules should win.
-8. **PPS jitter measurement.** Capture 1000 PPS edges; histogram the timestamp delta from 1.000000000 s. Should show ±20–50 ns.
+7. **Cold-start time.** Power-cycle the module. measure TTFF outdoors vs indoors-by-window. Multi-constellation modules should win.
+8. **PPS jitter measurement.** Capture 1000 PPS edges. histogram the timestamp delta from 1.000000000 s. Should show ±20–50 ns.
 9. **Geofencing.** Write a script that alerts when the lat/lon leaves a circle (haversine distance > 100 m). Useful for asset-theft alerts.
 10. **TPS6594 + GPS for outage survival.** If your product is a stratum-1 server, hooking a UPS so the clock survives mains outages buys you 24+ hours of holdover (the OCXO inside drifts, but GPS resyncs as soon as power is back).
 
@@ -308,8 +320,8 @@ Run this; you'll see each fix printed with the exact GPS-derived UTC time it was
 - **Baud rate too low for UBX-NAV-PVT at 10 Hz.** At 9600, the 92-byte NAV-PVT plus other UBX leaves no headroom for 10 Hz updates. Switch to 38400 or 115200.
 - **NMEA checksum bytes flipped.** No flow control + heavy bus traffic = bit flips. Always verify the checksum and discard bad sentences.
 - **Multi-constellation overrides single-constellation in NMEA.** GNRMC, GNGGA replace GPRMC, GPGGA. Parsers must accept both prefixes.
-- **u-blox jamming detection.** The MON-RF message reports interference; if jamming is detected (drone show, military jammer, RF leak), the module may report no fix. Don't blame the antenna without checking MON-RF.
-- **GNSS time vs UTC leap seconds.** GPS time has no leap seconds; UTC does. Old or unprogrammed modules may emit times off by 18 s after a leap second. Use the `LeapSeconds` field if exposed.
+- **u-blox jamming detection.** The MON-RF message reports interference. If jamming is detected (drone show, military jammer, RF leak), the module may report no fix. Don't blame the antenna without checking MON-RF.
+- **GNSS time vs UTC leap seconds.** GPS time has no leap seconds. UTC does. Old or unprogrammed modules may emit times off by 18 s after a leap second. Use the `LeapSeconds` field if exposed.
 - **TPS regulator + GPS together = noise.** Switching regulators inject noise on the GPS antenna's RF input. Use an LDO close to the antenna, or shield the regulator.
 
 ## 107.10  Going deeper
@@ -318,7 +330,7 @@ Run this; you'll see each fix printed with the exact GPS-derived UTC time it was
 - **`gpsd` documentation** — covers many receivers, JSON protocol, refclock SHM mechanism.
 - **`chrony` documentation** — refclock PPS, GPS, SHM integration.
 - **`drivers/pps/`** + `Documentation/pps/pps.rst` — kernel side.
-- **NMEA-0183** standard (proprietary; many free summaries online).
+- **NMEA-0183** standard (proprietary. many free summaries online).
 - **NTPv4 + IEEE 1588 PTP** — for sub-µs over Ethernet (after you have a local stratum-1).
 - **RTKLIB** — for RTK centimetre-accurate positioning using u-blox RAW data.
 - **Ch 51B** — for using PPS to wake a sleeping device every second.

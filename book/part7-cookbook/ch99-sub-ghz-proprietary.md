@@ -8,11 +8,17 @@ status: draft
 
 # Chapter 99 — Sub-GHz proprietary
 
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
+
 > **What:** **non-LoRa short-range radios** for fleets that need higher throughput than LoRa or have no infrastructure: **Nordic nRF24L01+** (2.4 GHz, 250 kbps – 2 Mbps GFSK, the dominant cheap mesh radio), **TI CC1101** (sub-GHz 300–928 MHz multi-mode), **TI CC1200** (newer, lower phase noise, higher data rate, better Wi-SUN candidate). We dissect each chip's SPI command/register model, the **Enhanced ShockBurst** auto-ACK in nRF24, the CC1101 state machine, write a 200-line nRF24 P2P driver from scratch in user space, then wire DT for the existing kernel drivers where they exist.
 >
-> **Why:** LoRa (Ch 98) buys range with bandwidth. The opposite trade — sub-second latency, multi-kbps throughput, no MAC stack, no infrastructure, $1–4 BOM — is what nRF24L01 and CC1101 give you. Every consumer remote control, garage opener, weather station, and dozens-of-nodes IoT prototype uses one of these. The kernel has *some* support (`nrf24` is out-of-tree; CC1101 has an old in-tree driver), but as with LoRa, most production stacks live in user space against `spidev`. Understanding the chip's state machine + SPI command shape is everything.
+> **Why:** LoRa (Ch 98) buys range with bandwidth. The opposite trade — sub-second latency, multi-kbps throughput, no MAC stack, no infrastructure, $1–4 BOM — is what nRF24L01 and CC1101 give you. Every consumer remote control, garage opener, weather station, and dozens-of-nodes IoT prototype uses one of these. The kernel has *some* support (`nrf24` is out-of-tree. CC1101 has an old in-tree driver), but as with LoRa, most production stacks live in user space against `spidev`. Understanding the chip's state machine + SPI command shape is everything.
+> **MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
 >
-> **Focus:** **these chips are state machines driven by SPI commands. The behavior depends on the current state, not on individual register values**. nRF24's state machine has 7 states (Power-Down, Standby-I, Standby-II, RX, TX, etc.); CC1101's has 13. Almost every "the chip doesn't work" bug is the chip being in the wrong state — TX commanded from RX, FIFO read while still receiving, command issued before the previous one's settling time elapsed. Learn the state diagram and the rest is straightforward.
+> **Focus:** **these chips are state machines driven by SPI commands. The behavior depends on the current state, not on individual register values**. nRF24's state machine has 7 states (Power-Down, Standby-I, Standby-II, RX, TX, etc.). CC1101's has 13. Almost every "the chip doesn't work" bug is the chip being in the wrong state — TX commanded from RX, FIFO read while still receiving, command issued before the previous one's settling time elapsed. Learn the state diagram and the rest is straightforward.
+
 
 ## 99.1  Choosing the chip
 
@@ -33,9 +39,9 @@ status: draft
 | Use case | low-cost mesh, RC, hub-and-spoke | sub-GHz remotes, garage door, smart-home | longer-range industrial, Wi-SUN |
 
 **Pick guide:**
-- **nRF24L01+** — when 2.4 GHz is acceptable, you have 1–32 nodes, and the auto-ACK + pipes feature saves you from building a MAC. Caveat: 2.4 GHz is crowded; WiFi will eat you in a busy office.
+- **nRF24L01+** — when 2.4 GHz is acceptable, you have 1–32 nodes, and the auto-ACK + pipes feature saves you from building a MAC. Caveat: 2.4 GHz is crowded. WiFi will eat you in a busy office.
 - **CC1101** — sub-GHz remote-control style, when 2.4 GHz coexistence is a problem, you can tolerate building your own ACK protocol, and BOM cost is critical. Most "smart" home AC remotes, weather stations, and security sensors use this.
-- **CC1200** — the modern CC1101 successor; pick this for new designs over CC1101 (better phase noise, easier registers, mainstream Wi-SUN support).
+- **CC1200** — the modern CC1101 successor. pick this for new designs over CC1101 (better phase noise, easier registers, mainstream Wi-SUN support).
 
 ## 99.2  nRF24L01+ — the dominant cheap radio
 
@@ -67,12 +73,14 @@ status: draft
 ```
 
 The two GPIO-style control pins:
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - **CSN** (Chip Select Not) — SPI CS, frames each command.
-- **CE** (Chip Enable) — controls active TX/RX. CE=0 means "go to Standby-I and hold there"; CE=1 means "start TX (if PRIM_RX=0) or stay in RX (if PRIM_RX=1)."
+- **CE** (Chip Enable) — controls active TX/RX. CE=0 means "go to Standby-I and hold there". CE=1 means "start TX (if PRIM_RX=0) or stay in RX (if PRIM_RX=1)."
 
 These transition rules catch every newcomer:
 - To switch between TX and RX you must pass through Standby-I. Set `CE=0`, wait 130 µs, set `PRIM_RX`, then set `CE=1`.
-- The TX FIFO is loaded *before* CE goes high; pulsing CE for ≥10 µs triggers transmission of one packet.
+- The TX FIFO is loaded *before* CE goes high. pulsing CE for ≥10 µs triggers transmission of one packet.
 
 ### SPI commands
 
@@ -119,11 +127,13 @@ Key registers (5-bit addresses):
 
 ShockBurst is the auto-retransmit + auto-ACK layer built into the chip. Setup:
 
-1. PTX writes a frame; sets `EN_AA` on pipe 0 (or whichever).
-2. PTX pulses CE; chip transmits.
+1. PTX writes a frame. sets `EN_AA` on pipe 0 (or whichever).
+2. PTX pulses CE. chip transmits.
 3. Chip *automatically* flips to RX, listens for an ACK (an empty frame on the same address).
 4. If ACK received within ARD (`SETUP_RETR`), `TX_DS` IRQ — success.
-5. If not, retry up to ARC times; if still no ACK, `MAX_RT` IRQ — failure.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+5. If not, retry up to ARC times. If still no ACK, `MAX_RT` IRQ — failure.
 
 The PRX side automatically generates the ACK on receipt. The CPU doesn't run code for this round trip — it's all in chip silicon. Result: reliable point-to-point delivery at sub-millisecond latency, with zero MAC code on either side.
 
@@ -145,7 +155,7 @@ A single nRF24 in RX mode can listen for 6 different addresses simultaneously (p
    └─ Pipe 5:           D6  (Node E)
 ```
 
-Pipes 2–5 share the high 4 address bytes with pipe 1; only the last byte differs. So you get one hub talking to 5 satellites, each individually addressed and auto-ACKed. Add ACK payloads and the hub can send commands back inside each ACK — a 6-node star network without a MAC layer.
+Pipes 2–5 share the high 4 address bytes with pipe 1. only the last byte differs. So you get one hub talking to 5 satellites, each individually addressed and auto-ACKed. Add ACK payloads and the hub can send commands back inside each ACK — a 6-node star network without a MAC layer.
 
 ## 99.3  Wiring an nRF24 to the i.MX6ULL
 
@@ -164,15 +174,15 @@ GPIO  ┤ IRQ     ├───────────────────�
       └─────────┘                          └──────────┘
 ```
 
-The IRQ pin is active-low; it asserts on `RX_DR`, `TX_DS`, or `MAX_RT`. Reading `STATUS` and writing 1 back to the bit clears the interrupt.
+The IRQ pin is active-low. It asserts on `RX_DR`, `TX_DS`, or `MAX_RT`. Reading `STATUS` and writing 1 back to the bit clears the interrupt.
 
-**Power supply gotcha**: the 1 Mbps TX burst draws ~12 mA peaks at the rail; without the 10 µF bulk + 100 nF local decoupling, the supply droops and the next TX corrupts. This is the most common reason a newly bought module appears dead.
+**Power supply gotcha**: the 1 Mbps TX burst draws ~12 mA peaks at the rail. Without the 10 µF bulk + 100 nF local decoupling, the supply droops and the next TX corrupts. This is the most common reason a newly bought module appears dead.
 
 ## 99.4  How the out-of-tree nRF24 kernel drivers actually work
 
 There are two community kernel drivers:
-- **`nrf24` by Marcin Ciupak** (out-of-tree, GitHub `nRF24/nRF24L01_plus_Linux_Driver`). Presents the chip as a char device per pipe (`/dev/nrf24-pipe0`...). Read = receive; write = transmit.
-- **`nrf24-network` patches by Andre Renaud** (one attempt to make it netdev; never accepted upstream).
+- **`nrf24` by Marcin Ciupak** (out-of-tree, GitHub `nRF24/nRF24L01_plus_Linux_Driver`). Presents the chip as a char device per pipe (`/dev/nrf24-pipe0`...). Read = receive. write = transmit.
+- **`nrf24-network` patches by Andre Renaud** (one attempt to make it netdev. never accepted upstream).
 
 Walk of the char-device driver's TX path (paraphrased from `nrf24/nrf24.c`):
 
@@ -218,7 +228,7 @@ static irqreturn_t nrf24_irq(int irq, void *data) {
 }
 ```
 
-The architecture: one chip, six per-pipe char devices, one shared TX lock (because the chip can only TX to one address at a time), one IRQ thread, a kfifo per pipe holding received bytes. Read() blocks on the kfifo; write() pumps the TX path.
+The architecture: one chip, six per-pipe char devices, one shared TX lock (because the chip can only TX to one address at a time), one IRQ thread, a kfifo per pipe holding received bytes. Read() blocks on the kfifo. write() pumps the TX path.
 
 That's a lot of machinery to handle six addresses on one chip. The from-scratch version below skips it and uses `spidev` + libgpiod directly.
 
@@ -382,7 +392,7 @@ int main(int argc, char **argv) {
 }
 ```
 
-Two boards, same binary — one with the `r` argument, one without — and you have a 1 Mbps ACKed point-to-point link. Add `OBSERVE_TX` reading to see retry counts; add multi-pipe addresses to make a hub.
+Two boards, same binary — one with the `r` argument, one without — and you have a 1 Mbps ACKed point-to-point link. Add `OBSERVE_TX` reading to see retry counts. add multi-pipe addresses to make a hub.
 
 ## 99.6  CC1101 — sub-GHz state-machine radio
 
@@ -460,6 +470,10 @@ CC1200 is essentially CC1101 with a cleaner register set and higher symbol rates
 
 ## 99.7  Device tree examples
 
+> **Template warning:** This block contains placeholder values.
+> Replace compatible strings, GPIO numbers, addresses, and paths with values from your board before using it.
+
+
 For the user-space approach (`spidev` + libgpiod), the DT is just a `spidev` slot:
 
 ```dts
@@ -480,7 +494,7 @@ For the user-space approach (`spidev` + libgpiod), the DT is just a `spidev` slo
 ```
 
 
-> *Production note: `rohm,dh2228fv` is a development-time spidev placeholder; modern kernels print a warning when it appears in DT. See Chapter 47's `spidev` warning for the proper DT overlay path or a real-chip compatible swap.*
+> *Production note: `rohm,dh2228fv` is a development-time spidev placeholder. modern kernels print a warning when it appears in DT. See Chapter 47's `spidev` warning for the proper DT overlay path or a real-chip compatible swap.*
 For the `nrf24` out-of-tree driver:
 
 ```dts
@@ -507,22 +521,23 @@ nrf24@0 {
 ## 99.9  Lab
 
 1. **nRF24 identify.** Wire 2 boards, each with nRF24 module. Read `CONFIG` (default `0x08`), verify SPI works.
-2. **PTX ↔ PRX.** Build `nrf24_min.c`; one board as `r`, one without. Confirm ACKs at 1 m. `OBSERVE_TX` should show 0 retries.
+2. **PTX ↔ PRX.** Build `nrf24_min.c`. one board as `r`, one without. Confirm ACKs at 1 m. `OBSERVE_TX` should show 0 retries.
 3. **Range walk.** Move boards apart. Note where ACK rate drops below 90 %. Plot retry counts (`OBSERVE_TX[3:0]`) vs distance.
-4. **Multi-pipe hub.** 1 hub (PRX) + 3 satellites (each PTX with a different `TX_ADDR`). Hub listens on pipes 1, 2, 3. Each satellite sends every 2 s; hub prints `pipe=N msg=...`. Add ACK payloads so the hub replies inside each ACK.
+4. **Multi-pipe hub.** 1 hub (PRX) + 3 satellites (each PTX with a different `TX_ADDR`). Hub listens on pipes 1, 2, 3. Each satellite sends every 2 s. hub prints `pipe=N msg=...`. Add ACK payloads so the hub replies inside each ACK.
 5. **WiFi co-existence test.** Run hub on channel 76 (2476 MHz). Then run `iperf3` on the same i.MX6ULL via WiFi. Watch retry counts. Move to channel 100 (2500 MHz, above WiFi band). Compare.
-6. **CC1101 with SmartRF Studio.** Download SmartRF Studio (free, Windows/Linux); generate a register table for 868 MHz / 4-FSK / 38.4 kbps; flash that table to a CC1101 module. Confirm a packet exchange between two boards.
-7. **CC1101 build-your-own-ACK.** CC1101 has no auto-ACK; add a 2-byte sequence + 1-byte ACK frame in user space. Measure round-trip vs nRF24's hardware ACK at similar conditions.
+6. **CC1101 with SmartRF Studio.** Download SmartRF Studio (free, Windows/Linux). generate a register table for 868 MHz / 4-FSK / 38.4 kbps. flash that table to a CC1101 module. Confirm a packet exchange between two boards.
+7. **CC1101 build-your-own-ACK.** CC1101 has no auto-ACK. add a 2-byte sequence + 1-byte ACK frame in user space. Measure round-trip vs nRF24's hardware ACK at similar conditions.
 8. **Bridge test.** Two networks: nRF24 satellites + an i.MX6ULL hub bridging them to MQTT. Sensor data via nRF24 → JSON → mosquitto → Grafana.
 
 ## 99.10  Pitfalls
 
 - **nRF24 vs nRF24+ clones.** The "+" variant added 250 kbps data rate and is what most modules sell. Some Chinese clones (NRF24L01 RFM73 etc.) drop quirks. Verify with `CONFIG` default = 0x08 and the auto-ACK setting.
 - **Bad VDD decoupling.** Without 10 µF bulk + 100 nF, TX bursts droop the rail, all packets MAX_RT fail. The single most common nRF24 problem.
-- **CE pulse too short.** ≥10 µs is the spec. On a slow CPU + sysfs GPIO you'll comfortably exceed that; on libgpiod with cached lines or an FPGA-fast GPIO it can be 1 µs and the chip never enters TX.
+- **CE pulse too short.** ≥10 µs is the spec. On a slow CPU + sysfs GPIO you'll comfortably exceed that. on libgpiod with cached lines or an FPGA-fast GPIO it can be 1 µs and the chip never enters TX.
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 - **TX_ADDR ≠ RX_ADDR_P0.** The PTX's `RX_ADDR_P0` must equal its own `TX_ADDR` for auto-ACK to work (the ACK comes back to P0). Easy to overlook.
 - **TX-then-RX without going through Standby-I.** Always `CE=0`, change `PRIM_RX`, `CE=1`. Going directly puts the chip in an undefined state.
-- **CC1101 register dump from wrong frequency band.** The register table for 433 MHz won't work at 868; SmartRF Studio regenerates entirely. Don't copy/paste blindly between band setups.
+- **CC1101 register dump from wrong frequency band.** The register table for 433 MHz won't work at 868. SmartRF Studio regenerates entirely. Don't copy/paste blindly between band setups.
 - **CC1101 manual calibration needed periodically.** The frequency synth needs `SCAL` after temperature changes or long sleeps. The `MCSM*` registers can be set to auto-calibrate, but watch the timing — `MCSM0 = 0x18` means "calibrate every 4th transition from IDLE to RX/TX."
 - **2.4 GHz crowded.** Every WiFi, BT, microwave oven, baby monitor uses 2.4 GHz. Sub-GHz (CC1101 433/868) is 10× quieter. Test in realistic environment, not on an isolated bench.
 - **Antenna critical at sub-GHz.** A quarter-wave at 868 MHz is 86 mm. A 25 mm "stub" antenna costs you 10+ dB. Use a proper helical or PCB-trace antenna designed for the band.
@@ -535,7 +550,8 @@ nrf24@0 {
 - **TI CC1200 Datasheet** + Wi-SUN reference designs.
 - **`nRF24/nRF24L01_plus_Linux_Driver`** (out-of-tree GitHub) — char-device driver, useful for "what does a kernel driver for this look like."
 - **`elechouse/CC1101`** — clean reference C library.
-- **`tmrh20/RF24` / `RF24Network` / `RF24Mesh`** — Arduino-world but readable; the RF24Mesh layer shows how to build a multi-hop MAC over nRF24's PHY+ACK.
+- **`tmrh20/RF24` / `RF24Network` / `RF24Mesh`** — Arduino-world but readable. The RF24Mesh layer shows how to build a multi-hop MAC over nRF24's PHY+ACK.
+**PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
 - **Ch 98** for the LoRa-vs-FSK trade-off.
 - **Ch 100** for IEEE 802.15.4 (Thread/ZigBee) as the certified-network alternative.
 

@@ -7,12 +7,16 @@ status: draft
 ---
 
 # Chapter 35A — Ubuntu-base rootfs as a peer to BusyBox/Buildroot
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 > **What:** an Ubuntu rootfs on the i.MX6ULL. Ubuntu-the-distro with GNOME is too heavy. We use **Ubuntu-base** instead, the same Debian-family userland your laptop has, in a 80 MB tarball that runs `apt` and `bash` natively. You unpack it, `chroot` into it via `qemu-user-static`, install packages from the host's network, then NFS-boot the target into it.
+> **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 >
 > **Why:** for projects where the developer's familiarity matters more than image footprint, Ubuntu-base wins. Glibc, full coreutils, systemd, an actual `bash` — all present, in exchange for ~80 MB on disk and ~30 MB RAM at idle vs. BusyBox's < 5 MB / < 10 MB.
 >
 > **Focus:** the **`qemu-user-static` + `chroot` trick** — installing armhf packages from x86_64 host into the armhf rootfs by transparently running ARM binaries on the host CPU through QEMU emulation. Apt-get doesn't notice and the workflow works.
+
 
 ## 35A.1  When this is the right answer
 
@@ -31,6 +35,7 @@ status: draft
 The headline feature is `apt install <anything>` — Ubuntu's ~100 000-package archive available, no recompilation. For early development this is hard to beat.
 
 The headline cost is ~25× the disk and ~3× the RAM vs Buildroot. On i.MX6ULL with 512 MiB DRAM and an 8 GB eMMC, both are fine. On a 32 MiB device, only Buildroot fits.
+**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 
 ## 35A.2  Get the rootfs tarball
 
@@ -66,6 +71,7 @@ $ ls /usr/bin/qemu-arm-static
 ```
 
 `qemu-user-static` runs one ARM binary at a time on your x86_64 host. `binfmt-support` registers it with the kernel via `binfmt_misc`. When the kernel sees `exec` of an ARM ELF, it transparently invokes `qemu-arm-static` to run it.
+**ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
 
 This means: inside the `chroot`, when you type `apt install nano`, `apt` is an ARM binary, `dpkg` is an ARM binary, every `.postinst` script's binary callouts are ARM — and they *all run on your x86_64 host* via QEMU emulation. The chroot doesn't know the difference. Neither do the binaries.
 
@@ -153,6 +159,10 @@ deb http://mirrors.ustc.edu.cn/ubuntu-ports jammy-security main restricted unive
 
 ### Install essential packages
 
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
 ```sh
 root@host:/# apt update
 root@host:/# apt install -y \
@@ -165,7 +175,7 @@ That's the minimum for: a non-root user (sudo), an editor, ssh in, kernel module
 
 For the curious, this is what runs:
 
-1. `apt update` — downloads package metadata. Runs on QEMU; HTTP calls go to the host's network.
+1. `apt update` — downloads package metadata. Runs on QEMU. HTTP calls go to the host's network.
 2. `apt install` — for each package: download `.deb`, dpkg-extract files into `/`, run pre/post-install scripts. The scripts themselves are ARM binaries running under QEMU.
 
 ### Set root password and create a user
@@ -211,6 +221,8 @@ $ ./unmount-ubuntu.sh
 ## 35A.6  Boot it from NFS
 
 Export `~/imx6ull/ubuntu-rootfs/` over NFS (same as Ch 31, different rootfs path). In U-Boot:
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```
 => setenv bootargs 'console=ttymxc0,115200 earlycon \
@@ -293,7 +305,7 @@ For our continuing work in this book, **Buildroot** is the default. **Ubuntu-bas
 2. **`apt install` something useful.** Try `htop`, then `python3-pip`, then `nodejs`. Verify each runs.
 3. **Time the boot.** Compare BusyBox rootfs boot time vs Ubuntu-base.
 4. **Try `systemd-analyze`.** On the Ubuntu rootfs, `systemd-analyze blame` shows which services took longest at boot. Identify the top three.
-5. **Disable a heavyweight service.** Pick one (e.g., `snapd` if present, `unattended-upgrades`). `sudo systemctl disable <name>`. Reboot; compare boot times.
+5. **Disable a heavyweight service.** Pick one (e.g., `snapd` if present, `unattended-upgrades`). `sudo systemctl disable <name>`. Reboot. compare boot times.
 6. **Build a packaged image.** Tar the rootfs, write to a real partition, change `bootargs` to mount from disk, verify the system boots without the host. This is what you'd ship.
 
 ## 35A.10  Pitfalls
@@ -309,10 +321,11 @@ For our continuing work in this book, **Buildroot** is the default. **Ubuntu-bas
 
 ## 35A.11  Going deeper
 
-- **`debootstrap`** — Debian's equivalent of `ubuntu-base.tar.gz`. Builds a fresh Debian rootfs from package archives. More flexible; more complex.
+- **`debootstrap`** — Debian's equivalent of `ubuntu-base.tar.gz`. Builds a fresh Debian rootfs from package archives. More flexible. more complex.
 - **`multistrap`** — debootstrap with support for non-Debian package sources. Used by Yocto when assembling Debian-based images.
+**Yocto** - a metadata-driven build system for producing custom Linux distributions.
 - **`schroot`** — manage chroot environments without writing your own mount scripts.
-- **`Ubuntu Core`** — Ubuntu's official "embedded" variant. Uses snaps instead of apt; immutable rootfs. Different philosophy from this chapter; worth knowing about.
+- **`Ubuntu Core`** — Ubuntu's official "embedded" variant. Uses snaps instead of apt. immutable rootfs. Different philosophy from this chapter. worth knowing about.
 - **`Yocto-meta-ubuntu`** layer — combines Yocto-style builds with Ubuntu's package archive.
 
 > Next chapter: **Chapter 35B — Read-only rootfs + overlayfs.** Whichever rootfs you chose, when you ship to the field, you want it mounted read-only. Here is how.

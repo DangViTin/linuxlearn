@@ -9,6 +9,10 @@ status: draft
 # Chapter 86 — Touch input ICs
 
 > **What:** three touch technologies at increasing complexity. **TTP223** (single capacitive button, GPIO output — `gpio-keys`), **MPR121** (12-channel capacitive, I²C, with IRQ), **XPT2046/ADS7846** (4-wire resistive touchscreen controller, SPI, ADC-based, needs calibration). For each: physics, protocol, the input subsystem integration, and a from-scratch XPT2046 input driver — the most interesting, since resistive touch requires reading X/Y ADC channels and software calibration.
+> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Why:** A display without touch is a monitor. Add touch and it becomes an interface. Capacitive buttons replace mechanical ones (no wear, sealed enclosures). Capacitive matrices give you piano keys, sliders, proximity. Resistive touch is the cheap way to make any LCD interactive (works with gloves and stylus, unlike capacitive). Each is a different input-subsystem pattern — this chapter completes the input picture started in Ch 45 and the multi-touch GT911 of Ch 55G.
 >
@@ -17,7 +21,11 @@ status: draft
 > **Tooling.** This chapter uses `evtest`, `libinput-tools`, `xinput_calibrator` (resistive), `i2c-tools`.
 > - **Ubuntu-base (target):** `apt install evtest libinput-tools xinput-calibrator i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_EVTEST=y BR2_PACKAGE_LIBINPUT=y BR2_PACKAGE_TSLIB=y BR2_PACKAGE_I2C_TOOLS=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 86.1  Technology comparison
 
@@ -36,13 +44,13 @@ status: draft
 **Pick guide:**
 - **TTP223**: a single touch button — power, mode, wake. Cheapest possible touch input.
 - **MPR121**: capacitive keypad, slider, or proximity — 12 electrodes.
-- **XPT2046**: make any resistive-overlay LCD touch-interactive. Works with gloves/stylus; needs calibration.
+- **XPT2046**: make any resistive-overlay LCD touch-interactive. Works with gloves/stylus. needs calibration.
 
 For *capacitive multi-touch* (a modern phone-style glass touchscreen), see Ch 55G (GT911).
 
 ## 86.2  TTP223 — capacitive button via gpio-keys
 
-The TTP223 is a self-contained capacitive touch sensor: a copper pad (on your PCB or a separate electrode) connects to its input; its output pin goes high (or toggles, configurable) when touched. From Linux's view it's just a GPIO that changes state.
+The TTP223 is a self-contained capacitive touch sensor: a copper pad (on your PCB or a separate electrode) connects to its input. its output pin goes high (or toggles, configurable) when touched. From Linux's view it's just a GPIO that changes state.
 
 No driver needed — use the in-tree **`gpio-keys`** (Ch 45):
 
@@ -90,7 +98,7 @@ The IRQ pin asserts when the touch status changes. Bring-up:
 2. Configure per-electrode touch/release thresholds (typical: touch 12, release 6 — hysteresis).
 3. Configure filtering + auto-configuration.
 4. Write Electrode Configuration (0x5E) to enable N electrodes + start.
-5. On IRQ, read touch status (0x00–0x01); 12 bits tell you which electrodes are touched.
+5. On IRQ, read touch status (0x00–0x01). 12 bits tell you which electrodes are touched.
 
 ### Mainline driver + input
 
@@ -113,7 +121,8 @@ The IRQ pin asserts when the touch status changes. Bring-up:
 
 12 electrodes → 12 key codes. Touching electrode 0 emits `KEY_0`, etc. The driver reads the touch-status register on each IRQ and reports key-down/up events. `evtest` shows them.
 
-For a slider or proximity (analog), you'd read the filtered-data registers directly (the mainline keytouch driver only does discrete keys; a custom IIO or input driver could expose the analog capacitance).
+For a slider or proximity (analog), you'd read the filtered-data registers directly (the mainline keytouch driver only does discrete keys. a custom IIO or input driver could expose the analog capacitance).
+**IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 
 ## 86.4  XPT2046 — 4-wire resistive touch
 
@@ -129,7 +138,7 @@ Resistive touch is two transparent resistive layers separated by spacer dots. Pr
               hard it's pressed.
 ```
 
-The XPT2046 is an SPI-controlled 12-bit ADC + analog mux that automates this. You send a control byte selecting which measurement (X, Y, Z1, Z2); it drives the right layers and returns the ADC value.
+The XPT2046 is an SPI-controlled 12-bit ADC + analog mux that automates this. You send a control byte selecting which measurement (X, Y, Z1, Z2). It drives the right layers and returns the ADC value.
 
 ### Protocol
 
@@ -368,7 +377,7 @@ Calibration computes a **3×2 affine transform** (`tslib`'s model):
 
 You collect 5 calibration points (corners + center), solve for (a..f) by least-squares. The standard tools:
 
-- **`tslib`** (`ts_calibrate`): writes a calibration file `/etc/pointercal`; apps use `tslib` to transform raw events.
+- **`tslib`** (`ts_calibrate`): writes a calibration file `/etc/pointercal`. apps use `tslib` to transform raw events.
 - **`xinput_calibrator`** (X11): generates an Xorg config snippet.
 - The kernel's **`touchscreen` properties** in DT (`touchscreen-size-x`, `touchscreen-inverted-x`, etc.) handle simple cases (swap/invert/scale) but not the full affine.
 
@@ -380,19 +389,19 @@ For our driver to integrate with `tslib`:
 [root@pa-mini:~]# ts_test                 # verify the transform
 ```
 
-After calibration, `/etc/pointercal` holds the transform; `tslib`-linked apps (or the `evdev`+`libinput` path with a calibration matrix) report pixel coordinates.
+After calibration, `/etc/pointercal` holds the transform. `tslib`-linked apps (or the `evdev`+`libinput` path with a calibration matrix) report pixel coordinates.
 
 For a cleaner kernel-side approach, the mainline `ads7846` driver + the `touchscreen` DT properties + `libinput`'s calibration matrix handle it without `tslib`.
 
 ## 86.7  Lab
 
-1. **TTP223 button.** Wire one to a GPIO; use `gpio-keys` with `KEY_POWER`. `evtest` shows the key on touch.
-2. **MPR121 keypad.** Wire to I²C; use mainline `mpr121_touchkey`. Configure 12 keycodes. Touch each electrode; verify distinct keys in `evtest`.
-3. **XPT2046 raw.** Build and load `myxpt2046.ko`. `evtest` shows raw ABS_X/Y (0–4095). Touch corners; note the raw values.
+1. **TTP223 button.** Wire one to a GPIO. Use `gpio-keys` with `KEY_POWER`. `evtest` shows the key on touch.
+2. **MPR121 keypad.** Wire to I²C. Use mainline `mpr121_touchkey`. Configure 12 keycodes. Touch each electrode. verify distinct keys in `evtest`.
+3. **XPT2046 raw.** Build and load `myxpt2046.ko`. `evtest` shows raw ABS_X/Y (0–4095). Touch corners. note the raw values.
 4. **Calibrate.** Run `ts_calibrate` (tslib). Touch the crosshairs. Verify `ts_test` shows the cursor tracking your finger correctly.
-5. **Full UI.** Pair the XPT2046 (Ch 86) with the parallel LCD (Ch 82). Run a Qt/LVGL app with touch; verify taps land where expected.
-6. **Pressure.** Read ABS_PRESSURE; verify harder presses give higher values. Use it to reject light/ghost touches.
-7. **Compare to GT911.** If you have a capacitive panel (Ch 55G), compare the experience: cap is smoother and multi-touch; resistive works with gloves but is single-point and needs calibration.
+5. **Full UI.** Pair the XPT2046 (Ch 86) with the parallel LCD (Ch 82). Run a Qt/LVGL app with touch. verify taps land where expected.
+6. **Pressure.** Read ABS_PRESSURE. verify harder presses give higher values. Use it to reject light/ghost touches.
+7. **Compare to GT911.** If you have a capacitive panel (Ch 55G), compare the experience: cap is smoother and multi-touch. resistive works with gloves but is single-point and needs calibration.
 
 ## 86.8  Pitfalls
 
@@ -408,7 +417,7 @@ For a cleaner kernel-side approach, the mainline `ads7846` driver + the `touchsc
 
 ## 86.9  Going deeper
 
-- **`drivers/input/touchscreen/ads7846.c`** — the production XPT2046/ADS7846 driver. Compare to the from-scratch version; note the PENIRQ masking.
+- **`drivers/input/touchscreen/ads7846.c`** — the production XPT2046/ADS7846 driver. Compare to the from-scratch version. note the PENIRQ masking.
 - **`drivers/input/keyboard/mpr121_touchkey.c`** — MPR121 driver.
 - **`drivers/input/keyboard/gpio_keys.c`** — for TTP223-style buttons.
 - **`Documentation/devicetree/bindings/input/touchscreen/touchscreen.yaml`** — the common touchscreen properties (swap/invert/scale).

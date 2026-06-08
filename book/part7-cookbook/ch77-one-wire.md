@@ -9,10 +9,14 @@ status: draft
 # Chapter 77 — 1-Wire sensors
 
 > **What:** Maxim's **1-Wire** protocol — one digital pin (plus ground) carries bidirectional half-duplex data with timing-based bit framing. The well-supported case: **DS18B20** (digital thermometer, real 1-Wire, kernel `w1` subsystem). The lookalike: **DHT22** (single-wire T/H, *not* 1-Wire, hostile to Linux GPIO timing). For DS18B20: protocol, the `w1` master / slave architecture, mainline driver internals, and a from-scratch w1-slave driver. For DHT22: a clear-eyed look at why DHT22 is a poor fit for Linux plus what to do instead.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Why:** 1-Wire is the cheap, long-cable, parasitically-powered alternative to I²C. A 30-meter cable with 10 DS18B20s on it works. *Real* 1-Wire devices (with proper protocol implementations) are kernel-friendly. DHT22 uses the same physical wiring (one signal line plus ground, with parasitic power) but a different, incompatible bit-framing scheme — and that timing requires µs-accurate edge detection that Linux GPIO can't reliably deliver.
 >
 > **Focus:** **the master must generate tightly-timed pulse widths** (15 µs reset, 60 µs slot, 1 µs sample window). For DS18B20 this is done by the **w1 master** driver — usually a "GPIO bit-bang" master with PREEMPT_RT helping, or a hardware UART repurposed as a w1 master. The slave devices live in `drivers/w1/slaves/`. Once the master is reliable, writing a slave driver is short — the w1 core does the work.
+> **PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
+
 
 ## 77.1  1-Wire protocol — what's on the wire
 
@@ -89,7 +93,7 @@ Sequence to read temperature:
 10. Decode: temp_raw = (msb << 8) | lsb; temp_C = temp_raw / 16.0  (signed!).
 ```
 
-Multiple DS18B20s on the same bus: SEARCH ROM enumerates them; MATCH ROM addresses each by 64-bit ID; otherwise SKIP ROM broadcasts to all.
+Multiple DS18B20s on the same bus: SEARCH ROM enumerates them. MATCH ROM addresses each by 64-bit ID. otherwise SKIP ROM broadcasts to all.
 
 ## 77.3  The Linux `w1` subsystem
 
@@ -113,7 +117,7 @@ drivers/w1/
     └── ...
 ```
 
-**Two layers**: a *master* implements bus primitives; *slaves* are registered after enumeration.
+**Two layers**: a *master* implements bus primitives. *slaves* are registered after enumeration.
 
 ### A master's contract
 
@@ -130,7 +134,7 @@ struct w1_bus_master {
 };
 ```
 
-A master can choose to implement either bit-level or byte-level primitives; the core synthesises the missing operations. A *GPIO bit-bang master* implements `reset_bus`, `read_bit`, `write_bit` using `gpiod_*` + `udelay`/`ndelay`; the core composes those into byte reads/writes.
+A master can choose to implement either bit-level or byte-level primitives. The core synthesises the missing operations. A *GPIO bit-bang master* implements `reset_bus`, `read_bit`, `write_bit` using `gpiod_*` + `udelay`/`ndelay`. The core composes those into byte reads/writes.
 
 ### `w1-gpio` master
 
@@ -197,8 +201,9 @@ After registering a master, the w1 core starts a kthread that:
 1. Issues SEARCH ROM (0xF0) periodically.
 2. Walks the binary-tree search algorithm to enumerate all slave ROM IDs.
 3. For each new ROM ID, looks up the *family code* (top byte) — 0x28 for DS18B20, 0x26 for DS2438, etc.
-4. Looks up the corresponding slave driver; calls its `add_slave` callback.
+4. Looks up the corresponding slave driver. calls its `add_slave` callback.
 5. The slave driver registers per-device sysfs attributes.
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 User-space sees:
 
@@ -228,7 +233,7 @@ A read of `/sys/bus/w1/devices/28-.../temperature` triggers the conversion + rea
 
 We won't rewrite the master (the bit-bang master is well-engineered already and re-doing it teaches little). Instead we'll write a **slave driver** for an imaginary family — say, a custom sensor with family code 0xA5 that returns 4 bytes when commanded with 0xCC, 0xBE.
 
-The w1 core handles enumeration; we provide a `w1_family` with `add_slave` / `remove_slave` callbacks:
+The w1 core handles enumeration. We provide a `w1_family` with `add_slave` / `remove_slave` callbacks:
 
 `my_w1_slave.c`:
 
@@ -290,7 +295,7 @@ MODULE_LICENSE("GPL");
 MODULE_ALIAS("w1-family-" __stringify(W1_FAMILY_LL_CUSTOM));
 ```
 
-That's it — 50 lines. The w1 core handles enumeration; when a slave with family code 0xA5 is discovered, the core calls our driver's `groups`, creating `/sys/bus/w1/devices/a5-XXXXXXX/value`.
+That's it — 50 lines. The w1 core handles enumeration. when a slave with family code 0xA5 is discovered, the core calls our driver's `groups`, creating `/sys/bus/w1/devices/a5-XXXXXXX/value`.
 
 Three w1-core helpers used:
 
@@ -312,7 +317,7 @@ onewire {
 };
 ```
 
-`w1-gpio` master accepts a single `gpios` property (the data pin); the pull-up is assumed to be external (4.7 kΩ to 3.3 V). With slow polling and PREEMPT_RT, this works at 1-Wire's nominal timing on any GPIO that supports a few microseconds of `local_irq_disable()`.
+`w1-gpio` master accepts a single `gpios` property (the data pin). The pull-up is assumed to be external (4.7 kΩ to 3.3 V). With slow polling and PREEMPT_RT, this works at 1-Wire's nominal timing on any GPIO that supports a few microseconds of `local_irq_disable()`.
 
 Kernel config: `CONFIG_W1=y`, `CONFIG_W1_MASTER_GPIO=y`, `CONFIG_W1_SLAVE_THERM=y`.
 
@@ -334,7 +339,7 @@ Long cables (10 m+) with multiple DS18B20s on a single GPIO — works.
 DHT22 ("AM2302") *uses the same physical wiring* as 1-Wire but **invents its own incompatible protocol**:
 
 1. Master pulls low for 1–10 ms.
-2. Master releases; pull-up takes line high.
+2. Master releases. pull-up takes line high.
 3. Sensor pulls low for 80 µs (acknowledgment).
 4. Sensor pulls high for 80 µs.
 5. Sensor sends 40 bits of data, each as:
@@ -353,11 +358,13 @@ Why Linux struggles:
 The honest options:
 
 1. **Don't.** Use SHT3x or AHT20 (proper I²C) instead. They cost the same.
-2. **PREEMPT_RT + busy-wait GPIO** in a driver. Works ~80 % of the time; you retry until success.
+2. **PREEMPT_RT + busy-wait GPIO** in a driver. Works ~80 % of the time. You retry until success.
 3. **MCU helper.** An ATtiny / ESP8266 does the DHT22 timing and exposes the result via I²C / UART to Linux. The right answer if you must support DHT22.
 4. **PRU coprocessor** on chips that have one (TI AM335x, Beaglebone Black). Not on i.MX6ULL.
 
-The mainline `dht11.c` driver (`drivers/iio/humidity/dht11.c`) takes approach (2) — uses high-resolution timers and IRQ-on-edge to measure pulse widths. It works on RPi-class hardware most of the time; reliability varies by load.
+The mainline `dht11.c` driver (`drivers/iio/humidity/dht11.c`) takes approach (2) — uses high-resolution timers and IRQ-on-edge to measure pulse widths. It works on RPi-class hardware most of the time. reliability varies by load.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 **Verdict: if you see DHT22 on someone's product schematic, replace it with SHT3x.**
 
@@ -381,7 +388,7 @@ DS2401 is interesting for embedded products: it's a unique serial number you can
 
 1. **Wire a DS18B20** to GPIO4_IO14 with a 4.7 kΩ pull-up to 3.3 V. Configure `w1-gpio` in DT.
 2. **Verify enumeration.** After boot, `ls /sys/bus/w1/devices/`. The 64-bit ROM ID is part of the directory name.
-3. **Read temperature.** Heat the chip with a finger; verify reading rises by a few degrees.
+3. **Read temperature.** Heat the chip with a finger. verify reading rises by a few degrees.
 4. **Multi-chip.** Add a second DS18B20 in parallel. Verify both enumerate as separate `28-*` entries.
 5. **Long-cable test.** Use a 5-meter CAT5 cable. Verify reads still succeed (1-Wire is unusually robust to long cables).
 6. **Write the custom slave driver.** Use the skeleton from §77.4. Even without a custom chip, you can test the registration via a fake family-code mismatch report.
@@ -390,8 +397,8 @@ DS2401 is interesting for embedded products: it's a unique serial number you can
 
 ## 77.9  Pitfalls
 
-- **Missing pull-up.** No pull-up = bus floats = no devices enumerate. 4.7 kΩ is standard; longer cables may need 2.2 kΩ.
-- **Insufficient parasitic-power current.** DS18B20 in parasitic mode (3-pin connection, VDD tied to GND, draws power from the bus) needs the master to drive a strong pull-up *during conversion* (750 ms). `w1-gpio` doesn't do this; use a 3-pin parasitic config only with the master that supports "strong pull-up."
+- **Missing pull-up.** No pull-up = bus floats = no devices enumerate. 4.7 kΩ is standard. longer cables may need 2.2 kΩ.
+- **Insufficient parasitic-power current.** DS18B20 in parasitic mode (3-pin connection, VDD tied to GND, draws power from the bus) needs the master to drive a strong pull-up *during conversion* (750 ms). `w1-gpio` doesn't do this. Use a 3-pin parasitic config only with the master that supports "strong pull-up."
 - **GPIO open-drain capability.** 1-Wire requires the GPIO to switch between output-low and input (with pull-up). Some SoC GPIOs are limited. i.MX6ULL is fine.
 - **Search ROM with bus contention.** With many slaves on a long cable, signal integrity degrades. Search may fail to find all slaves. Reduce cable length or use a ds2482 hardware master.
 - **CRC errors.** w1-therm's `temperature` sysfs file returns "-1" or stale on CRC failure. Check `dmesg` for `w1_slave: crc mismatch`. Increase pull-up strength.

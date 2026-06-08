@@ -9,10 +9,16 @@ status: draft
 # Chapter 114 — Beepers, relays, SSRs
 
 > **What:** the **discrete actuators** that fall outside the main subsystems but appear in every product: **passive piezo buzzers** (need PWM to make sound), **active buzzers** (fixed-frequency, GPIO on/off), **mechanical relays** (5 V or 12 V coils driving 240 V AC contacts), **MOSFETs** (DC switching, fast, no contact wear), and **SSRs (Solid State Relays)** (AC switching, opto-isolated, zero-cross, the production-grade choice for mains-load control). On the i.MX6ULL we drive each with the matching kernel framework (PWM for passive, GPIO for the rest), wire the protection circuits (flyback diodes, snubbers, isolation), and build a 4-channel home automation relay board controlled via MQTT.
+> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Why:** real products take physical actions: beep on user input, switch a pump, turn on a heater, drive a solenoid valve, ring a bell. Each actuator has different electrical requirements and different safety pitfalls. Get them wrong and you damage the driver, miss a debounce, energize an AC load while the relay's contact is half-open (arcing → contact welding → can't turn off → fire). This chapter is short but covers the engineering details that separate a demo from a five-year shipping product.
 >
-> **Focus:** three non-negotiable rules for the actuators in this chapter. Inductive loads (relays, solenoids, motors) need a flyback diode. AC loads need isolation. Zero-cross AC switching needs a zero-cross SSR; non-zero-cross switching arcs, generates harmonics, and burns contacts. The Linux side is trivial — sysfs PWM or GPIO. The electrical-engineering side is most of the work.
+> **Focus:** three non-negotiable rules for the actuators in this chapter. Inductive loads (relays, solenoids, motors) need a flyback diode. AC loads need isolation. Zero-cross AC switching needs a zero-cross SSR. non-zero-cross switching arcs, generates harmonics, and burns contacts. The Linux side is trivial — sysfs PWM or GPIO. The electrical-engineering side is most of the work.
+> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+
 
 ## 114.1  Buzzers — passive vs active
 
@@ -48,7 +54,7 @@ sleep 0.2   # beep
 echo 0 > /sys/class/pwm/pwmchip0/pwm0/enable
 ```
 
-Volume = duty cycle (max at 50 %; both 0 % and 100 % = silence). Pitch = frequency.
+Volume = duty cycle (max at 50 %. both 0 % and 100 % = silence). Pitch = frequency.
 
 Play a melody: change the period over time. A "Mario" tone sequence is just a list of `(freq, duration)` tuples.
 
@@ -98,8 +104,8 @@ gpioset gpiochip4 22=0   # relay off
 Mechanical relay characteristics:
 - **Switching time**: ~10 ms on, ~5 ms off.
 - **Contact rating**: typically 10 A AC at 250 V (per relay datasheet).
-- **Life**: ~10⁵ switches at rated load; 10⁷ at much-reduced load.
-- **Noise**: audible click; some applications (libraries, hospitals) prefer SSRs to avoid noise.
+- **Life**: ~10⁵ switches at rated load. 10⁷ at much-reduced load.
+- **Noise**: audible click. some applications (libraries, hospitals) prefer SSRs to avoid noise.
 
 ## 114.3  MOSFET for DC loads — fast, silent, infinite life
 
@@ -150,19 +156,23 @@ GND ──────────────────── └────
 A typical 25 A SSR module (Fotek SSR-25DA, Crydom A2425) handles 240 VAC × 25 A. Key features:
 
 - **Optical isolation** between logic and load (typically 4 kV).
-- **Zero-cross switching** — triac fires only at the AC zero-crossing; eliminates inrush and harmonics. Mandatory for resistive (heater) loads; rough for motor loads (the motor may lag).
+- **Zero-cross switching** — triac fires only at the AC zero-crossing. eliminates inrush and harmonics. Mandatory for resistive (heater) loads. rough for motor loads (the motor may lag).
 - **No moving parts** — silent, fast, infinite life if not abused.
-- **Always-on leakage** — even when "off," a few mA leaks through. Don't rely on the SSR to make a load *electrically dead* for service work; use a contactor or pull the plug.
+- **Always-on leakage** — even when "off," a few mA leaks through. Don't rely on the SSR to make a load *electrically dead* for service work. Use a contactor or pull the plug.
 
 Linux side: just GPIO toggle, same as mechanical relay. The SSR's internal opto + zero-cross logic handles the rest.
 
 ## 114.5  AC safety — non-negotiable rules
 
+> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+
+
 Live AC kills. Working with mains:
 
-1. **Isolation 4 kV minimum** between logic and mains side. Module SSRs deliver this; bench-built circuits often don't.
+1. **Isolation 4 kV minimum** between logic and mains side. Module SSRs deliver this. bench-built circuits often don't.
 2. **Fuses on the AC side.** A shorted load (motor stalls, heater coil melts) without a fuse will burn wiring or weld SSR contacts.
-3. **Proper wire gauge.** 16 AWG minimum for 10 A circuits; 14 AWG for 15 A. Solid copper, properly crimped to terminals.
+3. **Proper wire gauge.** 16 AWG minimum for 10 A circuits. 14 AWG for 15 A. Solid copper, properly crimped to terminals.
 4. **Insulated enclosure** with no exposed mains-side conductors when assembled. Use commercial enclosures with strain reliefs.
 5. **Earth bonding.** Any metal enclosure must be earthed. A pre-failure short-to-chassis trips the earth-leakage breaker instead of electrocuting the user.
 6. **GFCI / RCD upstream.** Your distribution panel should have residual-current protection. Don't rely on it as primary safety, but it saves lives on partial failures.
@@ -218,26 +228,28 @@ About 40 lines. Install as a systemd unit. Open Home Assistant on a phone, tap "
 ## 114.7  Lab
 
 1. **Passive buzzer melody.** PWM the buzzer to play "Twinkle Twinkle Little Star" (12 notes, each ~250 ms).
-2. **Active buzzer alarm.** GPIO-toggled active buzzer; pulse on/off pattern for a fire-alarm cadence (250 ms on, 250 ms off, repeat).
-3. **MOSFET dimmer.** N-FET driving a 12 V LED strip; PWM at 1 kHz with adjustable duty. Set up a sysfs knob to vary brightness.
+2. **Active buzzer alarm.** GPIO-toggled active buzzer. pulse on/off pattern for a fire-alarm cadence (250 ms on, 250 ms off, repeat).
+3. **MOSFET dimmer.** N-FET driving a 12 V LED strip. PWM at 1 kHz with adjustable duty. Set up a sysfs knob to vary brightness.
 4. **Mechanical relay safe-switch.** Driver: BJT + flyback. Scope the BJT collector with no diode → see the spike. Add diode → spike gone.
-5. **SSR + AC load.** Use a 5 V SSR module to switch a desk lamp (with proper isolation + fuse + enclosure). GPIO toggles every 2 s; lamp blinks.
+5. **SSR + AC load.** Use a 5 V SSR module to switch a desk lamp (with proper isolation + fuse + enclosure). GPIO toggles every 2 s. lamp blinks.
 6. **MQTT relay board.** Build the 4-channel example. Toggle from Home Assistant dashboard.
-7. **Inrush measurement.** Switch an incandescent bulb (or motor) with a non-zero-cross SSR; capture the inrush on a current probe. Switch with a zero-cross SSR; compare.
-8. **Relay endurance.** Cycle a relay at 1 Hz with rated AC load; count failures over 100,000 cycles (will take 28 hours). Make notes about contact wear.
+7. **Inrush measurement.** Switch an incandescent bulb (or motor) with a non-zero-cross SSR. capture the inrush on a current probe. Switch with a zero-cross SSR. compare.
+8. **Relay endurance.** Cycle a relay at 1 Hz with rated AC load. count failures over 100,000 cycles (will take 28 hours). Make notes about contact wear.
 
 ## 114.8  Pitfalls
 
 - **No flyback diode on relay coil.** Repeated back-EMF spikes will eventually damage the BJT and SoC.
-- **GPIO direct-driving a relay coil.** Coil draws 30 mA at 5 V (= 150 mW); GPIO typically tolerates 20 mA max. Burn-out symptom: GPIO works once, then never again.
+- **GPIO direct-driving a relay coil.** Coil draws 30 mA at 5 V (= 150 mW). GPIO typically tolerates 20 mA max. Burn-out symptom: GPIO works once, then never again.
 - **Cheap SSR with rated current.** Fotek SSR-40DA rated "40 A" — actually good for ~25 A continuous and only with a real heatsink. De-rate aggressively.
-- **Zero-cross SSR with inductive load.** Motors lag; zero-cross switching at voltage-zero is at current-peak for inductive load → contact stress. For inductive loads use random-fire SSR.
-- **Buzzer at the right pitch for piezo resonance.** Most piezos have a sharp resonant peak around 2.7 kHz; driving off-resonance gets you 10 dB less SPL. Find the peak with a sweep.
+- **Zero-cross SSR with inductive load.** Motors lag. zero-cross switching at voltage-zero is at current-peak for inductive load → contact stress. For inductive loads use random-fire SSR.
+- **Buzzer at the right pitch for piezo resonance.** Most piezos have a sharp resonant peak around 2.7 kHz. driving off-resonance gets you 10 dB less SPL. Find the peak with a sweep.
+MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 - **PWM frequency in audio range.** A motor PWM at 1 kHz whines audibly. Bump to 20 kHz+.
-- **No GPIO pull-down on MOSFET gate.** During boot, the GPIO is high-impedance for a few seconds; the load floats and may spuriously partially-on. 10 kΩ pull-down ensures off-on-boot.
+- **No GPIO pull-down on MOSFET gate.** During boot, the GPIO is high-impedance for a few seconds. The load floats and may spuriously partially-on. 10 kΩ pull-down ensures off-on-boot.
 - **AC neutral switching.** Always switch the LIVE wire, never the NEUTRAL. Switching neutral leaves the load energized when "off" → shock hazard.
-- **SSR on the AC neutral.** Same problem; SSR must be on live.
-- **No fuses.** A failed driver shorts the load; without a fuse, the wiring becomes the fuse.
+- **SSR on the AC neutral.** Same problem. SSR must be on live.
+- **No fuses.** A failed driver shorts the load. Without a fuse, the wiring becomes the fuse.
 - **Inadequate creepage / clearance.** PCB tracks carrying mains must be ≥4 mm apart with no solder bridges. Use a real PCB house with mains-safety design rules.
 - **Treating an off SSR as electrically isolated.** SSR leakage is 1–5 mA. Enough to make an LED glow faintly, or — for service — to give a small shock. Pull the plug for service.
 

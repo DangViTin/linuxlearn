@@ -7,12 +7,16 @@ status: draft
 ---
 
 # Chapter 27A — DT bindings YAML and `dt_binding_check`
+**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
+MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 
 > **What:** the mainline kernel's machine-checkable description of every Device Tree binding — a JSON-Schema document (in YAML form) that says *exactly* which properties a node should have, of what type, with what constraints. Plus the `make dt_binding_check` / `make dtbs_check` targets that validate your DTS against them.
+> MCU bridge: Think of Device Tree like a board-level hardware description table that replaces hard-coded #define LED_PORT GPIOA decisions. Unlike an MCU header, the kernel parses it at boot and matches it to drivers.
+> **Device Tree** - a data file that describes board hardware to the Linux kernel instead of hard-coding it in C.
 >
 > **Why:** Since kernel v4.18 (mid-2018), every new binding *must* ship a YAML schema, and existing bindings are being migrated. Without a schema, your patch will not be accepted upstream. Without a schema check on your CI, your binding can silently drift between board variants and you'll only discover it when something breaks.
 >
-> **Focus:** the **schema as a contract**. A binding YAML is the source of truth for what a node *should* look like. The DTS files are checked against it; drivers are documented by it. Read one binding YAML carefully and the rest follow the same pattern.
+> **Focus:** the **schema as a contract**. A binding YAML is the source of truth for what a node *should* look like. The DTS files are checked against it. drivers are documented by it. Read one binding YAML carefully and the rest follow the same pattern.
 
 ## 27A.1  Why bindings need schemas
 
@@ -35,7 +39,7 @@ Two problems:
 1. **Not machine-checkable.** A DTS file with a typo (`compatible = "fsl,imx6ull-art";` — missing the `u`) or with a missing property silently passes compilation. Kernel just doesn't probe the device at runtime, and you go hunting.
 2. **Inconsistent.** Two binding files written by two people, even for closely-related hardware, would describe things in subtly different ways. Some used `reg` for one purpose, some another. No way to enforce style.
 
-Since 2018, every new binding ships as a **YAML file containing a JSON-Schema**. Schemas are validated automatically; DTS files are linted against them; CI rejects bindings that fail the lint. The `.txt` bindings are being migrated, with a deadline that keeps slipping but is real: any *new* binding without YAML is rejected.
+Since 2018, every new binding ships as a **YAML file containing a JSON-Schema**. Schemas are validated automatically. DTS files are linted against them. CI rejects bindings that fail the lint. The `.txt` bindings are being migrated, with a deadline that keeps slipping but is real: any *new* binding without YAML is rejected.
 
 ## 27A.2  Anatomy of a binding YAML
 
@@ -155,9 +159,9 @@ Section-by-section:
 - **`maintainers`** — who signs off on changes.
 - **`allOf: [$ref: serial.yaml#]`** — inherits constraints from a parent schema. Every UART binding includes the generic-serial schema, which adds e.g. `current-speed` and `rs485-*` properties.
 - **`properties`** — the meat. Each property gets a sub-schema saying what kind of value it accepts.
-  - `compatible.oneOf` — three legal forms: just `fsl,imx1-uart` or `fsl,imx21-uart`; a SoC string followed by `fsl,imx21-uart` as fallback; or a three-string list ending in `fsl,imx21-uart`. Anything else is rejected.
+  - `compatible.oneOf` — three legal forms: just `fsl,imx1-uart` or `fsl,imx21-uart`. a SoC string followed by `fsl,imx21-uart` as fallback. or a three-string list ending in `fsl,imx21-uart`. Anything else is rejected.
   - `reg.maxItems: 1` — exactly one address-range, no more.
-  - `clocks.items` — exactly two entries; the schema even documents what each represents.
+  - `clocks.items` — exactly two entries. The schema even documents what each represents.
   - `clock-names.items` — must be the literal strings "ipg" and "per", in that order.
   - `uart-has-rtscts: true` — equivalent to "this is a boolean flag" (the value `true` after a name is the YAML shorthand for "this is a valid property with no additional constraints").
 - **`required`** — properties that MUST be present.
@@ -188,11 +192,13 @@ $ pip install --user --upgrade dtschema yamllint
 
 `dtschema` is the validator that does the actual matching. `yamllint` catches YAML formatting issues.
 
-A typical `dtbs_check` run on the i.MX tree produces ~100 warnings as of v6.6 — many existing DTS files have minor issues that haven't been cleaned up. New code should add *zero* new warnings; the upstream maintainers will require that.
+A typical `dtbs_check` run on the i.MX tree produces ~100 warnings as of v6.6 — many existing DTS files have minor issues that haven't been cleaned up. New code should add *zero* new warnings. The upstream maintainers will require that.
 
 ## 27A.4  Writing your first binding
 
-Suppose your custom board has a GPIO-driven LED that you want to teach the kernel about cleanly. (The existing `gpio-leds` binding handles this; we'll author a fictional "my-pa-led" binding for pedagogy, then in practice you'd use `gpio-leds` instead.)
+Suppose your custom board has a GPIO-driven LED that you want to teach the kernel about cleanly. (The existing `gpio-leds` binding handles this. We'll author a fictional "my-pa-led" binding for pedagogy, then in practice you'd use `gpio-leds` instead.)
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 `Documentation/devicetree/bindings/leds/myorg,pa-led.yaml`:
 
@@ -337,12 +343,12 @@ These parents define standard properties common to the *class* (e.g., `current-s
 
 ## 27A.7  Lab
 
-1. **Run the checks.** From your kernel tree: `make ARCH=arm dt_binding_check` and `make ARCH=arm dtbs_check`. Note how many warnings the v6.6 tree produces. Don't try to fix them; just observe.
+1. **Run the checks.** From your kernel tree: `make ARCH=arm dt_binding_check` and `make ARCH=arm dtbs_check`. Note how many warnings the v6.6 tree produces. Don't try to fix them. just observe.
 2. **Read a binding end-to-end.** Pick `Documentation/devicetree/bindings/serial/fsl-imx-uart.yaml`. Identify (a) the schema URL, (b) the parent schema, (c) which properties are required, (d) which are optional, (e) the example DT fragment.
 3. **Find an unschema'd binding.** Look in `Documentation/devicetree/bindings/serial/` for any remaining `.txt` files. These are migration candidates. The `.txt` content is what needs to be turned into a `.yaml`.
 4. **Write your first schema.** Pick a small driver (e.g., one of your own from Chapter 41 onward). Write its YAML. Run `dt_binding_check`. Cycle until clean.
 5. **Break a passing DTS on purpose.** Edit `imx6ull-14x14-evk.dts` to misspell a property (`clock-name` instead of `clock-names`). Run `make dtbs_check`. Observe the precise error message that pinpoints the typo. Restore.
-6. **Read `dtschema`'s source.** It's a small Python package; the dispatch from YAML schemas to JSON-Schema validation is in `dtschema/schemas/`.
+6. **Read `dtschema`'s source.** It's a small Python package. The dispatch from YAML schemas to JSON-Schema validation is in `dtschema/schemas/`.
 
 ## 27A.8  Pitfalls
 
@@ -357,7 +363,7 @@ These parents define standard properties common to the *class* (e.g., `current-s
 - **`Documentation/devicetree/writing-schema.rst`** — the canonical tutorial.
 - **`Documentation/devicetree/bindings/example-schema.yaml`** — a fully-annotated example schema. Read it after this chapter.
 - **`dtschema` source** — `github.com/devicetree-org/dt-schema`. Read for ground truth on what's actually validated.
-- **JSON Schema spec** at `json-schema.org/specification`. DT bindings use JSON Schema vocabulary; this is the underlying spec.
+- **JSON Schema spec** at `json-schema.org/specification`. DT bindings use JSON Schema vocabulary. This is the underlying spec.
 - **`grep -r "unevaluatedProperties" Documentation/devicetree/bindings/`** — read a few real-world bindings end-to-end before writing your own.
 
 > Next chapter: **Chapter 28 — Kernel startup, traced.** With DT understood, we can now trace `start_kernel()` from its first instruction to the moment it `exec`s `/sbin/init`.

@@ -8,17 +8,24 @@ status: draft
 
 # Chapter 120 — User-space debugging
 
-> **What:** the toolkit for debugging your **user-space applications** on the i.MX6ULL target from a host workstation. **gdbserver** + **gdb-multiarch** for breakpoint-and-step debugging across the network; **strace** for "what syscalls is this program making"; **ltrace** for shared-library calls; **perf** for sampling profilers + hardware-counter-based analysis + flamegraphs; **core dumps** with `coredumpctl` for post-mortem analysis of crashed processes.
+> **What:** the toolkit for debugging your **user-space applications** on the i.MX6ULL target from a host workstation. **gdbserver** + **gdb-multiarch** for breakpoint-and-step debugging across the network. **strace** for "what syscalls is this program making". **ltrace** for shared-library calls. **perf** for sampling profilers + hardware-counter-based analysis + flamegraphs. **core dumps** with `coredumpctl` for post-mortem analysis of crashed processes.
+> **GDB** - the debugger. in cross-debugging it runs on the host while controlling code on the target.
 >
-> **Why:** Kernel debugging (Ch 118, 119) is less common in day-to-day work; most of the time you're debugging applications. The pattern: target runs `gdbserver`; host runs `gdb-multiarch` with the unstripped binary; you set breakpoints by source line, inspect variables, step through code — exactly as if developing locally. `strace` reveals "the open() is returning EACCES" before you've even opened gdb. `perf` answers "why is my video pipeline using 80 % CPU" with a flamegraph. Once these are set up, embedded app debug feels much like desktop debug.
+> **Why:** Kernel debugging (Ch 118, 119) is less common in day-to-day work. Most of the time you're debugging applications. The pattern: target runs `gdbserver`. host runs `gdb-multiarch` with the unstripped binary. You set breakpoints by source line, inspect variables, step through code — exactly as if developing locally. `strace` reveals "the open() is returning EACCES" before you've even opened gdb. `perf` answers "why is my video pipeline using 80 % CPU" with a flamegraph. Once these are set up, embedded app debug feels much like desktop debug.
 >
-> **Focus:** **gdbserver is the network agent (no debugger UI; just exposes the process's debug API over TCP); gdb-multiarch on the host knows ARM and connects; the unstripped ELF + sysroot give it symbols and headers**. For performance: `perf` is the universal sampling tool; understand the difference between sampling (CPU%-style overview, low overhead) and tracing (every event, high overhead). For crashed programs: configure `coredumpctl` to save dumps to a known location, retrieve from the target, analyze on the host.
+> **Focus:** **gdbserver is the network agent (no debugger UI. just exposes the process's debug API over TCP). gdb-multiarch on the host knows ARM and connects. The unstripped ELF + sysroot give it symbols and headers**. For performance: `perf` is the universal sampling tool. understand the difference between sampling (CPU%-style overview, low overhead) and tracing (every event, high overhead). For crashed programs: configure `coredumpctl` to save dumps to a known location, retrieve from the target, analyze on the host.
+> **ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
 >
 > **Tooling.** **Target:** `gdbserver`, `strace`, `ltrace`, `perf` (from `linux-tools`), optional `valgrind`. **Host:** `gdb-multiarch` (or your cross gdb), Brendan Gregg's `FlameGraph` scripts (`git clone https://github.com/brendangregg/FlameGraph`). Ubuntu install (target): `apt install gdbserver strace ltrace linux-tools-generic valgrind`. Buildroot: `BR2_PACKAGE_GDB=y` + `BR2_PACKAGE_GDB_SERVER=y`, `BR2_PACKAGE_STRACE=y`, `BR2_PACKAGE_LTRACE=y`, `BR2_PACKAGE_LINUX_TOOLS_PERF=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+
 
 ## 120.1  Target side — install gdbserver
 
 On a Buildroot/Yocto rootfs:
+**Yocto** - a metadata-driven build system for producing custom Linux distributions.
 
 ```sh
 # Buildroot menuconfig:
@@ -28,7 +35,7 @@ On a Buildroot/Yocto rootfs:
 apt install gdbserver
 ```
 
-`gdbserver` is small (~100 KB statically linked); no debug-info needed on the target.
+`gdbserver` is small (~100 KB statically linked). no debug-info needed on the target.
 
 ## 120.2  Host side — gdb-multiarch + sysroot
 
@@ -73,6 +80,7 @@ $1 = 0x7fffd344 "arg1"
 ```
 
 This is the bread-and-butter cross-debug workflow. You write code on your Linux host, cross-compile, copy to target (NFS or scp), gdbserver on target, attach from host. Loop time: 10 seconds.
+**NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
 
 **Important — `--multi` mode for re-launching**:
 
@@ -129,7 +137,7 @@ Options:
 - `-T` show time per call.
 - `-t` add timestamp.
 
-For embedded — gdb-multiarch is a host tool; strace runs on the target.
+For embedded — gdb-multiarch is a host tool. strace runs on the target.
 
 ## 120.6  ltrace — same for library calls
 
@@ -160,7 +168,7 @@ perf top -p <pid>
 #   8.2 %  libc.so.6    malloc
 ```
 
-Continuously updated, like `htop`, but functions instead of processes. Press `?` for help; arrow keys to navigate; `Enter` to drill into a function's assembly.
+Continuously updated, like `htop`, but functions instead of processes. Press `?` for help. arrow keys to navigate. `Enter` to drill into a function's assembly.
 
 ### perf record + perf report — sampling profile
 
@@ -184,7 +192,7 @@ perf script | ./FlameGraph/stackcollapse-perf.pl | ./FlameGraph/flamegraph.pl > 
 # Open out.svg in a browser; interactive flame graph
 ```
 
-A useful CPU-profile visualization. The x-axis is sample count (roughly time spent); the y-axis is the call stack. Click any block to zoom; type to search.
+A useful CPU-profile visualization. The x-axis is sample count (roughly time spent). The y-axis is the call stack. Click any block to zoom. type to search.
 
 ### Hardware counters
 
@@ -197,11 +205,11 @@ perf stat ./myapp
 #       456,789,012      cycles
 ```
 
-Counters tell you why something is slow: high cache-miss rate → memory bound; low instructions-per-cycle → branch misprediction or stall.
+Counters tell you why something is slow: high cache-miss rate → memory bound. low instructions-per-cycle → branch misprediction or stall.
 
 For embedded:
 - `perf` compiles for ARM cleanly.
-- Hardware counters on i.MX6ULL Cortex-A7 are limited to a handful; high-end profiling is easier on Cortex-A53/A72.
+- Hardware counters on i.MX6ULL Cortex-A7 are limited to a handful. high-end profiling is easier on Cortex-A53/A72.
 
 ## 120.8  Core dumps — post-mortem
 
@@ -285,30 +293,30 @@ Now you know: line 127 calls poll() on a socket that's hung. Fix: add a timeout,
 
 ## 120.10  Lab
 
-1. **gdbserver hello world.** Build a 10-line C program with `-g`. Run via gdbserver; attach gdb-multiarch from host; step through; print variables.
-2. **Set sysroot properly.** Try to print a `pthread_mutex_t` from gdb without sysroot; observe missing libpthread symbols. Set sysroot; observe symbols appear.
-3. **strace.** Run `cat /etc/passwd` under strace; identify every syscall. Now run `ls`; compare syscall patterns.
-4. **strace -c.** Run a typical workload; identify the most-frequent and slowest syscall.
+1. **gdbserver hello world.** Build a 10-line C program with `-g`. Run via gdbserver. attach gdb-multiarch from host. step through. print variables.
+2. **Set sysroot properly.** Try to print a `pthread_mutex_t` from gdb without sysroot. observe missing libpthread symbols. Set sysroot. observe symbols appear.
+3. **strace.** Run `cat /etc/passwd` under strace. identify every syscall. Now run `ls`. compare syscall patterns.
+4. **strace -c.** Run a typical workload. identify the most-frequent and slowest syscall.
 5. **perf top.** Run `dd if=/dev/zero of=/tmp/x bs=1M count=100` while `perf top` is running. See which kernel functions dominate.
-6. **Flamegraph of your app.** Sample your app; produce an SVG. Identify the hot path.
-7. **Hardware counter profile.** `perf stat -e cache-misses,instructions,cycles ./myapp`; compute CPI (cycles per instruction). >2 = memory-bound; <1.5 = compute-bound.
-8. **Crash + core.** Write a program that intentionally dereferences NULL; capture the core; analyze with gdb on host. Identify the line.
-9. **Attach to systemd service.** Find a running daemon's PID; attach gdbserver; bt; identify what it's doing.
-10. **End-to-end customer-bug workflow.** Pick a "stuck" daemon (httpd, sshd); use cat /proc/<pid>/wchan + strace -p + gdb-attach; produce a one-page bug report.
+6. **Flamegraph of your app.** Sample your app. produce an SVG. Identify the hot path.
+7. **Hardware counter profile.** `perf stat -e cache-misses,instructions,cycles ./myapp`. compute CPI (cycles per instruction). >2 = memory-bound. <1.5 = compute-bound.
+8. **Crash + core.** Write a program that intentionally dereferences NULL. capture the core. analyze with gdb on host. Identify the line.
+9. **Attach to systemd service.** Find a running daemon's PID. attach gdbserver. bt. identify what it's doing.
+10. **End-to-end customer-bug workflow.** Pick a "stuck" daemon (httpd, sshd). Use cat /proc/<pid>/wchan + strace -p + gdb-attach. produce a one-page bug report.
 
 ## 120.11  Pitfalls
 
 - **gdbserver and gdb-multiarch ABI mismatch.** Cross-compiler ARM ABI must match target's libc ABI (gnueabihf vs gnueabi). Different ABI = unable to set breakpoints in shared libraries.
 - **Sysroot pointing to wrong path.** When `sysroot` points at the wrong path, gdb loads the host's `libc.so.6` from `/lib`. Symbols then mismatch. Always `set sysroot` before `target remote`.
-- **Stripped binaries.** No symbols, no source-level debug. Build with `-g`; copy unstripped to host; ship stripped to target.
-- **PIE binaries with ASLR.** Address space randomization makes addresses different each run. GDB handles it; manual address arithmetic doesn't. Disable ASLR for repeatable debug: `setarch -R ./myapp`.
+- **Stripped binaries.** No symbols, no source-level debug. Build with `-g`. copy unstripped to host. ship stripped to target.
+- **PIE binaries with ASLR.** Address space randomization makes addresses different each run. GDB handles it. manual address arithmetic doesn't. Disable ASLR for repeatable debug: `setarch -R ./myapp`.
 - **strace heavy slowdown.** Tracing a high-syscall-rate process can 10× slow it. Use `-e trace=read,write` to filter.
 - **strace doesn't show shared library calls.** Use ltrace or gdb for that.
 - **perf record -g with no CFI.** Without `-fno-omit-frame-pointer` in the build, perf can't unwind stacks. Compile with both `-g` and `-fno-omit-frame-pointer`.
 - **perf hardware events unavailable.** Some VMs / containers / 32-bit ARM can't access perf counters. Falls back to software events only.
 - **core dump truncated.** Default `ulimit -c` is often 0 (disabled). Set `ulimit -c unlimited`. Also kernel.core_pattern must allow writing somewhere.
-- **systemd-coredump compresses cores.** `coredumpctl dump` decompresses; `xz -d` if you pulled directly.
-- **gdb attach permission denied.** Need CAP_SYS_PTRACE (root) on target, or run as the same user as the target process. /proc/sys/kernel/yama/ptrace_scope = 0 to allow ptrace of any process; 1 is "only descendants" (default on many distros).
+- **systemd-coredump compresses cores.** `coredumpctl dump` decompresses. `xz -d` if you pulled directly.
+- **gdb attach permission denied.** Need CAP_SYS_PTRACE (root) on target, or run as the same user as the target process. /proc/sys/kernel/yama/ptrace_scope = 0 to allow ptrace of any process. 1 is "only descendants" (default on many distros).
 - **Detaching gdbserver leaves the process running.** Use `(gdb) detach` then exit. `(gdb) quit` without detaching kills the process — usually NOT what you want.
 
 ## 120.12  Going deeper
@@ -319,8 +327,8 @@ Now you know: line 127 calls poll() on a socket that's hung. Fix: add a timeout,
 - **`Documentation/admin-guide/perf-security.rst`** — for kernel.perf_event_paranoid.
 - **`Flame Graph` repo + paper** — http://brendangregg.com/flamegraphs.html.
 - **`coredumpctl(1)`, `systemd-coredump.conf(5)`**.
-- **Valgrind** (memcheck, callgrind) — slower but more detailed; runs on the target if you have enough RAM.
-- **AddressSanitizer (ASan), UndefinedBehaviorSanitizer (UBSan)** — compile-time instrumentation; catches memory bugs at runtime.
+- **Valgrind** (memcheck, callgrind) — slower but more detailed. runs on the target if you have enough RAM.
+- **AddressSanitizer (ASan), UndefinedBehaviorSanitizer (UBSan)** — compile-time instrumentation. catches memory bugs at runtime.
 - **Ch 125A** — VSCode + gdbserver workflow for IDE users.
 
 ---

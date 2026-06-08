@@ -11,8 +11,11 @@ status: draft
 > **What:** a 1 ms tick from EPIT1 (interrupt-driven) and a free-running 32-bit counter from GPT1 (polled). Together they give us `tick_ms()`, `udelay()`, `mdelay()`, and a cycle-precise way to measure code.
 >
 > **Why:** Before we touch the MMU or write real drivers we need timing primitives. Schedulers, protocol stacks, and "wait at least N ns then check again" all need them.
+> MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+> **MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 >
 > **Focus:** We use two timers because Linux does: GPT as a free-running counter (clocksource), EPIT for periodic interrupts (tick source). Seeing the split here makes Linux's `arch_timer` and `clocksource` framework easier later.
+
 
 ## 16.1  Two timers, two jobs
 
@@ -89,7 +92,7 @@ A few notes:
 
 - **Prescaler of 65 ⇒ divider 66.** The field is "divisor - 1," yet another N+1 register. With 66 MHz IPG, dividing by 66 gives a 1 MHz timer — one tick = 1 µs. Convenient: each tick equals 1 microsecond.
 - **`(gpt_now_us() - start) < us`** uses unsigned subtraction, which wraps cleanly modulo 2^32. This handles counter rollover correctly for any delay shorter than 2^32 µs (~71 min). For longer delays accumulate into a 64-bit value.
-- **`FRR = 1`** means "free-running" — the counter keeps going past output-compare matches; it does not auto-reload to zero. This is what makes it a clocksource rather than a tick source.
+- **`FRR = 1`** means "free-running" — the counter keeps going past output-compare matches. It does not auto-reload to zero. This is what makes it a clocksource rather than a tick source.
 
 `udelay` is now precise to within 1 microsecond. On a 696 MHz core the spin-loop reaction adds well under a microsecond.
 
@@ -169,7 +172,7 @@ uint32_t tick_ms(void)
 uint32_t ms = tick_ms();   /* harmless: a 32-bit read is atomic */
 ```
 
-A 32-bit unsigned wraps every ~49 days. Sufficient for our purposes; production code would track 64-bit ticks (read low, read high, re-read low, retry on wrap — the standard 32-bit pair pattern).
+A 32-bit unsigned wraps every ~49 days. Sufficient for our purposes. production code would track 64-bit ticks (read low, read high, re-read low, retry on wrap — the standard 32-bit pair pattern).
 
 ## 16.4  Putting it together
 
@@ -213,9 +216,13 @@ Timers running.
 ```
 
 If `tick_ms()` does not advance, EPIT's IRQ isn't firing. Re-check:
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 - CCGR gate bit. Right register, right field.
 - GIC ID 88 enabled.
+MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+**GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 - `EPIT_CR.OCIEN = 1` and `EPIT_SR` cleared on each tick.
 - CPSR.I cleared via `irq_enable()`.
 
@@ -238,7 +245,8 @@ This is *cycle-precise* but reset on power-cycle. It tells you "how many cycles 
 
 ### GPT counter
 
-`gpt_now_us()` is *time-precise* — microseconds always mean microseconds, regardless of how the ARM core has been reclocked. (Until you change MMDC/IPG clocks; the GPT divider then needs adjusting.)
+`gpt_now_us()` is *time-precise* — microseconds always mean microseconds, regardless of how the ARM core has been reclocked. (Until you change MMDC/IPG clocks. The GPT divider then needs adjusting.)
+**MMDC** - the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
 
 Use PMU to measure cycles (how efficient is the code on this CPU). Use GPT to measure wall time (how long the real-time operation took). They answer different questions.
 
@@ -253,30 +261,32 @@ uint32_t u1 = gpt_now_us();
 printf("memtest: %u cycles = %u us\r\n", c1 - c0, u1 - u0);
 ```
 
-A 4 MB write + 4 MB read on DDR3 at 396 MHz takes ~30 ms (≈ 250 MB/s). At 696 MHz CPU that's ~21 million CPU cycles. The cycle/µs ratio should be ~696, matching the CPU clock; if it isn't, your clock initialization (Chapter 13) is wrong.
+A 4 MB write + 4 MB read on DDR3 at 396 MHz takes ~30 ms (≈ 250 MB/s). At 696 MHz CPU that's ~21 million CPU cycles. The cycle/µs ratio should be ~696, matching the CPU clock. If it isn't, your clock initialization (Chapter 13) is wrong.
 
 ## 16.6  Lab
 
 1. **Heartbeat for an hour.** Run the example and observe `tick_ms` rolling forward predictably. Check that one hour of heartbeats produces ~3600 increments.
 2. **Drift test.** Compare `tick_ms()` after 60 seconds against a stopwatch. The error tells you the crystal accuracy and the prescaler precision. Typical: < 0.01% (60 ms over 60 s).
-3. **Measure `udelay(1)`.** Loop `udelay(1)` a million times; time the wall clock; divide. Confirm it's within 1% of 1 second.
+3. **Measure `udelay(1)`.** Loop `udelay(1)` a million times. time the wall clock. divide. Confirm it's within 1% of 1 second.
 4. **Nested-IRQ test.** Inside `epit_isr`, `printf("tick\n")`. `uart_putc` polls TX, so this is okay even though we're in ISR. Confirm output every 1 ms (you won't see individual ticks at 115200 baud — but the *rate* should be steady).
-5. **Use GPT to validate Chapter 13's clocks.** Make a fixed-cycle-count loop (200 nops, exactly). Measure with PMU; confirm 200 cycles. Measure with GPT; confirm 200/696 ≈ 287 ns.
+5. **Use GPT to validate Chapter 13's clocks.** Make a fixed-cycle-count loop (200 nops, exactly). Measure with PMU. confirm 200 cycles. Measure with GPT. confirm 200/696 ≈ 287 ns.
 
 ## 16.7  Pitfalls
 
-- **Wrong CCGR bit.** GPT1 is CG10; EPIT1 is CG6; both in CCGR1. Easy to confuse.
-- **Forgetting to W1C the status flag.** EPIT_SR bit 0 is set on compare; you must write 1 to clear it inside the ISR. Otherwise the interrupt re-fires immediately and you spin forever in IRQ context.
+- **Wrong CCGR bit.** GPT1 is CG10. EPIT1 is CG6. both in CCGR1. Easy to confuse.
+- **Forgetting to W1C the status flag.** EPIT_SR bit 0 is set on compare. You must write 1 to clear it inside the ISR. Otherwise the interrupt re-fires immediately and you spin forever in IRQ context.
 - **Wrong prescaler register.** GPT_PR holds *divisor minus 1*. To go from 66 MHz to 1 MHz the divisor is 66, so we write 65.
 - **EPIT_LR vs EPIT_CMPR:** LR is the reload value, CMPR is the compare threshold (usually 0). Don't swap them.
 - **Drift from forgotten clock changes.** If you call `clocks_init` *after* `gpt_init`, the GPT prescaler is now wrong for the new IPG. Initialize clocks first, then timers.
-- **Reading `jiffies_ms` torn across an update.** 32-bit reads are single-instruction on ARMv7-A; safe. A 64-bit counter would need a lo/hi retry loop.
+- **Reading `jiffies_ms` torn across an update.** 32-bit reads are single-instruction on ARMv7-A. safe. A 64-bit counter would need a lo/hi retry loop.
 
 ## 16.8  Going deeper
 
 - **IMX6ULLRM Chapter 29 (GPT) and Chapter 30 (EPIT).** Complete register descriptions.
-- **Cortex-A7 TRM, Chapter 8** — generic timer (which you can use *instead* of EPIT/GPT; we use it in Linux later).
+- **Cortex-A7 TRM, Chapter 8** — generic timer (which you can use *instead* of EPIT/GPT. We use it in Linux later).
 - **Linux source: `drivers/clocksource/timer-imx-gpt.c`** — the same hardware as a Linux clocksource.
-- **POSIX `clock_gettime(CLOCK_MONOTONIC)`** — what user-space sees of all this; backed eventually by these timers.
+- **POSIX `clock_gettime(CLOCK_MONOTONIC)`** — what user-space sees of all this. backed eventually by these timers.
 
 > Next chapter: **Chapter 17 — MMU and caches.** The last bare-metal infrastructure piece. Turn on the MMU, run our code with virtual memory, enable I/D caches, measure the speed-up. After this we are ready for U-Boot in Part III.
+> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.

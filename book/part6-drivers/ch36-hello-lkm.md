@@ -8,11 +8,17 @@ status: draft
 
 # Chapter 36 — Your first kernel module
 
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
 > **What:** the smallest possible Linux kernel module — a `.ko` file with an entry point, an exit point, and a license tag — and the build system (`Kbuild`) that turns C source into it. By the end you can `insmod hello.ko`, see your `printk` in `dmesg`, and `rmmod` it without rebooting.
 >
 > **Why:** every driver you'll ever write — character, block, network, platform, I²C, SPI, sound — is a kernel module at its core. The wrapper around the interesting code is the same: module_init / module_exit / MODULE_LICENSE. Master the trivial case once and the only thing left to learn for each subsystem is its own API.
 >
 > **Focus:** **what gets linked into what, and when**. `hello.ko` is a relocatable ELF that the kernel loader patches into the kernel's address space at insmod time. Understanding that — that there is no fresh process, no separate memory, just dynamic linking into the running kernel — explains 80 % of "why is this allowed?" and "why is that not?" questions.
+> **ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
+
 
 ## 36.1  The driver mindset shift
 
@@ -83,6 +89,10 @@ Note **none** of these are `<stdio.h>` or `<stdlib.h>`. **The kernel has no libc
 
 ## 36.3  The `Kbuild` Makefile
 
+> **Driver choice:** Use the in-tree, maintained driver first.
+> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
+
+
 You don't compile a kernel module with `arm-linux-gnueabihf-gcc hello.c -o hello.ko`. Kbuild does a lot of work for you. It generates per-module ELF sections, applies the kernel's own `CFLAGS` (including `-fno-stack-protector` and many others), and dynamically discovers the right `vmlinux` symbols. You build out-of-tree modules by *invoking the kernel's own Makefile* and pointing at your source.
 
 `Makefile`:
@@ -146,6 +156,7 @@ vermagic:       6.6.0 SMP mod_unload modversions ARMv7
 ```
 
 The **`vermagic`** is critical. It encodes the exact kernel version (`6.6.0`) and the config options that affect binary compatibility (`SMP`, `mod_unload`, etc.). When you `insmod hello.ko`, the kernel compares `hello.ko`'s vermagic to its own. If they differ, the load is refused. You can't take a module built against 6.6.0 and load it on 6.6.1, even if the API is identical. This is a feature, not a bug — it prevents subtle ABI breakage.
+**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
 
 ## 36.4  Loading and unloading
 
@@ -165,7 +176,7 @@ hello                  16384  0
 [   50.234567] hello: unloaded
 ```
 
-That's the whole loop. The module is now part of the kernel's address space; its code is reachable via the symbol table.
+That's the whole loop. The module is now part of the kernel's address space. its code is reachable via the symbol table.
 
 **`/sys/module/hello/`** exposes runtime information:
 
@@ -176,8 +187,8 @@ initsize      initstate     notes/      sections/ taint         version
 ```
 
 - `refcnt` — how many other things use this module. As long as it's > 0, `rmmod` refuses.
-- `srcversion` — hash of the source; useful for detecting "did I actually copy the new build?"
-- `sections/` — load address of each section. Useful when debugging crashes; you need the section addresses to symbolicate addresses in the `dmesg` backtrace.
+- `srcversion` — hash of the source. useful for detecting "did I actually copy the new build?"
+- `sections/` — load address of each section. Useful when debugging crashes. You need the section addresses to symbolicate addresses in the `dmesg` backtrace.
 - `taint` — does this module taint the kernel?
 
 **`/proc/modules`** has the same info but flatter, suitable for scripting.
@@ -208,6 +219,7 @@ static int __init hello_init(void)
 ```
 
 The third argument to `module_param` is the **permission** for the sysfs file at `/sys/module/hello/parameters/howmany`. `0644` means readable by all, writable by root. `0` means not exposed in sysfs at all.
+**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 Use at load time:
 
@@ -235,7 +247,7 @@ Supported types: `bool`, `byte`, `short`, `ushort`, `int`, `uint`, `long`, `ulon
 
 ## 36.6  `printk` and its message levels
 
-`printk` is `printf`'s kernel cousin. The signature is the same; the difference is that the first character of the format string (a special `KERN_*` byte) sets the **message level**. There are eight levels:
+`printk` is `printf`'s kernel cousin. The signature is the same. The difference is that the first character of the format string (a special `KERN_*` byte) sets the **message level**. There are eight levels:
 
 | Macro | Value | Used for |
 |-------|-------|----------|
@@ -261,7 +273,7 @@ pr_info("...");
 pr_debug("...");
 ```
 
-`pr_debug` is special: it expands to a `printk` only if `DEBUG` is defined when the file is compiled, **or** if dynamic debug (`CONFIG_DYNAMIC_DEBUG`) is enabled and the user has turned this site on at runtime. We use it heavily; dynamic debug is one of the most underused gems of kernel development.
+`pr_debug` is special: it expands to a `printk` only if `DEBUG` is defined when the file is compiled, **or** if dynamic debug (`CONFIG_DYNAMIC_DEBUG`) is enabled and the user has turned this site on at runtime. We use it heavily. dynamic debug is one of the most underused gems of kernel development.
 
 What you see in `dmesg` depends on the **console log level**. Read it:
 
@@ -294,11 +306,11 @@ Now everything prints to console. Useful for debugging. Noisy in production.
 ## 36.8  Pitfalls
 
 - **`vermagic` mismatch.** "Module hello: version magic '...' should be '...'" The two strings are right there — diff them. Usually you built against the wrong kernel tree, or the running kernel was updated and you haven't rebuilt.
-- **`Unknown symbol foo (err -2)`.** A function you reference isn't exported by the running kernel. `nm hello.ko | grep " U "` shows your undefined references; `cat /proc/kallsyms | grep foo` shows what the kernel has. The fix is usually: GPL-license the module, or pick a different API.
+- **`Unknown symbol foo (err -2)`.** A function you reference isn't exported by the running kernel. `nm hello.ko | grep " U "` shows your undefined references. `cat /proc/kallsyms | grep foo` shows what the kernel has. The fix is usually: GPL-license the module, or pick a different API.
 - **`__init` data referenced at runtime.** Compile warning: "section mismatch." Your `__init` function called by something that lives in `.text` (runtime). Either drop the `__init` annotation or restructure so the call only happens during init.
-- **Forgetting `MODULE_LICENSE`.** Build succeeds; modpost warns "missing MODULE_LICENSE"; load fails with "taints kernel" and many APIs unavailable. Always include it.
+- **Forgetting `MODULE_LICENSE`.** Build succeeds. modpost warns "missing MODULE_LICENSE". load fails with "taints kernel" and many APIs unavailable. Always include it.
 - **Out-of-tree modules and kernel upgrades.** Your `hello.ko` is tied to one exact kernel build. Plan for either rebuilding the module each time you rebuild the kernel, or adopt **DKMS** (Dynamic Kernel Module Support) which rebuilds automatically on kernel upgrade. For an embedded product with a fixed kernel, just build once and ship the `.ko` alongside `zImage`.
-- **`rmmod` says "Resource busy".** Something is using your module. The `refcnt` in `/sys/module/<name>/refcnt` tells you how many; the `holders/` directory inside lists which other modules reference yours. You can't unload until they all go away.
+- **`rmmod` says "Resource busy".** Something is using your module. The `refcnt` in `/sys/module/<name>/refcnt` tells you how many. The `holders/` directory inside lists which other modules reference yours. You can't unload until they all go away.
 - **`insmod` says nothing, but `dmesg` does.** `insmod` only reports errors to stderr. The success or failure detail (and any `printk` calls from your init function) go to the kernel log. Always check `dmesg` after every load.
 
 ## 36.9  Going deeper

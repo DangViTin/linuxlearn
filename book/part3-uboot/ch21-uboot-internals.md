@@ -7,26 +7,36 @@ status: draft
 ---
 
 # Chapter 21 — U-Boot internals
+**PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
+**MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
+**PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
+MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 
 > **What:** a complete narrative tour of full U-Boot — from `_start` to the `=>` prompt to a typed command running — with the source paths cited at every step. Plus the three subsystems that you will touch most often as a custom-board engineer: the **environment**, the **command system**, and the **driver model (DM)**.
+> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Why:** U-Boot is the bootloader most likely to need *your* code in a real project. Knowing where to put it, and which existing patterns to follow, is half the work.
 >
 > **Focus:** **relocation** — the moment U-Boot copies itself from its load address to high DRAM and patches every pointer. Once you understand relocation, every confusing "why is `&foo` not what I expect?" question dissolves.
 
+
 ## 21.1  The full-U-Boot boot flow, end to end
 
 Full U-Boot's job, once SPL hands it control:
+MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 
 1. `_start` (in `arch/arm/cpu/armv7/start.S`) — assembly entry, mode/IRQ setup, calls `_main`.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 2. `_main` (in `arch/arm/lib/crt0.S`) — sets a temporary stack in DRAM, calls `board_init_f`.
 3. `board_init_f` (in `common/board_f.c`) — runs a sequence of "init functions" that detect RAM, set up the global data structure (`gd_t`), allocate space for the relocated copy of U-Boot.
 4. `relocate_code` (in `arch/arm/lib/relocate.S`) — copies U-Boot from its initial load address to the chosen "high DRAM" relocation target, fixes up all symbol references.
 5. `relocate_vectors` — similar, for the exception vectors.
-6. `board_init_r` (in `common/board_r.c`) — runs a second sequence of init functions in the relocated copy; this is where most subsystems (MMC, NET, USB, ENV) come up.
+6. `board_init_r` (in `common/board_r.c`) — runs a second sequence of init functions in the relocated copy. This is where most subsystems (MMC, NET, USB, ENV) come up.
 7. `run_main_loop` → `main_loop` (in `common/main.c`) — drains the autoboot timer, reads input, dispatches commands.
 8. `cli_loop` (in `common/cli.c`) — the interactive shell.
-9. `cmd_process` — the command dispatcher; we trace it in §21.5.
+9. `cmd_process` — the command dispatcher. We trace it in §21.5.
 
 Each step has a name you can grep for. Each is under 200 lines. End-to-end reading takes about 3 hours. Do it once and U-Boot is no longer a black box.
 
@@ -49,7 +59,7 @@ The starting address `0x87800000` is what makes the EVK config's `CONFIG_SYS_TEX
 
 **Every value in this table changes each time you change a CONFIG_FOO, add a feature, or upgrade compilers.** Always read your own `u-boot.map` to confirm. The relative *structure* — what symbols exist, their meaning — is what's stable across builds.
 
-`u-boot.map` is the file to grep when chasing any "what address is this symbol at?" question. It is generated automatically by the linker; no extra command needed.
+`u-boot.map` is the file to grep when chasing any "what address is this symbol at?" question. It is generated automatically by the linker. no extra command needed.
 
 ## 21.2  `_start` and `_main`
 
@@ -133,11 +143,11 @@ Visually:
 
 This is the layout when `_main` first runs. After relocation in §21.4, SP moves to high DRAM near `relocaddr`.
 
-When `board_init_f` returns... it doesn't. Like SPL, the flow ends in a tail-call. We'll see the actual return path is via relocation: `board_init_f` arranges for the next phase to live elsewhere, then jumps there.
+When `board_init_f` returns... It doesn't. Like SPL, the flow ends in a tail-call. We'll see the actual return path is via relocation: `board_init_f` arranges for the next phase to live elsewhere, then jumps there.
 
 ## 21.3  `board_init_f` and the init-function sequence
 
-Open `common/board_f.c`. The function is short; most of it is a *list*:
+Open `common/board_f.c`. The function is short. Most of it is a *list*:
 
 ```c
 static const init_fnc_t init_sequence_f[] = {
@@ -189,8 +199,8 @@ A few entries worth pausing on:
 - **`initf_dm`** — Driver Model: U-Boot's modern "register devices and their drivers" framework. The early version binds only the devices needed for pre-relocation work.
 - **`timer_init`** — bring up the timer used for `udelay`. On i.MX6ULL this is GPT1.
 - **`env_init`** — read the environment from its backing store (MMC sector, SPI flash sector, NAND). We see this subsystem in detail in §21.6.
-- **`dram_init`** — note this *detects* DRAM size and verifies it; SPL *initialized* DRAM. Two different jobs.
-- **`reserve_uboot`** — computes where in high DRAM U-Boot will live after relocation. The size is determined at build time; the offset is computed at runtime from RAM size minus reservations.
+- **`dram_init`** — note this *detects* DRAM size and verifies it. SPL *initialized* DRAM. Two different jobs.
+- **`reserve_uboot`** — computes where in high DRAM U-Boot will live after relocation. The size is determined at build time. The offset is computed at runtime from RAM size minus reservations.
 - **`setup_reloc`** — sets `gd->reloc_off`, the magic number by which every pointer in U-Boot's code/data must be adjusted after the copy.
 
 After `board_init_f` returns, control falls back into `_main` at the line *after* `bl board_init_f`, which is:
@@ -276,7 +286,7 @@ relocaddr   = 0x9ff37000
 reloc off   = 0x1f737000
 ```
 
-So U-Boot was built linked for `0x87800000` (the EVK's `CONFIG_SYS_TEXT_BASE`, also shown in `__image_copy_start` above) and is now running at `0x9ff37000` (high DRAM). The difference is the `reloc_off`. (Some older docs and EVK historical configs used `0x80800000`; current mainline uses `0x87800000`. If your `bdinfo` shows `0x80800000` as the link address, you're on an older build.)
+So U-Boot was built linked for `0x87800000` (the EVK's `CONFIG_SYS_TEXT_BASE`, also shown in `__image_copy_start` above) and is now running at `0x9ff37000` (high DRAM). The difference is the `reloc_off`. (Some older docs and EVK historical configs used `0x80800000`. current mainline uses `0x87800000`. If your `bdinfo` shows `0x80800000` as the link address, you're on an older build.)
 
 Try:
 
@@ -492,14 +502,14 @@ If any of those lines reports an error, you now know which source file to open.
 2. **Trace one init function.** Pick `init_baud_rate` from `init_sequence_f`. Find it in source. Read it. Annotate.
 3. **Find and read `_main`** in `arch/arm/lib/crt0.S`. Identify the lines that set the early stack, the lines that call `board_init_f`, and the lines that resume execution post-relocation.
 4. **Inspect the relocation table.** `arm-linux-gnueabihf-readelf -r u-boot | head -30` to see relocations. Each entry is an absolute address inside U-Boot's image that `relocate_code` fixes up.
-5. **Make and save an env change.** `setenv myname yourname; saveenv; reset`. After reboot, `printenv myname` should still print your name.
+5. **Make and save an env change.** `setenv myname yourname. saveenv. reset`. After reboot, `printenv myname` should still print your name.
 6. **Custom autoboot script.**
    ```
    => setenv bootcmd 'echo hello from custom bootcmd; sleep 2; reset'
    => saveenv
    => reset
    ```
-   The board now reboots itself every 2 seconds. Disable by re-flashing the SD with original env, or interrupt autoboot and `env default -a; saveenv`.
+   The board now reboots itself every 2 seconds. Disable by re-flashing the SD with original env, or interrupt autoboot and `env default -a. saveenv`.
 7. **Find the DM tree.**
    ```
    => dm tree
@@ -511,6 +521,7 @@ If any of those lines reports an error, you now know which source file to open.
 - **Forgetting `saveenv`.** Most "my env change didn't stick" bugs are this.
 - **Editing U-Boot, expecting hot reload.** U-Boot is not Linux. To see a code change you rebuild, reflash, reboot. There is no `modprobe`-equivalent.
 - **Function pointer addresses in C code.** Because of relocation, taking `&foo` may surprise you — it returns the relocated address, not the linked address. This matters when you write the address to MMIO or share it with an external system.
+**MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 - **Custom commands not appearing.** Check that you (a) added the `.o` to `cmd/Makefile`'s `obj-y`, (b) did not typo the `U_BOOT_CMD` macro, (c) rebuilt.
 - **Env corruption.** `env default -a` resets to the compiled-in defaults. Useful when your env is somehow scrambled. `eraseenv` (if available) wipes the medium.
 - **Build with `-Werror` and a stale tree.** New kernel/gcc combinations sometimes break old U-Boot trees. Use a release tag matched to the gcc on your host.
@@ -521,8 +532,9 @@ If any of those lines reports an error, you now know which source file to open.
 - **U-Boot docs `doc/develop/driver-model/`** — the official DM tutorial. Read end-to-end before writing your first DM driver.
 - **U-Boot docs `doc/usage/cmd/`** — per-command pages, useful when you forget syntax.
 - **`common/main.c`, `common/cli.c`, `common/command.c`** — the entire UI layer of U-Boot. Three files, ~1000 lines combined.
-- **`common/board_f.c` and `common/board_r.c`** — the two init sequences. Read these once; the rest of U-Boot makes vastly more sense.
+- **`common/board_f.c` and `common/board_r.c`** — the two init sequences. Read these once. The rest of U-Boot makes vastly more sense.
 - **Linaro's "U-Boot under the hood"** training material — covers relocation in particular more visually than this chapter does.
-- **DENX U-Boot training** — paid course; also available as recordings; very thorough.
+- **DENX U-Boot training** — paid course. also available as recordings. very thorough.
 
 > Next chapter: **Chapter 22 — Porting U-Boot to a custom board.** With internals understood, we fork the EVK config into our own board directory and modify what differs: DDR timings, pinmux, MAC address, defaults.
+> **DDR** - external DRAM that must be configured and trained before most software can run from it.

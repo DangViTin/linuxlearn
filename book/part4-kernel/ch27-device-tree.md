@@ -9,10 +9,12 @@ status: draft
 # Chapter 27 — Device Tree: the contract between firmware and kernel
 
 > **What:** the **Device Tree** — its origin, its grammar, the standard properties, how it's compiled (`dtc`) and consumed (`of_*` APIs in the kernel), and how a driver binds to a node via the `compatible` string. By the end you should be able to read `imx6ull-14x14-evk.dts` line by line, write an overlay that adds a new I²C device, and predict which kernel driver will probe it.
+> **Device Tree** - a data file that describes board hardware to the Linux kernel instead of hard-coding it in C.
 >
 > **Why:** DT is the biggest mental shift in this chapter. There is no longer a hand-written `board-*.c` with platform device tables. There is a `.dts` file that describes the hardware, and the kernel matches drivers to nodes by string at runtime. Understanding this dynamic-binding model is the prerequisite for every chapter in Part VI.
 >
 > **Focus:** the **`compatible` string** as the keystone. Compatible-strings in DT nodes are matched against compatible-strings in driver source code. That single mechanism is how every driver in mainline finds its hardware. Once you have this, the rest of DT is just grammar.
+
 
 ## 27.1  Why the Device Tree exists
 
@@ -36,7 +38,7 @@ Each board got its own ~500-line C file, hand-written, compiled into the kernel.
 
 The premise of DT is simple: instead of describing hardware in C code that gets compiled into the kernel, describe it in a structured *text* file (`.dts`) that gets compiled separately into a *binary* blob (`.dtb`). The kernel reads the blob at boot time, builds an in-memory representation, and matches drivers to nodes dynamically. One kernel binary now supports thousands of boards because the per-board description lives outside the kernel.
 
-The consequence: when you support a new board variant, you don't recompile the kernel; you write a DTS file. When you change which I²C chip is on which bus, you edit DT, not C. One ARM kernel binary now works across many boards.
+The consequence: when you support a new board variant, you don't recompile the kernel. You write a DTS file. When you change which I²C chip is on which bus, you edit DT, not C. One ARM kernel binary now works across many boards.
 
 ## 27.2  DTS, DTB, DTC, DTSI
 
@@ -68,7 +70,7 @@ To add a board, you add the `.dts` file and one line here.
 
 ## 27.3  Anatomy of a DTS file
 
-Let's read `imx6ull-14x14-evk.dts` from the top. (Specific line numbers vary by kernel version; the structure is stable.)
+Let's read `imx6ull-14x14-evk.dts` from the top. (Specific line numbers vary by kernel version. The structure is stable.)
 
 ```dts
 /dts-v1/;
@@ -123,7 +125,7 @@ Six things going on:
 2. **`#include`** — yes, DTS supports C-preprocessor includes. `dt-bindings/input/input.h` is a header that defines named constants (`KEY_ENTER`, etc.) used in DT.
 3. **`#include "imx6ull.dtsi"`** — pulls in the SoC-wide DT fragment. *This is where most nodes actually live.* The board-level `.dts` mostly references and patches them.
 4. **`/ { ... };`** — the **root node**. Every DT has exactly one. Inside it are all the other nodes (in a tree).
-5. **`&uart1 { ... };`** — a **reference** to a node defined in the included `.dtsi`. The `&label` syntax says "modify the node previously labelled `uart1`". This is the canonical pattern: SoC `.dtsi` declares the node disabled by default; board `.dts` references it and sets `status = "okay"` plus board-specific pinctrl.
+5. **`&uart1 { ... };`** — a **reference** to a node defined in the included `.dtsi`. The `&label` syntax says "modify the node previously labelled `uart1`". This is the canonical pattern: SoC `.dtsi` declares the node disabled by default. board `.dts` references it and sets `status = "okay"` plus board-specific pinctrl.
 6. **Properties** — the `key = value;` pairs inside each node.
 
 ## 27.4  Node syntax
@@ -144,7 +146,8 @@ Each component:
 
 - **`label`** (optional, before `:`) — a phandle/reference target. Lets other parts of the DT refer to this node by `&label`.
 - **`name`** (required) — a human-readable name. Convention: same as the kind of device (`uart1`, `i2c2`, `ethphy0`).
-- **`@unit-address`** (when applicable) — the device's base address on its parent bus. For an MMIO peripheral like UART1, this is the register-block base address: `serial@2020000`. The unit-address is for human readability and uniqueness; the actual address used by the kernel comes from the `reg` property.
+- **`@unit-address`** (when applicable) — the device's base address on its parent bus. For an MMIO peripheral like UART1, this is the register-block base address: `serial@2020000`. The unit-address is for human readability and uniqueness. The actual address used by the kernel comes from the `reg` property.
+**MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 
 Example:
 
@@ -216,7 +219,7 @@ static struct platform_driver serial_imx_driver = {
 };
 ```
 
-At boot, the kernel walks the DT. For each node with a `compatible` property, it walks through every registered driver's `of_match_table` looking for a match. The first match (matching against the *first* compatible string in the node, then the second, then ...) wins; the driver's `probe()` is invoked. *This is how the kernel matches drivers to hardware at boot.*
+At boot, the kernel walks the DT. For each node with a `compatible` property, it walks through every registered driver's `of_match_table` looking for a match. The first match (matching against the *first* compatible string in the node, then the second, then ...) wins. The driver's `probe()` is invoked. *This is how the kernel matches drivers to hardware at boot.*
 
 Reading our example:
 
@@ -224,7 +227,7 @@ Reading our example:
 - The driver's match table doesn't have "fsl,imx6ul-uart" (per the snippet above), so that one doesn't bind.
 - It does have "fsl,imx21-uart", so the **second** compatible matches. The `.data` field tells the driver "this is the imx21-uart variant" so a single driver can support multiple SoC revisions with minor parameter differences.
 
-The vendor prefix (`fsl,`) is registered in `Documentation/devicetree/bindings/vendor-prefixes.yaml`. The model name follows; together they form a globally unique key.
+The vendor prefix (`fsl,`) is registered in `Documentation/devicetree/bindings/vendor-prefixes.yaml`. The model name follows. together they form a globally unique key.
 
 ### `reg` — register addresses
 
@@ -270,6 +273,9 @@ interrupts = <GIC_SPI 26 IRQ_TYPE_LEVEL_HIGH>;
 ```
 
 The number of cells per IRQ entry is dictated by the **`#interrupt-cells`** property on the *interrupt parent* (the node listed in `interrupt-parent`, which defaults to the root node's `interrupt-parent`). For the GIC, `#interrupt-cells = <3>`, encoding *(IRQ type, IRQ number, trigger type)*. The constants `GIC_SPI` and `IRQ_TYPE_LEVEL_HIGH` come from `dt-bindings/interrupt-controller/`.
+MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+**GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 
 ### `clocks` and `clock-names`
 
@@ -297,7 +303,7 @@ status = "okay";      /* device is functional, probe it */
 status = "disabled";  /* device exists in DT but kernel should ignore it */
 ```
 
-Used to enable/disable a device without removing its DT node. SoC `.dtsi` files declare every peripheral as `status = "disabled"` by default; board `.dts` files set `status = "okay"` on the ones present on that board.
+Used to enable/disable a device without removing its DT node. SoC `.dtsi` files declare every peripheral as `status = "disabled"` by default. board `.dts` files set `status = "okay"` on the ones present on that board.
 
 ### `aliases` and `chosen`
 
@@ -318,7 +324,7 @@ Two special nodes at the root level:
 };
 ```
 
-**`aliases`** names devices by a stable identifier ("serial0" is always the first UART; "serial1" always the second), regardless of where they sit in the tree.
+**`aliases`** names devices by a stable identifier ("serial0" is always the first UART. "serial1" always the second), regardless of where they sit in the tree.
 
 **`chosen`** carries arguments to the kernel that aren't *about* hardware:
 - `bootargs` — the kernel cmdline (Ch 26's `setenv bootargs ...` ends up here).
@@ -328,7 +334,7 @@ Two special nodes at the root level:
 
 ## 27.7  Reading `imx6ull.dtsi`
 
-`imx6ull.dtsi` is the SoC-wide DT. It includes the per-SoC-family fragment `imx6ul.dtsi` and adds the few i.MX6ULL-specific tweaks (some clock gates differ; the SAI audio block has different pinmuxing).
+`imx6ull.dtsi` is the SoC-wide DT. It includes the per-SoC-family fragment `imx6ul.dtsi` and adds the few i.MX6ULL-specific tweaks (some clock gates differ. The SAI audio block has different pinmuxing).
 
 The general structure:
 
@@ -412,6 +418,8 @@ Five nodes deserve special attention:
 Walking the end-to-end binding for UART1 on the EVK:
 
 1. **Boot.** U-Boot has loaded `imx6ull-14x14-evk.dtb` to `0x83000000` and called `bootz`.
+MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 2. **`stext` reads `r2 = 0x83000000`** and stashes it.
 3. **`setup_arch()` → `setup_machine_fdt(0x83000000)`** parses the DT blob.
 4. **`unflatten_device_tree()`** builds the in-memory tree of `struct device_node`.
@@ -425,7 +433,7 @@ That nine-step flow happens for **every** peripheral. The variation is which `co
 
 ## 27.9  Writing a DT overlay
 
-Suppose you wire a new I²C sensor (a Texas Instruments TMP102 thermometer) to I²C2 of your board, at address `0x48`. You don't want to recompile the kernel; you want to add a DT node at runtime via an overlay.
+Suppose you wire a new I²C sensor (a Texas Instruments TMP102 thermometer) to I²C2 of your board, at address `0x48`. You don't want to recompile the kernel. You want to add a DT node at runtime via an overlay.
 
 `tmp102-overlay.dtso`:
 
@@ -465,12 +473,14 @@ Or from a Linux user-space with ConfigFS (in newer kernels):
 After overlay application, the kernel re-walks the DT, finds the new `tmp102@48` node, looks for a driver with `compatible = "ti,tmp102"` (the upstream driver is `drivers/hwmon/tmp102.c`), probes it, and `/sys/class/hwmon/hwmon<N>/temp1_input` becomes readable.
 
 You did not recompile the kernel or touch the rootfs. You added a hardware description and the kernel handled the rest.
+MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 This is why DT exists.
 
 ## 27.10  OF API — accessing DT from driver code
 
-When your driver's `probe()` is called, it gets a `struct platform_device *pdev`. From there it reads DT properties via the **OF API** (Open Firmware API — the historical name; today everyone says "DT API" but the C symbols still start with `of_`):
+When your driver's `probe()` is called, it gets a `struct platform_device *pdev`. From there it reads DT properties via the **OF API** (Open Firmware API — the historical name. today everyone says "DT API" but the C symbols still start with `of_`):
 
 ```c
 struct device_node *np = pdev->dev.of_node;
@@ -530,20 +540,20 @@ This is the Linux model. Once this clicks, Part VI is much easier.
 ## 27.12  Lab
 
 1. **Read `imx6ull.dtsi` end-to-end.** Skim every node. Identify which ones describe (a) the CPU, (b) the GIC, (c) on-chip RAM, (d) on-SoC peripherals, (e) clock providers, (f) pinctrl banks.
-2. **Read `imx6ull-14x14-evk.dts` end-to-end.** It's much shorter than the `.dtsi`. Identify the lines that (a) set the board's model string, (b) enable specific peripherals via `&uart1 { status = "okay"; }`, (c) describe board-specific pinmux fragments, (d) declare board-specific regulators.
+2. **Read `imx6ull-14x14-evk.dts` end-to-end.** It's much shorter than the `.dtsi`. Identify the lines that (a) set the board's model string, (b) enable specific peripherals via `&uart1 { status = "okay". }`, (c) describe board-specific pinmux fragments, (d) declare board-specific regulators.
 3. **Dump a compiled DTB back to source.** Run `dtc -I dtb -O dts arch/arm/boot/dts/nxp/imx/imx6ull-14x14-evk.dtb`. Note the differences from the `.dts` — the `dtc` output is post-include, post-preprocessor, fully resolved.
 4. **Find which driver binds.** Pick three DT compatible strings from the EVK DTB and grep mainline for them: `grep -r "fsl,imx6ul-uart" drivers/`. Identify the driver file in each case.
-5. **Write your first overlay.** Add a virtual I²C device — pick something innocuous like a non-existent ID at an unused address (`0x57`). Compile with `dtc -@ -O dtb tmp.dts -o tmp.dtbo`. Apply at U-Boot. Boot and `dmesg | grep tmp` to confirm the kernel *tried* to probe it (and failed because there's no actual device — that's fine; we wanted to confirm the overlay-apply path).
+5. **Write your first overlay.** Add a virtual I²C device — pick something innocuous like a non-existent ID at an unused address (`0x57`). Compile with `dtc -@ -O dtb tmp.dts -o tmp.dtbo`. Apply at U-Boot. Boot and `dmesg | grep tmp` to confirm the kernel *tried* to probe it (and failed because there's no actual device — that's fine. We wanted to confirm the overlay-apply path).
 6. **Find the `chosen.bootargs`** in your booted kernel by running `cat /proc/cmdline` on the target — that's exactly what U-Boot wrote into the DT.
 
 ## 27.13  Pitfalls
 
-- **`compatible` typo.** Off-by-one-character compatible strings are the most common DT bug. Kernel parses the DT, sees no driver match, the device silently doesn't probe. Symptom: device file missing in `/dev/`; nothing in `dmesg` about that device. Fix: `dtc -I dtb -O dts your.dtb | grep compatible` and verify every string is exact.
+- **`compatible` typo.** Off-by-one-character compatible strings are the most common DT bug. Kernel parses the DT, sees no driver match, the device silently doesn't probe. Symptom: device file missing in `/dev/`. nothing in `dmesg` about that device. Fix: `dtc -I dtb -O dts your.dtb | grep compatible` and verify every string is exact.
 - **Missing `#address-cells` / `#size-cells` on a parent.** Kernel logs warning ("missing or invalid reg property") but might or might not fail. Always set these on any parent node that has child nodes with `reg`.
 - **Hex without `0x`.** `reg = <2020000 4000>;` is decimal, not hex! Always use `0x` for register addresses: `reg = <0x2020000 0x4000>;`.
-- **Forgotten `;` at end of property.** DTC error messages for missing `;` are sometimes misleading; check the line above the error first.
-- **Reference vs definition.** `uart1: serial@2020000 { ... };` *defines* the node; `&uart1 { ... };` *references and modifies* it. If you write `uart1 { ... };` (no label, just the bare name in a separate `/ { uart1 { ... } }`), the DTC creates a *new* node `uart1` — which is almost never what you want.
-- **`clocks` order matters.** `clock-names` is positional; `clock-names = "ipg", "per"` means the *first* `clocks` entry is "ipg", the *second* is "per". Swap the order and the driver fails to find the right clock.
+- **Forgotten `;` at end of property.** DTC error messages for missing `;` are sometimes misleading. Check the line above the error first.
+- **Reference vs definition.** `uart1: serial@2020000 { ... };` *defines* the node. `&uart1 { ... };` *references and modifies* it. If you write `uart1 { ... };` (no label, just the bare name in a separate `/ { uart1 { ... } }`), the DTC creates a *new* node `uart1` — which is almost never what you want.
+- **`clocks` order matters.** `clock-names` is positional. `clock-names = "ipg", "per"` means the *first* `clocks` entry is "ipg", the *second* is "per". Swap the order and the driver fails to find the right clock.
 - **`status = "okay"` typo.** Some old templates use `"ok"` (without "ay"). The DT spec mandates `"okay"`. Older kernels accepted `"ok"` for backward compatibility, but modern `dtbs_check` rejects it as invalid against the schema.
 
 ## 27.14  Going deeper
@@ -552,7 +562,7 @@ This is the Linux model. Once this clicks, Part VI is much easier.
 - **`Documentation/devicetree/bindings/`** — every binding's YAML schema. Where you go to look up "what properties does this kind of device want?"
 - **`include/linux/of.h`** — every OF API function declared.
 - **`drivers/of/`** — the kernel's DT subsystem implementation.
-- **`elinux.org/Device_Tree_Reference`** — community tutorial; pleasant introduction.
+- **`elinux.org/Device_Tree_Reference`** — community tutorial. pleasant introduction.
 - **The DeviceTree Specification (v0.4)** at `devicetree.org/specifications/` — the canonical spec. ~80 pages.
 - **`scripts/dtc/`** — the DT compiler source. Worth a skim if you want to know exactly what DTC does.
 

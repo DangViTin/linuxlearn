@@ -7,12 +7,15 @@ status: draft
 ---
 
 # Chapter 55B — Async notification (SIGIO)
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 
-> **What:** the **fasync / SIGIO** mechanism — a driver tells its user-space process "data is ready" by sending it a Unix signal, instead of the process polling or blocking on read. The driver implements `.fasync` in `file_operations`; user-space arms it with `fcntl(fd, F_SETOWN, getpid()); fcntl(fd, F_SETFL, O_ASYNC);`.
+> **What:** the **fasync / SIGIO** mechanism — a driver tells its user-space process "data is ready" by sending it a Unix signal, instead of the process polling or blocking on read. The driver implements `.fasync` in `file_operations`. user-space arms it with `fcntl(fd, F_SETOWN, getpid()). fcntl(fd, F_SETFL, O_ASYNC);`.
 >
-> **Why:** for very rare events ("button pressed" or "thermal alarm"), forcing user-space to `poll()` continuously or block on `read()` is wasteful. SIGIO lets the application do other things; the signal arrives when something happens. Linux's input layer doesn't use it (poll/epoll is preferred), but legacy POSIX-style apps and some custom devices do.
+> **Why:** for very rare events ("button pressed" or "thermal alarm"), forcing user-space to `poll()` continuously or block on `read()` is wasteful. SIGIO lets the application do other things. The signal arrives when something happens. Linux's input layer doesn't use it (poll/epoll is preferred), but legacy POSIX-style apps and some custom devices do.
 >
-> **Focus:** **registers a process for delivery; driver triggers**. The driver maintains a `fasync_struct`; when an event happens, it calls `kill_fasync` and the kernel sends the registered process a SIGIO.
+> **Focus:** **registers a process for delivery. driver triggers**. The driver maintains a `fasync_struct`. when an event happens, it calls `kill_fasync` and the kernel sends the registered process a SIGIO.
+
 
 ## 55B.1  Driver side
 
@@ -118,15 +121,15 @@ For modern code, `poll()` / `epoll` are preferred for everything. SIGIO is worth
 
 1. **Add SIGIO** to the button driver from Ch 45. Confirm a user-space process receives SIGIO when the button is pressed.
 2. **Compare against poll().** Write two equivalent programs — one with SIGIO, one with `poll()`. Profile CPU and latency.
-3. **F_SETSIG for SI_FD.** Use a realtime signal (`SIGRTMIN+1`) with `F_SETSIG`; receive `siginfo->si_fd` to know which fd fired.
+3. **F_SETSIG for SI_FD.** Use a realtime signal (`SIGRTMIN+1`) with `F_SETSIG`. receive `siginfo->si_fd` to know which fd fired.
 
 ## 55B.5  Pitfalls
 
-- **Signal handler doing too much.** Signal handlers run in arbitrary context; only async-signal-safe functions allowed. Set a flag; do real work in the main loop.
+- **Signal handler doing too much.** Signal handlers run in arbitrary context. only async-signal-safe functions allowed. Set a flag. do real work in the main loop.
 - **Forgetting `F_SETOWN`.** Without it, the kernel doesn't know who to signal.
 - **Race: signal arrives before sigaction installed.** Install handler before opening the device.
 - **Signal merging.** If your driver fires SIGIO twice before user-space handles either, only one delivery happens. User-space must drain everything that was queued, not just handle one event.
-- **`fasync_helper(-1, ...)` not called in release.** Stale fasync entry; later signals go to a dead pid.
+- **`fasync_helper(-1, ...)` not called in release.** Stale fasync entry. later signals go to a dead pid.
 
 ## 55B.6  Going deeper
 

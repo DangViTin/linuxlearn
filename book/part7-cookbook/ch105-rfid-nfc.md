@@ -7,6 +7,8 @@ status: draft
 ---
 
 # Chapter 105 — RFID / NFC
+**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 
 > **What:** **13.56 MHz HF RFID and NFC** — the technology behind contactless access cards, transit passes, phone Wallet, and "tap-to-pair." Three chips compared: **NXP MFRC522** (the ubiquitous Arduino-clone SPI/I²C/UART, ISO 14443A only), **NXP PN532** (more capable: 14443A/B + FeliCa, NFC initiator and target), **ST25R3911** (longer read range, high-end). On the i.MX6ULL we read tag UIDs over SPI, authenticate a Mifare Classic 1K block, walk the kernel `pn533` driver as the canonical mainline NFC stack reference, write a 200-line user-space MFRC522 driver from scratch, then bring up `libnfc` + `neard` for high-level NFC.
 >
@@ -14,10 +16,14 @@ status: draft
 >
 > **Focus:** At 13.56 MHz, RFID and NFC use inductive coupling. The reader's antenna generates a magnetic field. That field powers the tag's IC, and the tag sends data back by modulating its load on the field. The reader chip uses a fixed sequence of register writes: configure carrier ON, set framing (Miller-encoded for tag→reader, Manchester for reader→tag), issue protocol-level commands (REQA, ATQA, ANTICOLL, SELECT, AUTH, READ_BLOCK), parse responses. Antenna matching is critical — a 5 mm misalignment between the reference design's antenna loop and yours = 30 % less read range.
 >
-> **Tooling.** This chapter uses `libnfc-bin` (`nfc-list`, `nfc-mfultralight`), `neard`; offensive-research only: `mfoc`, `mfcuk`.
+> **Tooling.** This chapter uses `libnfc-bin` (`nfc-list`, `nfc-mfultralight`), `neard`. offensive-research only: `mfoc`, `mfcuk`.
 > - **Ubuntu-base (target):** `apt install libnfc-bin libnfc-dev neard`
 > - **Buildroot:** `BR2_PACKAGE_LIBNFC=y BR2_PACKAGE_NEARD=y`
+> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+
 
 ## 105.1  Chip comparison
 
@@ -83,7 +89,7 @@ Reader: READ_BLOCK 0x04                read block 4
 Tag:    16 bytes (encrypted)
 ```
 
-The MFRC522 implements ISO 14443A framing and timing in silicon; you don't bit-bang. You issue protocol-level commands and the chip handles the air interface.
+The MFRC522 implements ISO 14443A framing and timing in silicon. You don't bit-bang. You issue protocol-level commands and the chip handles the air interface.
 
 ## 105.3  MFRC522 register and command summary
 
@@ -137,7 +143,7 @@ GPIO  ─┤ RESETn ├───────────────────
        └────────┘                              └──────────┘
 ```
 
-The antenna is the critical part. A bad-design module gets 1 cm read range; the cheap-but-correct modules (the green "RC522" boards with the small ferrite antenna trace) get 3–5 cm. Do not wind your own antenna unless you have an impedance analyser. Buy a tuned module instead.
+The antenna is the critical part. A bad-design module gets 1 cm read range. The cheap-but-correct modules (the green "RC522" boards with the small ferrite antenna trace) get 3–5 cm. Do not wind your own antenna unless you have an impedance analyser. Buy a tuned module instead.
 
 ## 105.5  How the kernel pn533 driver works
 
@@ -184,7 +190,7 @@ static int pn533_send_poll_frame(struct pn533 *dev) {
 }
 ```
 
-When a tag enters the field, the response includes UID, ATQA, SAK; `pn533` calls into `net/nfc/core.c::nfc_targets_found()` which broadcasts netlink events to user-space. neard receives the events and runs the higher-level NDEF/handover state machines.
+When a tag enters the field, the response includes UID, ATQA, SAK. `pn533` calls into `net/nfc/core.c::nfc_targets_found()` which broadcasts netlink events to user-space. neard receives the events and runs the higher-level NDEF/handover state machines.
 
 User-space:
 
@@ -198,7 +204,7 @@ This is the "proper" Linux path. Most projects skip the kernel NFC stack. They u
 
 ## 105.6  From scratch — user-space MFRC522 driver
 
-mfrc522_min.c (compressed; full ~400 lines):
+mfrc522_min.c (compressed. full ~400 lines):
 
 ```c
 /* Minimal MFRC522 driver: detect tag, read UID, dump Mifare Classic block 0.
@@ -358,11 +364,13 @@ int main(void) {
 ```
 
 That's the entire reader: ~150 lines for the core, ~50 for SPI/GPIO setup. Add Crypto1 auth + block read (another ~100 lines) and you have a working Mifare Classic 1K reader/writer.
+MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 What the framework hides:
 - The MFRC522's transceive command does both TX and RX in one go using its FIFO.
 - The 7-bit short frame for REQA is configured via BitFramingReg before the transceive — easy to forget.
-- The BCC byte after the 4-byte UID is a sanity check; modules that compute BCC wrong report a passing read but with corrupt UIDs.
+- The BCC byte after the 4-byte UID is a sanity check. modules that compute BCC wrong report a passing read but with corrupt UIDs.
 - The HALT command must be sent before the next REQA, or the tag won't respond again (it's already "active").
 
 ## 105.7  Mifare Classic security — broken but still used
@@ -373,9 +381,9 @@ Despite this, Mifare Classic dominates legacy access systems because:
 - Vendor lock-in (the building's reader infrastructure).
 - The keys you don't know stay encrypted enough for a casual attacker.
 
-Modern systems use **Mifare DESFire EV2/EV3** (AES-128, properly designed) or **iCLASS SE**. If you're designing new, use DESFire; if you're integrating with existing infrastructure, you may be stuck with Classic.
+Modern systems use **Mifare DESFire EV2/EV3** (AES-128, properly designed) or **iCLASS SE**. If you're designing new, use DESFire. If you're integrating with existing infrastructure, you may be stuck with Classic.
 
-For DESFire: the MFRC522 supports the framing but not the AES; you implement Crypto on the host side (or use a chip like ST25R3911 with hardware AES).
+For DESFire: the MFRC522 supports the framing but not the AES. You implement Crypto on the host side (or use a chip like ST25R3911 with hardware AES).
 
 ## 105.8  Bringing up libnfc + neard (the kernel-stack path)
 
@@ -406,26 +414,30 @@ neardctl record-uri https://example.com
 
 ## 105.9  Lab
 
-1. **MFRC522 identify.** Wire to ECSPI; build `mfrc522_min.c`. VersionReg must read `0x91` or `0x92`. If 0x00 or 0xFF, SPI wrong.
-2. **Tag detection.** Present a Mifare Classic 1K card; print its UID. Try a Mifare Ultralight (different ATQA); confirm.
-3. **Block read with auth.** Extend the driver: `picc_auth(block, key_a, uid)` + `picc_read(block, buf)`. Default key for new cards is `FFFFFFFFFFFF`. Read block 0; first 4 bytes should match the UID.
-4. **Read all 16 sectors.** Loop over sectors 0..15; read 4 blocks each; dump.
-5. **Write a sector.** Write a value to a non-trailer block (e.g., 0x14). Re-read; confirm.
-6. **NFC NDEF.** Use libnfc to write an NDEF URI record onto an NTAG215; verify with your phone's NFC reader.
-7. **PN532 mainline path.** If you have a PN532, attach via I²C; `modprobe pn533_i2c`; `neardctl tags`; verify the kernel sees the same tag the user-space driver sees.
+> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
+> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
+
+
+1. **MFRC522 identify.** Wire to ECSPI. build `mfrc522_min.c`. VersionReg must read `0x91` or `0x92`. If 0x00 or 0xFF, SPI wrong.
+2. **Tag detection.** Present a Mifare Classic 1K card. print its UID. Try a Mifare Ultralight (different ATQA). confirm.
+3. **Block read with auth.** Extend the driver: `picc_auth(block, key_a, uid)` + `picc_read(block, buf)`. Default key for new cards is `FFFFFFFFFFFF`. Read block 0. first 4 bytes should match the UID.
+4. **Read all 16 sectors.** Loop over sectors 0..15. read 4 blocks each. dump.
+5. **Write a sector.** Write a value to a non-trailer block (e.g., 0x14). Re-read. confirm.
+6. **NFC NDEF.** Use libnfc to write an NDEF URI record onto an NTAG215. verify with your phone's NFC reader.
+7. **PN532 mainline path.** If you have a PN532, attach via I²C. `modprobe pn533_i2c`. `neardctl tags`. verify the kernel sees the same tag the user-space driver sees.
 8. **Access control flow.** Build a 50-line door-controller: read UID, check against allow-list, fire a GPIO to a relay if allowed. Log all attempts.
-9. **Antenna range test.** Measure read distance with a stock card. Then add a 5 mm spacer (PCB sleeve) between reader and card; range should drop ~20 %. Reposition card axially vs perpendicular; field is directional.
+9. **Antenna range test.** Measure read distance with a stock card. Then add a 5 mm spacer (PCB sleeve) between reader and card. range should drop ~20 %. Reposition card axially vs perpendicular. field is directional.
 
 ## 105.10  Pitfalls
 
-- **Module quality varies wildly.** Cheap MFRC522 modules have detuned antennas; 1 cm range vs the 5 cm spec. Buy from known suppliers or accept the variance.
+- **Module quality varies wildly.** Cheap MFRC522 modules have detuned antennas. 1 cm range vs the 5 cm spec. Buy from known suppliers or accept the variance.
 - **CRC preset wrong.** ModeReg = 0x3D sets CRC preset 6363h. Wrong value = tag rejects every command.
 - **Tag already in HALT state.** A tag that's been HALTed by a prior reader cycle won't respond to REQA — use WUPA (0x52) instead.
-- **Crypto1 timing.** The Authent command has tight timing requirements; on slow SPI buses (<1 MHz) you can miss the window. Bump SPI to 4+ MHz.
-- **DESFire mistaken for Mifare Classic.** DESFire ATQA is 0x4403 + SAK 0x20; trying Crypto1 on it fails. Detect by SAK and switch protocols.
-- **Multiple tags in field.** ISO 14443 anticollision picks one tag; the others starve. The cascade-level-1/2/3 dance handles 7- or 10-byte UIDs (NTAG2xx). Simple drivers fail on 7-byte tags by ignoring CL2.
-- **Mifare Classic key not default.** Most production cards have rotated keys; the manufacturer/vendor key is in the access-control software's database. Don't expect FF×6 to work on a real building card.
-- **Cloning detection.** Mifare Classic clones (UID-changeable "magic cards") are common; security systems should check that re-reads are consistent and that the AppId block matches expectations, not just the UID.
+- **Crypto1 timing.** The Authent command has tight timing requirements. on slow SPI buses (<1 MHz) you can miss the window. Bump SPI to 4+ MHz.
+- **DESFire mistaken for Mifare Classic.** DESFire ATQA is 0x4403 + SAK 0x20. trying Crypto1 on it fails. Detect by SAK and switch protocols.
+- **Multiple tags in field.** ISO 14443 anticollision picks one tag. The others starve. The cascade-level-1/2/3 dance handles 7- or 10-byte UIDs (NTAG2xx). Simple drivers fail on 7-byte tags by ignoring CL2.
+- **Mifare Classic key not default.** Most production cards have rotated keys. The manufacturer/vendor key is in the access-control software's database. Don't expect FF×6 to work on a real building card.
+- **Cloning detection.** Mifare Classic clones (UID-changeable "magic cards") are common. security systems should check that re-reads are consistent and that the AppId block matches expectations, not just the UID.
 - **Antenna detuning by metal nearby.** Mounting an MFRC522 against a metal backplate detunes the 13.56 MHz LC tank → no read. Use a ferrite shield (the NXP CLRC663 reference design shows the layout).
 
 ## 105.11  Going deeper
@@ -434,7 +446,7 @@ neardctl record-uri https://example.com
 - **NXP PN532 User Manual** (UM0701-02) — the canonical reference.
 - **`drivers/nfc/`** and **`net/nfc/`** in the kernel.
 - **`libnfc` (https://github.com/nfc-tools/libnfc)** — covers most readers, including MFRC522 via the `mfrc522_spi` driver.
-- **`mfoc` / `mfcuk`** — Mifare Classic key recovery (offensive security; useful for understanding what *not* to rely on).
+- **`mfoc` / `mfcuk`** — Mifare Classic key recovery (offensive security. useful for understanding what *not* to rely on).
 - **NFC Forum specifications** — NDEF, RTD, Connection Handover.
 - **ISO/IEC 14443** (Type A and Type B) — the air-interface standard.
 - **`neard` daemon** — high-level NFC stack on Linux.

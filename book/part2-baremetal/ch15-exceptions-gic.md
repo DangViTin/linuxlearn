@@ -1,4 +1,4 @@
-﻿---
+---
 chapter: 15
 title: Exceptions and the GIC
 part: II — Bare-metal i.MX6ULL
@@ -9,10 +9,14 @@ status: draft
 # Chapter 15 — Exceptions and the GIC
 
 > **What:** install a real ARMv7-A exception vector table, configure the GIC v2 distributor and CPU interface, route the UART1 interrupt to the core, and write an ISR that echoes received characters.
+> **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 >
 > **Why:** every kernel, every RTOS, and most useful bare-metal programs are interrupt-driven. Polling works for hello-world. It falls apart the moment more than one peripheral needs attention.
 >
 > **Focus:** the two-stage IRQ flow: the GIC routes the IRQ to the CPU, the CPU vectors to your handler, and the handler reads the GIC for the IRQ ID, dispatches, and writes EOI. Internalize this diagram and every A-profile system feels familiar.
+> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+
 
 ## 15.1  What is different from Cortex-M
 
@@ -20,7 +24,7 @@ In Cortex-M:
 
 - The NVIC is inside the CPU.
 - Hardware auto-stacks R0–R3, R12, LR, PC, xPSR on the active stack.
-- The vector table is an array of *function pointers*; the CPU loads PC directly from the slot.
+- The vector table is an array of *function pointers*. The CPU loads PC directly from the slot.
 - `BX LR` (with magic EXC_RETURN) tells hardware to unstack.
 
 In Cortex-A7:
@@ -53,7 +57,7 @@ Each entry is one instruction. Universally that instruction is `b <label>` or `l
 
 The table can live at one of two locations:
 
-- **Low vectors** at virtual `0x00000000` — historical default; conflicts with our OCRAM/DRAM layout.
+- **Low vectors** at virtual `0x00000000` — historical default. conflicts with our OCRAM/DRAM layout.
 - **High vectors** at virtual `0xFFFF0000` — set by SCTLR.V=1.
 - **VBAR** (Vector Base Address Register) — modern: set VBAR to *any* aligned address. We use this.
 
@@ -139,7 +143,7 @@ What is happening:
 - **`srsdb sp!, #0x12`** stores `{LR, SPSR}` to the IRQ-mode stack pointer. Mode 0x12 = IRQ. The `db` (decrement-before) and `!` (writeback) make it a stack push.
 - **`cpsid i, #0x13`** switches to SVC mode and masks IRQs (which were already masked, but explicit). After this, we are on the SVC-mode stack.
 - **`push {r0-r3, r12, lr}`** saves the caller-saved registers AAPCS expects us to preserve across the C function call.
-- **`bl c_irq_dispatch`** is the standard branch-and-link, but with our preserved state. C function returns; SP back to where it was.
+- **`bl c_irq_dispatch`** is the standard branch-and-link, but with our preserved state. C function returns. SP back to where it was.
 - **`cpsid i, #0x12`** moves back to IRQ mode (so `rfeia sp!` pops from the IRQ stack, where we pushed in `srsdb`).
 - **`rfeia sp!`** pops two words: PC and CPSR. The CPU resumes with that PC and that mode/CPSR. Masking of IRQs is automatically restored from the SPSR we saved.
 
@@ -172,14 +176,14 @@ SECTIONS
 }
 ```
 
-4 KB is generous; we will not stack deeply in an ISR.
+4 KB is generous. We will not stack deeply in an ISR.
 
 ## 15.5  The GIC v2 distributor + CPU interface
 
 GIC v2 has two memory-mapped regions:
 
 - **Distributor**: `0x00A01000`, 4 KB. Configures priorities, enables, sets targets, sees all interrupts in the system.
-- **CPU Interface**: `0x00A02000`, 4 KB. Acknowledges interrupts, ends interrupts, masks based on priority. Per-CPU on multi-core; here we have one core.
+- **CPU Interface**: `0x00A02000`, 4 KB. Acknowledges interrupts, ends interrupts, masks based on priority. Per-CPU on multi-core. here we have one core.
 
 Registers we will use (offsets within their region):
 
@@ -340,7 +344,7 @@ A note on the `GICD_IPRIORITYR` writes: each IRQ has *one byte* of priority, not
 
 ## 15.7  Hooking up the UART1 IRQ
 
-UART1's IRQ is shown as **IRQ 26** in the i.MX6ULL RM Table 3-1 (interrupt assignments). That number is the *SPI (Shared Peripheral Interrupt) offset*. The GIC's own ID space numbers SGIs 0–15, PPIs 16–31, and SPIs from 32 upward — so the GIC **INTID** for UART1 is `32 + 26 = 58`. We pass `58` to `gic_register()` and `gic_enable_irq()`. (Different SoC docs use one convention or the other; once you internalize "RM number + 32 = GIC INTID for SPIs," the rest is bookkeeping.)
+UART1's IRQ is shown as **IRQ 26** in the i.MX6ULL RM Table 3-1 (interrupt assignments). That number is the *SPI (Shared Peripheral Interrupt) offset*. The GIC's own ID space numbers SGIs 0–15, PPIs 16–31, and SPIs from 32 upward — so the GIC **INTID** for UART1 is `32 + 26 = 58`. We pass `58` to `gic_register()` and `gic_enable_irq()`. (Different SoC docs use one convention or the other. once you internalize "RM number + 32 = GIC INTID for SPIs," the rest is bookkeeping.)
 
 Modify `uart_init` (Chapter 12) to enable the RX-ready interrupt:
 
@@ -413,19 +417,21 @@ Pin-level: dongle TX pulls UART1_RX_DATA from idle high to start bit.
 6. `irq_entry` runs: subtracts 4 from LR, srsdb's the return frame, switches to SVC mode, pushes scratch regs, calls `c_irq_dispatch`.
 7. `c_irq_dispatch` reads `GICC_IAR` (returns 58), looks up handlers[58], calls `uart1_isr`.
 8. `uart1_isr` reads the character, calls `uart_putc(c)` (which polls TX), increments `rx_count`.
-9. Back to dispatch; write 58 to `GICC_EOIR`.
+9. Back to dispatch. write 58 to `GICC_EOIR`.
 10. Return to `irq_entry`: pop scratch regs, switch to IRQ mode, `rfeia sp!`: restores SPSR (which has SVC mode and IRQ-unmasked), PC back to whatever was running.
-11. Resumed `wfi` returns; loop body runs; we hit `wfi` again.
+11. Resumed `wfi` returns. loop body runs. We hit `wfi` again.
 
 Eleven steps. Every Linux IRQ in user space follows the same pattern.
 
 ## 15.9  Lab
 
 1. **Build, push, type characters, see them echo.** Confirm IRQ-driven.
-2. **Replace polling printf with IRQ-driven printf.** Wrap `uart_putc` in a small queue; when TX FIFO has space (`UCR1.TRDYEN`), drain queue from ISR. Now your `printf` returns immediately.
+2. **Replace polling printf with IRQ-driven printf.** Wrap `uart_putc` in a small queue. when TX FIFO has space (`UCR1.TRDYEN`), drain queue from ISR. Now your `printf` returns immediately.
 3. **Count IRQs.** Increment `rx_count` in the ISR. After 1000 characters, dump it from `main`. Confirm exact match.
 4. **Try without `wfi`.** Replace `for(;;){wfi}` with `for(;;)`. Observe: same correctness, much higher idle power. (You won't *see* the power difference, but it's there.)
-5. **Trigger a data abort.** From `main`, do `*(volatile uint32_t *)0x1 = 0;`. Confirm `data_handler` (currently `b .`) is hit. Add a `printf` to `data_handler` (it must run in ABT mode — easy way: just hang and let JTAG inspect; or copy the `cpsid` dance to switch to SVC).
+5. **Trigger a data abort.** From `main`, do `*(volatile uint32_t *)0x1 = 0;`. Confirm `data_handler` (currently `b .`) is hit. Add a `printf` to `data_handler` (it must run in ABT mode — easy way: just hang and let JTAG inspect. or copy the `cpsid` dance to switch to SVC).
+MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
+**JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 6. **Add an SVC instruction** (`asm volatile ("svc #0")`) and observe the SVC handler is hit. This is the foundation of syscalls.
 
 ## 15.10  Pitfalls
