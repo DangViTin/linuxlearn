@@ -6,30 +6,18 @@ estimated_pages: 8
 status: draft
 ---
 
-# Chapter 1 — Preface and how to use this book
+# Chapter 1: Preface and how to use this book
 
 
 ## 1.1  Why this book exists
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
-> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
-
-
 There is no shortage of books and tutorials that show you how to get embedded Linux running on a board. Most of them follow the same script: install a vendor BSP, run `bitbake` or `make`, flash an SD card, log in. Twenty minutes from `git clone` to a Linux prompt. Beautiful.
-**BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 
-The trouble is that you learned almost nothing. The BSP set up the DDR, Yocto built your toolchain, U-Boot's defconfig set every register, and the kernel's `imx_v7_defconfig` enabled the drivers — all because someone else had done the work. If anything breaks, like a different DRAM chip or a custom IOMUX, you have no foothold to debug from. You can read the Linux source but you cannot *see* where the system came from.
-> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
-> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-**DDR** - external DRAM that must be configured and trained before most software can run from it.
-**Yocto** - a metadata-driven build system for producing custom Linux distributions.
-**IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
-**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+The trouble is that you learned almost nothing. The BSP set up the DDR, Yocto built your toolchain, U-Boot's defconfig set every register, and the kernel's `imx_v7_defconfig` enabled the drivers, all because someone else had done the work. If anything breaks, like a different DRAM chip or a custom IOMUX, you dont't know where where to debug. You can read the Linux source but you cannot *see* where the system came from.
 
-This book is the opposite path. You will build every layer between power-on-reset and a running Linux system on the i.MX6ULL by hand. That means writing the boot image bytewise, setting DDR registers against the JEDEC sequence, hand-writing the linker script, page table, and device tree, then compiling U-Boot from source. You will read its source until every line is familiar, and boot a mainline Linux kernel — not a vendor fork — with a root filesystem built from a single statically-linked binary.
+This book is the opposite path. You will build every layer from power on to a running Linux system on the i.MX6ULL by hand. That means writing the boot image bytewise, setting DDR registers against the JEDEC sequence, hand-writing the linker script, page table, and device tree, then compiling U-Boot from source. You will boot a mainline Linux kernel, not a vendor fork, with a root filesystem built from a single statically-linked binary.
 
 Only after we can do all of this from scratch do we permit ourselves the convenience tools: Buildroot in Chapter 35, our own toolchain in Chapter 122, Yocto in Chapter 123, secure boot in Chapter 124. By then the tools will feel like time-savers, not magic. You will know what each of them does because you have already done it the hard way.
-**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 
 It takes patience. The payoff is that no bug in those tools can hide from you later.
 
@@ -39,11 +27,9 @@ You are an embedded engineer with a few years of microcontroller experience. You
 
 You can read a schematic, solder a wire, and you know what a power rail is.
 
-You have heard about Linux on embedded targets — maybe shipped a product with it, maybe followed a vendor BSP through a Yocto build — but you have never been certain you understood what was happening underneath. You want that certainty.
+You have heard about Linux on embedded targets, maybe shipped a product with it, maybe followed a vendor BSP through a Yocto build, but you have never been certain you understood what was happening underneath. You want that certainty.
 
 You are not a Linux expert. You may not know what a "wait queue" is, or whether `/sys/class/gpio` is a real filesystem, or what the difference between `vmlinux` and `zImage` is. By Chapter 30, you will.
-
-If that is roughly you, this book we wrote this book for you. If you have *no* embedded background at all — if "register" makes you think of a bank teller's window, Part II will feel cruel. There are gentler introductions. come back here after.
 
 ## 1.3  What "raw" means in this book
 
@@ -55,13 +41,11 @@ A few concrete commitments:
 - We **never** copy-paste a configuration without explaining what each field does. The first time you see a DDR controller register, every bit of it we decode it. The second time you can look it up in the appendix.
 - We **avoid Yocto, Buildroot, and other "framework" builders** until they we have already demystified by us having done the same work by hand.
 
-This discipline is the point of the book. Skip it and you lose the point.
-
 ## 1.4  What this book does not cover
 
-- **Other SoCs.** We pick the i.MX6ULL because it is a single-core Cortex-A7 part — simple enough that we can hold the whole boot path in our head — with excellent NXP documentation, an active mainline upstreaming history, and abundant cheap dev boards. The principles transfer to STM32MP1, AllWinner H3, Rockchip RK3308 and similar SoCs, but the register tables do not.
+- **Other SoCs.** We pick the i.MX6ULL because it is a single-core Cortex-A7 part — simple enough that we can hold the whole boot path in our head — with excellent NXP documentation, an active mainline upstreaming history, and abundant cheap dev boards. The principles transfer to STM32MP1, AllWinner H3, Rockchip RK3308 and similar SoCs.
 - **Real-time Linux.** PREEMPT_RT is mentioned in Chapter 30 and Chapter 43 but is not the focus.
-- **Android.** It is a wholly separate userspace stack on top of the same kernel — different init (`init.rc`), different libc (Bionic), different IPC (Binder), different build (Soong). The kernel chapters of this book apply directly. The userspace chapters do not. If your target is Android, follow this book through Chapter 35 and then branch to AOSP documentation.
+- **Android.** It is a wholly separate userspace stack on top of the same kernel, different init (`init.rc`), different libc (Bionic), different IPC (Binder), different build (Soong). The kernel chapters of this book apply directly. The userspace chapters do not. If your target is Android, follow this book through Chapter 35 and then branch to AOSP documentation.
 - **Container runtimes, Docker on embedded, Kubernetes at the edge.** Out of scope.
 - **Application programming on Linux.** You will use a shell and write a few C test programs, but we are not teaching POSIX threads or `select`/`epoll` as such.
 
@@ -69,31 +53,28 @@ This discipline is the point of the book. Skip it and you lose the point.
 
 Every chapter follows the same seven-section template. We will not deviate from it. The point is that once you have read three chapters you know exactly where to look for what you need.
 
-1. **What** — the concrete artifact this chapter builds. *Object first.* A bootable image, a working driver, a measurable behavior change.
-2. **Why** — the problem that motivates the artifact. What does the system look like *without* this chapter's work? What breaks?
-3. **How** — the mechanics. Register-by-register, function-by-function, with the exact NXP reference-manual section or Linux source file cited.
-4. **Focus** — one or two ideas that, once internalized, unlock the next several chapters. These are the lines you should underline if you read on paper.
-5. **Lab** — a step-by-step deliverable. If you cannot reproduce it from a clean shell in your kitchen tomorrow morning, you have not finished the chapter.
-6. **Pitfalls** — the specific traps real engineers fall into here. Each pitfall is something at least one experienced engineer has been burned by. not theoretical concerns.
-7. **Going deeper** — pointers to the i.MX6ULL Reference Manual, Linux source paths, LWN articles, mailing-list threads, and academic papers for readers who want to go past what the chapter covers.
+1. **What**: the concrete artifact this chapter builds. *Object first.* A bootable image, a working driver, a measurable behavior change.
+2. **Why**: the problem that motivates the artifact. What does the system look like *without* this chapter's work? What breaks?
+3. **How**: the mechanics. Register-by-register, function-by-function, with the exact NXP reference-manual section or Linux source file cited.
+4. **Focus**: one or two ideas that, once internalized, unlock the next several chapters. These are the lines you should underline if you read on paper.
+5. **Lab**: a step-by-step deliverable. If you cannot reproduce it from a clean shell in your kitchen tomorrow morning, you have not finished the chapter.
+6. **Pitfalls**: the specific traps real engineers fall into here. Each pitfall is something at least one experienced engineer has been burned by. not theoretical concerns.
+7. **Going deeper**: pointers to the i.MX6ULL Reference Manual, Linux source paths, LWN articles, mailing-list threads, and academic papers for readers who want to go past what the chapter covers.
 
 ## 1.6  Lab discipline
 
-The labs are not optional. They are the book.
+The labs are not optional.
 
-If you read the prose of Chapter 14 (DDR3 initialization) without ever bringing up your own DDR, you will not learn what you came for. You will learn the *names* of the steps — "ZQ calibration", "write leveling" — but you will not have internalized the experience of seeing your board fail to read back what it wrote and discovering it was a single-bit timing skew.
+If you read the prose of Chapter 14 (DDR3 initialization) without ever bringing up your own DDR, you will not learn what you came for. You will learn the *names* of the steps, "ZQ calibration", "write leveling", but you will not have internalized the experience of seeing your board fail to read back what it wrote and discovering it was a single-bit timing skew.
 
 To get the most out of the book:
 
-- Keep a **lab journal**. A plain-text or Markdown file is fine. Write what you did, what worked, what did not, what you suspect. The journal is more valuable than the book.
 - Run every command yourself. **Do not** paste a snippet from a chapter without first reading what it does.
-- When something does not work — and many things will not — debug it for at least an hour before looking up the answer. The book includes "expected output" blocks specifically so you can tell when you are stuck.
+- When something does not work, and many things will not, debug it for at least an hour before looking up the answer. The book includes "expected output" blocks specifically so you can tell when you are stuck.
 
 ## 1.7  Code listings
 
-All code in this guide is **inline in the chapters** — there is no companion repository. Snippets are short enough to read end-to-end and copy directly into your own workspace. They are licensed **MIT**. kernel-module excerpts that quote GPL kernel sources inherit GPL-2.0-only per the kernel's license.
-
-Keep your own per-chapter folder (`~/imx6ull-lab/chXX/` is one convention) for the work you build as you go. The guide does not ship a reference solution.
+All code in this guide is **inline in the chapters** — there is no companion repository. Snippets are short enough to read end-to-end and copy directly into your own workspace.
 
 ## 1.8  Conventions
 
@@ -127,13 +108,11 @@ CCM_ANALOG_PLL_ARM[DIV_SELECT] = 88;   /* 24 MHz × 88 / 2 = 1056 MHz, then ÷2 
 
 ### Numeric notation
 
-Hex values are written with the C `0x` prefix everywhere except inside hex dumps. Megabytes and gigabytes use the IEC binary prefixes (MiB, GiB) when precision matters. "MB" is shorthand for the marketed quantity (board has "512 MB DDR3" — the chip is actually 512 MiB).
+Hex values are written with the C `0x` prefix everywhere except inside hex dumps. Megabytes and gigabytes use the IEC binary prefixes (MiB, GiB) when precision matters. "MB" is shorthand for the marketed quantity (board has "512 MB DDR3", the chip is actually 512 MiB).
 
 ### Addresses
 
 When we cite a memory address, we cite the *physical* address unless we are inside a discussion of MMU mapping. Physical addresses on i.MX6ULL are 32 bits. Virtual addresses are written as `0xC00xxxxx` (kernel) or `0x00xxxxxx`–`0xBFxxxxxx` (user) once we get to MMU territory in Chapter 17.
-> **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
-**MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 
 ### Citations
 
@@ -141,11 +120,11 @@ References to the i.MX6ULL Reference Manual are written as **\[RM §28.5.3\]** �
 
 ### Diagrams
 
-ASCII first, SVG when ASCII fails. We do not require any rendering tools to read the book. Where a diagram is essential, it is also reproduced as a PNG in `figures/`.
+ASCII. We do not require any rendering tools to read the book.
 
 ## 1.9  How the chapters depend on each other
 
-Part II (Chapters 9–18) is the only part an impatient reader can skip without losing the thread. You should not skip it anyway. It is where this book differs from every other embedded-Linux book on the shelf. It is also the part that will save you six months from now, when some bring-up problem traces back to a misconfigured AHB clock.
+Part II (Chapters 9–18) is the only part an impatient reader can skip without losing the thread. You should not skip it anyway. It is where this book differs from every other embedded Linux book on the shelf. It is also the part that will save you six months from now, when some bring-up problem traces back to a misconfigured AHB clock.
 
 A pruning guide for readers in different situations:
 
@@ -164,34 +143,11 @@ You will need it open next to you for most of the book. It is roughly 5000 pages
 
 1. The register base address (the system memory map chapter).
 2. The clock input to the block (the CCM chapter).
-**CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
 3. The IOMUX requirements for any external pins (the IOMUXC chapter).
 4. The interrupt vector number, if any (the GIC SPI table).
-> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
-**GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 5. The initialization sequence the manufacturer recommends (usually a numbered list at the start of the block's chapter).
 
 Five items, ten minutes, every new peripheral. That habit is what separates engineers who can bring up a custom board from engineers who can only run someone else's eval kit.
-
-## 1.11  Where to ask for help
-
-When the book leaves you stuck, the following are, in this author's experience, the best places to look:
-
-- **The i.MX community forum** at NXP (free account). Real engineers from NXP read it, and many problems you will hit have already been answered.
-- **The U-Boot mailing list** (`u-boot@lists.denx.de`). Read-only for a few weeks before posting.
-- **The Linux kernel mailing lists** (`linux-arm-kernel`, the relevant subsystem list — `linux-i2c`, `linux-spi`, `linux-rtc`, etc.). Etiquette matters. read `Documentation/process/` before posting.
-- **The Bootlin training material** (free, public). The best second source after this book.
-- **LWN.net**. A subscription is one of the best deals in technical writing.
-
-Stack Overflow is the worst place to ask about Linux internals. The kernel changes too fast and the upvoted answers go stale. Go to the source.
-
-## 1.12  Acknowledgements
-
-This book stands on work from the maintainers of mainline U-Boot and Linux, the Bootlin team, NXP's public documentation and community answers, and the Point Atom project that put low-cost i.MX6ULL hardware in the hands of many learners. Thanks also to the colleagues and readers who test commands, question unclear explanations, and send corrections.
-
-## 1.13  Errata and corrections
-
-The book's GitHub repository is the canonical place for errata. Open an issue or a pull request against the chapter file you found the error in.
 
 ---
 
