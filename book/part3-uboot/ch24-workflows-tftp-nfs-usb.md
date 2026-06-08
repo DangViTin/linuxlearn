@@ -10,7 +10,7 @@ status: draft
 **FIT** - Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
 
 > **What:** stop reflashing the SD card. From this chapter on, every kernel change and every rootfs change is visible on the board within seconds, over the wire — TFTP for the kernel + DTB, NFS for the rootfs, USB-OTG (`uuu`) for recovery.
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
 > **TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
@@ -86,7 +86,7 @@ Save these into `bootcmd`:
 ```
 
 Now the boot sequence is: power on → ROM → SPL → U-Boot → TFTP → kernel. No SD-card writes, ever.
-MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+> **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
 **SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 

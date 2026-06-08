@@ -144,7 +144,7 @@ With this, hover-over-symbol and "Go to Definition" find the target's headers, n
 
 1. **Build** on host: `cd build && cmake --build .` (or your build system).
 2. **Copy binary** to target: `scp build/myapp root@target:/usr/bin/` (or NFS rootfs auto-syncs).
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 3. **F5 in VSCode**: pre-launch task starts gdbserver. gdb connects. binary loads. stops at entry (or your `main()`).
@@ -247,7 +247,7 @@ VSCode's IntelliSense on the kernel source works but is slower (~5 minutes to in
 - **`gef` and `pwndbg`** — gdb plugins for security research, with VSCode-like features in terminal.
 - **CLion** + remote toolchain — JetBrains commercial alternative. even smoother UX, paid.
 - **Ch 118** — JTAG with gdb (same gdb, different remote target).
-MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
+> **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 - **Ch 120** — gdbserver + cli gdb (same workflow, manual setup).
 - **Ch 119** — KGDB for kernel-side debug.

@@ -21,7 +21,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_ALSA_LIB=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -129,8 +129,8 @@ Three nodes:
 ```
 
 DMA fires an IRQ every period (typically 1024 samples, about 21 ms at 48 kHz). ALSA refills that period from the user-space buffer. The cycle continues. If user-space writes fast enough to avoid an underrun, playback continues without glitches.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
@@ -222,7 +222,7 @@ For higher-level audio (Bluetooth, network), you'd stack PulseAudio or PipeWire 
 4. **Diagnose an xrun.** Use `aplay -v test.wav`. reduce period size with `--period-size=128`. observe xruns appearing as load increases.
 5. **Listen at different rates.** `aplay -f S24_LE -r 44100 ...` — verify codec accepts non-48k rates.
 6. **Read the WM8960 driver.** `sound/soc/codecs/wm8960.c` — find the regmap config, the DAPM (Dynamic Audio Power Management) routing, the bias-level callbacks.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 **MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 

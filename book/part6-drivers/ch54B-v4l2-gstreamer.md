@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 54B — V4L2 + GStreamer
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DDR** - external DRAM that must be configured and trained before most software can run from it.
 
 > **What:** the **V4L2** (Video for Linux 2) subsystem — the kernel framework that abstracts video capture and output devices behind `/dev/videoN` — and **GStreamer**, the user-space pipeline framework that consumes V4L2 frames. We focus on the i.MX6ULL's **CSI** (Camera Serial Interface) for parallel cameras (OV5640, OV7725, GC2145), the only camera interface on this SoC.
@@ -22,7 +22,7 @@ MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, b
 > - **Buildroot:** `BR2_PACKAGE_V4L_UTILS=y BR2_PACKAGE_GSTREAMER1=y BR2_PACKAGE_GST1_PLUGINS_BASE=y BR2_PACKAGE_GST1_PLUGINS_GOOD=y BR2_PACKAGE_GST1_PLUGINS_BAD=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -205,7 +205,7 @@ The sensor driver (ov5640) exposes a stack of controls. user-space tunes them. A
 ## 54B.7  Pitfalls
 
 - **Sensor reset/powerdown GPIO polarity.** Wrong polarity → I²C-detect fails for the sensor.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - **Wrong XCLK rate.** OV5640 wants 12–27 MHz. outside that range, sensor doesn't enumerate.
 - **Pixel format mismatch.** Sensor outputs YUYV, but you request RGB. GStreamer can convert, but it costs CPU.

@@ -107,7 +107,7 @@ tcsetattr(fd, TCSANOW, &t);
 ### Trick 3 — bit-bang with GPIO
 
 For the most reliable timing, switch the TX pin to GPIO momentarily, pulse it low for the calculated time, switch back. Reliable but messy.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ### Trick 4 — i.MX UART SEND_BREAK bit

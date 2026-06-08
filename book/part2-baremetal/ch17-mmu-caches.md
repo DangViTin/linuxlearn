@@ -28,7 +28,7 @@ We will use *only the first-level page table*, mapping the entire 4 GiB virtual 
 What we *are* doing:
 
 - Define which 1 MiB regions are Device memory (peripherals: AIPS, GIC, MMDC registers) and which are Normal cacheable (OCRAM, DRAM).
-MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
 **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 **MMDC** - the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
 - Build a 16 KiB table containing 4096 first-level entries.
@@ -266,7 +266,7 @@ For the rest of Part II, we leave the MMU on. Chapter 18's bare-metal peripheral
 The MMU handles attributes. The cache handles its own coherency for ordinary loads/stores. But sometimes you must explicitly maintain:
 
 - **Before a DMA peripheral reads from a buffer**, the CPU must **clean** the buffer's cache lines so the DMA sees the latest data.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 - **After a DMA peripheral writes to a buffer**, the CPU must **invalidate** the buffer's cache lines so the next load sees the new data and not stale L1 contents.
 - **After writing instructions**, the CPU must **clean D-cache** (so I-cache sees them in unified memory) and **invalidate I-cache** (so it re-fetches).
@@ -377,5 +377,5 @@ The 10× difference is why Linux brings caches up early in arch_setup.
 - *Computer Architecture: A Quantitative Approach* (Hennessy & Patterson), Chapter 5, for the cache theory.
 
 > Next chapter: **Chapter 18 — Optional bare-metal peripherals.** I²C and SPI bare-metal, just enough to prove we can. Chapter 18 ends the required path of Part II. After that, three supplementary chapters (18A Project organization, 18B Button + beep, 18C Bare-metal RTC) are inserted for readers who want to fully match the Point Atom-style depth of bare-metal coverage before moving to U-Boot in Part III. They are independent of each other. skip any.
-> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.

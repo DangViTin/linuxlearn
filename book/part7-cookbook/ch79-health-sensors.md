@@ -87,7 +87,7 @@ Register map (the highlights):
 7. Write 0x0C = 0x24 → LED1 (red) current ~7 mA.
 8. Write 0x0D = 0x24 → LED2 (IR) current ~7 mA.
 9. Wait for IRQ or poll. Each FIFO entry is 6 bytes: 3 bytes red + 3 bytes IR.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ### Reading the FIFO
@@ -119,7 +119,7 @@ As of v6.6, mainline does include IIO drivers — `drivers/iio/health/max30100.c
 User-space then sees `/dev/iio:device0` streaming 6-byte samples at 100 Hz, processes them.
 
 The MAX30102's data-ready IRQ pin connects to a GPIO. The driver uses `request_threaded_irq` (Ch 43) → drains the FIFO → pushes to IIO buffer (Ch 49/70). It's an IIO driver with a FIFO. structurally identical to the IMU drivers in Ch 70–71, just with intensity channels instead of accel/gyro.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 79.5  Writing a MAX30102 driver from scratch

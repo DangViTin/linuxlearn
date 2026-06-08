@@ -9,8 +9,8 @@ status: draft
 # Chapter 114 — Beepers, relays, SSRs
 
 > **What:** the **discrete actuators** that fall outside the main subsystems but appear in every product: **passive piezo buzzers** (need PWM to make sound), **active buzzers** (fixed-frequency, GPIO on/off), **mechanical relays** (5 V or 12 V coils driving 240 V AC contacts), **MOSFETs** (DC switching, fast, no contact wear), and **SSRs (Solid State Relays)** (AC switching, opto-isolated, zero-cross, the production-grade choice for mains-load control). On the i.MX6ULL we drive each with the matching kernel framework (PWM for passive, GPIO for the rest), wire the protection circuits (flyback diodes, snubbers, isolation), and build a 4-channel home automation relay board controlled via MQTT.
-> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
@@ -243,7 +243,7 @@ About 40 lines. Install as a systemd unit. Open Home Assistant on a phone, tap "
 - **Cheap SSR with rated current.** Fotek SSR-40DA rated "40 A" — actually good for ~25 A continuous and only with a real heatsink. De-rate aggressively.
 - **Zero-cross SSR with inductive load.** Motors lag. zero-cross switching at voltage-zero is at current-peak for inductive load → contact stress. For inductive loads use random-fire SSR.
 - **Buzzer at the right pitch for piezo resonance.** Most piezos have a sharp resonant peak around 2.7 kHz. driving off-resonance gets you 10 dB less SPL. Find the peak with a sweep.
-MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+> **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
 **SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 - **PWM frequency in audio range.** A motor PWM at 1 kHz whines audibly. Bump to 20 kHz+.
 - **No GPIO pull-down on MOSFET gate.** During boot, the GPIO is high-impedance for a few seconds. The load floats and may spuriously partially-on. 10 kΩ pull-down ensures off-on-boot.

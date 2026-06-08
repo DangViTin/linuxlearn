@@ -289,7 +289,7 @@ Quick guide:
 - **Process context, can sleep, want to be killable:** `msleep_interruptible`.
 - **Process context, sleeping but short:** `usleep_range`. Kernel may bundle short sleeps to reduce wake-ups.
 - **Atomic context (IRQ handler, spinlock held):** `udelay` or `mdelay` only — these busy-wait. Do not `mdelay` more than ~10 ms — you stall every other task on a single-core system.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 - **Need to wait for a condition with a timeout:** `wait_event_interruptible_timeout`.
 
@@ -311,7 +311,7 @@ A task in Linux has a state:
 Times where `TASK_UNINTERRUPTIBLE` is appropriate:
 - Waiting for filesystem I/O.
 - Waiting for a hardware operation that *must* complete (DMA finish, etc.).
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 - Holding important locks that signals could destabilize.
 

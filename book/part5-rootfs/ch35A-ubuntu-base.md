@@ -221,7 +221,7 @@ $ ./unmount-ubuntu.sh
 ## 35A.6  Boot it from NFS
 
 Export `~/imx6ull/ubuntu-rootfs/` over NFS (same as Ch 31, different rootfs path). In U-Boot:
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```

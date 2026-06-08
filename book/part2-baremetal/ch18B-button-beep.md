@@ -8,10 +8,10 @@ status: draft
 
 # Chapter 18B — Button input and beep
 **IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
-MCU bridge: Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
+> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
 
 > **What:** read a GPIO input with software debouncing, then drive a passive buzzer at an audible frequency from a polled GPIO toggle loop. Two new peripherals. both built on the GPIO and timer primitives we already own.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Why:** every product accepts input and emits feedback. Until now, our only input was UART and our only output was an LED. Adding a button and a buzzer completes the minimal HMI vocabulary, and forces us to handle **debouncing** — a topic every embedded engineer should learn once and then trust.
@@ -145,7 +145,7 @@ A small but real bug to watch for: if you forget the final `GPIO_DR |= bit`, you
 ### Why not just a GPIO toggle in a tight loop?
 
 That works for tones in the multi-kHz range when nothing else is happening. It does *not* work the moment you want to play the tone *while* doing anything else. The right answer for production: drive BEEP from a **PWM peripheral** (i.MX6ULL has eight PWM channels), which generates the square wave in hardware. Chapter 48 (Linux PWM) covers exactly this — we plumb the same buzzer via the PWM framework instead of bit-banging.
-MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 
 For bare-metal pedagogy, the bit-bang loop is fine. It shows that the buzzer is just a frequency-controlled output.
@@ -222,7 +222,7 @@ Press the button. The LED toggles, the UART prints `press` / `release`, and the 
 ## 18B.7  Going deeper
 
 - **IMX6ULLRM Chapter 28** — GPIO interrupt configuration (we ignored it here. Chapter 15's GIC code can be wired to a GPIO IRQ instead of using a polled tick).
-MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
 **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 - **Jack Ganssle**, *A Guide to Debouncing* — the canonical engineering reference. Available free online.
 - **Linux source: `drivers/input/keyboard/gpio_keys.c`** — the kernel's gpio-keys driver. Reads GPIOs, debounces them, emits input events. We meet it in Chapter 45.

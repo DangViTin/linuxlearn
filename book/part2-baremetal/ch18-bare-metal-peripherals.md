@@ -9,13 +9,13 @@ status: draft
 # Chapter 18 — Optional bare-metal peripherals
 
 > **What:** small, working bare-metal drivers for I²C (read an EEPROM byte), SPI (read a flash JEDEC ID), and a tiny eLCDIF "draw a color bar." Plus a one-section reflection on what's left to do bare-metal vs what we move to U-Boot for.
-> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Why:** the rest of Part VI will teach these same peripherals inside Linux, where the abstractions are thicker. Touching the raw controllers here, once, makes the Linux drivers feel like simplifications rather than magic.
 >
 > **Focus:** the driver pattern that repeats: clock, IOMUX, register init, polled state machine, optional IRQ. After writing a few bare-metal drivers, the Linux equivalents look mostly like glue.
-> MCU bridge: Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
+> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
 > **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 > **IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
 
@@ -261,7 +261,7 @@ void lcd_init_color_bars(void)
 A full set of timing values is about 30 register writes for a typical 800×480 RGB panel. They are panel-specific, so we omit them here.
 
 > **Cache caveat.** Because we enabled the D-cache in Chapter 17, our writes to `framebuffer` are cached. The eLCDIF DMA-reads from physical DRAM — it does **not** snoop the L1 cache. Result: the panel shows stale or partial data. Fix: either map the framebuffer as Device memory (slower writes), or call `dcache_clean_range(framebuffer, sizeof(framebuffer))` after each frame update. The same issue under Linux is solved by allocating the framebuffer with `dma_alloc_coherent`, which gives you a non-cached mapping.
-> MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 > **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 This is the kind of thing you only discover when you do it bare-metal.
@@ -303,7 +303,7 @@ Three **supplementary** chapters follow this one before Part III opens:
 - **Chapter 18A — Project organization.** Refactor the monolithic Part II code into a BSP folder tree. introduce `imx6ull.h` as the single source of truth for register addresses. sidebar on the NXP SDK header style.
 **BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 - **Chapter 18B — Button input and beep.** A polled GPIO input with debouncing, and a polled square-wave buzzer driver.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - **Chapter 18C — Bare-metal RTC.** Talk to the SNVS always-on domain. demonstrate brown-out-survival via VBAT.
 

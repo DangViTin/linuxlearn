@@ -9,7 +9,7 @@ status: draft
 # Chapter 119 — Kernel debugging without JTAG
 **ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
 **Device Tree** - a data file that describes board hardware to the Linux kernel instead of hard-coding it in C.
-MCU bridge: Think of Device Tree like a board-level hardware description table that replaces hard-coded #define LED_PORT GPIOA decisions. Unlike an MCU header, the kernel parses it at boot and matches it to drivers.
+> **MCU bridge:** Think of Device Tree like a board-level hardware description table that replaces hard-coded #define LED_PORT GPIOA decisions. Unlike an MCU header, the kernel parses it at boot and matches it to drivers.
 
 > **What:** the **software-only kernel debugging toolkit** that works on a deployed device with no hardware debug access. **printk**'s deeper toolbox (`pr_debug`, `dynamic_debug`, ring-buffer levels), **ftrace** (function tracer + `function_graph` + tracepoint events), **trace-cmd** + **KernelShark** (record + GUI), **bpftrace** and **bcc** (eBPF for live kernel introspection), **kgdb** over serial (when you do want a debugger but only have UART), and the **oops decoder** workflow (`addr2line`, `scripts/decode_stacktrace.sh`).
 >
@@ -19,7 +19,7 @@ MCU bridge: Think of Device Tree like a board-level hardware description table t
 > **Focus:** match the tool to the symptom. Too much output in `dmesg`: use `dynamic_debug` to filter. "It worked once, now hangs": ftrace `function_graph` on the suspect subsystem. "What system calls is this app making?": a bpftrace one-liner. "Kernel oops on customer device": save dmesg and run decode_stacktrace.sh against the matching vmlinux. "I want to breakpoint and step a remote production kernel": kgdb over serial (rare, but sometimes the right call).
 >
 > **Tooling.** **Target:** `trace-cmd` (for ftrace), optional `bpfcc-tools` / `bpftrace` (eBPF — better on aarch64 / newer kernels). **Host:** `kernelshark` to visualise ftrace dumps. `crash(8)` for vmcore analysis. Ubuntu install: `apt install trace-cmd kernelshark bpfcc-tools bpftrace`. Buildroot: `BR2_PACKAGE_TRACE_CMD=y`, `BR2_PACKAGE_BCC=y`, `BR2_PACKAGE_BPFTRACE=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 
@@ -279,7 +279,7 @@ Embedded systems often lack the disk space for vmcore (200+ MB). skip kdump and 
 1. **dyndbg.** Enable all `pr_debug` in `net/wireless/`. watch a `wpa_supplicant` connection. see the previously-hidden debug output.
 2. **ftrace function_graph.** Trace `ext4_file_read` for a `cat /etc/passwd`. identify which function dominates the time.
 3. **trace-cmd capture.** Record `sched/sched_switch + irq/* + block/block_rq*` during a `dd` write. open in KernelShark. visualize.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 4. **bpftrace one-liner: top syscalls.**
    ```sh

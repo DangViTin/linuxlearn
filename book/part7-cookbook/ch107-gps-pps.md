@@ -9,7 +9,7 @@ status: draft
 # Chapter 107 — GPS / GNSS + PPS
 
 > **What:** **GNSS receivers** (GPS + GLONASS + BeiDou + Galileo) and the **PPS (Pulse-Per-Second)** time-discipline signal. We compare **u-blox NEO-6M** (legacy, GPS-only), **NEO-8M** (multi-constellation), **NEO-9M** (concurrent multi-band, lower power, GNSS RAW data), and the cheap **ATGM336H** (BeiDou+GPS+GLONASS). On Linux, we parse **NMEA-0183**, decode u-blox's binary **UBX** protocol, bring up **gpsd** as the central daemon, and wire the **PPS GPIO** to **chrony** for sub-microsecond NTP — turning a $5 receiver into a **stratum-1 time server**.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Why:** GPS receivers do two things, both critical for embedded products:
@@ -25,7 +25,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_GPSD=y BR2_PACKAGE_CHRONY=y BR2_PACKAGE_PPS_TOOLS=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -126,7 +126,7 @@ The PPS pin pulses high for ~100 ms exactly on the UTC second boundary. The rece
 ```
 
 Linux kernel side: `drivers/pps/`. The `pps_gpio` driver registers an IRQ on the GPIO, and on each edge records a hardware timestamp (`ktime_get_ts()`) plus the GPIO event time. User-space (chrony) reads `/dev/pps0` ioctl-style to get the latest edge timestamp and computes the offset between GPIO-edge-time and system-clock-time.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 DT binding:

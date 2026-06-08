@@ -176,7 +176,7 @@ What you would actually be shipping:
 
 - **A kernel from 2017.** Five-plus years of CVE backlog. Even cherry-picking critical fixes is a part-time job.
 - **A driver model from 2017.** Many subsystems (DT bindings YAML, modern clk framework, regmap-everywhere, devm-_* helpers, etc.) have evolved. Code you write against 4.1.15 doesn't transfer to mainline without rewrite.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 - **Toolchain constraints.** 4.1.15 doesn't build with modern gcc (>= 11) without patches. You're committing to an old gcc too.
 - **No upstream support.** Linux 4.1 has been EOL for years. Issues you file get closed as "fixed in 5.x".
@@ -213,7 +213,7 @@ The pattern across all three: **the product's field life and the security level 
 1. **Read the LTS announcement** for the current LTS at `lwn.net` or `kernel.org`. Note the maintainer, support window, and any caveats.
 2. **Audit your codebase against an LTS.** Pick a recent commit in mainline that adds a feature you care about (e.g., a new DT binding). Run `git log --oneline v6.6.. -- Documentation/devicetree/bindings/...` to see whether it has been backported to LTS 6.6. Most large features are not.
 3. **Pretend you inherited a 4.14 BSP** with a custom GPIO driver. Look at the mainline-equivalent driver (`drivers/gpio/gpio-mxc.c`) and identify which kernel-API changes have happened since 4.14 that would require rewriting (DT bindings, devm_, the gpio chip api, ...). Make a one-page "migration burden" estimate.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 4. **Set up a CI matrix.** Imagine you need to build the same `defconfig` against three kernels: mainline tip, LTS 6.6, LTS 6.1. Sketch a GitHub Actions / GitLab CI job matrix. Estimate build-time and disk usage.
 5. **Subscribe to two mailing lists.** `linux-kernel-announce@vger.kernel.org` (release announcements only) and `linux-stable@vger.kernel.org` (stable-tree releases). Build the habit of seeing what's happening before it affects you.

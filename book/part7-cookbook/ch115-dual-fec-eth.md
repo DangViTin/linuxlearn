@@ -13,7 +13,7 @@ status: draft
 > **Why:** any "edge gateway" product has 2+ Ethernet ports — one to the internet, one to a local industrial network — because mixing the two on a single physical port creates security and reliability problems. The i.MX6ULL is unusual in having two on-chip FECs (most SoCs in this class have one). This is a feature you should exploit. When you need a third interface (e.g., a separate management LAN, or a Modbus-TCP island), SPI Ethernet chips are the only way without an external switch — and they're easy on Linux thanks to mainline drivers.
 >
 > **Focus:** Dual-MAC on one SoC means two PHYs. Each needs its own pinmux, reference clock, and IRQ. The kernel netdev model already isolates the two MACs — they look like two NICs. The hard part is the bring-up: pinmux conflicts (FEC1 shares many pins with FEC2 + UART), separate PHY addresses on MDIO, and per-PHY interrupt routing. The W5500 implements TCP/IP in hardware. You talk to it at the socket layer over SPI, not as a netdev. This does not fit the Linux netdev model. Mainline-friendly choices are ENC28J60 (slow, netdev-presenting) and TI's KSZ8851 / Davicom DM9051 (10/100, netdev, faster). We cover all three patterns.
-> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 > **MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
 > **PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
 > **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
@@ -23,7 +23,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_IPROUTE2=y BR2_PACKAGE_IPERF3=y BR2_PACKAGE_TCPDUMP=y BR2_PACKAGE_ETHTOOL=y BR2_PACKAGE_BRIDGE_UTILS=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -34,7 +34,7 @@ The i.MX6ULL has **2× FEC** (FEC1 and FEC2 in the reference manual), each:
 - RMII PHY interface (4 wires for data + 1 clock vs 8+ for MII. cheaper, fewer pins)
 - IEEE 1588 PTP timestamp support
 - Separate DMA channel
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 - Separate IRQ
 

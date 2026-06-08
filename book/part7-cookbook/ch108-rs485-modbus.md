@@ -9,7 +9,7 @@ status: draft
 # Chapter 108 — RS-485 + Modbus RTU
 
 > **What:** **RS-485** — the differential half-duplex serial bus that has carried industrial data since 1983, still ubiquitous in factories, building automation, solar inverters, and HVAC. We compare **MAX485** (5 V, 5 Mbps, the canonical chip), **SP3485** (3.3 V, 10 Mbps), **ADM2483** (isolated, for noisy environments), **MAX13487** (auto-direction — eliminates the GPIO control headache). On Linux, we wire RS-485 to a UART, enable the kernel's RS-485 mode (`SER_RS485_ENABLED`), and use **`libmodbus`** to implement a **Modbus RTU** master/slave talking to real inverters, energy meters, and PLCs.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Why:** every industrial site has Modbus RTU. Solar inverters, energy meters, BMS systems, irrigation controllers, VFDs (variable-frequency drives), even building HVAC — they all expose data over Modbus RTU on RS-485. Your i.MX6ULL becomes the data collector / gateway, polling 5–50 devices and bridging to MQTT/cloud. RS-485 is everywhere in industrial systems. Knowing it gives you access to the industrial IoT market that pure-WiFi devices cannot reach.
@@ -21,7 +21,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_LIBMODBUS=y BR2_PACKAGE_PYTHON3_PYMODBUS=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 

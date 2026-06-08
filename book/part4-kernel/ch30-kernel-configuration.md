@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 30 — Kernel configuration deep-dive
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 
 > **What:** the kernel's Kconfig system — `make menuconfig`, the `.config` file, defconfig snapshots — and the dozen config options that matter most for an i.MX6ULL embedded image. By the end you should be able to enable/disable any kernel feature, save a clean `defconfig`, and explain to a teammate why each option is set.
 >
@@ -336,7 +336,7 @@ You start from a known baseline and apply targeted changes. Easier to maintain t
 - **`make defconfig` overwrites `.config`.** If you've made customisations and run `make defconfig`, those changes are gone. Save with `make savedefconfig` first.
 - **Different defconfigs in different parts of the tree.** `arch/arm/configs/imx_v6_v7_defconfig` is for ARM 32-bit i.MX6/i.MX7. `arch/arm64/configs/defconfig` is for everything ARM 64-bit. Don't cross them.
 - **Disabling `CONFIG_MMU`.** There is a `CONFIG_MMU` symbol you can clear. Don't. The result is `nommu` Linux for parts without an MMU, which won't run on Cortex-A7 anyway.
-MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+> **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
 **MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 - **Disabling `CONFIG_PREEMPT_VOLUNTARY` to "make it faster".** If you turn off `CONFIG_PREEMPT_VOLUNTARY`, the build falls back to `CONFIG_PREEMPT_NONE`, which is the server profile (higher latency, higher throughput). On an interactive system this is a regression. Read the help on each Preemption Model option before changing.
 

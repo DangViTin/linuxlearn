@@ -311,7 +311,7 @@ This integrates with the kernel's **clk framework** — the same framework that 
 ```
 
 The frequency synthesis: `f_out = f_xtal × (PLL_mult) / (output_divider)`. The PLL multiplier is a fractional value (a + b/c), giving fine resolution. The math to derive (a, b, c, divider) for a target frequency is non-trivial — the driver does it.
-MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+> **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
 **PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 
 ### DT

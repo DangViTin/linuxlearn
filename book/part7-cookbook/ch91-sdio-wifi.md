@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 91 — SDIO WiFi
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 
 > **What:** WiFi modules attached over the **SDIO** bus (the same physical interface as an SD card, repurposed for I/O). Three modules compared: **AP6212** (Broadcom BCM43438, on many i.MX boards), **RTL8189FTV** (Realtek), **SD8801** (Marvell/NXP). Builds on Ch 55E (the WiFi stack). For each: the SDIO bring-up sequence, firmware + NVRAM loading, and — since full-MAC WiFi drivers are 30k+ lines you won't write from scratch — a *trace of how a packet flows through the stack* and how to bring up the SDIO transport (the part that actually trips up every new board).
 > **MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
@@ -22,7 +22,7 @@ MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux split
 > - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -66,7 +66,7 @@ SDIO uses the same physical bus and protocol as an SD card (Ch 66). Instead of r
 
 Key signals beyond the 6-wire SDIO:
 - **WL_REG_ON**: a GPIO that powers/resets the WiFi block. Must be pulsed to wake the chip.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - **32.768 kHz LPO clock**: the low-power oscillator the chip needs for its sleep timing. Without it, the chip is unreliable or won't init.
 - **WL_HOST_WAKE**: an out-of-band interrupt (the chip can wake the host even when SDIO is idle).
@@ -279,7 +279,7 @@ Out-of-tree WiFi drivers are a recurring maintenance nightmare:
 
 - **No "new SDIO card" in dmesg.** The transport failed. 90% of bring-up problems are here, not in WiFi. Check: WL_REG_ON pulsing (mmc-pwrseq), 32 kHz clock present, rails up, SDIO pinmux correct.
 - **Missing 32 kHz clock.** The chip needs the LPO for sleep timing. Without it, it may enumerate but be flaky, or not enumerate. Provide it (a `fixed-clock` in DT + a physical 32 kHz source, often from the PMIC).
-MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 - **Wrong/missing NVRAM.** Chip enumerates, firmware loads, but range is awful or it won't associate. The NVRAM is per-board. get the right one from the module vendor.
 - **Wrong firmware filename.** brcmfmac derives the name from the chip ID. If your chip variant maps to a different filename, "firmware not found." Check the exact name in the dmesg "using brcm/..." line.

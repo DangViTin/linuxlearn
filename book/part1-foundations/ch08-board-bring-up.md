@@ -22,7 +22,7 @@ Before connecting any power, put the board on an anti-static mat and do a visual
 
 1. **Visible damage.** Look at every connector. Any pins bent? Any solder joints obviously cold? Any tantalum capacitors discolored? Any screw-holes that punched through a trace? Reject and return if so.
 2. **Connectors.** The MINI has, at minimum: a microUSB or USB-C **power + OTG** port, an Ethernet RJ45, a microSD slot, a 40-pin expansion header, an LCD ribbon connector, a JTAG header, and a 4-pin debug-UART header. Locate each.
-MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
+> **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 3. **Jumpers / DIP switches.** Identify the **boot-mode** selector. On most Point Atom MINI revisions this is a 2-position DIP switch or a single jumper near the SoC. The two positions are typically labelled **SD** (boot from SD) and **USB** / **DOWN** (Serial Downloader / recovery). Sometimes a third position selects eMMC.
 4. **Silkscreen IDs.** Note the board revision (printed on the top side). When you ask the Point Atom forum for help, the first question they will ask is the revision.
@@ -72,7 +72,7 @@ $ picocom -b 115200 /dev/ttyUSB0
 ```
 
 Power the board (USB-OTG cable into a wall adapter, or the board's dedicated power input if present). If the board has an SD card with a known-good Linux image on it, you should immediately see boot messages from U-Boot. If the SD card is empty or absent, you should see nothing on the console. The console itself is still alive, just idle.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 To prove the host side works without the board, short the dongle's TX to its RX (no board attached) and type. You should see your keystrokes echo back.
@@ -195,7 +195,7 @@ Two host-side tools speak the i.MX SDP protocol over the `15a2:0080` USB enumera
 Both push the same byte sequences to the same Boot ROM. The translation is straightforward:
 
 - "Run MfgTool to flash" → `uuu -b emmc u-boot.imx zImage.itb rootfs.tar.xz`
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 - "Manufacturing profile" (MfgTool's XML config) → a `uuu_script.uuu` file with one line per `WRITE_FILE` / `JUMP_ADDRESS` step
 - "Stop the MfgTool process" → not needed. `uuu` exits after the script

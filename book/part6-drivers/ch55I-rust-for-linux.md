@@ -231,10 +231,10 @@ The list grows monthly. Check `rust/kernel/` in mainline.
 ---
 
 > **End of Part VI — Driver Development.** From the smallest kernel module (Ch 36) to Rust-for-Linux (Ch 55I), you now have the full vocabulary: load/unload, chardev, hot-plug, platform binding, locking, blocking I/O, interrupts, GPIO, input, I²C, SPI, PWM/RTC, IIO, regmap, DMA, watchdog, PM, network, RT, audio, LCD, MTD/UBI, V4L2, USB, timers, async, CAN, block, WiFi, cellular, multi-touch, HDMI, Rust.
-> MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
-> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 > **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 > **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 > **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.

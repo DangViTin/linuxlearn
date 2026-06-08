@@ -9,7 +9,7 @@ status: draft
 # Chapter 20 — U-Boot SPL: the missing link
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 **PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
-MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+> **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
 **CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
 
 > **What:** the **SPL** (Secondary Program Loader) — the first stage of the two-stage U-Boot — explained in enough detail that you can read its source and modify it for a custom board.
@@ -172,7 +172,7 @@ You wrote almost every line of this in Chapter 10's `startup.S`. The differences
 - `save_boot_params` is a hook the SoC family uses to capture boot-mode info the ROM leaves in registers. We never needed it in bare-metal.
 - The HYP-mode check is for Cortex-A15+ which can boot in hypervisor mode. The Cortex-A7 on i.MX6ULL does not have HYP, so the check is a no-op for us.
 - `cpu_init_cp15` configures cache and MMU registers to a known state.
-MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+> **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
 **MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 - `cpu_init_crit` does very-early board-critical init (memory remapping, system control register tweaks).
 - `_main` (defined in `arch/arm/lib/crt0.S`) is the C-runtime entry — sets up the stack, then calls `board_init_f`.

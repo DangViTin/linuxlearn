@@ -157,7 +157,7 @@ Each DCD entry is one instruction in a small, one-byte-opcode language:
 ```
 
 Reads `addr`, ANDs with `mask`, loops until the condition specified by flags is met. Typically used for "wait until PLL locked."
-MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+> **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
 **PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 
 ### A minimal DCD
@@ -179,9 +179,9 @@ You could, in principle, do all of this in your own startup code instead of in D
 
 1. **You may need DRAM up *before* your image is loaded.** If your image is bigger than OCRAM (128 KB), the only way to use it is for the ROM to load it into DRAM. The ROM can only load into DRAM after DDR is initialized, and the ROM cannot initialize DDR on its own. The DCD is the script you hand it that does that initialization.
 2. **Some peripherals need very early init.** Bringing up clocks to specific peripherals before your code runs can simplify SPL.
-MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+> **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
 **SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 
 For a small bare-metal image that runs purely from OCRAM, you don't need a DCD. Your IVT can leave the DCD pointer as zero and bring up DDR yourself. We will do exactly that in Chapter 14 to keep things honest. The image we build in Chapter 11 also has no DCD — it's small enough to fit in OCRAM.
 
@@ -255,7 +255,7 @@ If `IVT.csf` is nonzero, the ROM jumps to a verification routine before executin
 On a freshly-fabricated chip, HAB is in "open" mode — verification is performed but failures do not stop the boot. Once you burn the `SEC_CONFIG[1]` fuse, HAB is in "closed" mode — failures stop the boot, permanently. There is no recovery from a botched closed-mode signing.
 
 We will not enable HAB in Parts I–VI of this book. Chapter 124 covers the full HAB workflow, including how to sign U-Boot and the kernel and how to chain that trust into a verified rootfs.
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 For now: leave `IVT.csf = 0`. Do not touch SEC_CONFIG fuses.

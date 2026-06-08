@@ -227,7 +227,7 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 ```
 
 The `spi_mem_op` struct describes a NOR-style command in four fields (cmd, addr, dummy, data) — `spi_mem_exec_op` translates that into whatever the underlying SPI/QSPI controller wants. For a controller like i.MX QSPI that has hardware support for "command + address + data" transactions, it programs a few registers and DMA-receives the data. For a plain SPI controller, it falls back to bit-banging the same sequence through ordinary `spi_message`s.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 ### How `spi_nor_write` works
@@ -658,7 +658,7 @@ What we got, in ~250 lines:
 
 What we *skipped* compared to `spi-nor`:
 - MTD integration (so no partitions, no `fw_setenv`, no boot-from-flash for U-Boot).
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 - Quad-IO mode (4× faster).
 - SFDP auto-discovery (works for any chip, not just W25Q128).
@@ -775,7 +775,7 @@ NOR's signature trick: **eXecute In Place**. The CPU reads instructions directly
 - **Con**: slow (max ~50 MB/s vs. DDR3's ~800 MB/s). higher power. instruction-cache misses are expensive.
 
 In practice on i.MX6ULL, XIP is used only for U-Boot (small, fast-boot critical). The kernel and rootfs always run from DRAM. We covered XIP in detail in Ch 11.
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 ## 64.10  Boot from QSPI NOR

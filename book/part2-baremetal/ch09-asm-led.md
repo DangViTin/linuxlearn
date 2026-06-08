@@ -14,7 +14,7 @@ status: draft
 > **Why:** This is the moment you really own the chip. Higher layers exist to make hard things easy, but you can only judge them if you have done it the hard way once.
 >
 > **Focus:** the **three-write pattern** that brings up any GPIO on any i.MX SoC — `CCGR` (clock), `IOMUXC` (pin), `GPIO_GDIR + GPIO_DR` (use). Memorize it. We use it for every peripheral in the book.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 
@@ -62,7 +62,7 @@ Addresses for GPIO1_IO03, from the Reference Manual:
 | `GPIO1_GDIR` | `0x0209C004` | GPIO1 direction register (bit 3 = direction for GPIO1_IO03; 1 = output) |
 
 The value to write into `MUX_CTL` for GPIO function is **5**. The IOMUX table in RM Chapter 32 says, for the pad `GPIO1_IO03`, ALT5 is `GPIO1_IO03`. (The naming is circular: the *pad* is named for the GPIO function it has at ALT5.)
-MCU bridge: Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
+> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
 **IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
 
 ### CCM_CCGR encoding (2 bits per gate)

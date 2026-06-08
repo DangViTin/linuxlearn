@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 55B — Async notification (SIGIO)
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 
 > **What:** the **fasync / SIGIO** mechanism — a driver tells its user-space process "data is ready" by sending it a Unix signal, instead of the process polling or blocking on read. The driver implements `.fasync` in `file_operations`. user-space arms it with `fcntl(fd, F_SETOWN, getpid()). fcntl(fd, F_SETFL, O_ASYNC);`.
 >

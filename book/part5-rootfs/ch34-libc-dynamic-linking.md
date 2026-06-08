@@ -39,7 +39,7 @@ For embedded Linux **musl is the default**. Reasons:
 - MIT-licensed (LGPL is fine for most people but not all).
 
 glibc remains right for: anything that ships large dynamic apps (Qt, Python, Java), or any rootfs that's a distro derivative (Ubuntu-base / Debian).
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 ## 34.2  Anatomy of a dynamically-linked ELF

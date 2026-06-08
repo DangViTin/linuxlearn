@@ -21,7 +21,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_I2C_TOOLS=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -83,7 +83,7 @@ Widget types:
 - **Mixers**: `SND_SOC_DAPM_MIXER` (combine sources).
 - **PGAs / amps**: `SND_SOC_DAPM_PGA`, `SND_SOC_DAPM_OUT_DRV`.
 - **Supplies**: `SND_SOC_DAPM_SUPPLY` (a shared resource like a bias generator or PLL).
-MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+> **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
 **PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 
 And **routes** connecting them:
@@ -412,7 +412,7 @@ What WM8960 adds (the other ~1300 lines): ADC + capture path, mic preamp + boost
 - **Master/slave clock mismatch.** If both SAI and codec think they're I²S master, no bit clock. One must be slave. Set `bitclock-master`/`frame-master` in the machine DT.
 - **MCLK rate wrong.** Codecs need MCLK = a specific multiple of the sample rate (e.g., 256× or 512× fs). For 48 kHz: 12.288 MHz or 24.576 MHz. Wrong MCLK → wrong pitch or no audio. Configure the SAI's clock to produce the right MCLK.
 - **DAPM routes incomplete.** Audio "plays" (DMA flows) but is silent because DAPM never powered the output path. Trace the dapm debugfs.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 - **Pop/click on play/stop.** Missing soft-mute or wrong power-up/down order. Implement `mute_stream` and order DAPM events.
 - **Wrong codec I²C address.** WM8960 = 0x1A, SGTL5000 = 0x0A, ES8388 = 0x10/0x11. Check `i2cdetect`.

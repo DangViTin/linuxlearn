@@ -9,14 +9,14 @@ status: draft
 # Chapter 5 — A tour of the i.MX6ULL SoC
 **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
-MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
+> **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 
 > **What:** a top-down map of the chip — what blocks are inside it, where they live in memory, how they are clocked, and how their pins are routed.
 >
 > **Why:** every later chapter will name a peripheral. For each one you should be able to find it on the block diagram, locate its register base, find its clock root and gate bit, and know what pin it lands on. All of that in a few minutes.
 >
 > **Focus:** the **memory map**, the **clock tree at one level of detail**, and the **IOMUX pattern**. These three structures repeat across every NXP i.MX SoC. The names change, the shapes do not.
-> MCU bridge: Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
+> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
 > **IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
 
 
@@ -87,7 +87,7 @@ The i.MX6ULL exposes a 4 GB physical address space. Most of it is unused. The re
 A few things worth committing to long-term memory:
 
 1. **The DRAM aperture starts at `0x80000000`.** Every U-Boot script you will read sets `loadaddr=0x80800000` or similar. That is just "DRAM base + 8 MB". The kernel image is loaded at that offset because the compressed image decompresses downward into the space below it.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 2. **OCRAM at `0x00900000`** is where the Boot ROM places your SPL and where bare-metal images live before DRAM is up. 128 KB is enough for a substantial bootloader stage.
 **SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
@@ -172,7 +172,7 @@ The mapping of peripheral to CCGR bit lives in the reference manual's CCM chapte
 Every signal pin on the i.MX6ULL can be one of several alternate functions. For example, the pin labelled `GPIO1_IO04` can be:
 
 - ALT0: `GPIO1_IO04` (just a GPIO)
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - ALT1: `ENET1_REF_CLK`
 - ALT2: `USB_OTG2_OC`

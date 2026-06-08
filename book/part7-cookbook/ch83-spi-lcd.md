@@ -8,14 +8,14 @@ status: draft
 
 # Chapter 83 — SPI LCD
 **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
-MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 
 > **What:** "smart" TFT panels with an embedded controller and frame buffer, driven over SPI. Two controllers compared: **Sitronix ST7789** (240×240 / 240×320), **Ilitek ILI9341** (240×320). Unlike the dumb parallel panels in Ch 82, these have their own RAM. You send an init sequence and pixel data over SPI. The controller refreshes the glass on its own. We cover the MIPI-DBI command model, the DRM **tiny** driver framework (`mipi-dbi`), and a from-scratch DRM tiny driver for ST7789.
 >
 > **Why:** SPI LCDs are cheap and small. They need 4–5 wires versus 28 for parallel, and they appear in smartwatches, thermostats, handheld instruments, and hobby gadgets. The trade-off is bandwidth. A 240×240 16-bit frame is 115 KB. At 40 MHz SPI that takes ~23 ms — about 40 fps for a full refresh. For static or partial-update UIs, that is plenty.
 >
 > **Focus:** the MIPI-DBI command/data model and partial updates. The controller speaks a standardized command set (MIPI Display Bus Interface): `0x2A` set column range, `0x2B` set row range, `0x2C` write pixels. A D/C (data/command) GPIO distinguishes command bytes from data bytes. Send only the changed rectangle. That keeps refresh fast enough.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 

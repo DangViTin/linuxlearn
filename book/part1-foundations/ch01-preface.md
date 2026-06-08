@@ -19,8 +19,8 @@ There is no shortage of books and tutorials that show you how to get embedded Li
 **BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 
 The trouble is that you learned almost nothing. The BSP set up the DDR, Yocto built your toolchain, U-Boot's defconfig set every register, and the kernel's `imx_v7_defconfig` enabled the drivers — all because someone else had done the work. If anything breaks, like a different DRAM chip or a custom IOMUX, you have no foothold to debug from. You can read the Linux source but you cannot *see* where the system came from.
-MCU bridge: Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **DDR** - external DRAM that must be configured and trained before most software can run from it.
 **Yocto** - a metadata-driven build system for producing custom Linux distributions.
 **IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
@@ -132,7 +132,7 @@ Hex values are written with the C `0x` prefix everywhere except inside hex dumps
 ### Addresses
 
 When we cite a memory address, we cite the *physical* address unless we are inside a discussion of MMU mapping. Physical addresses on i.MX6ULL are 32 bits. Virtual addresses are written as `0xC00xxxxx` (kernel) or `0x00xxxxxx`–`0xBFxxxxxx` (user) once we get to MMU territory in Chapter 17.
-MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+> **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
 **MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 
 ### Citations
@@ -167,7 +167,7 @@ You will need it open next to you for most of the book. It is roughly 5000 pages
 **CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
 3. The IOMUX requirements for any external pins (the IOMUXC chapter).
 4. The interrupt vector number, if any (the GIC SPI table).
-MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
 **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 5. The initialization sequence the manufacturer recommends (usually a numbered list at the start of the block's chapter).
 

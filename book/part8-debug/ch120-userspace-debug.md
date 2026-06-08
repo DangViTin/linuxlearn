@@ -17,7 +17,7 @@ status: draft
 > **ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
 >
 > **Tooling.** **Target:** `gdbserver`, `strace`, `ltrace`, `perf` (from `linux-tools`), optional `valgrind`. **Host:** `gdb-multiarch` (or your cross gdb), Brendan Gregg's `FlameGraph` scripts (`git clone https://github.com/brendangregg/FlameGraph`). Ubuntu install (target): `apt install gdbserver strace ltrace linux-tools-generic valgrind`. Buildroot: `BR2_PACKAGE_GDB=y` + `BR2_PACKAGE_GDB_SERVER=y`, `BR2_PACKAGE_STRACE=y`, `BR2_PACKAGE_LTRACE=y`, `BR2_PACKAGE_LINUX_TOOLS_PERF=y`. Full reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 

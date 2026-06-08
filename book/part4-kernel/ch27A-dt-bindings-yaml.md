@@ -8,10 +8,10 @@ status: draft
 
 # Chapter 27A — DT bindings YAML and `dt_binding_check`
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 
 > **What:** the mainline kernel's machine-checkable description of every Device Tree binding — a JSON-Schema document (in YAML form) that says *exactly* which properties a node should have, of what type, with what constraints. Plus the `make dt_binding_check` / `make dtbs_check` targets that validate your DTS against them.
-> MCU bridge: Think of Device Tree like a board-level hardware description table that replaces hard-coded #define LED_PORT GPIOA decisions. Unlike an MCU header, the kernel parses it at boot and matches it to drivers.
+> **MCU bridge:** Think of Device Tree like a board-level hardware description table that replaces hard-coded #define LED_PORT GPIOA decisions. Unlike an MCU header, the kernel parses it at boot and matches it to drivers.
 > **Device Tree** - a data file that describes board hardware to the Linux kernel instead of hard-coding it in C.
 >
 > **Why:** Since kernel v4.18 (mid-2018), every new binding *must* ship a YAML schema, and existing bindings are being migrated. Without a schema, your patch will not be accepted upstream. Without a schema check on your CI, your binding can silently drift between board variants and you'll only discover it when something breaks.
@@ -197,7 +197,7 @@ A typical `dtbs_check` run on the i.MX tree produces ~100 warnings as of v6.6 �
 ## 27A.4  Writing your first binding
 
 Suppose your custom board has a GPIO-driven LED that you want to teach the kernel about cleanly. (The existing `gpio-leds` binding handles this. We'll author a fictional "my-pa-led" binding for pedagogy, then in practice you'd use `gpio-leds` instead.)
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 `Documentation/devicetree/bindings/leds/myorg,pa-led.yaml`:

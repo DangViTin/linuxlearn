@@ -19,7 +19,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_PPP=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -59,7 +59,7 @@ Mandatory rules:
 2. **VBAT, not VDD_3V3.** The modem's RF block runs from a 4 V (typ.) supply directly to the PA. The internal LDO drops to 3.3 V for logic, but the PA pulls from VBAT. Sourcing VBAT from a weak 3.3 V LDO instead of a buck = TX brownouts.
 3. **470 µF or larger bulk cap on VBAT.** TX is a 1.7 W burst at ~500 mA peak. The supply needs to hold that without sagging or PPP drops on every transmit.
 4. **PWRKEY pulse.** Modules are off after VBAT applied. Pulse PWRKEY low for at least 1 s to power on. The Air724 needs 2 s. Some boards tie PWRKEY low through a resistor for automatic power-on. GPIO control is cleaner because it lets the host reset the modem.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 5. **3.3 V vs 1.8 V UART logic.** Newer modules (LTE Cat-1bis) are 1.8 V. A direct 3.3 V tie kills the I/O. Level-shift if mismatched.
 

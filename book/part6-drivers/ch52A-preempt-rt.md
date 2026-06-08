@@ -40,7 +40,7 @@ Four big changes:
 In standard Linux, holding a `spin_lock` *disables preemption*. A higher-priority task can't run until the lock is released. PREEMPT_RT converts most spinlocks to "rt_mutex" — sleeping locks that *can be preempted*. A high-priority task can interrupt a lower-priority task even mid-lock.
 
 The exception: `raw_spinlock` — the few critical locks that genuinely need to disable preemption (the scheduler's own lock, IRQ disable code). These stay non-preemptible. PREEMPT_RT's correctness depends on the kernel using `raw_spinlock_t` *only* where strictly required, and `spinlock_t` (now preemptible) everywhere else. The conversion has been mostly upstreamed. what remains is a small bounded set.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ### 2. Threaded interrupts by default
@@ -179,7 +179,7 @@ int main(void) {
 4. **Tune.** Try `isolcpus` (no-op single-core), `processor.max_cstate=0`, mlockall in cyclictest source. Measure improvement.
 5. **Compare with standard kernel.** Build same kernel with `CONFIG_PREEMPT_NONE`. run cyclictest under same load. Note the 30–100× worse worst case.
 6. **Real workload.** Run a 1 kHz GPIO toggle from a SCHED_FIFO thread. scope the period jitter. Tune until jitter is < 50 µs.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 52A.8  Going deeper

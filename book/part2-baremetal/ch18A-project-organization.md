@@ -13,7 +13,7 @@ status: draft
 > **BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 >
 > **Why:** once a bare-metal project crosses ~500 lines and ~3 peripherals, the single-file layout costs more than it saves. Every new peripheral becomes a merge conflict with the one before it. Every register `#define` competes for namespace with every other. We refactor now, before Part III's U-Boot work pushes us into larger codebases.
-> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Focus:** **the BSP folder pattern** (one driver = one folder = one `.h` + one `.c`) and `imx6ull.h` holds every register definition in one place. The NXP SDK's `MCIMX6Y2.h` does the same thing with auto-generated struct headers. We hand-write ours so the auto-generated version reads as a productivity tool, not a black box.
@@ -24,7 +24,7 @@ status: draft
 Open the Chapter 16 code in your editor. You have:
 
 - `main.c` — `main()` plus inline UART init, GPIO init, CCM writes
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - `startup.S`, `link.ld` — unchanged
@@ -35,7 +35,7 @@ Two specific kinds of pain start to appear:
 
 1. **Header pollution.** `uart.c` defines `UART_UCR1`. `main.c` happens to define it again with a slightly different value (typo). Both compile. The behavior of the program depends on which `#define` `cpp` saw last.
 2. **Reuse friction.** To use the Chapter 18 I²C driver in a new project, you copy `i2c.c`, plus the relevant `#define`s from `main.c`, plus the CCM gate bit, plus the IOMUX writes. Five files involved per peripheral.
-MCU bridge: Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
+> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
 **IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
 
 The fix is structural: separate **what the hardware looks like** (one file: `imx6ull.h`) from **what each driver does** (one folder per peripheral). The NXP SDK does the same thing with auto-generated headers — we are reaching for the same structure by hand.
@@ -373,5 +373,5 @@ If you ship products with NXP parts, use the SDK headers in production. They are
 - **Cortex-A Series Programmer's Guide §10.2** — recommended startup-and-BSP project layout for ARM Cortex-A bare-metal.
 
 > Next chapter: **Chapter 18B — Button input and beep.** First input peripheral, plus our first PWM-adjacent output.
-> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 > **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.

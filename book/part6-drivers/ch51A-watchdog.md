@@ -37,7 +37,7 @@ Two kinds exist:
 ```
 
 `fsl,ext-reset-output` exports the WDOG_B pin so an external chip (PMIC) can react to the reset. Required if your PMIC supplies CPU power and needs an explicit reset signal.
-MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 
 The driver is `imx2_wdt` (mainline). Once enabled, `/dev/watchdog` appears (also `/dev/watchdog0`).
@@ -194,7 +194,7 @@ The core handles `/dev/watchdog`, ioctls, and sysfs. You just implement the four
 4. **Application-aware feeder.** Write a feeder that watches a "heartbeat file" updated by your app every 2 s. If the file is stale by > 30 s, stop feeding the watchdog (and let the system reset).
 5. **systemd integration.** Convert the feeder to a systemd unit with `WatchdogSec=`. Use `sd_notify(0, "WATCHDOG=1")` from your code.
 6. **External watchdog IC.** Optional — wire up a TPS3823 with a GPIO output as the reset trigger. feed it from your driver. Compare against the on-chip watchdog.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 51A.8  Pitfalls
@@ -202,7 +202,7 @@ MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on ST
 - **`CONFIG_WATCHDOG_NOWAYOUT=n` in production.** A buggy daemon `close()`s the device → watchdog disabled → product hangs forever. Always `=y` in shipped kernels.
 - **Forgetting to feed during heavy I/O.** If your keepalive process gets stuck on disk I/O (D state), it can't feed. Worst case: watchdog fires during normal operation. Tune timeout to be longer than longest expected I/O burst.
 - **Pre-init watchdog**. The bootloader (U-Boot) can start the watchdog before the kernel boots. If the kernel takes longer to boot than the timeout, watchdog fires during boot. Either U-Boot disables it before jumping, or kernel takes over fast.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 - **Multiple processes opening `/dev/watchdog`.** First open arms it. later opens get -EBUSY (in most drivers). Stick to one feeder process.
 - **Watchdog during suspend.** Suspended kernel can't feed. Most watchdog drivers stop the timer on suspend automatically. verify your specific driver's behavior.

@@ -8,13 +8,13 @@ status: draft
 
 # Chapter 25 — Building mainline Linux for i.MX6ULL
 **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
-MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
 **ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
 **ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 
 > **What:** clone the mainline Linux source, build a `zImage` + device tree blobs + modules for the i.MX6ULL, and inspect the artefacts. Stop just short of booting. that is Chapter 26.
 >
@@ -220,7 +220,7 @@ bluetooth
 ```
 
 `INSTALL_MOD_PATH=~/imx6ull/rootfs` is the path that becomes `/` on the target — usually your NFS-exported rootfs directory (Chapter 24). The `make` rule also generates `modules.dep`, `modules.alias`, and a few other index files so `modprobe` works on the target.
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 

@@ -12,7 +12,7 @@ status: draft
 > **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
 > **Why:** I²C is the most common slow bus in embedded systems: temp sensors, EEPROMs, GPIO expanders, RTCs, audio codecs, touch controllers, PMICs, battery gauges — half of Part VII's cookbook chapters are I²C devices. The Linux I²C model is a *clean* example of the bus/driver/device split first introduced in Ch 39 — and every I²C driver looks the same once you know the shape.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Focus:** **i2c_msg is the universal transaction**. `i2c_transfer(adapter, msgs, count)` sends a sequence of `i2c_msg` structs. each is one read or write, and adjacent ones share the bus without a STOP between them. Get this primitive right and you can talk to any I²C chip: write-then-read, repeated-start, 10-bit addressing, SMBus quirks.
@@ -22,7 +22,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_I2C_TOOLS=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -433,7 +433,7 @@ If a kernel driver has already bound to the device, `i2c-tools` will refuse to t
 - **`Documentation/devicetree/bindings/i2c/`** — DT bindings for the I²C subsystem.
 - **`drivers/i2c/busses/i2c-imx.c`** — the i.MX I²C controller driver. ~1200 lines. Worth reading once.
 - **`drivers/misc/eeprom/at24.c`** — production-grade EEPROM driver with nvmem, regmap, and write-protect support.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 - **`drivers/iio/pressure/bmp280-i2c.c`** + `bmp280-core.c` — clean modern I²C IIO driver. Pairs nicely with Ch 49.
 **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.

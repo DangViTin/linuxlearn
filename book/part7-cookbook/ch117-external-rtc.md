@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 117 — External RTC
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 
 > **What:** **external battery-backed real-time clocks**. **Maxim DS3231** (TCXO, ±2 ppm, the highest-accuracy popular choice), **NXP PCF8563** (cheap, common, ±20 ppm), **Microchip MCP79410** (with built-in EEPROM, plus a unique ID). On the i.MX6ULL we wire I²C, walk the kernel `rtc-i2c` family of drivers (`rtc-ds1307` covers DS3231. `rtc-pcf8563` for PCF8563. `rtc-mcp7941x` for Microchip), use `hwclock` to sync between system clock and RTC, configure **alarm interrupts** for wake-from-suspend, and integrate with **Ch 51B's runtime PM** so the i.MX6ULL can sleep for hours and wake exactly on a scheduled RTC alarm.
 >
@@ -22,7 +22,7 @@ MCU bridge: Think of regmap like a typed wrapper around your read_reg() and writ
 > - **Buildroot:** `BR2_PACKAGE_UTIL_LINUX_HWCLOCK=y BR2_PACKAGE_CHRONY=y BR2_PACKAGE_I2C_TOOLS=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -286,7 +286,7 @@ The DS3231's built-in thermometer is a useful bonus. It drives the TCXO temperat
 3. **Battery hot-swap test.** Remove the CR2032 with power on. replace. verify time still correct. Then remove battery + power. replace battery. reapply power → time lost. The CR2032 only protects against short *main supply* outages. If both the main supply and the battery are removed at the same time, the RTC loses time.
 4. **From scratch I²C.** Run `ds3231_min.c`. cross-check with `hwclock --show`.
 5. **Alarm wake.** `rtcwake -m mem -s 60` — system suspends. wakes 60 s later. Measure power during the suspended interval (should be < 5 mA if other rails are PMIC-managed).
-MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 6. **Daily scheduled task.** Use a cron-like scheduler: at boot, set an RTC alarm for the next 06:00. suspend. wake at 06:00. run the task. sleep again. Total energy per day: ~30 s of active + 86,370 s of suspend → battery life × 100 vs always-on.
 7. **chrony integration.** Configure chrony with NTP + RTC backup. Disconnect network. reboot. verify time is correct from RTC.
@@ -331,5 +331,5 @@ MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replac
 > **End of Part VII — Device Cookbook (Ch 64–117, 54 chapters).** Part VII covers most device classes you will integrate on an i.MX6ULL product, with 2–4 real chips per class, schematics, DT, driver internals, from-scratch implementations, labs, and pitfalls. From the cheapest QSPI flash to a GPS-disciplined time server, most external chips an i.MX6ULL product is likely to integrate are documented here. Use it as a reference: jump to the chapter for the chip in front of you.
 
 > Next: **Part VIII — Debug, production, advanced** — JTAG, kernel debugging, production-grade build infrastructure, secure boot, OTA, mainline patch submission. The chapters that take your Linux skills from "I can make this work" to "I can ship this product."
-> MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
+> **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 > **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.

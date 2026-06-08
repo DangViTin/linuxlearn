@@ -296,7 +296,7 @@ If `/sbin/init` is corrupt, `/bin/sh` runs as PID 1 and you get a root shell. Fr
 ```
 
 Everything on the host. Edit a file in `/srv/nfs/rootfs/`. The board sees it on next access. `make modules_install INSTALL_MOD_PATH=/srv/nfs/rootfs` puts new kernel modules into the running target. No reflashing.
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 

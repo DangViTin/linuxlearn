@@ -24,7 +24,7 @@ SiI902x has:
 - **HPD (Hot Plug Detect)** interrupt: tells the bridge when an HDMI cable is attached.
 
 Connect LCDIF parallel out → SiI902x in, HDMI cable → SiI902x out, I²C2 + HPD-IRQ → host. The bridge handles EDID negotiation with the sink (TV/monitor).
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ## 55H.2  Device tree

@@ -65,7 +65,7 @@ static irqreturn_t button_irq(int irq, void *dev_id)
 ```
 
 Each press triggers an IRQ that re-arms the timer. If the button bounces, every bounce resets the timer. Only after 20 ms of silence does the timer fire and report the press.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ## 55A.2  hrtimer
@@ -167,7 +167,7 @@ cancel_delayed_work_sync(&my_dwork);
 2. **Hrtimer for jitter measurement.** Fire an hrtimer every 1 ms. In the callback, log the actual time delta. With PREEMPT_RT, compare jitter against standard kernel.
 **PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 3. **Debounce button.** Use `timer_list` for 20 ms debounce on a GPIO key.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 4. **Periodic GPIO toggle.** Use hrtimer + GPIO output to generate a 1 kHz square wave. scope it. observe jitter.
 5. **Combine timer + workqueue.** A timer that schedules work. The work does `msleep(50)`. verify the system stays responsive.

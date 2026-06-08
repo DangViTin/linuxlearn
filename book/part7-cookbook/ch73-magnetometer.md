@@ -101,7 +101,7 @@ QMC bring-up:
 ## 73.5  How the mainline drivers work
 
 `drivers/iio/magnetometer/hmc5843_i2c.c` + `hmc5843_core.c` covers HMC5843 + HMC5883 + HMC5883L. Standard regmap-based pattern: read ID, configure, register IIO channels for `IIO_MAGN` with X/Y/Z modifiers.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 

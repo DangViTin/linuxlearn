@@ -13,8 +13,8 @@ status: draft
 
 
 > In 125 chapters you've gone from MCU engineer to someone who can bring up a custom i.MX6ULL board with mainline U-Boot, Linux, a hand-built rootfs, drivers, secure boot, CI, and OTA. That's a lot of ground. This chapter points to what to read and do next.
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
@@ -105,7 +105,7 @@ Depending on your interests:
 ### Path A — Kernel hacker
 Goal: become a subsystem maintainer.
 - Pick a subsystem (e.g., IIO sensors, GPIO, regulators).
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - Read every patch on that subsystem's mailing list for 6 months.

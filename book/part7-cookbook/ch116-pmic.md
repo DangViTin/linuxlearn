@@ -9,7 +9,7 @@ status: draft
 # Chapter 116 — PMICs and regulator framework
 
 > **What:** **Power Management ICs** — single-chip power solutions that replace the half-dozen discrete LDOs and buck converters around an SoC. We cover **NXP PCA9450** (the i.MX-recommended PMIC for i.MX8M. also used on some i.MX6 designs), **NXP PF8200** (industrial), **Rohm BD71850MWV** (compact, integrated for i.MX6/8 cores). On the i.MX6ULL we walk the I²C register map of a typical PMIC, configure voltage rails for SoC + DDR + I/O via the kernel **regulator framework**, integrate with **DVFS** (Ch 51B), and measure the power savings from PMIC-coordinated voltage scaling vs always-on discrete LDOs.
-> MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 > **DDR** - external DRAM that must be configured and trained before most software can run from it.
 > **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 >
@@ -156,7 +156,7 @@ i.MX6ULL has a required power-up sequence:
 3. VDD_ARM_IN, VDD_SOC_IN — together, within 100 ms
 4. NVCC_DRAM (1.35 V for DDR3) — before any DDR access
 5. Per-bank I/O supplies (NVCC_GPIO_*) — before any GPIO use
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 6. POR_B released (reset deassert) — last
 
@@ -302,7 +302,7 @@ This is for understanding. in real Linux code you go through the regulator frame
 **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 6. **Sleep state.** Trigger suspend-to-RAM (`echo mem > /sys/power/state`). Measure VDDARM rail — should be 0 V during suspend. Wake. resume. verify rail restored.
 7. **Fault interrupt.** PMICs typically have an INT pin. Configure it as a kernel IRQ. over-current the chip (short a rail momentarily). verify the kernel sees the fault.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 8. **OPP tuning.** Add a custom OPP (e.g., 528 MHz at 1.1 V — slightly under the safe-spec to see what fails). Run stress tests. record where the SoC starts to glitch (you may corrupt files. Use a scratch SD).
 9. **From-scratch I²C peek.** Use `pmic_test.c` to read every register. dump them. identify which rail is which by toggling each and observing what dies.

@@ -9,7 +9,7 @@ status: draft
 # Chapter 22 — Porting U-Boot to a custom board
 
 > **What:** fork the mainline `mx6ull_14x14_evk` board into a new `mx6ull_pa_mini` (Point Atom MINI) board directory. Update DDR timings, IOMUX, MAC PHY address, and defaults. End with a U-Boot binary that boots cleanly on the MINI from your bare-board changes, not on the EVK config.
-> MCU bridge: Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
+> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
 > **MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
 > **PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
 > **DDR** - external DRAM that must be configured and trained before most software can run from it.
@@ -28,7 +28,7 @@ Three categories of port:
 1. **Cosmetic port** — same board, different default behavior (custom hostname, prompt, autoboot env). One file changes. Not really a port.
 2. **Variant port** — same SoC, same DDR, different peripherals. New defconfig + new DT + maybe new pinmux. Most "custom" boards.
 3. **Real port** — same SoC family, different DDR part, different PMIC, different boot media. New defconfig + new DT + new DDR config + new board.c. The Point Atom MINI vs the NXP EVK is approximately this. It is mostly a variant port plus DDR and pinmux work.
-MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 
 For this chapter we do a **variant + DDR port**: fork the EVK to a new board directory, change DDR timings to match the MINI's specific DRAM part, change the pinmux for KEY/LED/BEEP/Ethernet PHY, and update the env defaults.
@@ -449,7 +449,7 @@ Even if you never plan to submit upstream, this file documents who owns the port
 
 - **`doc/board/freescale/`** — every NXP board's README. Useful reference patterns.
 - **The `mxc_jtag_init` and `arm_pmu_init` weak hooks** — for boards with JTAG or PMU specifics.
-MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
+> **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 - **`board/freescale/common/`** — shared NXP utilities (`mpc8xxx`-style env helpers, PMIC drivers).
 - **U-Boot mainline commit history** — `git log board/freescale/mx6ull_14x14_evk/` is a tour of every issue that the EVK port has ever had. Read at least the most recent 50 commits.

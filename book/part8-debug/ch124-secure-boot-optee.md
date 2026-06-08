@@ -13,8 +13,8 @@ status: draft
 
 
 > **What:** **NXP HAB (High Assurance Boot)** — the SoC-enforced chain-of-trust that ensures only signed bootloaders/kernels run on production i.MX devices. Plus **TrustZone** and **OP-TEE** — the ARM-architectural Secure World and the most-used open-source TEE (Trusted Execution Environment). We walk: the cryptographic chain ROM → SRK fuses → CSF → signed U-Boot → signed kernel → dm-verity rootfs. NXP's **CST (Code Signing Tool)** for producing CSF files. The *key ceremony* (how to generate, store, and rotate signing keys). TrustZone primer (monitor mode, SMC calls, world switch). OP-TEE basics (Trusted Application lifecycle, REE↔TEE communication, TA development).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
@@ -45,8 +45,8 @@ What HAB + dm-verity defends against:
 What it *doesn't* defend against:
 - **Silicon-level attacks**: chip decapping, side-channel power analysis, fault injection. Requires expensive equipment and is detected by audit.
 - **JTAG**: must be disabled by fuse in production.
-MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
-MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+> **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
+> **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
 **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 - **Pre-fuse-blown attacker**: someone with the device before it leaves the factory. Manufacturing security is a separate concern.
 - **TEE compromise**: OP-TEE itself has bugs. Keep it updated.

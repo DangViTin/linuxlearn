@@ -315,7 +315,7 @@ The driver above is intentionally compressed. The full lab version includes:
 - A complete responder counterpart (`twr_resp.c`) that builds the response with embedded RX/TX timestamps.
 - Antenna-delay calibration (the chip-to-antenna trace + matching network adds ~16 ns of delay that must be subtracted from every ToF measurement. calibrated once per board).
 - Proper IRQ-driven polling using libgpiod's `gpiod_line_event_wait`.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 - The 5-byte timestamp arithmetic with the DWT 40-bit rollover handling.
 
@@ -348,7 +348,7 @@ A Kalman filter on top smooths the trajectory between updates and rejects outlie
 
 > **Template warning:** This block contains placeholder values.
 > Replace compatible strings, GPIO numbers, addresses, and paths with values from your board before using it.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 

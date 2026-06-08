@@ -19,7 +19,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_PICOCOM=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -138,7 +138,7 @@ For a real product with a custom phone app, the BlueZ GATT path (Ch 95) is bette
 3. **Connect from a phone.** Use "Serial Bluetooth Terminal" (Android) or "LightBlue" (iOS). Find your module's name. connect.
 4. **Bidirectional data.** From Linux, write text to the UART → see it in the phone app. From the phone, send text → read it on the UART.
 5. **Real integration.** Wire it to a BME280 (Ch 67): Linux sends temperature every 5 s. The phone app shows it. Add a command parser (phone sends "LED ON" → Linux toggles a GPIO).
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 6. **Compare effort.** Reflect on the ~10 lines here vs the ~250-line GATT server of Ch 95. Note what you gave up (standard GATT, throughput, multiple characteristics).
 7. **Range test.** Walk away with the phone. note where the connection drops (~20–30 m).

@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 69 — Air quality, gas, particulate matter
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 
 > **What:** three radically different "what's in the air" sensors: **Sensirion SCD30** (NDIR CO₂, I²C with clock-stretching), **AMS CCS811** (metal-oxide TVOC + eCO₂, I²C with interrupt), **Plantower PMS5003** (laser-scattering PM, UART). Each represents a different sensing physics, a different bus, a different protocol shape. For each: physics, protocol, the mainline driver, plus a from-scratch UART-based PMS5003 driver (since it's the most pedagogically interesting and the existing IIO support is fragmented).
 > **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
@@ -485,7 +485,7 @@ User-space reads all of them via IIO + serdev, feeds an MQTT topic, plots in Gra
 
 1. **SCD30 NDIR with i2c-tools.** `i2cdetect -y 1` (should show 0x61). Manually issue `0x0300` and read 18 bytes. verify CRCs. decode the first 4 bytes as float — your CO₂ reading.
 2. **CCS811 bring-up.** Wire up with the /WAKE pin to a GPIO. verify probe in dmesg. read eCO₂ before and after a window-open / hot-meal scenario. Watch it climb when cooking.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 3. **PMS5003 from scratch.** Build `mypms5003.ko`. verify frame parsing. expose `in_massconcentration_pm2p5_input`.
 4. **PMS5003 with a smoke source.** Light a match near the sensor (carefully). watch PM2.5 spike 100× then settle over 30 s.

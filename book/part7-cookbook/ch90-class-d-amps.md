@@ -14,7 +14,7 @@ status: draft
 > **Why:** for *playback-only* products — a Bluetooth speaker, a voice-announcement system, a doorbell chime, a kiosk that plays sounds — a full codec (Ch 89) is overkill. All you need is to turn I²S into sound. These chips do exactly that, cheaper and simpler. The MAX98357A needs zero configuration. Wire I²S, pick L/R/mono with a resistor, and it plays.
 >
 > **Focus:** an amp without a control bus is the simplest ASoC component you can write. The MAX98357A driver is ~100 lines and has no registers — it's a DAPM widget (the amp) + a DAI (the I²S sink) + maybe an enable GPIO. The TAS5805M adds I²C control + a DSP that needs a coefficient blob loaded. Driver complexity tracks chip capability — dumb amp short, DSP amp long.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Tooling.** This chapter uses `alsa-utils`, `i2c-tools`.
@@ -23,7 +23,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_I2C_TOOLS=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -245,7 +245,7 @@ static int tas5805m_load_config(struct tas5805m_priv *tas)
 ```
 
 The blob is your speaker tuning. A from-scratch TAS5805M driver would: regmap for the paged register access, a firmware-blob loader for the DSP config, a volume control, and DAPM — roughly the WM8960 shape from Ch 89 plus the book/page paging and the firmware blob. We won't reproduce the full driver. The *new* concept beyond Ch 89 is the book/page paging + the externally-designed DSP coefficient blob.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 
 ### Designing the DSP config

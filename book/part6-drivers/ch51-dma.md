@@ -13,7 +13,7 @@ status: draft
 > **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 >
 > **Why:** The CPU is bad at bulk data moves. At 10 Mbps SPI, one IRQ per byte burns a large fraction of the i.MX6ULL CPU. SDMA does the same job at zero CPU cost. Any driver that streams data — SPI, I²S audio, CSI camera, LCDIF, eMMC — uses DMA. Once you know the consumer API, most DMA-using drivers read the same way.
-> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 > **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 >
 > **Focus:** **the four standard steps** — request a channel, configure direction & widths, prepare a descriptor, submit + issue + wait. Once you know these four steps, most DMA drivers look the same.
@@ -28,7 +28,7 @@ Without DMA, an SPI driver writes one byte to TX, waits for "TX empty," writes t
 The trade-off:
 - **Setup cost.** Configuring an SDMA transfer costs ~1 µs. For 4-byte transfers, PIO is faster.
 - **Memory pinning.** DMA needs physically-contiguous, cache-coherent buffers. Use `dma_alloc_coherent` (slower, smaller pool) or `dma_map_single` (faster, manages cache). The MMU/cache material from Ch 4 matters here.
-MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+> **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
 **MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 - **Debug pain.** A misconfigured DMA writes to random memory. Bugs are harder to diagnose than PIO bugs.
 
@@ -73,7 +73,7 @@ A peripheral that wants DMA declares it in DT via the standard `dmas` + `dma-nam
 Each `<&sdma N M K>` triple is provider-specific. For i.MX SDMA: `<&sdma <channel> <type> <priority>>`. `channel` and `type` come from the SDMA event-mux table (e.g., ECSPI3 RX = event 7). The SoC datasheet has the mapping.
 
 `dma-names` gives each channel a *symbolic* name. drivers ask for `"rx"` or `"tx"` (not channel number 7). Same pattern as PWM and clocks.
-MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 
 ## 51.4  The four standard steps

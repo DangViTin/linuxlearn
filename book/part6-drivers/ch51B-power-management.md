@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 51B — Power management
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 
 > **What:** Linux's three power-management layers — **runtime PM** (drivers autonomously gate clocks and rails when idle), **DVFS** (CPU frequency-and-voltage scaling under load) and **system sleep** (suspend-to-RAM / standby / hibernation). By the end your driver participates in runtime PM, the system suspends to RAM cleanly, and the CPU clocks down when idle.
 >
@@ -146,7 +146,7 @@ Three system-level sleep states (described in `/sys/power/state`):
 - **freeze** — userspace frozen, devices left running. Lowest latency wake (microseconds), modest power savings.
 - **standby** — devices suspended, CPU clock gated. Medium savings.
 - **mem** — full suspend-to-RAM. RAM in self-refresh, CPU off, only PMIC and SoC suspend domain active. Lowest power, ~1–2 second wake latency.
-MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 
 Trigger:
@@ -160,8 +160,8 @@ The kernel:
 2. For each device (in topological order — leaves first), calls `pm_ops.suspend`. Drivers save state, gate clocks, idle hardware.
 3. The CPU is parked. only the wakeup-capable peripherals remain powered.
 4. A wakeup event fires (RTC alarm, GPIO IRQ, etc.).
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 5. Resume in reverse order: devices first, then userspace thaws.

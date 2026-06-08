@@ -12,7 +12,7 @@ status: draft
 > **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 >
 > **Why:** interrupts are how hardware tells the kernel something happened: data arrived, DMA finished, a button was pressed, a timer expired. Get the IRQ-handler design wrong and you hit one of two failures: *missed interrupts* (handler too slow or wrong polarity) or *IRQ storms* (handler does not acknowledge, hardware re-asserts continuously, system hangs). The rules below give you the right design every time.
-> MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 > **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 >
 > **Focus:** **the IRQ contract is "fast, atomic, and minimal."** Your top-half runs with interrupts disabled, in atomic context (no sleeping, no `kmalloc(GFP_KERNEL)`, no `copy_to_user`). Anything that takes more than a few microseconds *must* be deferred to a bottom half. Once you accept this constraint, the API choices below follow naturally.
@@ -256,7 +256,7 @@ Softirqs are the lowest-level deferred mechanism. Used internally for networking
 ## 43.5  GPIO interrupts — the everyday case
 
 The most common reason embedded drivers want IRQs is to react to a GPIO transition (button press, sensor data-ready, etc.). The mechanics:
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ### DT side
@@ -391,8 +391,8 @@ You'll see timestamps for every entry/exit of your handler, in microseconds. Cha
 ---
 
 > **End of foundation chapters (Ch 36–43).** You now have the full kernel-module driver vocabulary: load/unload, chardev, hot-plug, platform binding, locking, blocking I/O, and interrupts. The chapters that follow (44–51 + insertions) take this vocabulary and apply it to specific subsystems: GPIO, input, I²C, SPI, PWM/RTC, IIO, regmap, DMA, network, sound, LCD/DRM. Each chapter follows the same pattern — the subsystem provides a registration API, you fill in callbacks, the framework handles the rest.
-> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
-> MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 > **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 > **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 > **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.

@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 80 — External ADCs
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 
 > **What:** four external analog-to-digital converters spanning the price/precision spectrum: **TI ADS1115** (16-bit, I²C, programmable-gain, 4-channel), **TI ADS1256** (24-bit, SPI, ultra-low-noise, 8-channel), **Microchip MCP3008** (10-bit, SPI, cheap, 8-channel), **Analog Devices AD7606** (16-bit, 8-channel *simultaneous-sampling*). For each: protocol, the IIO ADC channel model, and a from-scratch ADS1115 IIO driver. Plus ratiometric measurement (load cells, RTDs) — the trick that cancels reference-voltage error.
 > **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
@@ -369,7 +369,7 @@ Why this matters: for 3-phase power measurement, you need voltage and current of
 ```
 
 The mainline driver `drivers/iio/adc/ad7606.c` uses a GPIO for CONVST, a GPIO IRQ for BUSY, and either parallel-bus or SPI read. The DT specifies range pins, oversampling pins, etc. This is a more involved driver because of the parallel-bus option and the strict CONVST/BUSY handshake.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 80.9  Ratiometric measurement — the noise-cancellation trick

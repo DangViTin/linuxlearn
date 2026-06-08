@@ -9,7 +9,7 @@ status: draft
 # Chapter 19 — U-Boot from source, first boot
 **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 
 > **What:** clone mainline U-Boot, build it for the i.MX6ULL, `dd` the result to an SD card, boot it, get a `=>` prompt. Then run a few commands and recognize, in U-Boot's output, every step we did by hand in Chapters 9–17.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
@@ -33,7 +33,7 @@ We use mainline. Three reasons:
 3. **Starting on mainline removes a future migration entirely.**
 
 We use mainline's `mx6ull_14x14_evk_defconfig` (NXP's reference EVK) and port it to the Point Atom MINI in Chapter 22. The boards are close enough that the EVK config boots on the MINI with only minor DT changes for IOMUX and DDR timings.
-MCU bridge: Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
+> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
 **DDR** - external DRAM that must be configured and trained before most software can run from it.
 **IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
 
@@ -317,7 +317,7 @@ base      - print or set address offset
 ```
 
 About 80 commands ship with the EVK defconfig. We will use perhaps 15 of them in this book. The rest are board-specific or for use cases we don't reach (USB host, JTAG, fuse programming, etc.).
-MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
+> **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 
 ## 19.7  Recognizing Chapter 14 in SPL

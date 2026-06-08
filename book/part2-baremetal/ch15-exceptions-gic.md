@@ -14,7 +14,7 @@ status: draft
 > **Why:** every kernel, every RTOS, and most useful bare-metal programs are interrupt-driven. Polling works for hello-world. It falls apart the moment more than one peripheral needs attention.
 >
 > **Focus:** the two-stage IRQ flow: the GIC routes the IRQ to the CPU, the CPU vectors to your handler, and the handler reads the GIC for the IRQ ID, dispatches, and writes EOI. Internalize this diagram and every A-profile system feels familiar.
-> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 > **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 
@@ -430,7 +430,7 @@ Eleven steps. Every Linux IRQ in user space follows the same pattern.
 3. **Count IRQs.** Increment `rx_count` in the ISR. After 1000 characters, dump it from `main`. Confirm exact match.
 4. **Try without `wfi`.** Replace `for(;;){wfi}` with `for(;;)`. Observe: same correctness, much higher idle power. (You won't *see* the power difference, but it's there.)
 5. **Trigger a data abort.** From `main`, do `*(volatile uint32_t *)0x1 = 0;`. Confirm `data_handler` (currently `b .`) is hit. Add a `printf` to `data_handler` (it must run in ABT mode — easy way: just hang and let JTAG inspect. or copy the `cpsid` dance to switch to SVC).
-MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
+> **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 6. **Add an SVC instruction** (`asm volatile ("svc #0")`) and observe the SVC handler is hit. This is the foundation of syscalls.
 

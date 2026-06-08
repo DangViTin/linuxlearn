@@ -413,7 +413,7 @@ Wrote 0xcafebabe at 0x80000000, read back 0xcafebabe
 ```
 
 If the memtest is non-zero: your calibration is wrong (most likely), or your IOMUX pad settings are wrong (less common), or your timing parameters don't match the chip (third most common).
-MCU bridge: Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
+> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
 **IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
 
 ## 14.10  Copying ourselves to DRAM
@@ -486,7 +486,7 @@ My PC is somewhere near 0x80100xxx
 ```
 
 That `0x80100xxx` for `main` is the proof. We are executing instructions out of DDR3. Every later chapter in Part II (and all of Part III's U-Boot) lives here.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ## 14.11  Sanity tests beyond the basic memtest
@@ -585,5 +585,5 @@ This is the central lab of Part II.
 - **Bootlin training material on DRAM controllers** — accessible, free.
 
 > Next chapter: **Chapter 15 — Exceptions and the GIC.** We have CPU clocks, UART, and DRAM. Now we install proper exception vectors and write our first real interrupt handler.
-> MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
 > **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.

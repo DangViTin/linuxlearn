@@ -9,7 +9,7 @@ status: draft
 # Chapter 118 — JTAG, OpenOCD, GDB at every layer
 
 > **What:** the **hardware-level debug stack**: **JTAG adapters** (FT2232H-based generic, J-Link, SEGGER pro), **OpenOCD** as the software bridge between adapter and target, and **GDB** as the user interface. We wire JTAG to the i.MX6ULL's debug header, write an OpenOCD config, halt the CPU at the very first reset vector instruction, single-step through U-Boot, attach to the running kernel with full `vmlinux` symbol resolution, and inspect a kernel module's variables interactively.
-> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 > **OpenOCD** - the host program that talks to a JTAG adapter and exposes a GDB server.
@@ -22,7 +22,7 @@ status: draft
 > **ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
 >
 > **Tooling.** **Host:** `openocd`, `gdb-multiarch` (or `arm-linux-gnueabihf-gdb` from your cross-toolchain). **Target:** nothing — gdb attaches via OpenOCD over JTAG, no on-target software needed. Ubuntu-host install: `apt install openocd gdb-multiarch`. Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -171,7 +171,7 @@ r1  ...
 ```
 
 Single-step a literal assembly program. Watch registers change. See exactly which instruction flips the GPIO bit.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 This is how you learn the bare-metal layer: step every instruction and match it to the reference manual.

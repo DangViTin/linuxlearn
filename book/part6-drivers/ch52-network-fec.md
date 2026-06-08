@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 52 — Network driver: FEC + KSZ8081
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DDR** - external DRAM that must be configured and trained before most software can run from it.
 
 > **What:** the i.MX6ULL's **FEC** (Fast Ethernet Controller) and the **KSZ8081** RMII PHY that nearly every Point Atom board uses. The kernel's network-device framework (`netdev`), the PHY library (`phylib`), MDIO bus operations, RMII vs MII timing — the full path from MAC to `eth0`.
@@ -118,7 +118,7 @@ register_netdev(ndev);
 `alloc_etherdev_mqs` allocates a `net_device` with Ethernet defaults plus private storage. `register_netdev` creates the `eth0` interface and starts ifupdown / network manager hooks.
 
 The driver receives packets in `napi_poll` (NAPI: New API. The polled receive model used since Linux 2.6) and transmits in `ndo_start_xmit`. NAPI batches RX interrupts. The driver gets one IRQ, then polls until the RX queue is empty, then re-arms the IRQ. This avoids one IRQ per packet at high rates.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ## 52.4  phylib — the PHY library
@@ -212,7 +212,7 @@ Where does `eth0`'s MAC address come from?
 4. **Random** (last resort. address with locally-administered bit).
 
 The mainline `fec_main.c` checks in this order: DT mac-address → OCOTP fuse → MAC register → random. For production: program the OCOTP at factory test (one-time, indelible). For development: pass via U-Boot's `bootargs` (`eth0=...`).
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ## 52.8  Bringing it up

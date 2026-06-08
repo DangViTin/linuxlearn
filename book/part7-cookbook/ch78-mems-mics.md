@@ -21,7 +21,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_I2C_TOOLS=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -175,7 +175,7 @@ Worth understanding even when you do not write the drivers yourself:
 2. **ASoC core** binds the SAI DAI (CPU side) to the `dmic-codec` DAI (codec side). At `hw_params` time, both DAIs negotiate format and sample rate.
 
 3. **PCM substream**: ALSA creates a substream backed by a DMA-coherent ring buffer in DDR. The SAI's SDMA channel writes into it cyclically (Ch 51.5).
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 4. **User-space**: opens `/dev/snd/pcmC0D0c`, configures format/rate via ioctl, reads samples. Reads block until enough data is available. ALSA copies from the ring buffer.
@@ -262,7 +262,7 @@ The captured file plays back in stereo on the host.
 - **Single mic, stereo requested.** ALSA gives you a stereo stream with the second channel duplicated (or zero, depending on plug setup). For real stereo, wire two physical mics.
 - **DC-offset / wind noise.** MEMS mics pick up low-frequency rumble. Apply a high-pass filter in user-space (`sox` has a `highpass 100` effect).
 - **Self-noise floor not what's specified.** A 61 dBA SNR INMP441 in a quiet room measures ~33 dB SPL noise floor — anything quieter is masked. To capture whispers, choose ICS-43434 (4 dB lower noise).
-MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+> **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
 **SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 - **dmic-codec compatible string.** Must be exactly `"dmic-codec"`. If the kernel was built without `CONFIG_SND_SOC_DMIC=y`, the placeholder driver is missing and the card fails to probe.
 

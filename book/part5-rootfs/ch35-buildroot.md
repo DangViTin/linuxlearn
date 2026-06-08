@@ -9,7 +9,7 @@ status: draft
 # Chapter 35 — Buildroot, after you can do it by hand
 
 > **What:** Buildroot — a make-driven build system that produces a complete root filesystem (optionally + bootloader + kernel + cross-toolchain) from one `make` command and one `.config` file. By the end you will have built a working rootfs that boots on the i.MX6ULL, then customised it with extra packages, and learned where to look when the build fails.
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 >
@@ -119,8 +119,8 @@ rootfs.ext4 → rootfs.ext2                rootfs.tar    SPL    u-boot-dtb.imx  
 ```
 
 The whole stack — SPL, U-Boot, kernel, DTB, rootfs in multiple formats — produced by one `make`. The defconfig enables `BR2_TARGET_UBOOT` and `BR2_LINUX_KERNEL`. Turn both off when you only need the rootfs.
-MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 

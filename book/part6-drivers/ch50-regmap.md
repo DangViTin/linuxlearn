@@ -13,7 +13,7 @@ status: draft
 > **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 >
 > **Why:** before regmap (~2011), every driver duplicated the same boilerplate: an I²C wrapper, an SPI wrapper, register-cache invalidation, byte-swap dances, mutex protection. The same 40 lines were copy-pasted across hundreds of drivers, with subtle bugs each time. Regmap factored it out. A modern driver — especially an audio codec or PMIC with hundreds of registers — uses regmap exclusively and is half as long as it would have been pre-regmap.
-> MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 > **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 >
 > **Focus:** **declare-then-use**. You provide a `regmap_config` describing your chip's registers (bit widths, ranges, which are volatile vs cached, which are read-only) and a one-call regmap_init for your bus. From there every register access goes through the same two functions. Get the config right and the rest is bookkeeping.
@@ -355,8 +355,8 @@ For interactive driver debugging during bring-up, this is the tool you reach for
 ---
 
 > **End of Phase 2 (Ch 44–50).** You now have the seven foundational subsystems: GPIO/pinctrl, input, I²C, SPI, PWM/RTC, IIO, regmap. With these, almost every peripheral driver in the kernel becomes legible. The remaining Part VI chapters (51–55I) layer on DMA, watchdog, power management, networking, sound, display, USB, kernel timers, and PREEMPT_RT — but the *shape* of every one of those drivers is now familiar.
-> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 > **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.

@@ -15,7 +15,7 @@ status: draft
 > **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
 > **Focus:** **channels, scale, and triggers**. A *channel* is one measurable thing (accel-x, temp, ADC-in-3). A *scale* converts raw value to engineering units. A *trigger* is what causes a coordinated sample to be taken (a timer, an IRQ, a sysfs poke). Get those three concepts right and the rest of IIO follows.
-> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 > **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 
@@ -305,6 +305,6 @@ static const struct iio_chan_spec mcp3008_channels[] = {
 - **`Documentation/iio/iio_configfs.rst`** — how to add a software-only IIO device (useful for trigger configuration).
 
 > Next chapter: **Chapter 50 — regmap.** Almost every chip with registers is now talked to via the regmap abstraction. Once you know regmap, writing the I²C / SPI / MMIO half of a driver becomes mechanical — you declare a register layout and the framework handles the rest.
-> MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 > **MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 > **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.

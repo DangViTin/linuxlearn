@@ -9,8 +9,8 @@ status: draft
 # Chapter 39 — Platform drivers + device tree
 
 > **What:** the `platform_driver` model — the canonical way Linux describes *on-SoC* peripherals (UART, I²C controllers, GPIO blocks, PWM, ADC, all the things memory-mapped into the SoC's address space). A platform driver registers with the kernel saying "I drive devices that match `compatible = "vendor,part"`". The kernel walks the device tree, finds matching nodes, and invokes the driver's `probe()` once per match.
-> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
@@ -41,7 +41,7 @@ gpio1: gpio@209c000 {
 ```
 
 This is a **platform device**: a hardware block on the SoC, described by a DT node, with no enumerable bus connecting it (compared to USB, PCI, or even I²C, where a discovery protocol enumerates children). The CPU just has memory-mapped registers at a fixed physical address and an IRQ line connected to the GIC.
-MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 
@@ -365,7 +365,7 @@ The kernel notes the deferred device and retries it after every other probe atte
 
 `remove()` is called when the driver is unloaded or the device is unbound.
 `shutdown()` is called during system shutdown/reboot — only on devices that need to be quiesced (DMA stopped, watchdog disabled, etc.). For most drivers `remove()` suffices. For drivers that own DMA engines or watchdogs, add a `.shutdown = my_shutdown`. It runs in atomic context — keep it short.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 ## 39.8  Lab

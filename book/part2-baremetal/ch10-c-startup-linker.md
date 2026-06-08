@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 10 — C + startup.S + linker script
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 
 > **What:** the same blinking LED as Chapter 9, but with `main()` written in C. To get there we need a proper startup that sets the stack, zeroes `.bss`, copies `.data` from its load address to its run address, then branches to `main`. We also write our first real linker script.
 >
@@ -43,7 +43,7 @@ Optionally, also: set up exception vectors, configure caches, enable the FPU. We
 
 > **Template warning:** This block contains placeholder values.
 > Replace compatible strings, GPIO numbers, addresses, and paths with values from your board before using it.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 
@@ -405,7 +405,7 @@ Rule: **every memory-mapped register access uses `volatile`. Every one.** Macroi
 - `arm-linux-gnueabihf-gcc -E -P -x c /dev/null -include <stdint.h>` — see what `stdint.h` actually defines on your target.
 - *Mastering ARM Embedded Programming* (Marwedel, 2018) — the chapter on startup code is excellent.
 - The U-Boot source's `arch/arm/lib/crt0.S` — read it after this chapter. The patterns are the same.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ## Sidebar — `REG(addr)` macro vs the NXP SDK header

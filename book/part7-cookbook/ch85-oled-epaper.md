@@ -63,7 +63,7 @@ Like the SPI LCDs (Ch 83), the SSD1306 distinguishes commands from data. Over **
 ```
 
 Over **SPI**, a D/C GPIO selects (like Ch 83).
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ### Key commands

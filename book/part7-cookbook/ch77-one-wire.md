@@ -9,7 +9,7 @@ status: draft
 # Chapter 77 — 1-Wire sensors
 
 > **What:** Maxim's **1-Wire** protocol — one digital pin (plus ground) carries bidirectional half-duplex data with timing-based bit framing. The well-supported case: **DS18B20** (digital thermometer, real 1-Wire, kernel `w1` subsystem). The lookalike: **DHT22** (single-wire T/H, *not* 1-Wire, hostile to Linux GPIO timing). For DS18B20: protocol, the `w1` master / slave architecture, mainline driver internals, and a from-scratch w1-slave driver. For DHT22: a clear-eyed look at why DHT22 is a poor fit for Linux plus what to do instead.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Why:** 1-Wire is the cheap, long-cable, parasitically-powered alternative to I²C. A 30-meter cable with 10 DS18B20s on it works. *Real* 1-Wire devices (with proper protocol implementations) are kernel-friendly. DHT22 uses the same physical wiring (one signal line plus ground, with parasitic power) but a different, incompatible bit-framing scheme — and that timing requires µs-accurate edge detection that Linux GPIO can't reliably deliver.
@@ -363,7 +363,7 @@ The honest options:
 4. **PRU coprocessor** on chips that have one (TI AM335x, Beaglebone Black). Not on i.MX6ULL.
 
 The mainline `dht11.c` driver (`drivers/iio/humidity/dht11.c`) takes approach (2) — uses high-resolution timers and IRQ-on-edge to measure pulse widths. It works on RPi-class hardware most of the time. reliability varies by load.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 **Verdict: if you see DHT22 on someone's product schematic, replace it with SHT3x.**

@@ -11,7 +11,7 @@ status: draft
 > **What:** a Linux development host that can cross-compile for ARMv7-A, serve files over TFTP and NFS, talk to the board over serial and USB-OTG, and recover a bricked board.
 > **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
 > **TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
-> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 >
 > **Why:** for the next sixty chapters, the host is your lever. A flaky host wastes more of your time than any bug in your code.
 >
@@ -65,7 +65,7 @@ Two rules about this layout. Both matter for the rest of the book:
 1. **Sources are read-only.** We never edit inside `src/u-boot/`. We patch and build out-of-tree into `build/u-boot/`. This is the only way to keep a clean diff against upstream and keep cross-chapter reproducibility honest.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 2. **`rootfs/` is the live NFS root.** Anything you copy into `rootfs/` is visible to the board after the next boot, with no flashing step. This is the central iteration trick of embedded Linux.
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 ## 3.3  Host packages
@@ -337,7 +337,7 @@ $ sudo udevadm trigger
 ```
 
 `15a2:0080` is the i.MX6ULL ROM SDP enumeration. `1fc9:0145` is the same after a board enters the second-stage download (different VID/PID once U-Boot SPL takes over).
-MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+> **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
 **SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 
 ## 3.9  SD card preparation

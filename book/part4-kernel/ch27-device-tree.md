@@ -273,7 +273,7 @@ interrupts = <GIC_SPI 26 IRQ_TYPE_LEVEL_HIGH>;
 ```
 
 The number of cells per IRQ entry is dictated by the **`#interrupt-cells`** property on the *interrupt parent* (the node listed in `interrupt-parent`, which defaults to the root node's `interrupt-parent`). For the GIC, `#interrupt-cells = <3>`, encoding *(IRQ type, IRQ number, trigger type)*. The constants `GIC_SPI` and `IRQ_TYPE_LEVEL_HIGH` come from `dt-bindings/interrupt-controller/`.
-MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 
@@ -418,7 +418,7 @@ Five nodes deserve special attention:
 Walking the end-to-end binding for UART1 on the EVK:
 
 1. **Boot.** U-Boot has loaded `imx6ull-14x14-evk.dtb` to `0x83000000` and called `bootz`.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 2. **`stext` reads `r2 = 0x83000000`** and stashes it.
 3. **`setup_arch()` → `setup_machine_fdt(0x83000000)`** parses the DT blob.
@@ -473,7 +473,7 @@ Or from a Linux user-space with ConfigFS (in newer kernels):
 After overlay application, the kernel re-walks the DT, finds the new `tmp102@48` node, looks for a driver with `compatible = "ti,tmp102"` (the upstream driver is `drivers/hwmon/tmp102.c`), probes it, and `/sys/class/hwmon/hwmon<N>/temp1_input` becomes readable.
 
 You did not recompile the kernel or touch the rootfs. You added a hardware description and the kernel handled the rest.
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 This is why DT exists.

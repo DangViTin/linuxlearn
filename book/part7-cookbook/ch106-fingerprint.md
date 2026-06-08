@@ -19,7 +19,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_PICOCOM=y BR2_PACKAGE_LINUX_PAM=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -47,7 +47,7 @@ status: draft
 ## 106.2  Wiring an R503 to the i.MX6ULL
 
 R503 has a 6-wire cable: VCC, GND, TX, RX, IRQ, 3V3_TOUCH_OUT.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ```
@@ -62,7 +62,7 @@ GPIO  ─┤ IRQ in ├───────────────────
 ```
 
 The IRQ pin (active high) goes high when a finger touches the sensor. Wire to a GPIO and you can wake the i.MX6ULL from sleep on touch — critical for battery-powered locks.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 106.3  The packet framing protocol

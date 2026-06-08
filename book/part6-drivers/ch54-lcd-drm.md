@@ -160,7 +160,7 @@ For user-space drawing: libdrm + GBM (Generic Buffer Management) + a 2D library 
 A typical RGB panel needs:
 - VLED rail (12 V or boosted).
 - PWM dimming via a transistor driver.
-MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 
 DT:
@@ -185,7 +185,7 @@ When a new panel doesn't display:
 2. **Verify HSYNC and VSYNC.** Polarity matches DT (`hsync-active = <0>` = active-low).
 3. **Verify data lines** with a scope. Pattern depends on what's in `/dev/fb0`. `cat /dev/zero > /dev/fb0` gives all-zero data.
 4. **Verify enable pin.** Some panels need a "panel-on" GPIO held high.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 5. **Verify backlight.** Even if the panel is showing correctly, with backlight off you see nothing.
 6. **Verify timings against the datasheet.** Off-by-one in front-porch is the most common error.

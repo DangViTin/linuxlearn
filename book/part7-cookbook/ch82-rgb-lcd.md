@@ -174,7 +174,7 @@ The driver is a **`drm_panel`** provider. It has:
 1. A giant database of known panels (vendor+part → hardcoded `display_mode` struct).
 2. A generic `panel-dpi` / `panel-lvds` path that reads timings from DT.
 3. Power-sequencing logic: enable regulator, wait, assert enable-gpio, wait, turn on backlight.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ```c
@@ -406,7 +406,7 @@ A panel needs:
 1. Logic power (3.3 V) — `power-supply`.
 2. An enable/standby GPIO — `enable-gpios`.
 3. Backlight (LED, PWM-dimmed) — `backlight` phandle to a `pwm-backlight` node (Ch 48).
-MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 
 The power sequence matters: most panels want logic power *before* enabling, and the backlight *last* (so you don't show garbage during init). The `prepare`/`enable` split in `drm_panel_funcs` enforces this — `prepare` powers logic, `enable` turns on backlight.

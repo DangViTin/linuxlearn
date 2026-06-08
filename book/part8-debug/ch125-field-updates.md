@@ -24,7 +24,7 @@ status: draft
 >
 > **Focus:** A/B is the standard pattern:
 > - two rootfs partitions;
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > - the running kernel mounts one;
 > - an update writes to the other;

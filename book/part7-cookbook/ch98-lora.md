@@ -227,7 +227,7 @@ static int sx127x_probe(struct spi_device *spi) {
 ```
 
 The threaded IRQ on DIO0 fires on `TxDone`/`RxDone`, the handler reads `IrqFlags`, pulls the FIFO, hands the skb up. It looks like every Linux netdev driver, just with chirp modulation under the hood.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 But the **MAC** — addressing, ADR, retransmission, LoRaWAN OTAA join — is *not* in the driver. That's the daemon's job in user space.
@@ -426,7 +426,7 @@ What this driver shows that the framework hides:
 - **IRQ flags are level-and-cleared.** Until you write back to `REG_IRQ_FLAGS`, the next operation sees a stale flag and you think the prior TX is still in progress.
 - **RSSI math is asymmetric.** HF (above 525 MHz) and LF (below) subtract different offsets. Forget the offset, your "RSSI" is meaningless.
 - **The whole driver is 200 lines.** With a real GPIO IRQ on DIO0 (`libgpiod`'s `gpiod_line_event_wait`) it becomes interrupt-driven. With a small framing layer (length + CRC + sequence) it becomes a usable PHY for point-to-point telemetry.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 When you read the mainline-candidate `sx127x` driver later, you'll recognize *exactly* this sequence inside `sx127x_tx_pkt()` and `sx127x_rx_handler()`, wrapped in a netdev shell. The framework adds netdev plumbing, threaded IRQs, and skb-based queueing — but the radio dance is the same twelve register writes.
@@ -586,7 +586,7 @@ A private LoRaWAN network on one i.MX6ULL is realistic. The kernel is involved a
 - **SF12 timing.** A SF12/BW125 packet of 51 bytes takes ~2.3 seconds. Your `while(... & TX_DONE)` poll loop must allow for it. many sample drivers time out at 1 s. Use 5+ seconds or compute from the air-time formula.
 - **Duty cycle violations.** EU 868 g1 sub-band is **1 %**. At SF12, that's two packets per minute, period. Build a duty-cycle tracker in firmware or you'll be illegally transmitting and the regulator can fine you.
 - **TCXO not started.** SX1262 with TCXO: you must call `SetDIO3AsTCXOCtrl(voltage, delay)` before any frequency operation. Skip it and the radio's PLL drifts → packets demodulate with high error or not at all on SF11/SF12.
-MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+> **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
 **PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 - **`Sleep` does not erase state on SX127x — but on SX1262 Cold Start it does.** SX127x in Sleep mode preserves register state and consumes ~200 nA. SX1262 in Cold Start (`SetSleep(0x00)`) loses configuration — you must reconfigure on wake. Check the datasheet.
 - **Single-chip "RF switch destroyed" failure.** A common module fault: the chip transmits OK at first but receive sensitivity is –80 dBm instead of –123 dBm — the internal/external RF switch was killed during a TX-into-open. Detect by measuring RSSI of a known close transmitter. If it's >40 dB worse than spec, the switch is gone.

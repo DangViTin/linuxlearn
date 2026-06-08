@@ -10,8 +10,8 @@ status: draft
 
 > **What:** **continuous integration** for embedded Linux. The pieces:
 > - Build U-Boot, kernel, and rootfs on every commit.
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 > - Run smoke tests on **real hardware** in a board farm via a self-hosted CI runner with USB-OTG flashing.
@@ -349,7 +349,7 @@ When the board farm is offline or builds fail repeatedly:
 4. **Hardware test job.** Add `hardware-smoke` job. verify it runs on the self-hosted runner.
 5. **smoke_test.py.** Write a Python script that drives the serial console and runs 3 checks. Run locally first. then in CI.
 6. **Power-cycle GPIO.** Wire a USB-controlled power switch (e.g., `usbrelay`) so the runner can hard-reboot the board between tests.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 7. **uuu flashing.** Set up the runner to use `uuu` to flash a fresh image on every test. Verify it works clean.
 8. **ccache.** Wire ccache into the build. observe 5× speedup on the second run.

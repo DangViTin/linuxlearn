@@ -28,7 +28,7 @@ status: draft
 | Protocol overhead | Address + ACK per byte | None — just clock bits |
 
 For an SPI bus, you pick one **chip-select** per device. The controller asserts CS, clocks bytes, deasserts CS. Each CS has its own configuration: clock speed, polarity (CPOL), phase (CPHA), word size (usually 8 bits, sometimes 16/32 for DMA-friendly).
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 The i.MX6ULL has 4 **eCSPI** controllers (eCSPI1–4), each with up to 4 chip-select lines (so up to 16 SPI devices on the SoC in theory).
@@ -64,7 +64,7 @@ Differences from I²C:
 - **`spi-max-frequency`** is per-device. The controller uses the lower of (its max, this).
 - **`spi-cpol` / `spi-cpha`** set the SPI mode (omit both = mode 0. both = mode 3).
 - **`cs-gpios`** — optionally specify GPIO-based CS lines instead of the controller's native CS pins. Common when the controller's native CS doesn't quite behave the way you want (e.g., toggling between messages).
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 47.3  An SPI driver skeleton
@@ -316,5 +316,5 @@ Wrap with IIO (Ch 49) and you have an 8-channel ADC exposed via `/sys/bus/iio/de
 - **`Documentation/spi/spidev.rst`** — when/how to use spidev (and the controversial `dh2228fv` workaround explained).
 
 > Next chapter: **Chapter 48 — PWM and RTC.** Two short but practical subsystems for ubiquitous embedded needs: dimming backlights, generating tones, and keeping time across power cycles.
-> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 > **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.

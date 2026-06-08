@@ -237,7 +237,7 @@ You run `dd if=/dev/mmcblk1p1 bs=4096 count=1 of=/tmp/x`. Here's what happens:
    - Calculates the **MMC block address** (LBA / 512, since MMC blocks are 512 B even when the FS uses larger).
    - Decides between **single-block (CMD17)** for 1 block or **multi-block (CMD18 / CMD23+CMD18)** for 2+ blocks. For 4 KB = 8 blocks: multi-block with CMD23 prefix.
    - Builds a **`struct mmc_request`** containing the command, data-direction, sg-list for the DMA destination, and a completion callback.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 4. **`mmc_wait_for_req(host, mrq)`** in the core: sends to host_ops->request, waits on the completion.
 5. **`sdhci_request`** in the host driver:
@@ -248,7 +248,7 @@ MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, b
 6. **Hardware** drives CMD18 onto the CMD line. eMMC responds with R1. eMMC begins streaming 8 × 512 bytes on the 8-bit DAT bus at 200 MHz (HS200) into DDR via DMA.
 **DDR** - external DRAM that must be configured and trained before most software can run from it.
 7. **IRQ "command complete"** fires after the CMD line transaction. host reads R1 response register, captures status.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 8. **IRQ "transfer complete"** fires after the data phase finishes. Host driver calls `mmc_request_done(host, mrq)`.
 9. **MMC core** wakes the waiter. `mmc_blk_request_fn` checks for errors, retries if needed, calls `blk_mq_end_request(req, status)`.
@@ -335,7 +335,7 @@ eMMCs typically have:
 ```
 
 `mmcblk1boot0` is the active boot partition — i.MX6ULL boots from it (with the right fuse setting) instead of looking at the main partition's MBR. Use it for U-Boot:
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```

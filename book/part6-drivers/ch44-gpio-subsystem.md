@@ -118,7 +118,7 @@ my_device {
 Each entry is three cells:
 
 1. **The bank phandle** (`&gpio5`) — names which GPIO controller bank the pin lives on. i.MX6ULL has 5 banks (`gpio1`–`gpio5`). Most are 32-pin. **`gpio5` exposes only 12 pins (0–11)** because of package pin-count, and `gpio4` is partial on some packages too. Check the IOMUX table before assuming a pin number is wired out.
-MCU bridge: Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
+> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
 **IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
 2. **The pin number** within the bank (0–31).
 3. **Flags** — usually `GPIO_ACTIVE_HIGH` or `GPIO_ACTIVE_LOW`. The polarity is **part of the abstraction**. Code below operates on logical "asserted" / "deasserted". physical level is hidden.
@@ -161,7 +161,7 @@ gpiod_set_value_cansleep(reset, 0);
 ```
 
 Two variants per operation. The plain version is safe to call from atomic context (IRQ handler, spinlock held). The `_cansleep` version is required when the underlying GPIO chip is on an I²C or SPI bus (where the bus transaction itself may sleep). **Use `_cansleep` in process context** — it works for both bus-backed and direct GPIOs.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 Direction change at runtime:

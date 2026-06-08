@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 28 — Kernel startup, traced
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
 
 > **What:** trace the kernel from the first instruction at `stext` to the moment it `exec`s `/sbin/init` — with the source files and line numbers at every step. By the end you should be able to point at any line of the boot log from Chapter 26 and say which function in which source file printed it.
@@ -60,7 +60,7 @@ ENTRY(stext)
 ```
 
 `stext` is defined in `arch/arm/kernel/head.S`. Before the kernel takes control, U-Boot has prepared:
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```
@@ -111,7 +111,7 @@ Four points to keep in mind:
 ## 28.3  Phase 2 begins — `__mmap_switched` (arch/arm/kernel/head-common.S)
 
 The first C-callable function after the MMU comes up. It does the C runtime setup:
-MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+> **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
 **MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 
 ```asm
@@ -251,7 +251,7 @@ Initializes the scheduler's data structures and creates the boot CPU's runqueue.
 ### `init_IRQ()` — calls into `arch/arm/kernel/irq.c` → `irqchip_init()`
 
 Walks the DT looking for nodes with `compatible = "arm,cortex-a7-gic"` (or whichever interrupt controller the SoC uses), and probes the GIC driver. After this, IRQs from devices can be registered with `request_irq()`.
-MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
 **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 
 ### `time_init()` — `drivers/clocksource/`

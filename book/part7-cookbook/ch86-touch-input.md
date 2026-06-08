@@ -9,8 +9,8 @@ status: draft
 # Chapter 86 — Touch input ICs
 
 > **What:** three touch technologies at increasing complexity. **TTP223** (single capacitive button, GPIO output — `gpio-keys`), **MPR121** (12-channel capacitive, I²C, with IRQ), **XPT2046/ADS7846** (4-wire resistive touchscreen controller, SPI, ADC-based, needs calibration). For each: physics, protocol, the input subsystem integration, and a from-scratch XPT2046 input driver — the most interesting, since resistive touch requires reading X/Y ADC channels and software calibration.
-> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
@@ -23,7 +23,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_EVTEST=y BR2_PACKAGE_LIBINPUT=y BR2_PACKAGE_TSLIB=y BR2_PACKAGE_I2C_TOOLS=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 

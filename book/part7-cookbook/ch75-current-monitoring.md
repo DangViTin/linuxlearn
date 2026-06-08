@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 75 — Current & power monitoring
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 
 > **What:** three I²C high-side current/voltage monitors from Texas Instruments: **INA219** (12-bit, the classic), **INA226** (16-bit, modern, programmable averaging), **INA3221** (3-channel, simultaneous-sample 3-rail monitor). For each: physics, register map, the *calibration register* that is the most common bug, and a from-scratch INA219 driver. Plus the **hwmon** subsystem — the sibling of IIO that current monitors usually live in.
 > **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
@@ -567,7 +567,7 @@ Result: `/sys/class/hwmon/hwmon0/in*_label`, `in*_input`, `curr*_input` × 3 cha
 
 - **Calibration register left at zero.** Current and Power read zero forever. The #1 INA gotcha. You'll lose an hour to it.
 - **Shunt placement on low-side.** INA219 is *high-side* (V+ and V− both near VBUS). Low-side measurement is also possible (V+ at shunt-load side, V− at GND) but limits range to bus voltages near GND. For motor PWM where you want to keep GND clean, high-side is mandatory.
-MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 - **Shunt too small.** 1 mΩ shunt + 100 mA load = 100 µV shunt voltage = 10 LSB on INA219 = 5–10 LSB of noise. Get a bigger shunt or use INA226.
 - **Shunt too big.** 1 Ω shunt + 1 A load = 1 W dissipated in the resistor. Resistor heats, drift, power waste.

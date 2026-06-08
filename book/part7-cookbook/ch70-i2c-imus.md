@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 70 — I²C IMUs
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 
 > **What:** three I²C inertial measurement units, dissected: **InvenSense MPU6050** (6-axis, the classic), **MPU9250** (9-axis with an AK8963 magnetometer hiding inside via I²C-master mode), **ICM-20948** (modern 9-axis, replaced MPU9250). For each: register map, the sampling-rate trade-offs, the IIO **trigger + buffer** mechanism for high-rate capture, and a from-scratch MPU6050 driver including IIO buffer support.
 > **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
@@ -17,7 +17,7 @@ MCU bridge: Think of regmap like a typed wrapper around your read_reg() and writ
 > **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
 > **Focus:** **Trigger + buffer is how IIO scales to thousands of samples per second.** A `trigger` (timer or IRQ) tells the driver "now". The driver atomically samples *all enabled channels*. pushes the coordinated sample into a kfifo. user-space drains the kfifo from `/dev/iio:deviceN`. The whole pipeline is asynchronous and survives microsecond jitter.
-> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 > **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 
@@ -104,7 +104,7 @@ Bring-up sequence:
 3. Wait ~100 ms.
 4. Write 0x00 to PWR_MGMT_1: wake from sleep, internal 8 MHz clock.
 5. Write 0x01 to PWR_MGMT_1: wake, PLL with X-gyro reference (lower noise).
-MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+> **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
 **PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 6. Configure DLPF, sample rate, ranges as needed.
 7. Read at the configured cadence — or set up an IRQ on data-ready (bit 0 of INT_STATUS).
@@ -181,7 +181,7 @@ A *trigger* is its own IIO object. Two common kinds:
 
 - **hrtimer**: kernel high-resolution timer firing at a programmable rate. Drift-free, suitable for steady sampling. Backed by `drivers/iio/trigger/iio-trig-hrtimer.c`.
 - **interrupt**: an IRQ on a GPIO connected to the chip's INT pin (the chip asserts when it has data ready). Synchronized exactly to the chip's sample clock.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 Drivers may also publish their *own* trigger ("data-ready trigger") that consumer code can bind. The MPU6050 driver does this — its INT pin's IRQ becomes an IIO trigger named `mpu6050-dev0`, and you can bind it to its own buffer or to *another* device's buffer (sync sampling across chips).

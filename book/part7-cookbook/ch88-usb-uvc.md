@@ -19,7 +19,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_V4L_UTILS=y BR2_PACKAGE_GSTREAMER1=y BR2_PACKAGE_FFMPEG=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -81,7 +81,7 @@ MJPEG-compressed (typically ~10:1):
 **Conclusion**: for anything above VGA on USB-2.0, use **MJPEG** (or H.264). Uncompressed YUYV is limited to VGA30 or 720p15. The i.MX6ULL has only USB-2.0 (no USB-3.0), so this ceiling is hard.
 
 The CPU cost: receiving MJPEG is cheap (just DMA). *Decoding* MJPEG to raw (for processing or display) costs CPU — i.MX6ULL software JPEG decode does ~30 fps VGA, ~10 fps 720p. If you only need to *store* or *forward* the MJPEG (e.g., to a network client that decodes), no decode needed — full frame rate.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 ## 88.4  Bring-up — there isn't much

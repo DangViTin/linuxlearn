@@ -21,7 +21,7 @@ Use misc when:
 
 - You need a chardev for a single device (or a small fixed number of them).
 - The device doesn't fit any existing subsystem (LED, RTC, GPIO, input, sound, etc.). If it does fit, register with that subsystem instead — you get richer integration (sysfs attributes, common ioctls, user-space tooling).
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 - You don't need to publish custom class-level attributes (those go on `/sys/class/<your-class>/`).

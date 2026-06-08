@@ -19,7 +19,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_V4L_UTILS=y BR2_PACKAGE_GSTREAMER1=y BR2_PACKAGE_GST1_PLUGINS_BASE=y BR2_PACKAGE_I2C_TOOLS=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -39,7 +39,7 @@ status: draft
 | Mainline driver | `ov5640.c` | `ov772x.c` | `gc2145.c` (recent) |
 
 **i.MX6ULL CSI bandwidth**: the parallel CSI captures 8-bit data at the sensor's pixel clock (typically up to ~96 MHz). For 5 MP at full res, the data rate exceeds what the i.MX6ULL can comfortably DMA to DRAM — practical use is QVGA/VGA streaming or occasional full-res stills.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 **Pick guide:**
@@ -68,7 +68,7 @@ Two roles:
 - **I²C**: the host configures the sensor — resolution, output format, exposure, gain, test patterns. Hundreds of register writes.
 - **Parallel bus**: the sensor *continuously* streams pixels (like the RGB LCD of Ch 82, but inbound). The sensor is the *master* of the pixel clock (it generates PCLK). The CSI captures on each PCLK edge when HREF+VSYNC indicate valid data.
 - **MCLK**: the SoC provides the sensor's master clock (typically 24 MHz). The sensor's internal PLL multiplies it up to the pixel clock.
-MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+> **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
 **PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 
 The sensor needs its MCLK running *before* I²C communication works (the sensor's logic is clocked by MCLK). This is a common bring-up gotcha.
@@ -539,7 +539,7 @@ i.MX6ULL has no GPU/VPU, so JPEG/H.264 encoding is software — slow. Practical:
 
 - **MCLK not running before I²C.** The sensor's logic is clocked by MCLK. no MCLK = no I²C ACK. Enable the xclk in power-on *before* the chip-id read.
 - **Reset/powerdown GPIO polarity.** Wrong polarity holds the sensor in reset. I²C-detect fails.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - **Pad format mismatch through the pipeline.** Sensor emits YUYV but CSI configured for RGB → no frames or garbage. Use `media-ctl` to verify each pad's format matches.
 - **Parallel bus timing (hsync/vsync/pclk polarity).** Wrong polarity in the endpoint properties → torn/shifted/blank frames. Match the sensor datasheet.

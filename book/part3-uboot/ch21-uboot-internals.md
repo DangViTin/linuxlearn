@@ -10,7 +10,7 @@ status: draft
 **PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
 **MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
 **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
-MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 
 > **What:** a complete narrative tour of full U-Boot — from `_start` to the `=>` prompt to a typed command running — with the source paths cited at every step. Plus the three subsystems that you will touch most often as a custom-board engineer: the **environment**, the **command system**, and the **driver model (DM)**.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
@@ -23,11 +23,11 @@ MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replac
 ## 21.1  The full-U-Boot boot flow, end to end
 
 Full U-Boot's job, once SPL hands it control:
-MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+> **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
 **SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 
 1. `_start` (in `arch/arm/cpu/armv7/start.S`) — assembly entry, mode/IRQ setup, calls `_main`.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 2. `_main` (in `arch/arm/lib/crt0.S`) — sets a temporary stack in DRAM, calls `board_init_f`.
 3. `board_init_f` (in `common/board_f.c`) — runs a sequence of "init functions" that detect RAM, set up the global data structure (`gd_t`), allocate space for the relocated copy of U-Boot.

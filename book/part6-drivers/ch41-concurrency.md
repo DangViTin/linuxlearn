@@ -34,7 +34,7 @@ Three questions. Answer them and you've picked your primitive.
 ### Question 1: What contexts can access the data?
 
 - **Process only** (no IRQ handler, no softirq) → mutex or semaphore.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 - **Process + IRQ** → spinlock (and the IRQ variant — `spin_lock_irqsave`).
 - **Process + softirq/tasklet** → spinlock with `_bh` variant.
@@ -55,8 +55,8 @@ That's it. Three questions, one primitive. Let's see them in action.
 ### Context cheat sheet — what may sleep, what may not
 
 This is *the* table to memorize. Every later driver chapter (i2c, SPI, IIO, regmap, DMA, USB, etc.) assumes you know it. We will not repeat it.
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.

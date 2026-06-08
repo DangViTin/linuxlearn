@@ -10,14 +10,14 @@ status: draft
 **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
 
 > **What:** a board-port exercise that uses most of what came before. Take a custom PCB (or a rework of the Point Atom MINI into a non-trivial variant) and port the entire stack to it: **U-Boot defconfig + DTS**, **kernel DTS + drivers**, **at least one new peripheral** the original board didn't have, and a **reproducible build script** that goes from clean checkout → bootable SD in one command. The deliverable is a working, customized Linux system on hardware you (or a colleague) designed.
-> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Why:** Each Cookbook chapter covered one piece. A real board port is where those pieces have to work together. You'll touch: pin-muxing (Ch 5), DDR initialization (Ch 14), U-Boot porting (Ch 22), kernel DT (Ch 27), each peripheral chapter that applies (whatever your board has). At the end you have a binary build script + a custom DT that any teammate can run and reproduce. That deliverable, plus the debugging experience that comes with it, is what gets you to the next level of confidence on this stack.
 > **DDR** - external DRAM that must be configured and trained before most software can run from it.
 >
 > **Focus:** **the bring-up sequence is U-Boot first (you need a boot loader), then kernel + DT for *each* peripheral one at a time, with verification at every step**. Don't try to boot everything at once. Bring up serial, then DDR, then SD, then Ethernet, then your custom peripheral. Probe the serial console after each step. Use Ch 118's JTAG when serial is too coarse. Keep a known-good fall-back image you can flash to recover from bricks. At the end, ask what surprised you and why. That's what makes the next port faster.
-> MCU bridge: Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
+> **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 > **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 
 ## 121.1  Scope — what to port
@@ -63,7 +63,7 @@ Real wiring, partial-board changes. tests your DT skills.
 Design your own i.MX6ULL board (KiCad / Altium):
 - Different RAM (DDR3 256 MB vs the MINI's 512 MB? Different timing).
 - Different PMIC.
-MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 - Different boot media (eMMC, QSPI flash instead of SD).
 - Different I/O complement (your specific application — sensors, motors, displays).
@@ -148,7 +148,7 @@ cp arch/arm/dts/imx6ull-14x14-evk.dts arch/arm/dts/imx6ull-myboard.dts
 ### 121.4.4  DDR config (if you changed RAM chip)
 
 Run NXP's **DDR Stress Tool** with your DDR chip's datasheet values. export the calibration. Update `board/myvendor/myboard/mx6ullevk.c` (the C-language DDR init in U-Boot SPL) with the new register values:
-MCU bridge: Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+> **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
 **SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 
 ```c

@@ -111,7 +111,7 @@ This is the AT24 driver's most important loop. Get it wrong = silent data corrup
 Source: `drivers/misc/eeprom/at24.c` (~1000 lines).
 
 The driver is structured around a **regmap** abstraction (Ch 50) over either `regmap_init_i2c` or `regmap_init_smbus` (for the 1-byte-address case). The regmap config encodes the address width and page size. Then the driver implements two callbacks for `nvmem` (Ch 65.7 below) and that's most of it.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 
 ### Probe walk
@@ -504,7 +504,7 @@ What we *skipped* compared to `at24`:
 - Multi-address chips (AT24C512 spans 4 I²C addresses).
 - 2-byte addressing (we hardcoded 1-byte AT24C02).
 - Write-protect GPIO.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - Sysfs binary attribute (we exposed via /dev only).
 **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.

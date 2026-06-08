@@ -256,7 +256,7 @@ Each `configure` line is a tour of GNU autoconf flags. The `--with-sysroot=$SYSR
 **Pick guide:**
 - **glibc** — default for any system that has > 64 MB RAM and runs a real distribution.
 - **musl** — when you statically link (Alpine-style images, single-binary apps) or want < 50 MB rootfs.
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 - **uClibc-ng** — legacy embedded. mostly being replaced by musl.
 - **newlib** — bare-metal Cortex-M. not for Linux.

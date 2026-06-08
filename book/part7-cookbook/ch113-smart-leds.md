@@ -9,8 +9,8 @@ status: draft
 # Chapter 113 — WS2812 / SK6812 / APA102 addressable LEDs
 
 > **What:** the **addressable RGB LED strip** — daisy-chained programmable pixels where each pixel is RGB (WS2812) or RGBW (SK6812) or has independent global brightness (APA102). We cover the timing-critical 800 kHz one-wire protocol of WS2812 + SK6812, why bit-banging from Linux fails without PREEMPT_RT, the three production-quality implementations on the i.MX6ULL — (1) **SPI + DMA encoding** (the workhorse), (2) **PWM + DMA** (alternative for boards with spare PWM), (3) **bit-bang under PREEMPT_RT** (only viable for short strips). Then APA102's clean SPI native protocol that sidesteps all the timing pain.
-> MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
-> MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 > **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 > **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 > **PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
@@ -25,7 +25,7 @@ status: draft
 > - **Buildroot:** `BR2_PACKAGE_LIBGPIOD=y BR2_PACKAGE_PYTHON3_SPIDEV=y`
 > **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
-> MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
@@ -135,7 +135,7 @@ Linux PWM doesn't expose dynamic per-cycle duty changes via sysfs. This needs a 
 ## 113.5  PREEMPT_RT bit-bang — for short strips only
 
 With PREEMPT_RT (Ch 52A), a high-priority RT thread can busy-loop on `clock_gettime(CLOCK_MONOTONIC)` and toggle a GPIO with ~150 ns jitter. Just barely within WS2812 spec.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ```c

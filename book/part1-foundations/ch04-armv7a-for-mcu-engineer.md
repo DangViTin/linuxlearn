@@ -8,12 +8,12 @@ status: draft
 
 # Chapter 4 — ARMv7-A and the Cortex-A7, for the MCU engineer
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 
 > **What:** a structural understanding of the CPU core inside the i.MX6ULL, expressed as differences from Cortex-M parts you already know.
 >
 > **Why:** Linux exists *because* the A-profile cores have features the M-profile cores lack. If MMU, privilege levels, and the generic timer are vague, the kernel's boot sequence will be vague too.
-> MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+> **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
 > **MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 >
 > **Focus:** the three concepts that justify the entire kernel: privilege levels, the MMU, and banked registers / exception modes. Get these and most kernel design choices follow.
@@ -223,7 +223,7 @@ Two things about A-profile caches that bite Cortex-M-trained engineers:
 
 1. **Caches are off at reset.** Same as Cortex-M. The difference is that on A-profile you cannot get useful performance without them. Enabling caches is one of the first things any A-profile bootloader does after MMU setup.
 2. **L1 caches are PIPT on Cortex-A7** (Physically Indexed, Physically Tagged — per the Cortex-A7 MPCore TRM, ARM DDI 0464). PIPT means no virtual-address aliasing for normal cache lines, so the painful VIPT-aliasing class of bugs that the earlier ARM cores (and Cortex-A9) had does not apply here. You still care about cache maintenance for DMA-coherent code (Chapter 51), but for ordinary access there is no aliasing to worry about. *(Some surface-level docs say Cortex-A7 L1-D is VIPT. The TRM is authoritative.)*
-MCU bridge: Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
+> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 **DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
 
 Cache maintenance is done via **CP15** coprocessor instructions:
@@ -254,7 +254,7 @@ The generic timer is the kernel's preferred tick source on ARMv7-A. Linux's `arc
 ## 4.8  The Generic Interrupt Controller (GIC)
 
 The Cortex-M NVIC was inside the core. The A-profile equivalent, the **GIC**, is outside the core. The i.MX6ULL integrates a **GIC-400** (an implementation of GIC v2).
-MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
 **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 
 GICv2 has two parts:

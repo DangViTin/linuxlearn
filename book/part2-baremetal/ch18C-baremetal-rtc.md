@@ -242,5 +242,5 @@ The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, 
 End of Part II's inserted chapters. Part II proper ends with Chapter 18. Chapters 18A–C are supplementary deep-dives. read them in any order, or skip them entirely.
 
 > Next chapter: **Chapter 19 — U-Boot from source, first boot.** With the bare-metal foundation in place, we move from writing it ourselves to reading a real bootloader that does the same things.
-> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.

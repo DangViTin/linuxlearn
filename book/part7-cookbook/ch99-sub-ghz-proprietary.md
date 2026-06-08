@@ -73,7 +73,7 @@ status: draft
 ```
 
 The two GPIO-style control pins:
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - **CSN** (Chip Select Not) — SPI CS, frames each command.
 - **CE** (Chip Enable) — controls active TX/RX. CE=0 means "go to Standby-I and hold there". CE=1 means "start TX (if PRIM_RX=0) or stay in RX (if PRIM_RX=1)."
@@ -131,7 +131,7 @@ ShockBurst is the auto-retransmit + auto-ACK layer built into the chip. Setup:
 2. PTX pulses CE. chip transmits.
 3. Chip *automatically* flips to RX, listens for an ACK (an empty frame on the same address).
 4. If ACK received within ARD (`SETUP_RETR`), `TX_DS` IRQ — success.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 5. If not, retry up to ARC times. If still no ACK, `MAX_RT` IRQ — failure.
 

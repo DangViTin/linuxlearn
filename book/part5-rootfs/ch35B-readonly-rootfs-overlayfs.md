@@ -121,7 +121,7 @@ Common culprits to fix:
 - `/var/log/*` — ensure your tmpfs has enough space (`size=8M` in our fstab) and you have log rotation. otherwise the tmpfs fills up.
 
 Adjust bootargs (in U-Boot env):
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```

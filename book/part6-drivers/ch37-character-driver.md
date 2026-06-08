@@ -11,7 +11,7 @@ status: draft
 > **What:** a character device driver — the kind that backs `/dev/ttyS0`, `/dev/i2c-1`, `/dev/hidraw0`, and most other "stream of bytes you read and write" device files in `/dev/`. We'll build one from scratch: allocate a device number, register a `cdev`, hook up `open`/`read`/`write`/`release`, and copy data safely between user-space and kernel.
 >
 > **Why:** character drivers are how the vast majority of embedded peripheral drivers expose themselves to user-space. UARTs, GPIO chips, I²C/SPI controllers, sensors, fingerprint readers, sound cards' control interfaces — almost all are character devices under the hood. The pattern is identical every time. what changes is the body of `open` / `read` / `write`. Master the pattern in this chapter. everything in Part VI is variations on it.
-> MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Focus:** **the user/kernel boundary**. The single most common bug class in driver code is dereferencing a user-space pointer directly. `copy_to_user` and `copy_from_user` are not just safer — they are *correct*. a direct dereference will fault, silently corrupt, or be a security hole. By the end of this chapter the `__user` annotation should feel like a load-bearing part of every function signature.
@@ -298,7 +298,7 @@ static ssize_t hello_read(..., char __user *ubuf, ...)
 ```
 
 The `__user` annotation on `ubuf` is a marker for `sparse` (a static analyzer) saying "this pointer is in user-space's address space. do not dereference it directly." On i.MX6ULL there is no MMU domain protection, so a direct dereference might *appear* to work. But it only works when the user buffer is paged in and reachable from kernel mode — not always the case. On systems with **PAN** (Privileged Access Never, an ARMv8 feature. not on i.MX6ULL but on many newer SoCs) a direct dereference faults immediately.
-MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+> **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
 **MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 
 `copy_to_user` (and its sibling `copy_from_user`) do three things:
@@ -419,7 +419,7 @@ For now, `mknod` is fine. Just know it's a stopgap.
 - **Calling user-space functions inside the kernel.** Kernel code does not have access to glibc. No `printf`, no `malloc`, no `memcpy_s`. Use `printk`/`pr_*`, `kmalloc`/`kfree`, `memcpy` (which exists in the kernel, slightly different optimisation profile).
 - **Stack overflow.** Kernel stacks are **8 KB on ARM32 i.MX6ULL** (16 KB on x86_64 / arm64). Don't put large arrays on the stack. If you need a 4 KB scratch buffer, use `kmalloc(4096, GFP_KERNEL)` and free it at the end of the function.
 - **Allocating with the wrong flag.** `kmalloc(..., GFP_KERNEL)` may sleep — fine in syscall context, not fine in interrupt context. In an IRQ handler, use `GFP_ATOMIC`. We'll cover this in Ch 43.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 - **Returning the wrong type.** `read` and `write` return `ssize_t`. Don't return `int` (compile warning), don't return `size_t` (may hide negative values), and don't return success when you mean count.
 - **Holding a mutex across `copy_to_user`.** `copy_to_user` can sleep (it may need to page in user memory). Sleeping while holding a mutex is fine in principle, but if you hold the mutex too long, every other reader/writer is blocked. For most chardevs this is acceptable.

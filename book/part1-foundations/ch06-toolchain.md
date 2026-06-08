@@ -241,7 +241,7 @@ When we write bare-metal code, *none of this is available*. There is no `malloc`
 ## 6.7  Make, in working depth
 
 `make` is older than most engineers reading this, but for the bare-metal projects in Part II — and for every kernel / U-Boot / Buildroot build later — it is the tool you will use. This section is longer than it looks. Every later chapter references it, but once you have it down, you do not need to revisit it.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
 
@@ -417,7 +417,7 @@ Two ways to combine your code with libraries:
 - **Dynamic.** Library code lives in `.so` files on disk. your binary references them by name. The dynamic loader (`/lib/ld-linux-armhf.so.3`) resolves them at process start.
 
 Default on a Linux distro: dynamic. Default on a tight embedded system with a known rootfs: often static (saves space if you only have a few binaries. saves disk IO at startup).
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 To force static:

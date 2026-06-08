@@ -75,7 +75,7 @@ Token by token:
 - **`console=ttymxc0,115200`** — once the i.MX UART driver loads, route `printk` to UART1 at 115200 baud. *If this token is wrong, you see no kernel output.* The driver name `ttymxc0` is the i.MX-specific convention. other SoCs use `ttyS0`, `ttyAMA0`, etc.
 - **`earlycon`** — very early UART printk *before* the full driver loads. Reads the DT's `chosen.stdout-path` to find which UART. Without `earlycon`, the first ~10 boot lines stay in a buffer. You see them only when the regular console driver loads.
 - **`root=/dev/mmcblk0p2`** — what device holds the rootfs. We will return to this in Part V. For the first boot we may not have a usable rootfs yet, in which case the kernel panics. That's fine for *this* chapter — we're verifying kernel boot, not full system boot.
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 - **`rw`** — mount the root read-write.
 - **`rootwait`** — don't panic if `root=` isn't immediately ready. wait. Always safe to include.
@@ -186,7 +186,7 @@ If you see *nothing at all* after `Starting kernel ...`:
 If you see *some output then silence*:
 
 - **Driver hang.** Look at the *last* line printed. The next subsystem to probe is likely hanging. A common cause is the PMIC on I²C. If I²C is broken, the regulators stay off. Devices fail to enumerate, and the kernel hangs.
-MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 - **VFS panic** ("Cannot open root device 'mmcblkXpY'"): rootfs not found. The panic message is clear. Fix the `root=` argument.
 - **`Kernel panic - not syncing: VFS: Unable to mount root fs`**: same as above. The kernel says exactly what's wrong.
@@ -237,5 +237,5 @@ With earlycon active, you'll see ~5 extra lines printed *before* the normal "Boo
 - **The kernel's `printk` format** — `<5>` (KERN_NOTICE), `<6>` (KERN_INFO), `<7>` (KERN_DEBUG) prefix codes. Mostly invisible at boot. visible when you use `dmesg --level=info` etc.
 
 > Next chapter: **Chapter 27 — Device Tree: the contract between firmware and kernel.** We open `imx6ull-14x14-evk.dts` and walk every node from the root down. The DT is the single biggest mental shift for an MCU engineer. We spend extra time here.
-> MCU bridge: Think of Device Tree like a board-level hardware description table that replaces hard-coded #define LED_PORT GPIOA decisions. Unlike an MCU header, the kernel parses it at boot and matches it to drivers.
+> **MCU bridge:** Think of Device Tree like a board-level hardware description table that replaces hard-coded #define LED_PORT GPIOA decisions. Unlike an MCU header, the kernel parses it at boot and matches it to drivers.
 > **Device Tree** - a data file that describes board hardware to the Linux kernel instead of hard-coding it in C.

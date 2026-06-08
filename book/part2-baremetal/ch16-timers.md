@@ -11,7 +11,7 @@ status: draft
 > **What:** a 1 ms tick from EPIT1 (interrupt-driven) and a free-running 32-bit counter from GPT1 (polled). Together they give us `tick_ms()`, `udelay()`, `mdelay()`, and a cycle-precise way to measure code.
 >
 > **Why:** Before we touch the MMU or write real drivers we need timing primitives. Schedulers, protocol stacks, and "wait at least N ns then check again" all need them.
-> MCU bridge: Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
+> **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
 > **MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
 >
 > **Focus:** We use two timers because Linux does: GPT as a free-running counter (clocksource), EPIT for periodic interrupts (tick source). Seeing the split here makes Linux's `arch_timer` and `clocksource` framework easier later.
@@ -216,12 +216,12 @@ Timers running.
 ```
 
 If `tick_ms()` does not advance, EPIT's IRQ isn't firing. Re-check:
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 - CCGR gate bit. Right register, right field.
 - GIC ID 88 enabled.
-MCU bridge: Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
+> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
 **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 - `EPIT_CR.OCIEN = 1` and `EPIT_SR` cleared on each tick.
 - CPSR.I cleared via `irq_enable()`.
@@ -288,5 +288,5 @@ A 4 MB write + 4 MB read on DDR3 at 396 MHz takes ~30 ms (≈ 250 MB/s). At 696 
 - **POSIX `clock_gettime(CLOCK_MONOTONIC)`** — what user-space sees of all this. backed eventually by these timers.
 
 > Next chapter: **Chapter 17 — MMU and caches.** The last bare-metal infrastructure piece. Turn on the MMU, run our code with virtual memory, enable I/D caches, measure the speed-up. After this we are ready for U-Boot in Part III.
-> MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.

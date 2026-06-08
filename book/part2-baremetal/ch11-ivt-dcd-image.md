@@ -150,7 +150,7 @@ $ chmod +x ~/imx6ull/scripts/mkimx.py
 ```
 
 The script is 60 lines but does everything the U-Boot `mkimage -T imximage` tool does for the simple case. The only feature we left out is DCD support, which we add in Chapter 14 once we need it.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **DCD** - Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 

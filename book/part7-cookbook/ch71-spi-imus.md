@@ -9,7 +9,7 @@ status: draft
 # Chapter 71 — SPI IMUs
 
 > **What:** three SPI inertial sensors at increasing complexity: **Analog Devices ADXL345** (3-axis accel only, the textbook case), **STMicro LSM6DSO** (6-axis with internal FIFO and finite-state-machine), **InvenSense ICM-42688** (6-axis, low-noise, large FIFO). For each: SPI command framing (R/W bit + register address), FIFO+watermark IRQ patterns, and a from-scratch ADXL345 SPI driver with FIFO support.
-> MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 > **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 >
 > **Why:** beyond ~400 Hz per axis, you run out of I²C bandwidth: 400 kHz divided by ~10 bits per byte does not leave room for many channels. SPI runs at 10+ MHz, so an ICM-42688 streaming all 6 axes at 8 kHz fits comfortably. SPI also gives **per-CS configuration** (different IMUs on the same bus with different speeds and CPOL/CPHA), which makes multi-IMU systems straightforward to wire.
@@ -134,7 +134,7 @@ static const struct regmap_config adxl345_spi_regmap_config = {
 ```
 
 The regmap layer takes care of OR'ing 0xC0 into addresses for reads. The core code just calls `regmap_read(regmap, reg, &val)` — same code that worked for I²C now works for SPI, courtesy of regmap.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 
 ### Probe flow
@@ -565,7 +565,7 @@ Mainline drivers expose richer attributes than our from-scratch:
 - **Self-test forgotten.** Each chip has a self-test mode (forces internal mechanical stimulation). Run on power-up to verify the chip is functional. ship products with this in startup self-check.
 - **Pull-ups on /CS during reset.** Some boards leave /CS floating during SoC reset. chip enters undefined state. Tie /CS HIGH at idle (10 kΩ to VCC or controller-default).
 - **Multi-chip SPI with shared GPIO IRQ.** Multiple IMUs sharing a watermark-IRQ GPIO. Decode in handler by reading each chip's INT_SOURCE. only the one with bit set wants service.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 71.11  Going deeper

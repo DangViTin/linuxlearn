@@ -357,7 +357,7 @@ The chip does:
 No I²C, no control. CHRG and STDBY pins drive LEDs (or GPIOs into the SoC for status detection).
 
 To integrate with Linux: wire CHRG to a GPIO. in DT, declare a `power_supply` of type AC with this GPIO. The mainline framework `gpio-charger.c` does this generic pattern:
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ```dts
@@ -452,7 +452,7 @@ In product UI, do *time-averaged* SoC display — instantaneous readings vary by
 - **TP4056 without thermal management.** At 1 A charge, the chip dissipates ~1 W. Without thermal vias and a ground plane, it overheats and reduces charge current — slower charging.
 - **TP4056 in deep-discharge cells.** Cells below 2.5 V might fail TP4056's pre-charge. Use a chip with adjustable pre-charge current.
 - **BQ24074 without I²C in the boot path.** If the chip needs config at boot to set higher input current, U-Boot must initialize it — otherwise it defaults to 100 mA input, which can't power the SoC.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 - **Power-path absent on production-bound product.** User unplugs charger. device dies. They expected the battery to take over. Verify your topology before laying out.
 - **Forgetting `present` property.** Some user-space code refuses to talk to a battery whose `present` is 0. Always report 1 if the chip is responding.

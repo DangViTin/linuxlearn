@@ -9,7 +9,7 @@ status: draft
 # Chapter 122A — BSP → mainline migration playbook
 **PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
 **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
-MCU bridge: Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
+> **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 **ASoC** - ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
 
@@ -31,7 +31,7 @@ A typical 2017-era NXP BSP:
 
 Plus there's a toolchain problem. gcc 6.x won't compile a mainline 6.6 kernel cleanly. The kernel's hard minimum is gcc 5.1 (see `Documentation/process/changes.rst`), but newer features need gcc 11+. Most distros ship gcc 12+ for embedded cross-builds.
 - Old U-Boot 2017.04 doesn't speak modern FIT.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **FIT** - Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 - Old Buildroot/Yocto recipes pinned to old library versions.
@@ -132,7 +132,7 @@ For each phase:
 1. **Phase 1 (week 1–4)**: clk, pinctrl, gpio — the *foundation* every other subsystem uses. Most BSP-vs-mainline divergence. lots of NXP-internal pinmux files to merge.
 2. **Phase 2 (week 5–8)**: i2c, spi controllers + the *trivial* sensors hanging off them. Easy wins to build confidence.
 3. **Phase 3 (week 9–12)**: PMIC, regulators, eMMC, USB host. The "boot reliably" phase.
-MCU bridge: Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
+> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
 **PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
 4. **Phase 4 (week 13–16)**: Ethernet, network stack. Verify customer-facing connectivity.
 5. **Phase 5 (week 17–20)**: Audio, display, camera, GPU. The "rich apps work" phase. Hardest because of vendor's binary blobs (Vivante GPU on i.MX) and downstream GStreamer integrations.
@@ -265,7 +265,7 @@ For i.MX6ULL specifically: mainline support is *excellent* as of 6.6 — most BS
 - **Migrating to non-LTS mainline.** Mainline rolls every 9 weeks. Pick an LTS (currently 6.6, supported until 2028). Don't pick the bleeding-edge.
 - **Skipping subsystem isolation.** "Let me bring up everything at once" → debug becomes impossible. Phase-by-phase.
 - **Forgetting userspace compatibility.** Mainline 6.6 expects glibc 2.35+. your BSP rootfs has glibc 2.24. Rebuild rootfs too.
-MCU bridge: Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
+> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 - **DT bindings drift.** A binding that "worked in 4.1.15" may have been refactored in mainline. Update DT to match.
 - **Out-of-tree drivers break.** Every kernel API change risks your custom driver. Keep custom drivers minimal. upstream them when possible.

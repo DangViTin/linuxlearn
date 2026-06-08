@@ -14,7 +14,7 @@ status: draft
 > **DDR** - external DRAM that must be configured and trained before most software can run from it.
 >
 > **Focus:** the four-layer clock tree from Chapter 5: XTAL → PLL → root mux+divider → CCGR gate. Each peripheral hangs off one root clock. each root clock hangs off one PLL. Trace a frequency through these four hops and most clock bugs become obvious.
-> MCU bridge: Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
+> **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
 > **PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 
 
@@ -32,7 +32,7 @@ By the end of this chapter, the clock tree looks like:
 | MMDC (DDR) | 396 MHz | PLL2 (528 MHz) PFD or direct |
 
 This matches what U-Boot will set up in Chapter 19.
-MCU bridge: Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
+> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ## 13.2  The ANATOP block — PLLs and PFDs
@@ -388,7 +388,7 @@ At 696 MHz a million-iteration empty loop takes ~5 million cycles (~7 ns per ite
 ### Hardware check: scope a GPIO
 
 Toggle a GPIO in a tight loop:
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ```c

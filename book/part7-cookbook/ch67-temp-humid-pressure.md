@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 67 — Temperature / humidity / pressure
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 
 > **What:** three I²C environmental sensors, dissected: **Bosch BME280** (T+H+P, the workhorse), **Sensirion SHT3x** (T+H, lab-grade accuracy), **ASAir AHT20** (T+H, cheap-and-good). For each: register map, the bytes on the wire, how the mainline IIO driver works, and — for BME280, the most complex — a from-scratch IIO driver implemented from the datasheet.
 > **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
@@ -122,7 +122,7 @@ These three integers go into the compensation functions (datasheet §4.2.3 / 8.1
 Source: `drivers/iio/pressure/bmp280-core.c` (~1500 lines) + `bmp280-i2c.c` (~150 lines) + `bmp280-spi.c`.
 
 The driver covers BMP180 / BMP280 / BME280 / BMP380 / BMP580 — five chips of similar lineage. The *bus* (I²C vs SPI) is decoupled via regmap. The *chip* is identified at probe via the `0xD0` ID register, and the right `chip_info` table is selected.
-MCU bridge: Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
+> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 
 ### Architecture

@@ -124,8 +124,8 @@ For the i.MX6ULL reader: **prefer parallel RGB (Ch 82) for big/fast displays, pl
 - **Command vs data lane count.** Commands usually go on 1 lane, pixels on 4. Sending the command on 4 lanes confuses the controller. The `spi_mem_op` cmd/data buswidth fields must be set per phase.
 - **Pull-ups on IO2/IO3.** In single-lane mode, IO2/IO3 may double as /WP and /HOLD. For display use they're data. Ensure no conflicting pulls.
 - **Frame tearing at high fps.** Without vsync/TE-pin synchronization, fast full-frame updates tear. Many QSPI AMOLEDs have a TE (tearing-effect) output. wire it to a GPIO IRQ and sync updates.
-MCU bridge: Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-MCU bridge: Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
+> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
+> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 - **Power: AMOLED inrush.** QSPI AMOLEDs can draw significant current when displaying bright white. Budget the rail accordingly.
