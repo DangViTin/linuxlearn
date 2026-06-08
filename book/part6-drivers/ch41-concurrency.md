@@ -394,7 +394,7 @@ This pattern — copy outside, lock around the structure mutation only — is fu
 2. **Add a stress test.** Have a kthread (`kthread_run`) consume in a tight loop while `write(2)` is hammered from user space. Verify no crashes, no corrupt data, no deadlocks.
 3. **Provoke a deadlock.** Take lock A then lock B in one path; take B then A in another. Build with `CONFIG_PROVE_LOCKING=y`. Watch lockdep's dmesg report when both paths actually run.
 4. **Convert `packets` to per-CPU.** Compare overhead vs an `atomic64_t`. (Spoiler: per-CPU is faster on multi-core but the test is harder to write on a single-core i.MX6ULL.)
-5. **RCU experiment.** Implement a simple read-mostly config lookup with RCU. Use `ftrace` (Ch 60) to measure the read-side overhead. Confirm it's zero in `CONFIG_PREEMPT_NONE`.
+5. **RCU experiment.** Implement a simple read-mostly config lookup with RCU. Use `ftrace` (Chapter 119) to measure the read-side overhead. Confirm it's zero in `CONFIG_PREEMPT_NONE`.
 
 ## 41.12  Pitfalls
 

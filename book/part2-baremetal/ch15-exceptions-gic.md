@@ -1,4 +1,4 @@
----
+﻿---
 chapter: 15
 title: Exceptions and the GIC
 part: II — Bare-metal i.MX6ULL
@@ -161,7 +161,7 @@ In `startup.S`, after the existing prologue, add:
 
 In the linker script, reserve an IRQ stack:
 
-```ld
+```text
 SECTIONS
 {
     ...

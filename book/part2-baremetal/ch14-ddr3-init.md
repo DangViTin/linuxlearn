@@ -392,7 +392,7 @@ int main(void)
     printf("Wrote 0x%08x at 0x80000000, read back 0x%08x\r\n",
            0xCAFEBABE, *(volatile uint32_t *)0x80000000);
 
-    /* TODO: in §14.10, copy ourselves to DRAM and jump there. */
+    /* The next section replaces this halt with relocation to DRAM. */
 
     for (;;) {}
 }

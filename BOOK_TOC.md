@@ -11,7 +11,7 @@
 
 ## Scope
 
-**8 Parts, 141 chapters (118 numbered + 23 supplementary, "letter-suffix" convention), ~2,470 pages.** The supplementary chapters (letter-suffixed: `18A`, `18B`, `35A`, `52A`, etc.) expand specific topics where the numbered chapter's default depth isn't enough for production work — they share a parent number and can be read independently. The numbered chapters are the required path; the supplementary chapters are recommended.
+**8 Parts, 146 chapters (118 numbered + 28 supplementary, "letter-suffix" convention), ~2,470 pages.** The supplementary chapters (letter-suffixed: `18A`, `18B`, `35A`, `52A`, etc.) expand specific topics where the numbered chapter's default depth isn't enough for production work — they share a parent number and can be read independently. The numbered chapters are the required path; the supplementary chapters are recommended.
 
 ## What the book covers
 
@@ -111,7 +111,7 @@ Each chapter is structured the same way, so the reader always knows where to loo
 - The **DCD (Device Configuration Data)**: a tiny scripting language the ROM executes to bring up DDR and clocks *before your code runs*
 - The **BootData** structure: load address and image length
 - USB-SDP (Serial Download Protocol): how `uuu` and `imx_usb_loader` talk to a brand-new chip
-- HAB (High Assurance Boot) introduction (deep-dived in Ch. 62)
+- HAB (High Assurance Boot) introduction (deep-dived in Ch. 124)
 - **Focus:** the DCD is the *most under-explained* feature of i.MX SoCs. Understand it and U-Boot SPL becomes obvious.
 - **Pages:** ~22
 

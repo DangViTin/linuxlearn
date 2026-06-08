@@ -480,7 +480,7 @@ For the user-space approach (`spidev` + libgpiod), the DT is just a `spidev` slo
 ```
 
 
-> *Production note: `rohm,dh2228fv` is a development-time spidev placeholder; modern kernels print a warning when it appears in DT. See Ch 47 §47.x for the proper DT overlay path or a real-chip compatible swap.*
+> *Production note: `rohm,dh2228fv` is a development-time spidev placeholder; modern kernels print a warning when it appears in DT. See Chapter 47's `spidev` warning for the proper DT overlay path or a real-chip compatible swap.*
 For the `nrf24` out-of-tree driver:
 
 ```dts

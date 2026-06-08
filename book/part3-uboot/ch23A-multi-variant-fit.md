@@ -1,4 +1,4 @@
----
+﻿---
 chapter: 23A
 title: Multi-variant FIT images and DT overlays
 part: III — U-Boot, deeply (inserted v1.2)
@@ -28,7 +28,7 @@ You have one rootfs (the application code is the same), one kernel (the same dri
 
 Extend the Chapter 23 single-config FIT to three:
 
-```its
+```dts
 /dts-v1/;
 
 / {
@@ -139,7 +139,7 @@ The `bootm` flow:
 1. Parse the FIT header at `0x82000000`.
 2. Look up `configurations/conf-rev-b`.
 3. Find its `kernel`, `fdt`, `ramdisk` references.
-4. Verify hashes (for unsigned FIT) or signatures (Ch 62).
+4. Verify hashes (for unsigned FIT) or signatures (Chapter 124).
 5. Move/decompress each image to its `load=` address.
 6. Branch to the kernel `entry=` with the DTB address in `r2`.
 
@@ -334,7 +334,7 @@ When you receive a unit, you don't have to ask which rev it is. The unit identif
 
 ## 23A.8  Pitfalls
 
-- **Hash mismatch in FIT.** If you forget `hash-1 { algo = "sha256"; };` on an image, `bootm` may print a warning and proceed (depending on config). For production, *always* hash; for signed FIT (Ch 62), hashes are mandatory.
+- **Hash mismatch in FIT.** If you forget `hash-1 { algo = "sha256"; };` on an image, `bootm` may print a warning and proceed (depending on config). For production, *always* hash; for signed FIT (Chapter 124), hashes are mandatory.
 - **Strap pin floats.** If your strap GPIO has no pull resistor and your board mounting position can leave it floating, you may read a different rev on every boot. Always pull explicitly.
 - **EEPROM I²C address collision.** Many boards have multiple I²C devices at `0x50`-`0x57`. Verify your ID byte location vs sensor addresses.
 - **Overlay `dtc` without `-@`.** Without `-@`, no symbol table is emitted, and overlays can't reference labels in the base. Always `dtc -@`.

@@ -76,7 +76,7 @@ In Cortex-A (ARMv7-A) there is no auto-stacking. The CPU has **nine processor mo
 
 R13 is SP. R14 is LR. SPSR is the saved-program-status register — the snapshot of CPSR at the moment the exception was taken.
 
-> **Cortex-A7 specifics.** All nine modes exist on every Cortex-A profile core, but their use varies. On Cortex-A7 in i.MX6ULL, **MON mode is real** and used by TrustZone-enabled secure-boot flows (Ch 62). **HYP mode is present in the architecture** but not used in our work — the i.MX6ULL is a single-core part rarely used as a hypervisor host. SYS mode is rarely entered by anyone except in low-level diagnostics. Our daily work concerns USR, SVC, IRQ, FIQ, ABT, and UND.
+> **Cortex-A7 specifics.** All nine modes exist on every Cortex-A profile core, but their use varies. On Cortex-A7 in i.MX6ULL, **MON mode is real** and used by TrustZone-enabled secure-boot flows (Chapter 124). **HYP mode is present in the architecture** but not used in our work — the i.MX6ULL is a single-core part rarely used as a hypervisor host. SYS mode is rarely entered by anyone except in low-level diagnostics. Our daily work concerns USR, SVC, IRQ, FIQ, ABT, and UND.
 
 The full banked-register layout, columns showing per-mode visibility:
 

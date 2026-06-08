@@ -345,7 +345,7 @@ $ echo 1 > /sys/kernel/debug/tracing/tracing_on
 $ cat /sys/kernel/debug/tracing/trace
 ```
 
-You'll see timestamps for every entry/exit of your handler, in microseconds. Ch 60 will cover ftrace properly.
+You'll see timestamps for every entry/exit of your handler, in microseconds. Chapter 119 covers ftrace properly.
 
 ## 43.8  Lab
 

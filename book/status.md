@@ -1,14 +1,44 @@
 ---
-title: Coming soon
+title: Status
 ---
 
-# Coming soon
+# Status
 
-This Part is on the table of contents but not yet drafted. See the [full Table of Contents](toc.md) for chapter titles and per-chapter scope, and the [home page](index.md) for the latest progress snapshot.
+The full first draft is present in this repository.
 
-If you'd like to track when these go live:
+```{list-table}
+:header-rows: 1
+:widths: 34 28 38
 
-- **Watch** the [GitHub repository](https://github.com/example/linuxlearn) (set "Custom → Releases").
-- The order of completion will mirror the book's reading order: Part III → IV → V → VI → VII.
+* - Part
+  - Chapters
+  - Current state
+* - Part I — Foundations
+  - 1–8
+  - Drafted
+* - Part II — Bare-metal i.MX6ULL
+  - 9–18 + 18A–18C
+  - Drafted
+* - Part III — U-Boot, deeply
+  - 19–24 + 23A
+  - Drafted
+* - Part IV — The Kernel
+  - 25–30 + 27A, 30A
+  - Drafted
+* - Part V — Root filesystem & user space
+  - 31–35 + 35A–35C
+  - Drafted
+* - Part VI — Driver development
+  - 36–55 + 51A, 51B, 52A, 54A, 54B, 55A–55I
+  - Drafted
+* - Part VII — Device cookbook
+  - 64–117
+  - Drafted
+* - Part VIII — Debug, production, advanced
+  - 118–126 + 120A, 121A, 122A, 123A, 125A
+  - Drafted
+```
 
-Until then, [Chapter 1 — Preface](part1-foundations/ch01-preface.md) and the **Part I + II** chapters are complete and self-contained — they cover everything from "what is embedded Linux" through running your own bare-metal stack on the i.MX6ULL with MMU + caches enabled. That alone is roughly 30 % of the book.
+The current phase is technical review and copy edit. Treat command sequences, register tables, and production/security flows as draft material until they have a tested-environment note in the chapter itself.
+
+See the [home page](index.md) for the reading order and the [full table of contents](toc.md) for the full scope.

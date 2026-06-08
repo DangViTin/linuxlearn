@@ -1,11 +1,11 @@
----
+﻿---
 title: Home
 description: Embedded Linux on i.MX6ULL — From First Boot to First Driver
 ---
 
 # Embedded Linux on i.MX6ULL
 
-### *From First Boot to First Driver — The Raw Approach*
+## *From First Boot to First Driver — The Raw Approach*
 
 > An explanatory, mainline-first guide to bringing up embedded Linux on the i.MX6ULL.
 > Built for the MCU engineer who wants to understand every byte, not just `bitbake build`.
@@ -26,6 +26,7 @@ If you build against a different kernel, two known divergences matter most: (1) 
 :maxdepth: 1
 
 Table of contents <toc>
+Status <status>
 ```
 
 ```{toctree}
@@ -362,20 +363,20 @@ part7-cookbook/ch117-external-rtc
 :caption: Part VIII — Debug, production, advanced
 :maxdepth: 2
 
-part7-debug/ch118-jtag-openocd-gdb
-part7-debug/ch119-kernel-debug-no-jtag
-part7-debug/ch120-userspace-debug
-part7-debug/ch120A-mainline-patch-submission
-part7-debug/ch121-custom-board-port
-part7-debug/ch121A-cicd-embedded
-part7-debug/ch122-cross-toolchain
-part7-debug/ch122A-bsp-mainline-migration
-part7-debug/ch123-yocto-vs-buildroot
-part7-debug/ch123A-yocto-layer-dev
-part7-debug/ch124-secure-boot-optee
-part7-debug/ch125-field-updates
-part7-debug/ch125A-vscode-gdbserver
-part7-debug/ch126-closing
+part8-debug/ch118-jtag-openocd-gdb
+part8-debug/ch119-kernel-debug-no-jtag
+part8-debug/ch120-userspace-debug
+part8-debug/ch120A-mainline-patch-submission
+part8-debug/ch121-custom-board-port
+part8-debug/ch121A-cicd-embedded
+part8-debug/ch122-cross-toolchain
+part8-debug/ch122A-bsp-mainline-migration
+part8-debug/ch123-yocto-vs-buildroot
+part8-debug/ch123A-yocto-layer-dev
+part8-debug/ch124-secure-boot-optee
+part8-debug/ch125-field-updates
+part8-debug/ch125A-vscode-gdbserver
+part8-debug/ch126-closing
 ```
 
 ---
@@ -390,7 +391,7 @@ The target board is the **i.MX6ULL on the Point Atom MINI** (or ALPHA — both w
 
 - **Mainline-first.** We use current mainline U-Boot and Linux throughout. The 5–10 hours saved up front by adopting a vendor fork is paid back many times over the life of a product as security fixes, new toolchains, and modern features (DT bindings YAML validation, FIT image overlays, PREEMPT_RT in mainline, Rust-for-Linux) become reachable.
 - **Explanatory, not procedural.** Every chapter follows the same seven-section template: *What / Why / How / Focus / Lab / Pitfalls / Going deeper*. Reading a chapter, you should always know which paragraph answers which question.
-- **Hand-built where it teaches.** Our own bare-metal stack (Part II), our own image-builder (Ch 11), our own cross-toolchain (Ch 60). Tools become productivity wins only after you can do without them.
+- **Hand-built where it teaches.** Our own bare-metal stack (Part II), our own image-builder (Ch 11), our own cross-toolchain (Ch 122). Tools become productivity wins only after you can do without them.
 - **Production-grade where it matters.** Watchdog, runtime PM, PREEMPT_RT real-time, secure boot, OTA, mainline patch-submission, CI/CD — these chapters appear because real products require them, not because the dev board does.
 
 ## Reading order
@@ -427,17 +428,17 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
   - 5 + 3 supplementary (35A–C)
   - ✅ Drafted
 * - Part VI — Driver development
-  - 20 + 13 supplementary
+  - 20 + 14 supplementary
   - ✅ Drafted (Ch 36–55I + all insertions)
 * - Part VII — Device cookbook *(v1.3, new)*
   - 54 chapters (Ch 64–117)
-  - ⬜ Not yet drafted
+  - ✅ Drafted
 * - Part VIII — Debug, production, advanced
   - 9 + 5 supplementary
-  - ⬜ Not yet drafted
+  - ✅ Drafted
 * - **Total**
-  - **118 numbered + 23 supplementary = 141**
-  - **~38 % drafted**
+  - **118 numbered + 28 supplementary = 146**
+  - **Full first draft**
 ```
 
 ## Hardware

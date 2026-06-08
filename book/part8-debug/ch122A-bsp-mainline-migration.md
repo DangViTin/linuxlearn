@@ -214,7 +214,7 @@ cd ..
 cd mainline
 make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- imx_v7_defconfig
 make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j$(nproc) zImage dtbs
-# Boot from existing rootfs first; later update rootfs to libcs ABI-matched to gcc 13
+# Boot from existing rootfs first; later update rootfs to a libc ABI matched to gcc 13
 
 # 6. Iterate per subsystem
 # Verify Ethernet works → check.

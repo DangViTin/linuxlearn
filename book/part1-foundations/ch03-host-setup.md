@@ -89,7 +89,7 @@ If `apt` complains about any package on your distribution, search for the closes
 
 ## 3.4  The cross toolchain
 
-We need a toolchain that runs on `x86_64-linux-gnu` (the host) and produces code for `arm-linux-gnueabihf` (the target). Two reasonable sources for now; we build one ourselves in Ch 60.
+We need a toolchain that runs on `x86_64-linux-gnu` (the host) and produces code for `arm-linux-gnueabihf` (the target). Two reasonable sources for now; we build one ourselves in Chapter 122.
 
 ### Option A — Ubuntu package
 

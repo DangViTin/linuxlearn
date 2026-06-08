@@ -1,4 +1,4 @@
----
+﻿---
 chapter: 10
 title: C + startup.S + linker script
 part: II — Bare-metal i.MX6ULL
@@ -39,7 +39,7 @@ Optionally, also: set up exception vectors, configure caches, enable the FPU. We
 
 The Chapter 9 program had no `.data` and no `.bss`. We slapped `-Ttext=0x00907400` on the command line and let it ride. For C code, we need a real script. Save it as `link.ld`:
 
-```ld
+```text
 ENTRY(_start)
 
 MEMORY

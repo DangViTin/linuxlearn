@@ -16,7 +16,7 @@ The trouble is that you learned almost nothing. The BSP set up the DDR, Yocto bu
 
 This book is the opposite path. You will build every layer between power-on-reset and a running Linux system on the i.MX6ULL by hand. That means writing the boot image bytewise, setting DDR registers against the JEDEC sequence, hand-writing the linker script, page table, and device tree, then compiling U-Boot from source. You will read its source until every line is familiar, and boot a mainline Linux kernel — not a vendor fork — with a root filesystem built from a single statically-linked binary.
 
-Only after we can do all of this from scratch do we permit ourselves the convenience tools: Buildroot in Chapter 35, our own toolchain in Chapter 60, Yocto in Chapter 61, secure boot in Chapter 62. By then the tools will feel like time-savers, not magic. You will know what each of them does because you have already done it the hard way.
+Only after we can do all of this from scratch do we permit ourselves the convenience tools: Buildroot in Chapter 35, our own toolchain in Chapter 122, Yocto in Chapter 123, secure boot in Chapter 124. By then the tools will feel like time-savers, not magic. You will know what each of them does because you have already done it the hard way.
 
 It takes patience. The payoff is that no bug in those tools can hide from you later.
 
@@ -36,7 +36,7 @@ If that is roughly you, this book is written for you. If you have *no* embedded 
 
 A few concrete commitments:
 
-- The only black-box tool we permit ourselves for the first ~50 chapters is the **C compiler**, and we open even that one up in Chapter 60.
+- The only black-box tool we permit ourselves for the first ~50 chapters is the **C compiler**, and we open even that one up in Chapter 122.
 - We use **mainline** sources for U-Boot and Linux. Vendor BSPs are read in Part VII as a comparison study; they do not drive the main narrative.
 - Every artifact — boot image, kernel image, device tree, root filesystem — is **built from a clean tree** by a script you can read. If you cannot regenerate the artifact, the chapter is not finished.
 - We **never** copy-paste a configuration without explaining what each field does. The first time you see a DDR controller register, every bit of it is decoded. The second time you can look it up in the appendix.
@@ -167,9 +167,9 @@ When the book leaves you stuck, the following are, in this author's experience, 
 
 Stack Overflow is the worst place to ask about Linux internals. The kernel changes too fast and the upvoted answers go stale. Go to the source.
 
-## 1.12  Acknowledgements (placeholder)
+## 1.12  Acknowledgements
 
-*(Add when the manuscript is closer to complete. Reserve a paragraph for the maintainers of mainline U-Boot and Linux who answered patient questions; for the Bootlin team; for the Point Atom project that put low-cost i.MX6ULL hardware in the hands of so many learners; and for the colleagues and reviewers who read drafts.)*
+This book stands on work from the maintainers of mainline U-Boot and Linux, the Bootlin team, NXP's public documentation and community answers, and the Point Atom project that put low-cost i.MX6ULL hardware in the hands of many learners. Thanks also to the colleagues and readers who test commands, question unclear explanations, and send corrections.
 
 ## 1.13  Errata and corrections
 

@@ -1,4 +1,4 @@
----
+﻿---
 chapter: 23
 title: bootcmd, bootargs, FIT images
 part: III — U-Boot, deeply
@@ -183,7 +183,7 @@ Why FIT:
 
 ### A FIT image source file (.its)
 
-```its
+```dts
 /dts-v1/;
 
 / {

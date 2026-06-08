@@ -1,4 +1,4 @@
----
+﻿---
 chapter: 6
 title: The toolchain
 part: I — Foundations
@@ -141,7 +141,7 @@ A linker script is a small DSL that tells `ld`:
 
 The simplest useful linker script for our Chapter 9 bare-metal LED:
 
-```ld
+```text
 ENTRY(_start)
 
 MEMORY

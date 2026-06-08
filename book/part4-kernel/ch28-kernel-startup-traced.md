@@ -1,4 +1,4 @@
----
+﻿---
 chapter: 28
 title: Kernel startup, traced
 part: IV — The Kernel
@@ -51,7 +51,7 @@ We walk each phase in turn. Source-file paths are relative to the kernel source 
 
 `stext` is the entry point — the very first instruction the kernel executes. The linker script `arch/arm/kernel/vmlinux.lds.S` declares it as the entry:
 
-```ld
+```text
 ENTRY(stext)
 ```
 

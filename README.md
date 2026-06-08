@@ -6,7 +6,7 @@ The Raw Approach: build it yourself, understand it forever.
 
 ## What this is
 
-A ~2,470-page **online guide** for engineers who already write firmware for microcontrollers and want to take a first-principles approach to embedded Linux. The full stack — from the reset vector to OTA + secure boot + CI/CD — covered in 141 chapters across 8 Parts, with every register dance, kernel API, and DT binding explained, never hidden behind a framework you can't see through.
+A ~2,470-page **online guide** for engineers who already write firmware for microcontrollers and want to take a first-principles approach to embedded Linux. The full stack — from the reset vector to OTA + secure boot + CI/CD — covered in 146 chapters across 8 Parts, with every register dance, kernel API, and DT binding explained, never hidden behind a framework you can't see through.
 
 This is a **guide**, not a code-companion repository. All code listings are inline in the chapters — copy-paste-ready, but the goal is that you read them, understand them, and type them by hand on your own board.
 
@@ -25,8 +25,8 @@ LinuxLearn/
 │   ├── conf.py                  # Sphinx configuration
 │   ├── _static/custom.css       # Theme overrides
 │   ├── index.md                 # Site landing page + sidebar toctree
-│   ├── toc.md                   # Mirror of BOOK_TOC.md
-│   ├── status.md                # Placeholder for not-yet-drafted parts
+│   ├── toc.md                   # Reader-facing full table of contents
+│   ├── status.md                # Current drafting and review status
 │   ├── part1-foundations/       # Ch 1–8
 │   ├── part2-baremetal/         # Ch 9–18 + 18A/B/C
 │   ├── part3-uboot/             # Ch 19–24 + 23A
@@ -34,7 +34,7 @@ LinuxLearn/
 │   ├── part5-rootfs/            # Ch 31–35 + 35A/B/C
 │   ├── part6-drivers/           # Ch 36–55 + 51A/B, 52A, 54A/B, 55A–I
 │   ├── part7-cookbook/          # Ch 64–117 (54-chapter device cookbook)
-│   └── part7-debug/             # Part VIII — Ch 118–126 + 120A/121A/122A/123A/125A
+│   └── part8-debug/             # Part VIII — Ch 118–126 + 120A/121A/122A/123A/125A
 ├── reference_docs/              # Internal-only: source PDFs (Point Atom guides, NXP RM)
 │                                # NOT redistributed; used only as research inputs
 └── build/                       # Sphinx HTML output — gitignored
@@ -91,18 +91,18 @@ git push                   # site rebuilds automatically; live in ~30 s
 
 | Part | Status | Chapters | Est. pages |
 |------|--------|----------|-----------|
-| TOC | ✅ Complete (v1.3) | 141 | — |
+| TOC | ✅ Complete (v1.3) | 146 | — |
 | Part I — Foundations | ✅ Drafted | 8 | ~136 |
 | Part II — Bare-metal i.MX6ULL | ✅ Drafted | 10 + 3 supp. | ~252 |
 | Part III — U-Boot | ✅ Drafted | 6 + 1 supp. | ~128 |
 | Part IV — The Kernel | ✅ Drafted | 6 + 2 supp. | ~148 |
 | Part V — Rootfs & user space | ✅ Drafted | 5 + 3 supp. | ~140 |
-| Part VI — Driver development | ✅ Drafted | 20 + 13 supp. | ~644 |
+| Part VI — Driver development | ✅ Drafted | 20 + 14 supp. | ~644 |
 | Part VII — Device cookbook | ✅ Drafted | 54 | ~735 |
 | Part VIII — Debug, production | ✅ Drafted | 9 + 5 supp. | ~290 |
-| **Total** | **✅ Full first draft** | **141** | **~2,473** |
+| **Total** | **✅ Full first draft** | **146** | **~2,473** |
 
-Next phase: technical-review pass, copy edit, then release-candidate. See the end of [Chapter 126](book/part7-debug/ch126-closing.md) and the issues tracker.
+Next phase: technical-review pass, copy edit, then release-candidate. See the end of [Chapter 126](book/part8-debug/ch126-closing.md) and the issues tracker.
 
 ## Contributing
 

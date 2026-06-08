@@ -39,7 +39,6 @@ exclude_patterns = [
     "_build",
     "Thumbs.db",
     ".DS_Store",
-    "status.md",         # only used as MkDocs placeholder; we use toctree now
 ]
 
 # ---------------------------------------------------------------------------
@@ -63,6 +62,14 @@ myst_heading_anchors = 4
 
 # Permit URL fragments without strict checking
 myst_url_schemes = ("http", "https", "mailto", "ftp")
+
+# Pygments does not fully understand several book-specific snippets
+# (GNU ARM assembly with literal pools, linker scripts, FIT .its files,
+# BitBake recipes). Keep rendering them as code, but do not make those
+# lexer limitations look like documentation defects in CI output.
+suppress_warnings = [
+    "misc.highlighting_failure",
+]
 
 # ---------------------------------------------------------------------------
 # HTML output — Furo theme

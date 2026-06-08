@@ -24,7 +24,7 @@ There are two U-Boot trees you will see referenced for the i.MX6ULL:
 We use mainline. Three reasons:
 
 1. **Mainline has full support for the i.MX6ULL EVK** since 2017 and tracks every silicon revision and DT change. Nothing about the i.MX6ULL requires a fork.
-2. **The 2016-era fork has missed years of security fixes.** Every project that pins to it eventually pays the migration cost (Chapter 60A is the playbook).
+2. **The 2016-era fork has missed years of security fixes.** Every project that pins to it eventually pays the migration cost (Chapter 122A is the playbook).
 3. **Starting on mainline removes a future migration entirely.**
 
 We use mainline's `mx6ull_14x14_evk_defconfig` (NXP's reference EVK) and port it to the Point Atom MINI in Chapter 22. The boards are close enough that the EVK config boots on the MINI with only minor DT changes for IOMUX and DDR timings.

@@ -143,7 +143,7 @@ A flowchart-as-text:
 Question 1: Does your hardware work on mainline?
    ├─ Yes  ─► Question 2
    └─ No   ─► Vendor BSP is forced.  Plan a migration to mainline within 1-2 years.
-                  See Chapter 60A for the playbook.
+                  See Chapter 122A for the playbook.
 
 Question 2: What's the product's expected field life?
    ├─ < 1 year         ─► Mainline tip is fine; rebase to next LTS before manufacturing.
@@ -175,7 +175,7 @@ What you would actually be shipping:
 - **Toolchain constraints.** 4.1.15 doesn't build with modern gcc (>= 11) without patches. You're committing to an old gcc too.
 - **No upstream support.** Linux 4.1 has been EOL for years. Issues you file get closed as "fixed in 5.x".
 
-The 4.1.15 trap is real. It works *today*. It costs increasingly more *every year*. If you find yourself inheriting one, treat the migration to mainline as a P1 work item, not a P3 "someday". Chapter 60A walks the migration.
+The 4.1.15 trap is real. It works *today*. It costs increasingly more *every year*. If you find yourself inheriting one, treat the migration to mainline as a P1 work item, not a P3 "someday". Chapter 122A walks the migration.
 
 The same applies to any sufficiently-old vendor BSP: 4.9, 4.14, 4.19, 5.4, 5.10. Each year past the LTS EOL the situation worsens.
 

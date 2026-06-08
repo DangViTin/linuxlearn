@@ -359,7 +359,7 @@ DT (same as any spidev radio):
 ```
 
 
-> *Production note: `rohm,dh2228fv` is a development-time spidev placeholder; modern kernels print a warning when it appears in DT. See Ch 47 §47.x for the proper DT overlay path or a real-chip compatible swap.*
+> *Production note: `rohm,dh2228fv` is a development-time spidev placeholder; modern kernels print a warning when it appears in DT. See Chapter 47's `spidev` warning for the proper DT overlay path or a real-chip compatible swap.*
 There *is* an in-tree `drivers/net/ieee802154/mcr20a.c` for one Freescale UWB chip and out-of-tree drivers for DW1000 (`thotro/dw1000-driver`), but the dominant pattern remains user-space + spidev for DW3000.
 
 ## 101.8  Apple Find My / FiRa interop

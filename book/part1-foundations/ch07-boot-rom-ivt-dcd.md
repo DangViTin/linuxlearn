@@ -238,7 +238,7 @@ If `IVT.csf` is nonzero, the ROM jumps to a verification routine before executin
 
 On a freshly-fabricated chip, HAB is in "open" mode — verification is performed but failures do not stop the boot. Once you burn the `SEC_CONFIG[1]` fuse, HAB is in "closed" mode — failures stop the boot, permanently. There is no recovery from a botched closed-mode signing.
 
-We will not enable HAB in Parts I–VI of this book. Chapter 62 covers the full HAB workflow, including how to sign U-Boot and the kernel and how to chain that trust into a verified rootfs.
+We will not enable HAB in Parts I–VI of this book. Chapter 124 covers the full HAB workflow, including how to sign U-Boot and the kernel and how to chain that trust into a verified rootfs.
 
 For now: leave `IVT.csf = 0`. Do not touch SEC_CONFIG fuses.
 
@@ -300,7 +300,7 @@ You do not need to *run* the image. The point is to read it.
 - **DCD writes that hang the system.** A DCD `CHECK` waiting for a bit that never sets locks the ROM. The board appears dead. Workaround: boot in SDP mode and push a known-good image.
 - **Wrong endianness in DCD header length.** The DCD header length is **big-endian**. Get this wrong, the ROM either ignores the DCD or executes garbage.
 - **Forgetting the 1 KB pre-IVT padding.** On SD/MMC the IVT lives at offset `0x400`, not at offset 0. The first 1 KB is a "no-man's-land" partitioning systems can use without touching the IVT.
-- **Closing HAB by accident.** It is a one-way fuse. Do not write to OCOTP_CFG5 unless you have read Chapter 62 carefully and have a key-management plan.
+- **Closing HAB by accident.** It is a one-way fuse. Do not write to OCOTP_CFG5 unless you have read Chapter 124 carefully and have a key-management plan.
 
 ## 7.12  Going deeper
 

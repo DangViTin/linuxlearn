@@ -1,4 +1,4 @@
----
+﻿---
 chapter: 117
 title: External RTC (DS3231, PCF8563, MCP79410)
 part: VII — Device cookbook
@@ -200,7 +200,7 @@ Your system has three clock sources:
 
 chrony's job: discipline the system clock from the best available source, and write back to the RTC.
 
-```conf
+```ini
 # /etc/chrony/chrony.conf
 pool 2.pool.ntp.org iburst                # NTP source
 
@@ -313,4 +313,4 @@ The DS3231's built-in thermometer is a useful bonus. It drives the TCXO temperat
 
 > **End of Part VII — Device Cookbook (Ch 64–117, 54 chapters).** Part VII covers most device classes you will integrate on an i.MX6ULL product, with 2–4 real chips per class, schematics, DT, driver internals, from-scratch implementations, labs, and pitfalls. From the cheapest QSPI flash to a GPS-disciplined time server, most external chips an i.MX6ULL product is likely to integrate are documented here. Use it as a reference: jump to the chapter for the chip in front of you.
 
-> Next: **Part VIII — Debug, production, advanced** — JTAG, kernel debugging, OPCS-grade build infrastructure, secure boot, OTA, mainline patch submission. The chapters that take your Linux skills from "I can make this work" to "I can ship this product."
+> Next: **Part VIII — Debug, production, advanced** — JTAG, kernel debugging, production-grade build infrastructure, secure boot, OTA, mainline patch submission. The chapters that take your Linux skills from "I can make this work" to "I can ship this product."
