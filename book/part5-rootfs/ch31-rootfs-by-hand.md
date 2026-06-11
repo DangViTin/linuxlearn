@@ -77,8 +77,8 @@ $ wget https://busybox.net/downloads/busybox-1.36.1.tar.bz2
 $ tar xjf busybox-1.36.1.tar.bz2
 $ cd busybox-1.36.1
 
-$ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- defconfig
-$ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- menuconfig
+$ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- defconfig
+$ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- menuconfig
 ```
 
 In menuconfig, enable two settings explicitly:
@@ -93,8 +93,8 @@ Settings  --->
 Build:
 
 ```sh
-$ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j$(nproc)
-$ arm-linux-gnueabihf-strip busybox
+$ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- -j$(nproc)
+$ arm-none-linux-gnueabihf-strip busybox
 $ ls -lh busybox
 -rwxr-xr-x 1 you you 580K busybox
 ```
@@ -112,7 +112,7 @@ $ cd rootfs
 
 # Install BusyBox into the rootfs
 $ make -C ~/imx6ull/src/busybox-1.36.1 \
-       ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- \
+       ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- \
        CONFIG_PREFIX=$PWD install
 ```
 
@@ -309,19 +309,20 @@ The static BusyBox we built in §31.3 doesn't need libraries. But if you copy an
 The libraries live inside your cross-toolchain installation:
 
 ```sh
-$ TOOLCHAIN=/usr/local/arm/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabihf
+$ . ~/imx6ull/scripts/env.sh
+$ TOOLCHAIN=$ARM_LINUX_TOOLCHAIN
 $ cd ~/imx6ull/rootfs
 
 # The "main" libraries (libc, libm, libpthread, libdl, ...) and the dynamic linker
-$ cp -d $TOOLCHAIN/arm-linux-gnueabihf/libc/lib/*.so* lib/
-$ cp -d $TOOLCHAIN/arm-linux-gnueabihf/libc/lib/*.a lib/
+$ cp -d $TOOLCHAIN/arm-none-linux-gnueabihf/libc/lib/*.so* lib/
+$ cp -d $TOOLCHAIN/arm-none-linux-gnueabihf/libc/lib/*.a lib/
 
 # The dynamic linker itself MUST be the real file, not a symlink.
 $ rm lib/ld-linux-armhf.so.3
-$ cp $TOOLCHAIN/arm-linux-gnueabihf/libc/lib/ld-linux-armhf.so.3 lib/
+$ cp $TOOLCHAIN/arm-none-linux-gnueabihf/libc/lib/ld-linux-armhf.so.3 lib/
 
 # usr/lib for less-common libraries
-$ cp -d $TOOLCHAIN/arm-linux-gnueabihf/libc/usr/lib/*.so* usr/lib/
+$ cp -d $TOOLCHAIN/arm-none-linux-gnueabihf/libc/usr/lib/*.so* usr/lib/
 ```
 
 Two things to know:

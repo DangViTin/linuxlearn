@@ -93,7 +93,7 @@ Note **none** of these are `<stdio.h>` or `<stdlib.h>`. **The kernel has no libc
 > Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
 
 
-You don't compile a kernel module with `arm-linux-gnueabihf-gcc hello.c -o hello.ko`. Kbuild does a lot of work for you. It generates per-module ELF sections, applies the kernel's own `CFLAGS` (including `-fno-stack-protector` and many others), and dynamically discovers the right `vmlinux` symbols. You build out-of-tree modules by *invoking the kernel's own Makefile* and pointing at your source.
+You don't compile a kernel module with `arm-none-linux-gnueabihf-gcc hello.c -o hello.ko`. Kbuild does a lot of work for you. It generates per-module ELF sections, applies the kernel's own `CFLAGS` (including `-fno-stack-protector` and many others), and dynamically discovers the right `vmlinux` symbols. You build out-of-tree modules by *invoking the kernel's own Makefile* and pointing at your source.
 
 `Makefile`:
 
@@ -105,7 +105,7 @@ KDIR ?= /home/$(USER)/linux-imx6ull/build
 
 # Architecture and cross-compiler for the target
 ARCH         ?= arm
-CROSS_COMPILE ?= arm-linux-gnueabihf-
+CROSS_COMPILE ?= arm-none-linux-gnueabihf-
 
 all:
 	$(MAKE) -C $(KDIR) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) M=$(PWD) modules
@@ -138,7 +138,7 @@ Inspect the output:
 $ file hello.ko
 hello.ko: ELF 32-bit LSB relocatable, ARM, EABI5 version 1 (SYSV), ...
 
-$ arm-linux-gnueabihf-readelf -h hello.ko | head -5
+$ arm-none-linux-gnueabihf-readelf -h hello.ko | head -5
   Class:                             ELF32
   Data:                              2's complement, little endian
   Type:                              REL (Relocatable file)

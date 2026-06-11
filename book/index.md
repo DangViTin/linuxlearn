@@ -1,4 +1,4 @@
-﻿---
+---
 title: Home
 description: Embedded Linux on i.MX6ULL — From First Boot to First Driver
 ---
@@ -452,7 +452,7 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
 ## Host
 
 - **OS:** Native Linux (Ubuntu 22.04 LTS recommended)
-- **Toolchain:** `arm-linux-gnueabihf-gcc` (current GCC) and `arm-none-eabi-gcc` for bare-metal
+- **Toolchains:** project-local Arm GNU Toolchains under `~/imx6ull/toolchains/`: `arm-none-linux-gnueabihf-` for Linux and `arm-none-eabi-` for bare metal
 - **Tools:** TFTP server, NFS server, picocom, `uuu` / `imx_usb_loader` for USB-OTG flashing
 
 ## License

@@ -51,7 +51,7 @@ $ cat > hello.c <<'EOF'
 #include <stdio.h>
 int main(void) { puts("hello"); return 0; }
 EOF
-$ arm-linux-gnueabihf-gcc -o hello hello.c
+$ arm-none-linux-gnueabihf-gcc -o hello hello.c
 $ file hello
 hello: ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV),
        dynamically linked, interpreter /lib/ld-linux-armhf.so.3, ...
@@ -67,7 +67,7 @@ That second point is the heart of dynamic linking and worth understanding precis
 ### The ELF program headers
 
 ```sh
-$ arm-linux-gnueabihf-readelf -l hello | head -25
+$ arm-none-linux-gnueabihf-readelf -l hello | head -25
 
 Elf file type is DYN (Position-Independent Executable file)
 Entry point 0x4c0
@@ -92,7 +92,7 @@ The **INTERP** segment is a single string: `/lib/ld-linux-armhf.so.3`. The kerne
 
 1. **Reads `hello`'s DYNAMIC segment.** This contains a table of needed libraries:
    ```sh
-   $ arm-linux-gnueabihf-readelf -d hello | head
+   $ arm-none-linux-gnueabihf-readelf -d hello | head
     0x00000001 (NEEDED) Shared library: [libc.so.6]
     0x0000001d (RUNPATH) Library runpath: [/path/to/runtime/libs]   (if set)
     ...
@@ -118,7 +118,7 @@ The PLT and GOT are the two tables that make dynamic linking efficient.
 The GOT holds runtime addresses of every external symbol the program references. The compiler emits `LOAD r0, [GOT+offset]` instead of a fixed address.
 
 ```sh
-$ arm-linux-gnueabihf-readelf -r hello
+$ arm-none-linux-gnueabihf-readelf -r hello
 
 Relocation section '.rel.dyn' at offset 0x444 contains 4 entries:
  Offset     Info    Type            Sym.Value  Sym. Name
@@ -239,7 +239,7 @@ Most general. user can override per-invocation. Downside: easy to forget. securi
 ### `RPATH` baked into the binary
 
 ```sh
-$ arm-linux-gnueabihf-gcc -Wl,-rpath,/opt/myapp/lib -o my-binary my.c
+$ arm-none-linux-gnueabihf-gcc -Wl,-rpath,/opt/myapp/lib -o my-binary my.c
 ```
 
 The binary now searches `/opt/myapp/lib/` automatically. Visible in `readelf -d` as a `RUNPATH` entry. Best for self-contained apps that bundle their own libs.
@@ -247,7 +247,7 @@ The binary now searches `/opt/myapp/lib/` automatically. Visible in `readelf -d`
 `$ORIGIN` is a special token that expands to the binary's own directory:
 
 ```sh
-$ arm-linux-gnueabihf-gcc -Wl,-rpath,'$ORIGIN/../lib' -o my-binary my.c
+$ arm-none-linux-gnueabihf-gcc -Wl,-rpath,'$ORIGIN/../lib' -o my-binary my.c
 ```
 
 Binary in `/opt/myapp/bin/` searches `/opt/myapp/lib/` — regardless of where the package is installed.
@@ -281,11 +281,11 @@ The decision is per-binary, not per-system. Mix as needed.
 
 ## 34.8  Lab
 
-1. **Inspect a binary's dependencies.** `arm-linux-gnueabihf-readelf -d /bin/my-binary` from the host (or from the target after copying). Note each NEEDED entry. verify each exists in `/lib/` or `/usr/lib/`.
+1. **Inspect a binary's dependencies.** `arm-none-linux-gnueabihf-readelf -d /bin/my-binary` from the host (or from the target after copying). Note each NEEDED entry. verify each exists in `/lib/` or `/usr/lib/`.
 2. **`ldd` on the target.** Run `ldd /usr/bin/...` on something dynamic and read each line. Identify the dynamic linker. verify it matches the INTERP from `readelf`.
 3. **Break a dynamic binary on purpose.** Move `/lib/libm.so.6` somewhere. try to run a math-dependent binary. Observe the "cannot open shared object file" error. Restore.
 4. **Trace library loading.** `LD_DEBUG=libs LD_DEBUG_OUTPUT=/tmp/ldlog my-binary. cat /tmp/ldlog`. Identify every library load.
-5. **Build the same program against musl.** If you have a musl-targeting cross toolchain, build `hello.c` against musl and against glibc. Compare sizes statically: `arm-linux-musleabihf-gcc -static -o hello-musl hello.c` versus `arm-linux-gnueabihf-gcc -static -o hello-glibc hello.c`.
+5. **Build the same program against musl.** If you have a musl-targeting cross toolchain, build `hello.c` against musl and against glibc. Compare sizes statically: `arm-linux-musleabihf-gcc -static -o hello-musl hello.c` versus `arm-none-linux-gnueabihf-gcc -static -o hello-glibc hello.c`.
 6. **Set up `$ORIGIN` rpath.** Build a binary with `-Wl,-rpath,'$ORIGIN/../lib'`, place it under `/opt/myapp/bin/`, place a custom `.so` under `/opt/myapp/lib/`, verify the binary finds it without `LD_LIBRARY_PATH`.
 
 ## 34.9  Pitfalls

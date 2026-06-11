@@ -96,7 +96,7 @@ The aircrack-ng `rtl8188eus` driver supports AP mode, monitor mode, packet injec
 # On the build host or target:
 git clone https://github.com/aircrack-ng/rtl8188eus
 cd rtl8188eus
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- KSRC=/path/to/kernel
+make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- KSRC=/path/to/kernel
 # Install the resulting 8188eu.ko
 ```
 

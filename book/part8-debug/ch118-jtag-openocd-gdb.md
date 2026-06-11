@@ -21,7 +21,7 @@ status: draft
 > **Focus:** **OpenOCD is the bridge: it speaks USB to the JTAG adapter and exposes a GDB-server on TCP. GDB connects, fetches symbols from your ELF, and gives you the familiar `b`, `n`, `s`, `p` commands**. The tricky parts are: getting the adapter's USB-IDs right for OpenOCD, choosing the right *target* config (Cortex-A7 vs Cortex-M differ massively), handling Cortex-A's complications (multi-CPU, secure-vs-non-secure world, MMU on/off), and giving GDB the right symbol files at the right times (one ELF for bare-metal, another for U-Boot, another for kernel + per-module symbols).
 > **ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
 >
-> **Tooling.** **Host:** `openocd`, `gdb-multiarch` (or `arm-linux-gnueabihf-gdb` from your cross-toolchain). **Target:** nothing — gdb attaches via OpenOCD over JTAG, no on-target software needed. Ubuntu-host install: `apt install openocd gdb-multiarch`. Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
+> **Tooling.** **Host:** `openocd`, `gdb-multiarch` (or `arm-none-linux-gnueabihf-gdb` from your cross-toolchain). **Target:** nothing — gdb attaches via OpenOCD over JTAG, no on-target software needed. Ubuntu-host install: `apt install openocd gdb-multiarch`. Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
@@ -151,7 +151,7 @@ You can `telnet localhost 4444` and issue raw commands:
 For Ch 9's LED-in-assembly bare-metal example:
 
 ```sh
-arm-linux-gnueabihf-gdb led.elf
+arm-none-eabi-gdb led.elf
 (gdb) target remote :3333
 Remote debugging using :3333
 0x00900000 in ?? ()
@@ -179,7 +179,7 @@ This is how you learn the bare-metal layer: step every instruction and match it 
 ## 118.6  GDB on U-Boot
 
 ```sh
-arm-linux-gnueabihf-gdb u-boot
+arm-none-linux-gnueabihf-gdb u-boot
 (gdb) target remote :3333
 (gdb) symbol-file u-boot          # already loaded
 (gdb) add-symbol-file spl/u-boot-spl 0x00908000   # SPL lives in OCRAM
@@ -204,13 +204,13 @@ For kernel debug, you need:
 
 ```sh
 # Build kernel with debug info
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- imx_v7_defconfig
+make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- imx_v7_defconfig
 echo CONFIG_DEBUG_INFO=y >> .config
 echo CONFIG_GDB_SCRIPTS=y >> .config
 make ARCH=arm zImage modules
 
 # Connect
-arm-linux-gnueabihf-gdb vmlinux
+arm-none-linux-gnueabihf-gdb vmlinux
 (gdb) target remote :3333
 (gdb) lx-symbols                   # the kernel GDB scripts: load module symbols too
 (gdb) break start_kernel

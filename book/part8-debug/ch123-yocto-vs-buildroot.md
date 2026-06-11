@@ -274,7 +274,7 @@ bitbake -c populate_sdk core-image-minimal
 # Run the installer; source environment-setup-...
 ```
 
-Both produce a directory with `arm-linux-gnueabihf-gcc` and a sysroot. Yocto's SDK is slightly larger (more headers, more docs). Buildroot's is leaner.
+Both produce a directory with `arm-none-linux-gnueabihf-gcc` and a sysroot. Yocto's SDK is slightly larger (more headers, more docs). Buildroot's is leaner.
 
 ## 123.10  CI integration
 

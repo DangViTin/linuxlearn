@@ -46,9 +46,9 @@ apt install gdb-multiarch
 `gdb-multiarch` is gdb with all architecture support compiled in (ARM, MIPS, RISC-V, ...). For a dedicated cross-debug:
 
 ```sh
-apt install gdb-arm-none-eabi
+apt install gdb-multiarch
 # or:
-arm-linux-gnueabihf-gdb        # part of the cross-toolchain
+arm-none-linux-gnueabihf-gdb        # part of the cross-toolchain
 ```
 
 Tell GDB about your **sysroot** — the target's filesystem layout, so GDB can resolve symbols in shared libraries:
@@ -67,7 +67,7 @@ gdbserver :2345 /path/to/myapp arg1 arg2
 # Listening on port 2345
 
 # On host:
-arm-linux-gnueabihf-gdb /path/to/build/myapp     # unstripped binary
+arm-none-linux-gnueabihf-gdb /path/to/build/myapp     # unstripped binary
 (gdb) set sysroot /path/to/target/sysroot
 (gdb) target remote 192.168.1.100:2345
 (gdb) b main
@@ -244,7 +244,7 @@ coredumpctl dump 1234 > /tmp/core   # extract one
 Analyze on the host:
 
 ```sh
-arm-linux-gnueabihf-gdb crashy_app /tmp/core
+arm-none-linux-gnueabihf-gdb crashy_app /tmp/core
 (gdb) bt
 #0  0x000115a4 in crash_function () at crashy.c:42
 #1  0x00011620 in main () at crashy.c:10

@@ -230,8 +230,8 @@ cd ..
 
 # 5. Test
 cd mainline
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- imx_v7_defconfig
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j$(nproc) zImage dtbs
+make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- imx_v7_defconfig
+make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- -j$(nproc) zImage dtbs
 # Boot from existing rootfs first; later update rootfs to a libc ABI matched to gcc 13
 
 # 6. Iterate per subsystem

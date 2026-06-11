@@ -128,7 +128,7 @@ cd cst-3.4.0/keys
 # 2. Build U-Boot with HAB support
 cd u-boot
 make CONFIG_SECURE_BOOT=y CONFIG_FIT_SIGNATURE=y CONFIG_HAB=y myboard_defconfig
-make CROSS_COMPILE=arm-linux-gnueabihf- -j$(nproc)
+make CROSS_COMPILE=arm-none-linux-gnueabihf- -j$(nproc)
 
 # 3. Generate CSF (Command Sequence File)
 # Use the helper script that comes with U-Boot or NXP's CST
@@ -318,7 +318,7 @@ The kernel can request services from OP-TEE via the optee driver. user-space tal
 git clone https://github.com/OP-TEE/optee_os.git
 cd optee_os
 
-make PLATFORM=imx-mx6ull CROSS_COMPILE=arm-linux-gnueabihf- \
+make PLATFORM=imx-mx6ull CROSS_COMPILE=arm-none-linux-gnueabihf- \
      CFG_TZDRAM_START=0x9e000000 CFG_TZDRAM_SIZE=0x02000000
 
 # Produces tee.bin (the Trusted OS image)

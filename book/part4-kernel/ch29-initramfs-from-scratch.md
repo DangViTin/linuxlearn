@@ -69,8 +69,8 @@ int main(void)
 Build statically so we have no library dependencies on the target:
 
 ```sh
-$ arm-linux-gnueabihf-gcc -static -Os -o init hello.c
-$ arm-linux-gnueabihf-strip init
+$ arm-none-linux-gnueabihf-gcc -static -Os -o init hello.c
+$ arm-none-linux-gnueabihf-strip init
 $ ls -lh init
 -rwxr-xr-x 1 you you 480K Jan 22 init
 ```
@@ -79,7 +79,7 @@ $ ls -lh init
 
 ```sh
 $ musl-gcc -static -Os -o init hello.c   # or use arm-linux-musleabihf-gcc
-$ arm-linux-gnueabihf-strip init
+$ arm-none-linux-gnueabihf-strip init
 $ ls -lh init
 -rwxr-xr-x 1 you you  30K Jan 22 init
 ```
@@ -145,17 +145,17 @@ $ cd ~/imx6ull/src
 $ wget https://busybox.net/downloads/busybox-1.36.1.tar.bz2
 $ tar xf busybox-1.36.1.tar.bz2
 $ cd busybox-1.36.1
-$ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- defconfig
+$ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- defconfig
 
 # Enable static linking
-$ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- menuconfig
+$ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- menuconfig
 # Settings → Build static binary (no shared libs) → [*]
 # Save and exit.
 
-$ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j$(nproc)
+$ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- -j$(nproc)
 $ ls -lh busybox
 -rwxr-xr-x 1 you you 1.2M Jan 22 busybox
-$ arm-linux-gnueabihf-strip busybox
+$ arm-none-linux-gnueabihf-strip busybox
 $ ls -lh busybox
 -rwxr-xr-x 1 you you 580K Jan 22 busybox
 ```

@@ -85,20 +85,28 @@ jobs:
       - name: Install cross toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-arm-linux-gnueabihf bison flex bc \
-            libssl-dev device-tree-compiler u-boot-tools
+          sudo apt-get install -y bison flex bc libssl-dev \
+            device-tree-compiler u-boot-tools curl xz-utils
+          test -n "$ARM_GNU_TOOLCHAIN_URL"
+          curl -L "$ARM_GNU_TOOLCHAIN_URL" -o /tmp/arm-gnu-toolchain.tar.xz
+          mkdir -p "$RUNNER_TEMP/arm-gnu-toolchain"
+          tar -xf /tmp/arm-gnu-toolchain.tar.xz -C "$RUNNER_TEMP/arm-gnu-toolchain"
+          TOOLCHAIN_DIR=$(find "$RUNNER_TEMP/arm-gnu-toolchain" -maxdepth 1 -type d \
+            -name 'arm-gnu-toolchain-*-x86_64-arm-none-linux-gnueabihf' | sort | tail -1)
+          ln -sfn "$TOOLCHAIN_DIR" "$RUNNER_TEMP/arm-gnu-toolchain/current"
+          echo "$RUNNER_TEMP/arm-gnu-toolchain/current/bin" >> "$GITHUB_PATH"
 
       - name: Build U-Boot
         run: |
           cd u-boot
-          make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- myboard_defconfig
-          make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j$(nproc)
+          make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- myboard_defconfig
+          make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- -j$(nproc)
 
       - name: Build kernel
         run: |
           cd linux
-          make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- imx_v7_defconfig
-          make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- -j$(nproc) zImage dtbs
+          make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- imx_v7_defconfig
+          make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- -j$(nproc) zImage dtbs
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

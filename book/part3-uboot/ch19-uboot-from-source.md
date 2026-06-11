@@ -98,8 +98,7 @@ Read `doc/README.imx6` and `board/freescale/mx6ull_14x14_evk/README` before goin
 We already have `CROSS_COMPILE` and `ARCH` exported from Chapter 3's `~/imx6ull/scripts/env.sh`. If you forgot to source it:
 
 ```sh
-$ export CROSS_COMPILE=arm-linux-gnueabihf-
-$ export ARCH=arm
+$ . ~/imx6ull/scripts/env.sh
 ```
 
 Now:

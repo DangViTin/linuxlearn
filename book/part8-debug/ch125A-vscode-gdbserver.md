@@ -43,8 +43,6 @@ And the cross-debugger:
 
 ```sh
 apt install gdb-multiarch
-# or:
-apt install gcc-arm-linux-gnueabihf  # includes gdb in some distros
 ```
 
 ## 125A.3  The two config files
@@ -128,7 +126,7 @@ VSCode runs this task before launching debug. gdbserver is up. The debug session
                 "/home/dev/yocto/build/tmp/work/imx6ull-myboard-poky-linux-gnueabi/myapp/1.0-r0/recipe-sysroot/usr/include/c++/12"
             ],
             "defines": [],
-            "compilerPath": "/home/dev/x-tools/arm-linux-gnueabihf/bin/arm-linux-gnueabihf-gcc",
+            "compilerPath": "/home/dev/x-tools/arm-none-linux-gnueabihf/bin/arm-none-linux-gnueabihf-gcc",
             "cStandard": "c17",
             "cppStandard": "c++17",
             "intelliSenseMode": "linux-gcc-arm"

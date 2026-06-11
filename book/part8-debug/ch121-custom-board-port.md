@@ -167,7 +167,7 @@ This is the riskiest step. If DDR config is wrong, nothing else will work. Use t
 ### 121.4.5  Build and flash
 
 ```sh
-make CROSS_COMPILE=arm-linux-gnueabihf- -j8
+make CROSS_COMPILE=arm-none-linux-gnueabihf- -j8
 # u-boot-dtb.imx is the SD-flashable image
 
 sudo dd if=u-boot-dtb.imx of=/dev/sdX bs=1k seek=1 conv=fsync
@@ -201,8 +201,8 @@ dtb-$(CONFIG_SOC_IMX6ULL) += imx6ull-myboard.dtb
 ### 121.5.3  Build kernel + DT
 
 ```sh
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- imx_v7_defconfig
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- zImage imx6ull-myboard.dtb modules
+make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- imx_v7_defconfig
+make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- zImage imx6ull-myboard.dtb modules
 ```
 
 ### 121.5.4  Boot from U-Boot
@@ -277,8 +277,7 @@ TARGET_SD=${1:-}
 [ -z "$TARGET_SD" ] && { echo "Usage: $0 /dev/sdX"; exit 1; }
 
 # Tools
-export CROSS_COMPILE=arm-linux-gnueabihf-
-export ARCH=arm
+. ~/imx6ull/scripts/env.sh
 
 # 1. Build U-Boot
 cd "$ROOT/u-boot"
@@ -319,7 +318,7 @@ EOF
   cp $ROOT/linux/arch/arm/boot/dts/nxp/imx/imx6ull-myboard.dtb /mnt/boot/
 
   tar -C /mnt/root -xf $ROOT/buildroot/output/images/rootfs.tar
-  cd $ROOT/linux && make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_MOD_PATH=/mnt/root modules_install
+  cd $ROOT/linux && make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- INSTALL_MOD_PATH=/mnt/root modules_install
 
   umount /mnt/boot /mnt/root
 

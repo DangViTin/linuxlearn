@@ -64,7 +64,7 @@ Each chapter is structured the same way, so the reader always knows where to loo
 ### Chapter 3 — Host environment setup
 - Choosing a host OS (Ubuntu 22.04 LTS); why native Linux beats WSL/VM for this work
 - Required host packages: `build-essential`, `bison`, `flex`, `libssl-dev`, `bc`, `device-tree-compiler`, `u-boot-tools`, `nfs-kernel-server`, `tftpd-hpa`, `minicom`, `picocom`, `qemu-user-static`
-- Installing the cross toolchain (`arm-linux-gnueabihf-gcc`) — pre-built for now, hand-built in Ch. 122
+- Installing two project-local Arm GNU toolchains: `arm-none-linux-gnueabihf-` for Linux and `arm-none-eabi-` for bare metal
 - Setting up TFTP, NFS, and a serial console on the host
 - USB-OTG flashing tools: `imx_usb_loader`, NXP `uuu` (Universal Update Utility)
 - A reproducible workspace layout for the rest of the book
@@ -96,7 +96,7 @@ Each chapter is structured the same way, so the reader always knows where to loo
 - `gcc` is *not* one tool: cpp, cc1, as, collect2, ld
 - `binutils`: `as`, `ld`, `objcopy`, `objdump`, `nm`, `readelf`, `strip`, `ar`, `addr2line`
 - The C library: glibc vs musl vs uClibc-ng vs newlib (and why bare-metal needs none of them)
-- ABI: EABI vs hard-float vs soft-float; `arm-linux-gnueabihf` decoded
+- ABI: EABI vs hard-float vs soft-float; `arm-none-linux-gnueabihf` decoded
 - ELF format: program headers vs section headers; what the loader actually reads
 - Linker scripts: `MEMORY`, `SECTIONS`, `VMA` vs `LMA`, `ENTRY`, `KEEP`
 - Make basics that matter: implicit rules, pattern rules, automatic variables, `.PHONY`, recursive vs non-recursive
@@ -1360,7 +1360,7 @@ Modern teams build U-Boot, kernel, rootfs, and run a smoke test on the actual ha
 ### Chapter 122 — Build your own cross-toolchain
 - Bootstrap problem: gcc needs libc, libc needs gcc, gcc needs binutils
 - crosstool-NG step-by-step: kernel headers → binutils → gcc stage 1 → glibc/musl → gcc stage 2
-- Comparing your toolchain against a pre-built Linaro one (size, behavior, sysroot)
+- Comparing your toolchain against a pre-built Arm GNU one (size, behavior, sysroot)
 - **Pages:** ~24
 
 ### Chapter 122A — Supplementary: BSP → mainline migration playbook

@@ -175,8 +175,8 @@ This one file replaces ~30 lines of English prose, and it can be checked by tool
 Two `make` targets:
 
 ```sh
-$ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- dt_binding_check
-$ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- dtbs_check
+$ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- dt_binding_check
+$ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- dtbs_check
 ```
 
 What each does:
@@ -250,7 +250,7 @@ examples:
 Save that and run:
 
 ```sh
-$ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- dt_binding_check \
+$ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- dt_binding_check \
     DT_SCHEMA_FILES=leds/myorg,pa-led.yaml
 ```
 

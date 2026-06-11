@@ -21,7 +21,7 @@ status: draft
 When you type:
 
 ```sh
-$ arm-linux-gnueabihf-gcc -O2 -o hello hello.c
+$ arm-none-linux-gnueabihf-gcc -O2 -o hello hello.c
 ```
 
 …six programs run in sequence. `gcc` is a **driver**: it parses the command line, decides which sub-tools to invoke, builds their argument lists, and chains their I/O.
@@ -38,11 +38,11 @@ The six sub-stages (the driver may merge some into one process for speed):
 You can see the chain by adding `-v` to any compile:
 
 ```sh
-$ arm-linux-gnueabihf-gcc -v -o hello hello.c 2>&1 | head -20
+$ arm-none-linux-gnueabihf-gcc -v -o hello hello.c 2>&1 | head -20
 Using built-in specs.
-COLLECT_GCC=arm-linux-gnueabihf-gcc
-COLLECT_LTO_WRAPPER=/usr/libexec/gcc-cross/arm-linux-gnueabihf/11/lto-wrapper
-Target: arm-linux-gnueabihf
+COLLECT_GCC=arm-none-linux-gnueabihf-gcc
+COLLECT_LTO_WRAPPER=/home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-linux-gnueabihf/libexec/gcc/arm-none-linux-gnueabihf/<version>/lto-wrapper
+Target: arm-none-linux-gnueabihf
 ...
 ```
 
@@ -94,7 +94,7 @@ You can read your own machine code. For embedded work, that skill is mandatory.
 ### `readelf -l` to see segments
 
 ```sh
-$ arm-linux-gnueabihf-readelf -l hello
+$ arm-none-linux-gnueabihf-readelf -l hello
 Elf file type is DYN (Shared object file)
 Entry point 0x4c0
 There are 9 program headers, starting at offset 52
@@ -207,7 +207,7 @@ Three flavors of FP ABI exist:
 - **softfp** (`-mfloat-abi=softfp`) — FP ops use the FPU, but FP arguments still go in integer registers. Compromise — used when linking soft-float libraries with code that has an FPU.
 - **hard-float** (`-mfloat-abi=hard`) — FP ops use the FPU. FP arguments use FP registers. Fastest.
 
-The triplet suffix tells you which: `arm-linux-gnueabi` (soft), `arm-linux-gnueabihf` (hard). **You cannot link a soft-float `.o` with a hard-float `.o`**. The linker refuses.
+The triplet suffix tells you which: `arm-none-linux-gnueabi` (soft), `arm-none-linux-gnueabihf` (hard). **You cannot link a soft-float `.o` with a hard-float `.o`**. The linker refuses.
 
 Linux on i.MX6ULL is universally hard-float in 2026. So is everything we build.
 
@@ -258,8 +258,8 @@ target ...: prerequisite ...
 ### 6.7.2  Variables: four flavors of assignment
 
 ```make
-CC     = arm-none-eabi-gcc         # 1) recursive ("deferred")
-CC    := arm-none-eabi-gcc         # 2) simple ("immediate")
+CC     = arm-none-linux-gnueabihf-gcc         # 1) recursive ("deferred")
+CC    := arm-none-linux-gnueabihf-gcc         # 2) simple ("immediate")
 CFLAGS ?= -O2                       # 3) only if not already set
 OBJS  += extra.o                   # 4) append
 ```
@@ -423,7 +423,7 @@ Default on a Linux distro: dynamic. Default on a tight embedded system with a kn
 To force static:
 
 ```sh
-$ arm-linux-gnueabihf-gcc -static -o hello hello.c
+$ arm-none-linux-gnueabihf-gcc -static -o hello hello.c
 $ file hello
 hello: ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV),
        statically linked, BuildID[sha1]=..., with debug_info, not stripped
@@ -432,8 +432,8 @@ hello: ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV),
 Compare sizes:
 
 ```sh
-$ arm-linux-gnueabihf-gcc -o hello-dyn  hello.c          ; ls -l hello-dyn
-$ arm-linux-gnueabihf-gcc -static -o hello-stc hello.c   ; ls -l hello-stc
+$ arm-none-linux-gnueabihf-gcc -o hello-dyn  hello.c          ; ls -l hello-dyn
+$ arm-none-linux-gnueabihf-gcc -static -o hello-stc hello.c   ; ls -l hello-stc
 ```
 
 Expect roughly 8 KB dynamic vs 600 KB static with glibc, or ~30 KB static with musl.
@@ -482,10 +482,10 @@ $ cat > hello.c <<'EOF'
 int main(void) { puts("hello"); return 0; }
 EOF
 $ gcc -g -O2 -o hello-host hello.c
-$ arm-linux-gnueabihf-gcc -g -O2 -o hello-arm hello.c
+$ arm-none-linux-gnueabihf-gcc -g -O2 -o hello-arm hello.c
 $ file hello-host hello-arm
 $ readelf -a hello-arm | head -40
-$ arm-linux-gnueabihf-objdump -d hello-arm | grep -A 5 '<main>:'
+$ arm-none-linux-gnueabihf-objdump -d hello-arm | grep -A 5 '<main>:'
 ```
 
 Read the disassembly. Find the `bl puts` instruction (or its inline equivalent). Find where `r0` is loaded with the address of the string `"hello"`.
@@ -521,11 +521,11 @@ Compare your work against the listings above. experimenting with `readelf -a` is
 
 ## 6.11  Pitfalls
 
-- **Mixing `arm-none-eabi-` and `arm-linux-gnueabihf-` outputs.** They cannot be linked. The compiler will not warn. The linker will.
+- **Mixing incompatible toolchain outputs.** Do not link bare-metal objects from `arm-none-eabi-` into Linux user-space programs built with `arm-none-linux-gnueabihf-`. They have different runtime assumptions. The compiler will not warn clearly; the linker error usually appears later and looks unrelated.
 - **`-nostdlib` silently dropping libgcc.** If your code uses 64-bit integer division on a target without HW divide, `gcc` emits a call to `__aeabi_uldivmod` — provided by `libgcc`. With `-nostdlib`, you must explicitly add `-lgcc` after your objects.
 - **Linker script orders matter.** `*(.text*)` after `*(.text.startup)` makes the startup come first. Get this wrong and the wrong code runs first. We will be deliberate about this in Ch 9.
 - **`.bss` zeroing.** If your startup forgets to zero `.bss`, every uninitialized global is whatever was in memory at boot — which on i.MX6ULL OCRAM is often a useful-looking pattern, leading to bugs that "work fine" except when ROM cleans differently next boot.
-- **Wrong `-march`/`-mcpu`.** `arm-linux-gnueabihf-gcc` defaults to `armv7-a` but the exact flags vary by distribution. Always specify `-mcpu=cortex-a7` explicitly for Cortex-A7 code. The compiler then schedules instructions for that pipeline.
+- **Wrong `-march`/`-mcpu`.** Toolchain defaults vary. Always specify `-mcpu=cortex-a7` explicitly for Cortex-A7 code. The compiler then schedules instructions for that pipeline.
 - **`strip` on the binary you wanted to debug.** Keep an unstripped copy. A useful convention in your Makefile: `$(NAME).elf` is unstripped (for `gdb`/`objdump`). `$(NAME).stripped.elf` is the smaller deliverable.
 
 ## 6.12  Going deeper

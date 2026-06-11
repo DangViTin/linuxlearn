@@ -39,7 +39,7 @@ Other UIs exist (`nconfig`, `xconfig`, `gconfig`) — same functionality, differ
 From a configured tree:
 
 ```sh
-$ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- menuconfig
+$ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- menuconfig
 ```
 
 You'll get a full-screen ncurses interface. Navigation:
@@ -92,7 +92,7 @@ $ head -10 .config
 # Automatically generated file; DO NOT EDIT.
 # Linux/arm 6.6.0 Kernel Configuration
 #
-CONFIG_CC_VERSION_TEXT="arm-linux-gnueabihf-gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0"
+CONFIG_CC_VERSION_TEXT="arm-none-linux-gnueabihf-gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0"
 CONFIG_GCC_VERSION=110400
 CONFIG_CLANG_VERSION=0
 CONFIG_AS_IS_GNU=y

@@ -172,7 +172,7 @@ For each tool: **what it is**, **chapters that use it**, **Ubuntu-base install**
 
 | Tool | Chapters | Ubuntu-base (host) |
 |---|---|---|
-| Cross toolchain (`arm-linux-gnueabihf-gcc` 13.x) | 3, 6, 122 | `apt install gcc-arm-linux-gnueabihf` |
+| Cross toolchains (`arm-none-linux-gnueabihf-gcc`, `arm-none-eabi-gcc`) | 3, 6, 122 | Arm GNU Toolchain tarballs installed under `~/imx6ull/toolchains/` |
 | `crosstool-NG` (build your own toolchain) | 122 | `apt install autoconf bison flex texinfo unzip`; clone `crosstool-ng` |
 | `bison`, `flex`, `bc`, `libssl-dev` (kernel build) | 25, 122 | `apt install build-essential bison flex bc libssl-dev` |
 | `device-tree-compiler` (`dtc`) | 27, 27A | `apt install device-tree-compiler` |

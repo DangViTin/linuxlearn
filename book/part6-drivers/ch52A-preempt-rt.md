@@ -80,7 +80,7 @@ $ wget https://cdn.kernel.org/pub/linux/kernel/projects/rt/6.6/older/patch-6.6.2
 $ zcat patch-6.6.20-rt19.patch.gz | patch -p1
 $ make ARCH=arm imx_v6_v7_defconfig
 $ make menuconfig    # enable Full Preemption
-$ make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- zImage modules dtbs -j8
+$ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- zImage modules dtbs -j8
 ```
 
 For new work in 2025+, target v6.12 LTS or newer and skip the patch step entirely. Boot the new kernel. `uname -a` will show `PREEMPT_RT` in the version string.

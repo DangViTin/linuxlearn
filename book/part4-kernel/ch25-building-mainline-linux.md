@@ -126,8 +126,7 @@ mxs_defconfig
 `imx_v6_v7_defconfig` (formerly `imx_v7_defconfig`) is the omnibus i.MX configuration that, on v6.6, covers i.MX31/35/27 (ARMv6), i.MX5 (selected boards), i.MX6 (all variants including ULL), and i.MX7. One config builds for all of them. A single `zImage` boots on any board that has a matching DT. This is the mainline style.
 
 ```sh
-$ export ARCH=arm
-$ export CROSS_COMPILE=arm-linux-gnueabihf-
+$ . ~/imx6ull/scripts/env.sh
 $ make imx_v6_v7_defconfig
 #
 # configuration written to .config
@@ -264,7 +263,7 @@ $ file vmlinux
 vmlinux: ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV),
          statically linked, BuildID[sha1]=..., with debug_info, not stripped
 
-$ arm-linux-gnueabihf-readelf -h vmlinux | head
+$ arm-none-linux-gnueabihf-readelf -h vmlinux | head
 ELF Header:
   ...
   Entry point address:               0x80008000
@@ -325,10 +324,10 @@ $ make O=~/imx6ull/build/kernel INSTALL_MOD_PATH=~/imx6ull/rootfs modules_instal
 > Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
 
 
-- **Forgetting `ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf-`.** `make` will build a host x86-64 kernel and fail somewhere deep in arch code. Always export both before invoking `make`.
+- **Forgetting the Chapter 3 environment.** If you do not run `. ~/imx6ull/scripts/env.sh`, `make` will build for the host x86-64 machine and fail somewhere deep in arch code. Source the script before invoking `make`.
 - **Building from the source tree without `O=`.** Works, but `git status` becomes useless because every `make` populates the source tree with `.o` files. Out-of-tree builds keep the source pristine.
 - **Wrong defconfig.** `make imx_v6_v7_defconfig` not `make x86_64_defconfig`. The latter happens when you forget to export `ARCH=arm` — Linux helpfully picks the host default.
-- **Old gcc-toolchain miscompile.** Mainline kernels usually require a fairly recent gcc (≥ 5.1 for v6.x. ≥ 4.9 for older). Distribution `gcc-arm-linux-gnueabihf` is fine. Custom-built ancient toolchains sometimes miscompile RCU or AAPCS-sensitive code paths.
+- **Old gcc-toolchain miscompile.** Mainline kernels usually require a fairly recent gcc (≥ 5.1 for v6.x. ≥ 4.9 for older). The Arm GNU Toolchain from Chapter 3 is fine. Custom-built ancient toolchains sometimes miscompile RCU or AAPCS-sensitive code paths.
 - **`make modules_install` to a system location.** By default `make modules_install` writes to `/lib/modules/$(uname -r)/`. **Always** pass `INSTALL_MOD_PATH=...` when cross-building or you will overwrite your host's modules.
 - **Mismatch between `zImage` and `modules`.** Modules built against kernel version X will refuse to load on a running kernel built from version Y (they check the version's "vermagic" string). If you rebuild the kernel, rebuild + reinstall modules.
 

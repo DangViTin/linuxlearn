@@ -402,7 +402,7 @@ Rule: **every memory-mapped register access uses `volatile`. Every one.** Macroi
 
 - The GNU `ld` manual, section "Output Section Description" — the full SECTIONS grammar.
 - LLVM's `lld` manual has a much shorter introduction to the same concepts, useful for the second-time reader.
-- `arm-linux-gnueabihf-gcc -E -P -x c /dev/null -include <stdint.h>` — see what `stdint.h` actually defines on your target.
+- `arm-none-eabi-gcc -E -P -x c /dev/null -include <stdint.h>` — see what `stdint.h` actually defines on your target.
 - *Mastering ARM Embedded Programming* (Marwedel, 2018) — the chapter on startup code is excellent.
 - The U-Boot source's `arch/arm/lib/crt0.S` — read it after this chapter. The patterns are the same.
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.

@@ -9,10 +9,10 @@ status: draft
 # Chapter 122 — Build your own cross-toolchain
 **ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
 
-> **What:** building a complete **cross-compiling toolchain** — binutils + gcc + glibc (or musl/uClibc-ng) + gdb — from upstream sources, using **crosstool-NG** (the canonical tool) and, as a one-time exercise, by hand. We resolve the bootstrap puzzle: "gcc needs libc to compile programs, libc needs gcc to compile itself, gcc needs binutils, …". The output: an `arm-linux-gnueabihf-*` toolchain in `/opt/x-tools/`. We compare it size-for-size and behavior-for-behavior against a pre-built Linaro / Bootlin / Yocto SDK toolchain.
+> **What:** building a complete **cross-compiling toolchain** — binutils + gcc + glibc (or musl/uClibc-ng) + gdb — from upstream sources, using **crosstool-NG** (the canonical tool) and, as a one-time exercise, by hand. We resolve the bootstrap puzzle: "gcc needs libc to compile programs, libc needs gcc to compile itself, gcc needs binutils, …". The output: an `arm-none-linux-gnueabihf-*` toolchain in `/opt/x-tools/`. We compare it size-for-size and behavior-for-behavior against a pre-built Linaro / Bootlin / Yocto SDK toolchain.
 > **Yocto** - a metadata-driven build system for producing custom Linux distributions.
 >
-> **Why:** for most users, `apt install gcc-arm-linux-gnueabihf` is fine. Build your own when one of these matters:
+> **Why:** for most users, the Arm GNU Toolchain installed in Chapter 3 is fine. Build your own when one of these matters:
 > 1. **Pinning** — the apt version updates with Ubuntu. your build might silently change behavior. Your own toolchain is reproducible across teams and time.
 > 2. **Custom libc / configuration** — you need `glibc` 2.34 specifically. or you want musl for size. or you want a hardened gcc with stack protector defaults.
 > 3. **Understanding** — every "weird linker error" makes sense once you've built the linker. It also teaches what every flag and stage actually does.
@@ -265,7 +265,7 @@ The toolchain is built around the libc choice. You can't easily swap later. Pick
 
 ## 122.6  ABI and the "hf" suffix
 
-`arm-linux-gnueabihf` decoded:
+`arm-none-linux-gnueabihf` decoded:
 - **arm**: 32-bit ARM
 - **linux**: Linux kernel target
 - **gnueabi**: GNU C library + ARM EABI calling convention
@@ -290,7 +290,7 @@ For most embedded projects: pick one ABI. disable multilib for clarity. crosstoo
 These three concepts confuse first-time toolchain builders:
 
 - **prefix** — where the toolchain binaries (gcc, ld, etc.) install: `/opt/x-tools/<triple>/`
-- **target** — the system the toolchain produces code for: `arm-linux-gnueabihf`
+- **target** — the system the toolchain produces code for: `arm-none-linux-gnueabihf`
 - **sysroot** — the target's logical "/" — where gcc/ld look for target headers and libraries. Often `<prefix>/<target>/sysroot/`
 
 When compiling for the target:
@@ -341,7 +341,7 @@ In practice they're all similar (all build from the same upstream). Differences:
 3. **Build the toolchain.** Run `ct-ng build`. Watch each stage complete. ~1 hour.
 4. **Test the toolchain.** Compile a simple program. run it on the target (NFS root). confirm it works.
 **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
-5. **Compare with apt's gcc.** `arm-linux-gnueabihf-gcc -dumpversion` (apt) vs your custom. differences?
+5. **Compare with apt's gcc.** `arm-none-linux-gnueabihf-gcc -dumpversion` (apt) vs your custom. differences?
 6. **musl variant.** Reconfigure crosstool-NG with musl libc. rebuild. compile `hello world`. compare static-link sizes.
 7. **Manual stage 1.** Following §122.4, build binutils + kernel headers + gcc stage 1 by hand. Stop after stage 1. verify it can produce object files.
 8. **Pinning.** Write a script that downloads a specific version of binutils + gcc + glibc, builds, and produces a tarball your team can extract anywhere.
@@ -361,7 +361,7 @@ In practice they're all similar (all build from the same upstream). Differences:
 - **gcc bootstrap requires C++ compiler.** Stage 1 gcc compiles with the host gcc. host must support C++14+.
 - **Out-of-tree build required.** Most GNU sources don't support in-source builds. Always `mkdir build && cd build && ../configure ...`.
 - **Static glibc.** Linking statically against glibc bloats binaries. static linking glibc *also* breaks dlopen and getaddrinfo. Use musl for static.
-- **Multiple toolchains in PATH.** Two `arm-linux-gnueabihf-gcc` binaries → wrong one picked. Always explicit full path or curate PATH.
+- **Multiple toolchains in PATH.** Two `arm-none-linux-gnueabihf-gcc` binaries → wrong one picked. Always explicit full path or curate PATH.
 - **PIE vs PIC defaults.** Modern gcc defaults to `-fPIE -pie`. older code expecting non-PIE may break (especially if your kernel doesn't support PIE binaries, which is rare).
 - **Locale ate the build.** glibc builds depend on `LC_ALL=C`. If your locale is set weirdly, configure scripts misbehave.
 - **`-march=armv7-a` vs `-mcpu=cortex-a7` confusion.** Both work. cortex-a7 is more specific (enables errata). Pick one and stay consistent.

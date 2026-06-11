@@ -56,9 +56,9 @@ git checkout -b my-patch
 Same tools as any kernel patch — Edit, build, test:
 
 ```sh
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- imx_v7_defconfig
+make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- imx_v7_defconfig
 # Edit
-make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- zImage
+make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- zImage
 # Test on hardware
 
 git add -p

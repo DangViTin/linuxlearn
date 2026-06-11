@@ -261,7 +261,7 @@ return dev_err_probe(&pdev->dev, -EINVAL, "no memory resource\n");
 obj-m += demo.o
 KDIR ?= /home/$(USER)/linux-imx6ull/build
 all:
-	$(MAKE) -C $(KDIR) ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- M=$(PWD) modules
+	$(MAKE) -C $(KDIR) ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- M=$(PWD) modules
 ```
 
 On the target:

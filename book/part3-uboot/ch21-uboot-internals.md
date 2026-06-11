@@ -501,7 +501,7 @@ If any of those lines reports an error, you now know which source file to open.
 1. **Add a `hello` command.** Follow §21.5. Push it to your custom board (or to the EVK).
 2. **Trace one init function.** Pick `init_baud_rate` from `init_sequence_f`. Find it in source. Read it. Annotate.
 3. **Find and read `_main`** in `arch/arm/lib/crt0.S`. Identify the lines that set the early stack, the lines that call `board_init_f`, and the lines that resume execution post-relocation.
-4. **Inspect the relocation table.** `arm-linux-gnueabihf-readelf -r u-boot | head -30` to see relocations. Each entry is an absolute address inside U-Boot's image that `relocate_code` fixes up.
+4. **Inspect the relocation table.** `arm-none-linux-gnueabihf-readelf -r u-boot | head -30` to see relocations. Each entry is an absolute address inside U-Boot's image that `relocate_code` fixes up.
 5. **Make and save an env change.** `setenv myname yourname. saveenv. reset`. After reboot, `printenv myname` should still print your name.
 6. **Custom autoboot script.**
    ```

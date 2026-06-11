@@ -1,17 +1,6 @@
----
-chapter: 3
-title: Host environment setup
-part: I — Foundations
-estimated_pages: 16
-status: draft
----
-
-# Chapter 3 — Host environment setup
+﻿# Chapter 3 — Host environment setup
 
 > **What:** a Linux development host that can cross-compile for ARMv7-A, serve files over TFTP and NFS, talk to the board over serial and USB-OTG, and recover a bricked board.
-> **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
-> **TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
-> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 >
 > **Why:** for the next sixty chapters, the host is your lever. A flaky host wastes more of your time than any bug in your code.
 >
@@ -20,22 +9,16 @@ status: draft
 
 ## 3.1  Choosing the host
 
-> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
-> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
-
-
 The book assumes **native Ubuntu 22.04 LTS** running on bare-metal hardware. Other options work but cost you time, sometimes a lot:
 
 | Host | Status | Notes |
 |------|--------|-------|
-| Native Ubuntu 22.04 LTS | **Recommended, tested** | Everything in this book was tested here. |
+| Native Ubuntu 22.04 LTS | **Recommended** | Everything in this book was tested here. |
 | Native Debian 12 (bookworm) | Works | Some package names differ; substitute as needed. |
 | Native Fedora 39+ | Works | Package names and `dnf` syntax differ; we don't translate every command. |
 | WSL2 on Windows 11 | Works *with caveats* | USB-OTG (`uuu`) requires `usbipd-win`; serial passthrough is fiddly; NFS server is awkward. |
-| Linux VM (VirtualBox/VMware) | Works | Slow builds; USB passthrough is fragile. |
+| Linux VM (VirtualBox/VMware) | Works | Slow builds. |
 | macOS + Docker | Don't | Cross-compile inside Docker works, but USB-OTG and serial do not pass through cleanly. |
-
-If you are running Windows or macOS, the fastest path is to put Ubuntu on a USB-3 NVMe enclosure and boot from it. Dual-booting your daily machine is the obvious alternative. What matters is that when you plug the board into a USB port, `lsusb` sees it without trouble.
 
 The remainder of this book assumes Ubuntu 22.04. Commands shown with the `$` prompt run as your normal user. Commands with `#` run as root via `sudo`.
 
@@ -48,7 +31,7 @@ The remainder of this book assumes Ubuntu 22.04. Commands shown with the `$` pro
 Create the workspace before installing anything. The layout you set now will be referred to by every chapter:
 
 ```sh
-$ mkdir -p ~/imx6ull/{src,build,boot,rootfs,scripts,notes}
+$ mkdir -p ~/imx6ull/{src,build,boot,rootfs,scripts,toolchains,notes}
 $ cd ~/imx6ull
 $ tree -L 1
 .
@@ -57,7 +40,8 @@ $ tree -L 1
 ├── notes      # your lab journal, per-chapter
 ├── rootfs     # exported over NFS to the target
 ├── scripts    # helpers; shared between chapters
-└── src        # upstream sources: linux, u-boot, busybox, your bare-metal code
+├── src        # upstream sources: linux, u-boot, busybox, your bare-metal code
+└── toolchains # prebuilt Arm compilers kept local to this project
 ```
 
 Two rules about this layout. Both matter for the rest of the book:
@@ -65,16 +49,11 @@ Two rules about this layout. Both matter for the rest of the book:
 1. **Sources are read-only.** We never edit inside `src/u-boot/`. We patch and build out-of-tree into `build/u-boot/`. This is the only way to keep a clean diff against upstream and keep cross-chapter reproducibility honest.
 **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
 2. **`rootfs/` is the live NFS root.** Anything you copy into `rootfs/` is visible to the board after the next boot, with no flashing step. This is the central iteration trick of embedded Linux.
-> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 ## 3.3  Host packages
 
-> **Storage safety:** Before any command that names /dev/sdX, run lsblk -o NAME,SIZE,MODEL,TRAN,TYPE,MOUNTPOINTS.
 > Verify the removable card by size and model, unmount its partitions, and stop if the path is not the target card. Writing the wrong /dev node can destroy the host disk.
 
-
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -113,64 +92,131 @@ If `apt` complains about any package on your distribution, search for the closes
 
 ## 3.4  The cross toolchain
 
-We need a toolchain that runs on `x86_64-linux-gnu` (the host) and produces code for `arm-linux-gnueabihf` (the target). Two reasonable sources for now. We build one ourselves in Chapter 122.
+We need two prebuilt Arm toolchains:
 
-### Option A — Ubuntu package
+- **Linux target toolchain:** `arm-none-linux-gnueabihf-`
+  Builds U-Boot, the Linux kernel, BusyBox, and target user-space programs. It targets 32-bit Arm Linux with the hard-float glibc ABI.
+- **Bare-metal toolchain:** `arm-none-eabi-`
+  Builds the small no-OS experiments in Part II. It does not assume Linux, glibc, processes, or a dynamic loader.
+
+Keeping both is not the same as letting random compilers leak into the build. We will install both in one project-local directory, name them clearly, and select them explicitly.
+
+Download these two Arm GNU Toolchain packages from Arm's official page:
+
+<https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads>
+
+- `arm-gnu-toolchain-*-x86_64-arm-none-linux-gnueabihf.tar.xz`
+- `arm-gnu-toolchain-*-x86_64-arm-none-eabi.tar.xz`
+
+Save both tarballs in `~/imx6ull/src/toolchains/`. Keeping the original tarballs there makes it easy to see exactly what was installed later.
 
 ```sh
-$ sudo apt install -y gcc-arm-linux-gnueabihf
-$ arm-linux-gnueabihf-gcc --version
-arm-linux-gnueabihf-gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0
+$ mkdir -p ~/imx6ull/src/toolchains
+$ cd ~/imx6ull/src/toolchains
+$ ls
+arm-gnu-toolchain-<version>-x86_64-arm-none-linux-gnueabihf.tar.xz
+arm-gnu-toolchain-<version>-x86_64-arm-none-eabi.tar.xz
 ```
 
-The cleanest choice for getting started. Ships with a sysroot. Limitation: locked to whatever GCC version Ubuntu shipped.
-
-### Option B — ARM/Linaro pre-built
-
-Download the latest `arm-gnu-toolchain-*-x86_64-arm-none-linux-gnueabihf.tar.xz` from <https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads> and untar to `/opt/`. Then:
+Extract both under the project workspace, not `/opt`. This keeps the setup portable and avoids changing the host machine more than necessary.
 
 ```sh
-$ export PATH=/opt/arm-gnu-toolchain-13.3.rel1-x86_64-arm-none-linux-gnueabihf/bin:$PATH
-$ arm-none-linux-gnueabihf-gcc --version
+$ mkdir -p ~/imx6ull/toolchains
+$ tar -xf arm-gnu-toolchain-*-x86_64-arm-none-linux-gnueabihf.tar.xz \
+    -C ~/imx6ull/toolchains
+$ tar -xf arm-gnu-toolchain-*-x86_64-arm-none-eabi.tar.xz \
+    -C ~/imx6ull/toolchains
+```
+After extract, we have:
+
+```text
+~/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-linux-gnueabihf/bin/arm-none-linux-gnueabihf-gcc
+~/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc
 ```
 
-Pros: newer GCC, often better optimization. Cons: triplet is `arm-none-linux-gnueabihf`, not `arm-linux-gnueabihf`. We accommodate both throughout the book.
+Those are the paths to remember when debugging build problems.
 
-### Decoding the triplet
+### Decoding the triplets
 
-`arm-linux-gnueabihf` looks alphabet-soupy. It is not.
+`arm-none-linux-gnueabihf` and `arm-none-eabi` look alphabet-soupy. They are not.
 
-- `arm` — target CPU family
-- `linux` — target OS (vs `none` for bare metal, `eabi` for bare-metal-ish without OS)
-- `gnu` — userland convention (vs `musl`, `uclibc`)
-- `eabi` — Embedded ABI v5
+- `arm` means the target CPU family is 32-bit Arm.
+- The middle `none` is the vendor field. Here it means no specific silicon vendor.
+- `linux` means the generated program expects a Linux target environment.
+- `gnu` means GNU userland and glibc ABI.
+- `eabi` means Embedded ABI v5.
 **ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
-- `hf` — hard-float: floating-point arguments passed in VFP registers (faster but binary-incompatible with `gnueabi` soft-float)
+- `hf` means hard-float: floating-point arguments are passed in VFP registers.
 
-For bare-metal Part II we will sometimes want a `arm-none-eabi` toolchain (no OS, no libc). Install it now so we don't have to interrupt later:
+The practical rule:
+
+- Use `arm-none-linux-gnueabihf-` when the output is meant to run with Linux or link against Linux user-space libraries.
+- Use `arm-none-eabi-` when the output is a freestanding image with no OS underneath it.
+
+### Environment script
+
+Do not edit `~/.bashrc` for this book. Hidden global shell state is convenient after you understand it, but it is bad for learning and can break unrelated projects.
+
+Create one explicit environment script:
 
 ```sh
-$ sudo apt install -y gcc-arm-none-eabi
+$ nano ~/imx6ull/scripts/env.sh
 ```
 
-We now have two toolchains:
-
-- `arm-linux-gnueabihf-gcc` — for code that runs *under* Linux on the target.
-- `arm-none-eabi-gcc` — for the bare-metal experiments where there is no OS.
-
-A common mistake: people use the `linux-gnueabihf` toolchain for bare metal and are surprised when libc gets pulled in. Use the bare-metal toolchain for bare metal.
-
-### Pin the toolchain in your shell
-
-Add this to `~/.bashrc` so every shell finds the toolchain consistently:
+Put this in the file:
 
 ```sh
-# ~/.bashrc
-export CROSS_COMPILE=arm-linux-gnueabihf-
+#!/bin/sh
+
+export IMX6ULL_HOME="$HOME/imx6ull"
+export ARM_LINUX_TOOLCHAIN="$(ls -d "$IMX6ULL_HOME"/toolchains/arm-gnu-toolchain-*-x86_64-arm-none-linux-gnueabihf)"
+export ARM_BAREMETAL_TOOLCHAIN="$(ls -d "$IMX6ULL_HOME"/toolchains/arm-gnu-toolchain-*-x86_64-arm-none-eabi)"
+
+export PATH="$ARM_LINUX_TOOLCHAIN/bin:$ARM_BAREMETAL_TOOLCHAIN/bin:$PATH"
+
 export ARCH=arm
+export CROSS_COMPILE=arm-none-linux-gnueabihf-
+export BAREMETAL_CROSS_COMPILE=arm-none-eabi-
+
+export TFTPROOT=/srv/tftp
+export NFSROOT="$IMX6ULL_HOME/rootfs"
+export BOARD_IP=192.168.7.2
+export HOST_IP=192.168.7.1
 ```
 
-These two variables are what U-Boot's, the kernel's, and BusyBox's Makefiles look for. Setting them globally saves a lot of typing.
+This script assumes there is exactly one Linux toolchain folder and exactly one bare-metal toolchain folder in `~/imx6ull/toolchains/`. If you later upgrade the toolchains, remove the old extracted folders first.
+
+Every time you open a new terminal for this book, run:
+
+```sh
+$ . ~/imx6ull/scripts/env.sh
+```
+
+That leading dot matters. It means "source this file into the current shell." Running `~/imx6ull/scripts/env.sh` without the dot would run it in a child shell, then throw the environment away when the script exits.
+
+Verify both compilers and both prefixes:
+
+```sh
+$ which arm-none-linux-gnueabihf-gcc
+/home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-linux-gnueabihf/bin/arm-none-linux-gnueabihf-gcc
+
+$ arm-none-linux-gnueabihf-gcc --version | head -1
+arm-none-linux-gnueabihf-gcc (Arm GNU Toolchain ...)
+
+$ which arm-none-eabi-gcc
+/home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc
+
+$ arm-none-eabi-gcc --version | head -1
+arm-none-eabi-gcc (Arm GNU Toolchain ...)
+
+$ echo "$CROSS_COMPILE"
+arm-none-linux-gnueabihf-
+
+$ echo "$BAREMETAL_CROSS_COMPILE"
+arm-none-eabi-
+```
+
+`CROSS_COMPILE` is the prefix U-Boot's, the kernel's, and BusyBox's Makefiles look for. We reserve `BAREMETAL_CROSS_COMPILE` for our own bare-metal Makefiles so the two worlds stay visible.
 
 ## 3.5  Serial console
 
@@ -193,17 +239,10 @@ $ dmesg | tail
 [...] usb 1-1.2: cp210x converter now attached to ttyUSB0
 ```
 
-Add your user to the `dialout` group so you do not need `sudo` for serial:
+Open the console with `sudo`:
 
 ```sh
-$ sudo usermod -aG dialout $USER
-$ # log out and back in for the group to take effect
-```
-
-Open the console:
-
-```sh
-$ picocom -b 115200 /dev/ttyUSB0
+$ sudo picocom -b 115200 /dev/ttyUSB0
 picocom v3.1
 port is        : /dev/ttyUSB0
 flowcontrol    : none
@@ -215,9 +254,11 @@ stopbits are   : 1
 Terminal ready
 ```
 
+We use `sudo` here on purpose. `/dev/ttyUSB0` is a hardware device node, and Linux protects hardware access with file permissions. For this book, keep `sudo` in the serial command so the privilege boundary stays visible.
+
 Quit with Ctrl-A Ctrl-X. To send a real Ctrl-C to the board, press Ctrl-A then Ctrl-C — picocom uses Ctrl-A as its escape key.
 
-**Pitfall:** if you see garbage characters, the baud rate is wrong or the host's TX is fighting with the board's TX. Disconnect, double-check wiring, try `-b 57600` once to confirm.
+**Pitfall:** if you see garbage characters, the baud rate is wrong or the host's TX is fighting with the board's TX. Disconnect, double-check wiring.
 
 ### 3.5a  Windows-side serial terminals (for Windows-mainly readers)
 
@@ -228,7 +269,7 @@ If your host is Windows (WSL2 or dual-boot Linux), or if you sometimes connect f
 - **Putty** (`putty.org`, free) — minimal, ubiquitous, no scripting. Fine if you only need it occasionally.
 - **Tera Term** (`teratermproject.github.io`, free) — Japanese-origin, popular in industrial settings, has a useful macro language.
 
-For all of them, the **CH340/CP2102 USB-serial dongle driver** is the prerequisite on Windows. install from the chip vendor's site (`wch.cn` for CH340, `silabs.com` for CP2102). Linux includes both kernel drivers by default — nothing to install.
+For all of them, the **CH340/CP2102 USB-serial dongle driver** is the prerequisite on Windows. install from the chip vendor's site (`wch.cn` for CH340, `silabs.com` for CP2102). Linux includes both kernel drivers by default, nothing to install.
 
 When configuring any of these tools, the settings are the same we used for `picocom`: **115200 8N1, no flow control**.
 
@@ -245,13 +286,61 @@ For this book, we do not require any of them. But if you find yourself spending 
 
 ## 3.6  TFTP server
 
-The board's U-Boot will fetch kernel images from your host over TFTP. Set up `tftpd-hpa`:
+The board's U-Boot will fetch kernel images from your host over TFTP.
+
+Install the server package if you have not already:
 
 ```sh
-$ sudo sed -i 's|^TFTP_DIRECTORY=.*|TFTP_DIRECTORY="/srv/tftp"|' /etc/default/tftpd-hpa
-$ sudo sed -i 's|^TFTP_OPTIONS=.*|TFTP_OPTIONS="--secure --create"|' /etc/default/tftpd-hpa
+$ sudo apt install -y tftpd-hpa tftp-hpa
+```
+
+Now open the server configuration:
+
+```sh
+$ sudoedit /etc/default/tftpd-hpa
+```
+
+Make the file look like this:
+
+```text
+TFTP_USERNAME="tftp"
+TFTP_DIRECTORY="/srv/tftp"
+TFTP_ADDRESS=":69"
+TFTP_OPTIONS="--secure --create"
+```
+
+What each line means:
+
+- `TFTP_USERNAME="tftp"` runs the daemon as the unprivileged `tftp` user.
+- `TFTP_DIRECTORY="/srv/tftp"` is the directory U-Boot will read files from.
+- `TFTP_ADDRESS=":69"` listens on the standard TFTP UDP port.
+- `TFTP_OPTIONS="--secure --create"` keeps the daemon rooted inside `/srv/tftp` and permits file creation.
+
+Create the directory, make your normal user its owner, and keep it readable by the TFTP daemon:
+
+```sh
 $ sudo mkdir -p /srv/tftp
 $ sudo chown $USER:$USER /srv/tftp
+$ chmod 755 /srv/tftp
+```
+
+Why the permission change matters:
+
+- `/srv` is a system directory. Without `sudo`, a normal user usually cannot create `/srv/tftp`.
+- After `sudo mkdir`, the new directory is owned by `root`, so your normal user would need `sudo` every time you copy a kernel, device tree, or U-Boot image into it.
+- `sudo chown $USER:$USER /srv/tftp` changes the owner to your user. Now you can write files there with normal commands like `cp zImage /srv/tftp/`.
+- The TFTP server does not run as your user. `TFTP_USERNAME="tftp"` means it runs as the low-privilege `tftp` user, so a bug in the TFTP server has less power on the host.
+- `chmod 755 /srv/tftp` means: owner can read/write/enter; everyone else can read/enter but not write. That lets the `tftp` user read files from the directory while only you can add or replace files.
+
+Files you copy into `/srv/tftp` also need to be readable by the TFTP daemon. Normal files created by `cp` or `echo` are usually readable already. If U-Boot gets "permission denied" from TFTP, check with:
+
+```sh
+$ ls -l /srv/tftp
+```
+
+Restart and enable the service:
+
+```sh
 $ sudo systemctl restart tftpd-hpa
 $ sudo systemctl enable tftpd-hpa
 ```
@@ -265,22 +354,49 @@ $ cat test.txt
 hello tftp
 ```
 
+The test writes a small file into the TFTP root, then asks the local TFTP server for that file. The final `cat` proves the file came back.
+
 If that round-trip works, U-Boot will be able to do the same thing.
 
 **Pitfall:** Ubuntu's `ufw` firewall, if enabled, blocks UDP/69. Either disable `ufw` on the dev host or `sudo ufw allow tftp`.
 
 ## 3.7  NFS server
 
-`/etc/exports`:
+The Linux kernel can mount its root filesystem over NFS during development. That lets you edit files on the host and reboot the board without rebuilding an SD-card image.
+
+Install the server package if needed:
 
 ```sh
-$ sudo bash -c 'echo "/home/$SUDO_USER/imx6ull/rootfs *(rw,sync,no_root_squash,no_subtree_check)" >> /etc/exports'
+$ sudo apt install -y nfs-kernel-server
+```
+
+Open the export table:
+
+```sh
+$ sudoedit /etc/exports
+```
+
+Add one line at the end. Replace `<you>` with your Linux username:
+
+```text
+/home/<you>/imx6ull/rootfs *(rw,sync,no_root_squash,no_subtree_check)
+```
+
+Then apply and verify:
+
+```sh
 $ sudo exportfs -ar
 $ sudo systemctl restart nfs-kernel-server
 $ sudo showmount -e localhost
 Export list for localhost:
 /home/<you>/imx6ull/rootfs *
 ```
+
+What the commands do:
+
+- `exportfs -ar` asks the NFS server to re-read `/etc/exports` and apply the export table.
+- `systemctl restart nfs-kernel-server` restarts the NFS daemon so the kernel-side service is using the current config.
+- `showmount -e localhost` lists what this host exports over NFS. Seeing the `rootfs` path here is the sanity check.
 
 The flags decoded:
 
@@ -324,27 +440,36 @@ $ sudo make install
 
 You only need one. We will use `uuu` in this book because its scripting language is useful for Chapter 8's recovery flow. Install both if you like options.
 
-**udev rule for non-root access:**
-**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
+Now add a udev rule so a normal user can talk to the board over USB without running `uuu` as root.
+
+Open a new rule file:
 
 ```sh
-$ sudo tee /etc/udev/rules.d/99-imx.rules > /dev/null <<'EOF'
+$ sudoedit /etc/udev/rules.d/99-imx.rules
+```
+
+Put these two lines in it:
+
+```text
 SUBSYSTEM=="usb", ATTR{idVendor}=="15a2", ATTR{idProduct}=="0080", MODE="0666"
 SUBSYSTEM=="usb", ATTR{idVendor}=="1fc9", ATTR{idProduct}=="0145", MODE="0666"
-EOF
+```
+
+Then reload udev:
+
+```sh
 $ sudo udevadm control --reload-rules
 $ sudo udevadm trigger
 ```
 
 `15a2:0080` is the i.MX6ULL ROM SDP enumeration. `1fc9:0145` is the same after a board enters the second-stage download (different VID/PID once U-Boot SPL takes over).
 > **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
-**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 
-## 3.9  SD card preparation
+## 3.9  SD card preparation (just read for later chapter, not to follow now)
 
 A spare 4–32 GB SD card, class 10 or better, dedicated to this project. We will overwrite it many times.
 
-Identify which device it is — **carefully**:
+Identify which device it is, **carefully**:
 
 ```sh
 $ lsblk
@@ -357,10 +482,57 @@ sdc       8:32   1   7.5G  0 disk         ← this is the SD card
 
 If you wipe the wrong block device you will lose your operating system. Check the size and the mount points twice before running `dd`.
 
-A small helper script saves you from typos:
+The manual write flow is short, and you should understand it before using any helper script. In later chapters the image name will be whatever image you just built, for example `~/imx6ull/build/images/sdcard.img`.
+
+First unmount any mounted partition on the card. Unmount the partition path, not the whole-disk path:
 
 ```sh
-$ cat > ~/imx6ull/scripts/sd-write.sh <<'EOF'
+$ sudo umount /dev/sdc1
+```
+
+If the card has more than one mounted partition, unmount each one:
+
+```sh
+$ lsblk /dev/sdc
+$ sudo umount /dev/sdc1
+$ sudo umount /dev/sdc2
+```
+
+Then write the image to the whole card:
+
+```sh
+$ sudo dd if=~/imx6ull/build/images/sdcard.img of=/dev/sdc bs=4M status=progress conv=fsync
+$ sync
+```
+
+Read that command carefully:
+
+- `if=` means input file. This is the image you built.
+- `of=` means output file. For `dd`, a block device is treated like a file.
+- `of=/dev/sdc` writes the whole SD card, including the partition table.
+- `of=/dev/sdc1` writes only the first partition. That is wrong for a full bootable card image.
+- `bs=4M` writes in 4 MiB chunks instead of tiny default chunks.
+- `status=progress` shows progress while the write runs.
+- `conv=fsync` asks `dd` to flush the written data before it exits.
+- `sync` waits for any remaining buffered writes before you remove the card.
+
+After `sync` returns, remove and reinsert the card, then check the result:
+
+```sh
+$ lsblk /dev/sdc
+```
+
+You should see the partitions created by the image. If `lsblk` still shows the old partitions, you probably wrote the wrong device or the image path was wrong.
+
+After you understand the manual flow, a small helper script can save you from repeat typing mistakes. Create this file:
+
+```sh
+$ nano ~/imx6ull/scripts/sd-write.sh
+```
+
+Paste the script below, then read it before saving. The important part is the safety check that refuses `/dev/sda`.
+
+```sh
 #!/bin/bash
 # Usage: sd-write.sh <image> <device>
 set -euo pipefail
@@ -371,7 +543,11 @@ read -p "Wipe $DEV (size $(lsblk -bdno SIZE "$DEV" | numfmt --to=iec))? [y/N] " 
 [ "$r" = y ] || exit 1
 sudo dd if="$IMG" of="$DEV" bs=1M conv=fsync status=progress
 sync
-EOF
+```
+
+Make it executable:
+
+```sh
 $ chmod +x ~/imx6ull/scripts/sd-write.sh
 ```
 
@@ -389,12 +565,26 @@ The simplest setup is a directly-connected Ethernet cable between host and board
 If you use NetworkManager:
 
 ```sh
-$ sudo nmcli con add type ethernet con-name imx-link ifname enp0s31f6 \
-    ipv4.method manual ipv4.addresses 192.168.7.1/24
+$ sudo nmtui
+```
+
+In the text UI:
+
+1. Choose **Edit a connection**.
+2. Select the Ethernet interface connected to the board.
+3. Set **IPv4 CONFIGURATION** to **Manual**.
+4. Add address `192.168.7.1/24`.
+5. Leave gateway and DNS empty for this direct board link.
+6. Save and activate the connection.
+
+The same setup can be done from the command line:
+
+```sh
+$ sudo nmcli con add type ethernet con-name imx-link ifname enp0s31f6 ipv4.method manual ipv4.addresses 192.168.7.1/24
 $ sudo nmcli con up imx-link
 ```
 
-(Substitute your NIC name from `ip a`.)
+Substitute your NIC name from `ip a`. The `nmtui` path is slower, but it makes the fields visible the first time.
 
 Verify:
 
@@ -410,11 +600,19 @@ We test the link to the board in Chapter 8 after the board has U-Boot on it.
 End-of-chapter checklist. Run every command, get every expected result:
 
 ```sh
-$ arm-linux-gnueabihf-gcc --version | head -1
-arm-linux-gnueabihf-gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0
+$ . ~/imx6ull/scripts/env.sh
+
+$ which arm-none-linux-gnueabihf-gcc
+/home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-linux-gnueabihf/bin/arm-none-linux-gnueabihf-gcc
+
+$ arm-none-linux-gnueabihf-gcc --version | head -1
+arm-none-linux-gnueabihf-gcc (Arm GNU Toolchain ...)
+
+$ which arm-none-eabi-gcc
+/home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc
 
 $ arm-none-eabi-gcc --version | head -1
-arm-none-eabi-gcc (15:10.3-2021.07-4) 10.3.1 20210621 (release)
+arm-none-eabi-gcc (Arm GNU Toolchain ...)
 
 $ which dtc mkimage picocom uuu
 /usr/bin/dtc
@@ -426,49 +624,61 @@ $ systemctl is-active tftpd-hpa nfs-kernel-server
 active
 active
 
-$ ls -d ~/imx6ull/{src,build,boot,rootfs,scripts,notes}
+$ ls -d ~/imx6ull/{src,build,boot,rootfs,scripts,toolchains,notes}
 /home/<you>/imx6ull/boot
 /home/<you>/imx6ull/build
 /home/<you>/imx6ull/notes
 /home/<you>/imx6ull/rootfs
 /home/<you>/imx6ull/scripts
 /home/<you>/imx6ull/src
+/home/<you>/imx6ull/toolchains
 
-$ groups | grep -ow dialout
-dialout
+$ sudo -v
 ```
 
 If any of these fail, do not move on. Subsequent chapters silently assume each.
 
 ## 3.12  Lab
 
-Write a short shell script `~/imx6ull/scripts/env.sh` that exports:
+Open a new terminal and source the environment script:
 
-- `CROSS_COMPILE=arm-linux-gnueabihf-`
-- `ARCH=arm`
-- `TFTPROOT=/srv/tftp`
-- `NFSROOT=$HOME/imx6ull/rootfs`
-- `BOARD_IP=192.168.7.2`
-- `HOST_IP=192.168.7.1`
+```sh
+$ . ~/imx6ull/scripts/env.sh
+```
 
-Then `. ~/imx6ull/scripts/env.sh` at the top of every new shell. Add the source line to `~/.bashrc` if you like — but be aware that it makes those variables global, which has occasionally surprised people when they later cross-compile something unrelated.
+Then prove the environment is local to this terminal:
 
-A more disciplined alternative is `direnv` (`sudo apt install direnv`), which auto-loads `.envrc` only when you `cd` into `~/imx6ull/`. Recommended for serious work.
+```sh
+$ echo "$CROSS_COMPILE"
+arm-none-linux-gnueabihf-
+
+$ echo "$BAREMETAL_CROSS_COMPILE"
+arm-none-eabi-
+
+$ command -v arm-none-linux-gnueabihf-gcc
+/home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-linux-gnueabihf/bin/arm-none-linux-gnueabihf-gcc
+
+$ command -v arm-none-eabi-gcc
+/home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc
+```
+
+Open another terminal and run `echo "$CROSS_COMPILE"` before sourcing the script. It should be empty. That is intentional: the book environment appears only when you ask for it.
 
 ## 3.13  Pitfalls
 
 - **WSL2 USB-OTG.** USB pass-through via `usbipd-win` works for ordinary USB but the SDP enumeration after a board reset can race with WSL's USB stack. Symptom: `uuu` reports "no device". Workaround: re-attach with `usbipd attach --busid <id>` after every reset. Annoying. Native Linux avoids this entirely.
 - **`tftp` blocked by firewall.** Ubuntu's UFW, if enabled, drops UDP/69 silently. `sudo ufw status` first.
 - **NFS over Wi-Fi to a slow board.** Booting a kernel over NFS-root on Wi-Fi works but is brittle. If you see "VFS: Unable to mount root fs", it is almost always NFS timing out, not a real kernel bug. Use wired.
-- **Multiple toolchains on PATH.** The first `arm-linux-gnueabihf-gcc` in `PATH` wins. If you install both the Ubuntu package and Linaro, prepend the one you want explicitly.
+- **Forgot to source `env.sh`.** If `arm-none-linux-gnueabihf-gcc` or `arm-none-eabi-gcc` is not found, run `. ~/imx6ull/scripts/env.sh` in that terminal.
+- **Wrong compiler on `PATH`.** `which arm-none-linux-gnueabihf-gcc` and `which arm-none-eabi-gcc` must both point inside `/home/<you>/imx6ull/toolchains/`. If either points into `/usr/bin`, fix the environment before building.
 - **`dd` to the wrong device.** Every embedded engineer has done this once. Use the helper from §3.9 and you will only do it once.
-- **`sudo` and environment variables.** `sudo CROSS_COMPILE=arm-linux-gnueabihf- make` does *not* pass `CROSS_COMPILE` unless `sudo`'s `env_reset` is disabled. Build without `sudo`. install with `sudo`.
+- **`sudo` and environment variables.** `sudo CROSS_COMPILE=arm-none-linux-gnueabihf- make` does *not* pass `CROSS_COMPILE` unless `sudo`'s `env_reset` is disabled. Build without `sudo`. install with `sudo`.
 
 ## 3.14  Going deeper
 
 - `man 8 exportfs`, `man 5 exports`, `man 8 tftpd`, `man 5 udev` — read the man pages of the services you just configured.
 - `picocom`'s `-l` (lock-file) and `-i` (initstring) options are useful for scripting boot.
 - *The TCP/IP Guide* (Charles Kozierok) on TFTP and NFS protocols if you want to know what is on the wire.
-- If you intend to run a lot of cross-builds, look at `ccache` (`sudo apt install ccache`) and prepend it to `CROSS_COMPILE`: `CROSS_COMPILE="ccache arm-linux-gnueabihf-"`. We do *not* use it in this book because it occasionally masks subtle dependency bugs in Makefiles we're trying to read.
+- If you intend to run a lot of cross-builds, look at `ccache` (`sudo apt install ccache`) and prepend it to `CROSS_COMPILE`: `CROSS_COMPILE="ccache arm-none-linux-gnueabihf-"`. We do *not* use it in this book because it occasionally masks subtle dependency bugs in Makefiles we're trying to read.
 
 > Next chapter: **Chapter 4 — ARMv7-A and the Cortex-A7, for the MCU engineer.** We leave the host and start understanding the silicon we will program.

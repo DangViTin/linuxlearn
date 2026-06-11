@@ -187,7 +187,7 @@ When you do want full GDB on a deployed device but have no JTAG:
 
 # Kernel pauses early in boot waiting for debugger
 # On host:
-arm-linux-gnueabihf-gdb vmlinux
+arm-none-linux-gnueabihf-gdb vmlinux
 (gdb) target remote /dev/ttyUSB0
 (gdb) ... full GDB experience ...
 (gdb) continue
@@ -227,7 +227,7 @@ The stack trace addresses are virtual (kernel-VA mapped). To decode:
 dmesg | scripts/decode_stacktrace.sh vmlinux /path/to/modules > oops.decoded
 
 # Manual: addr2line on the kernel ELF
-arm-linux-gnueabihf-addr2line -e vmlinux -f 0x8050a0b0
+arm-none-linux-gnueabihf-addr2line -e vmlinux -f 0x8050a0b0
 # __platform_driver_probe
 # drivers/base/platform.c:583
 ```
@@ -235,7 +235,7 @@ arm-linux-gnueabihf-addr2line -e vmlinux -f 0x8050a0b0
 For a module, the offset within the module file:
 
 ```sh
-arm-linux-gnueabihf-addr2line -e my_driver.ko -f 0x24
+arm-none-linux-gnueabihf-addr2line -e my_driver.ko -f 0x24
 # my_driver_probe
 # /path/to/my_driver.c:42
 ```
