@@ -1,24 +1,24 @@
 ---
 chapter: 70
 title: I²C IMUs (MPU6050 / MPU9250 / ICM-20948)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 28
 status: draft
 ---
 
-# Chapter 70 — I²C IMUs
-**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+# Chapter 70: I²C IMUs
+> **regmap:** a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 > **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 
 > **What:** three I²C inertial measurement units, dissected: **InvenSense MPU6050** (6-axis, the classic), **MPU9250** (9-axis with an AK8963 magnetometer hiding inside via I²C-master mode), **ICM-20948** (modern 9-axis, replaced MPU9250). For each: register map, the sampling-rate trade-offs, the IIO **trigger + buffer** mechanism for high-rate capture, and a from-scratch MPU6050 driver including IIO buffer support.
-> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **IIO:** Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
-> **Why:** IMUs are everywhere — drones, e-scooters, VR headsets, fitness wearables, industrial vibration monitors. They're also the canonical IIO example of *high-rate buffered capture*: a 1 kHz IMU produces 6–9 measurements per sample, and one sysfs read per sample isn't going to work. The IIO trigger/buffer framework is the answer. Once you understand it, the same pattern works for any high-rate sensor.
-> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+> **Why:** IMUs are everywhere, drones, e-scooters, VR headsets, fitness wearables, industrial vibration monitors. They're also the canonical IIO example of *high-rate buffered capture*: a 1 kHz IMU produces 6–9 measurements per sample, and one sysfs read per sample isn't going to work. The IIO trigger/buffer framework is the answer. Once you understand it, the same pattern works for any high-rate sensor.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
-> **Focus:** **Trigger + buffer is how IIO scales to thousands of samples per second.** A `trigger` (timer or IRQ) tells the driver "now". The driver atomically samples *all enabled channels*. pushes the coordinated sample into a kfifo. user-space drains the kfifo from `/dev/iio:deviceN`. The whole pipeline is asynchronous and survives microsecond jitter.
+> **Focus:** **Trigger + buffer is how IIO scales to thousands of samples per second.** A `trigger` (timer or IRQ) tells the driver "now". The driver atomically samples *all enabled channels*. Pushes the coordinated sample into a kfifo. User-space drains the kfifo from `/dev/iio:deviceN`. The whole pipeline is asynchronous and survives microsecond jitter.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 
 ## 70.1  Chip comparison
@@ -40,18 +40,18 @@ status: draft
 
 **Pick guide:**
 - **MPU6050**: cheap hobby projects, learning, where 6-axis is enough.
-- **MPU9250**: legacy product maintenance — don't design in new.
+- **MPU9250**: legacy product maintenance, don't design in new.
 - **ICM-20948**: new designs needing magnetometer. Same I²C/SPI register model as MPU family (InvenSense legacy compatibility).
 
 ## 70.2  Why "9-axis" and what the magnetometer adds
 
-A 6-axis IMU (accel + gyro) can compute **orientation drift-free in roll and pitch** by sensing gravity. But it has *no absolute reference for yaw* — rotate around the vertical axis and the gyro integration drifts seconds-of-arc per second.
+A 6-axis IMU (accel + gyro) can compute **orientation drift-free in roll and pitch** by sensing gravity. But it has *no absolute reference for yaw*, rotate around the vertical axis and the gyro integration drifts seconds-of-arc per second.
 
-Adding a magnetometer gives an Earth-field reference: the chip measures the geomagnetic vector (~50 µT, pointing roughly north + downward). Combined with the accel's gravity vector, the fusion algorithm can lock down all three rotation angles — roll, pitch, *and* yaw. The result: **drift-free orientation in all three axes**.
+Adding a magnetometer gives an Earth-field reference: the chip measures the geomagnetic vector (~50 µT, pointing roughly north + downward). Combined with the accel's gravity vector, the fusion algorithm can lock down all three rotation angles, roll, pitch, *and* yaw. The result: **drift-free orientation in all three axes**.
 
 For drones, AR/VR, robotic-arm control: 9-axis is mandatory. For tap-detection, fall-detection, vibration logging: 6-axis is enough.
 
-## 70.3  Protocol — MPU6050 register map
+## 70.3  Protocol, MPU6050 register map
 
 > **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
@@ -99,17 +99,17 @@ temp_c = (s16)((raw[6] << 8) | raw[7]) / 340.0 + 36.53;
 
 Bring-up sequence:
 
-1. Read WHO_AM_I (0x75). verify it returns 0x68 (or 0x71 for MPU9250, 0xEA for ICM-20948).
+1. Read WHO_AM_I (0x75). Verify it returns 0x68 (or 0x71 for MPU9250, 0xEA for ICM-20948).
 2. Write 0x80 to PWR_MGMT_1: soft reset.
 3. Wait ~100 ms.
 4. Write 0x00 to PWR_MGMT_1: wake from sleep, internal 8 MHz clock.
 5. Write 0x01 to PWR_MGMT_1: wake, PLL with X-gyro reference (lower noise).
 > **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
-**PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
+> **PLL:** Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 6. Configure DLPF, sample rate, ranges as needed.
-7. Read at the configured cadence — or set up an IRQ on data-ready (bit 0 of INT_STATUS).
+7. Read at the configured cadence, or set up an IRQ on data-ready (bit 0 of INT_STATUS).
 
-## 70.4  IIO trigger + buffer — the high-rate model
+## 70.4  IIO trigger + buffer, the high-rate model
 
 For a 1 kHz IMU, a one-sample-per-sysfs-read loop crosses the syscall boundary 1000 times per second per axis. That's ~30 µs per sysfs read × 6 axes × 1000 Hz = 18 % of one CPU just on the syscall overhead. Not workable.
 
@@ -173,7 +173,7 @@ echo 1 > .../buffer/enable
 dd if=/dev/iio:device0 of=samples.bin bs=12 count=10000
 ```
 
-10 000 atomic samples land in `samples.bin`. The data layout matches the order of `scan_elements/*_en` toggled on. Each sample's bytes are packed. user-space parses with the driver-declared `scan_type` (bits per sample, byte order).
+10 000 atomic samples land in `samples.bin`. The data layout matches the order of `scan_elements/*_en` toggled on. Each sample's bytes are packed. User-space parses with the driver-declared `scan_type` (bits per sample, byte order).
 
 ### Triggers
 
@@ -182,13 +182,13 @@ A *trigger* is its own IIO object. Two common kinds:
 - **hrtimer**: kernel high-resolution timer firing at a programmable rate. Drift-free, suitable for steady sampling. Backed by `drivers/iio/trigger/iio-trig-hrtimer.c`.
 - **interrupt**: an IRQ on a GPIO connected to the chip's INT pin (the chip asserts when it has data ready). Synchronized exactly to the chip's sample clock.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
-Drivers may also publish their *own* trigger ("data-ready trigger") that consumer code can bind. The MPU6050 driver does this — its INT pin's IRQ becomes an IIO trigger named `mpu6050-dev0`, and you can bind it to its own buffer or to *another* device's buffer (sync sampling across chips).
+Drivers may also publish their *own* trigger ("data-ready trigger") that consumer code can bind. The MPU6050 driver does this, its INT pin's IRQ becomes an IIO trigger named `mpu6050-dev0`, and you can bind it to its own buffer or to *another* device's buffer (sync sampling across chips).
 
 ## 70.5  How the mainline `inv_mpu6050` driver is structured
 
-Source: `drivers/iio/imu/inv_mpu6050/` — 5 files, ~3000 lines total. Covers MPU6050, MPU6500, MPU9150, MPU9250, ICM20608, ICM20602, ICM20690 (the entire InvenSense MPU family).
+Source: `drivers/iio/imu/inv_mpu6050/`, 5 files, ~3000 lines total. Covers MPU6050, MPU6500, MPU9150, MPU9250, ICM20608, ICM20602, ICM20690 (the entire InvenSense MPU family).
 
 ```
 drivers/iio/imu/inv_mpu6050/
@@ -280,7 +280,7 @@ static const struct iio_chan_spec inv_mpu_channels[] = {
 };
 ```
 
-`scan_index` is the in-buffer position. `scan_type` tells user-space "16-bit signed, big-endian." `IIO_CHAN_SOFT_TIMESTAMP(0)` adds a 64-bit timestamp per sample — essential when you need to time-align across sensors.
+`scan_index` is the in-buffer position. `scan_type` tells user-space "16-bit signed, big-endian." `IIO_CHAN_SOFT_TIMESTAMP(0)` adds a 64-bit timestamp per sample, essential when you need to time-align across sensors.
 
 ### The trigger handler
 
@@ -314,7 +314,7 @@ static irqreturn_t inv_mpu6050_read_fifo(int irq, void *p)
 }
 ```
 
-Each trigger event: read FIFO count, drain N samples from FIFO via a single bulk I²C read, push each into the IIO buffer with a kernel timestamp. The driver doesn't care whether the trigger came from a timer or from the chip's own data-ready IRQ — same handler either way.
+Each trigger event: read FIFO count, drain N samples from FIFO via a single bulk I²C read, push each into the IIO buffer with a kernel timestamp. The driver doesn't care whether the trigger came from a timer or from the chip's own data-ready IRQ, same handler either way.
 
 ### Two-stage IRQ path for hardware trigger
 
@@ -587,7 +587,7 @@ DT:
 };
 ```
 
-Test — sysfs first:
+Test, sysfs first:
 
 ```
 [root@pa-mini:~]# insmod mympu6050.ko
@@ -620,7 +620,7 @@ echo 1 > /sys/bus/iio/devices/iio:device0/buffer/enable
 dd if=/dev/iio:device0 of=imu.bin bs=20 count=5000
 ```
 
-Five thousand atomic samples — accel, gyro, and 64-bit timestamp — captured in 5 seconds. From here, user-space can FFT for vibration analysis or feed a Madgwick filter for orientation.
+Five thousand atomic samples, accel, gyro, and 64-bit timestamp, captured in 5 seconds. From here, user-space can FFT for vibration analysis or feed a Madgwick filter for orientation.
 
 What we got, ~350 lines:
 - Sysfs INFO_RAW per-axis reads.
@@ -635,22 +635,22 @@ What we *skipped* compared to mainline:
 - Self-test, interrupt-on-motion, FIFO overflow detection.
 - Runtime PM (chip sleep when idle).
 
-## 70.7  MPU9250 — the magnetometer-via-aux-bus quirk
+## 70.7  MPU9250, the magnetometer-via-aux-bus quirk
 
-MPU9250 contains an InvenSense MPU6500 (6-axis) **plus** an AsahiKASEI AK8963 magnetometer in the same package. The AK8963 isn't directly on the host I²C bus — it's accessible via the MPU6500's internal "auxiliary I²C master."
+MPU9250 contains an InvenSense MPU6500 (6-axis) **plus** an AsahiKASEI AK8963 magnetometer in the same package. The AK8963 isn't directly on the host I²C bus, it's accessible via the MPU6500's internal "auxiliary I²C master."
 
 Two modes:
 
 1. **Bypass mode**: bit 1 of INT_PIN_CFG (0x37) = 1. The MPU6500 ties its aux I²C lines directly to the host's I²C lines. Host then sees AK8963 at address 0x0C and talks to it directly.
 2. **Aux-bus master mode**: the MPU6500 itself reads AK8963 registers periodically and stores results into its EXT_SENS_DATA registers (0x49..0x60). Host reads those.
 
-Bypass is simpler. aux-master mode is needed when the chip's internal sample-aligned-with-mag synchronisation matters.
+Bypass is simpler. Aux-master mode is needed when the chip's internal sample-aligned-with-mag synchronisation matters.
 
 The mainline driver supports both via the `inv_mpu_aux` helper, presenting `/sys/bus/iio/devices/iio:device0/in_magn_*_raw` even though physically the magnetometer is on a hidden bus.
 
-## 70.8  ICM-20948 — the modern replacement
+## 70.8  ICM-20948, the modern replacement
 
-ICM-20948 reorganised the register space into **banks** — 4 banks of 256 registers each, switched via a `REG_BANK_SEL` register. The bring-up sequence is 10 % longer (need bank-select before each access), but the chip itself has lower noise, lower idle current, and an updated DMP.
+ICM-20948 reorganised the register space into **banks**, 4 banks of 256 registers each, switched via a `REG_BANK_SEL` register. The bring-up sequence is 10 % longer (need bank-select before each access), but the chip itself has lower noise, lower idle current, and an updated DMP.
 
 Mainline support: same `inv_mpu6050` driver, with `inv_icm20948_*` callbacks for bank handling.
 
@@ -675,14 +675,14 @@ For MPU9250: `compatible = "invensense,mpu9250";`. For ICM-20948: `compatible = 
 
 The mainline driver gives you the same `/sys/bus/iio/...` interface plus extra knobs:
 
-- `in_accel_sampling_frequency_available` — list of supported ODRs.
-- `in_anglvel_scale_available` — list of supported ranges.
-- `in_anglvel_calibbias_*` — write a bias offset.
-- Data-ready trigger publishes as `mpu6050-dev0` — bindable as the sampling trigger (instead of hrtimer).
+- `in_accel_sampling_frequency_available`: list of supported ODRs.
+- `in_anglvel_scale_available`: list of supported ranges.
+- `in_anglvel_calibbias_*`: write a bias offset.
+- Data-ready trigger publishes as `mpu6050-dev0`, bindable as the sampling trigger (instead of hrtimer).
 
 ## 70.10  Sensor fusion in user-space
 
-The IMU gives raw measurements. orientation comes from a fusion algorithm. Most common: **Madgwick filter** (a complementary filter with quaternion gradient descent). User-space implementation in ~200 lines of C:
+The IMU gives raw measurements. Orientation comes from a fusion algorithm. Most common: **Madgwick filter** (a complementary filter with quaternion gradient descent). User-space implementation in ~200 lines of C:
 
 ```c
 void madgwick_update(quat *q, vec3 gyro, vec3 accel, float dt, float beta)
@@ -717,11 +717,11 @@ Fusion belongs in user-space, not in the driver. The driver delivers clean sampl
 
 1. **WHO_AM_I poke.** With i2c-tools: `i2cget -y 1 0x68 0x75`. Should return 0x68 (or 0x71 for MPU9250).
 2. **Build and load `mympu6050.ko`.** Read accel and gyro via sysfs. Hold the chip flat → +1 g on Z. Tilt 90° → +1 g on Y or X.
-3. **Triggered buffered capture.** Configure hrtimer trigger. capture 5000 samples. parse offline. Plot accel-Z while you tap the table — you'll see vibration peaks.
-4. **Madgwick filter.** Compile a user-space Madgwick implementation. feed it samples from `/dev/iio:device0`. Plot the resulting roll/pitch in real-time.
+3. **Triggered buffered capture.** Configure hrtimer trigger. Capture 5000 samples. Parse offline. Plot accel-Z while you tap the table, you'll see vibration peaks.
+4. **Madgwick filter.** Compile a user-space Madgwick implementation. Feed it samples from `/dev/iio:device0`. Plot the resulting roll/pitch in real-time.
 5. **Mainline driver.** Switch to `compatible = "invensense,mpu6050"`. Verify same channels appear.
-6. **Self-test.** Write 0xE0 to GYRO_CONFIG (enable self-test). verify gyro outputs increase by datasheet's expected amount. Check pass criteria.
-7. **MPU9250 mag bypass.** If you have an MPU9250, enable bypass mode. access AK8963 directly at 0x0C via i2c-tools.
+6. **Self-test.** Write 0xE0 to GYRO_CONFIG (enable self-test). Verify gyro outputs increase by datasheet's expected amount. Check pass criteria.
+7. **MPU9250 mag bypass.** If you have an MPU9250, enable bypass mode. Access AK8963 directly at 0x0C via i2c-tools.
 
 ## 70.12  Pitfalls
 
@@ -730,19 +730,19 @@ Fusion belongs in user-space, not in the driver. The driver delivers clean sampl
 - **Wrong byte order.** All IMU output is *big-endian* on the wire. If you misread as little-endian, accel-X and accel-Y appear swapped or scaled wrong.
 - **Scale factor wrong.** Each range setting has a different LSB/g or LSB/(°/s). ±2g = 16384 LSB/g. ±4g = 8192. ±8g = 4096. ±16g = 2048. Off-by-2 = factor-of-2 wrong.
 - **DLPF too high BW.** Default 256 Hz BW with ODR 1 kHz means you alias high-frequency noise into your signal. Set DLPF to 1/4 of ODR or lower.
-- **Gyro bias drift not calibrated.** Gyros drift with temperature. Calibrate at startup (chip stationary for 5 seconds. average ⇒ bias). Subtract bias from every sample.
+- **Gyro bias drift not calibrated.** Gyros drift with temperature. Calibrate at startup (chip stationary for 5 seconds. Average ⇒ bias). Subtract bias from every sample.
 - **Self-heating.** Continuous-mode chip rises 1-2 °C above ambient. If your application uses chip temperature as a thermometer (don't), this is an offset.
 - **Magnetometer interference.** A buck regulator within 5 cm of MPU9250's mag corrupts readings. Schematic-stage planning matters.
 - **Buffer overrun.** If user-space drains slower than the trigger rate, the IIO buffer overflows (older samples dropped). Check `/sys/bus/iio/devices/iio:device0/buffer/length` is big enough. Check `dmesg` for buffer-overrun warnings.
 
 ## 70.13  Going deeper
 
-- **`drivers/iio/imu/inv_mpu6050/inv_mpu_core.c`** — the production driver. Compare to your from-scratch version.
-- **`drivers/iio/imu/inv_mpu6050/inv_mpu_ring.c`** — buffer + trigger glue.
-- **MPU6050 register map (InvenSense PS-MPU6000A-00 rev 3.4)** — the canonical reference.
-- **MPU9250 product specification** — magnetometer-aux-bus details on page 50+.
-- **ICM-20948 datasheet** — bank-selection model.
-- **Sebastian Madgwick's thesis (2010)** — derivation of the AHRS algorithm. Math-heavy but illuminating.
-- **`Documentation/iio/iio_configfs.rst`** — how to create a configfs hrtimer trigger if none exist by default.
+- **`drivers/iio/imu/inv_mpu6050/inv_mpu_core.c`**: the production driver. Compare to your from-scratch version.
+- **`drivers/iio/imu/inv_mpu6050/inv_mpu_ring.c`**: buffer + trigger glue.
+- **MPU6050 register map (InvenSense PS-MPU6000A-00 rev 3.4)**: the canonical reference.
+- **MPU9250 product specification**: magnetometer-aux-bus details on page 50+.
+- **ICM-20948 datasheet**: bank-selection model.
+- **Sebastian Madgwick's thesis (2010)**: derivation of the AHRS algorithm. Math-heavy but illuminating.
+- **`Documentation/iio/iio_configfs.rst`**: how to create a configfs hrtimer trigger if none exist by default.
 
-> Next chapter: **Chapter 71 — SPI IMUs.** When 1 kHz I²C isn't enough — LSM6DSO, ICM-42688, ADXL345. Bus contention, FIFO-watermark IRQs, and a from-scratch ADXL345 SPI driver.
+> Next chapter: **Chapter 71: SPI IMUs.** When 1 kHz I²C isn't enough, LSM6DSO, ICM-42688, ADXL345. Bus contention, FIFO-watermark IRQs, and a from-scratch ADXL345 SPI driver.

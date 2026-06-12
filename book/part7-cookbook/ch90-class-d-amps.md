@@ -1,30 +1,30 @@
 ---
 chapter: 90
 title: Digital class-D amplifiers (TAS5805M / MAX98357A / PCM5102A)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 90 — Digital class-D amplifiers
+# Chapter 90: Digital class-D amplifiers
 
-> **What:** "audio output without a codec." These chips take I²S directly and drive a speaker (class-D amp) or headphones (DAC). They have no ADC, no mic input, and no input mixer — just a digital-in, analog-out path. Three chips: **TI MAX98357A** (pure I²S → 3.2 W speaker, *no control interface at all*), **TI TAS5805M** (I²C-controlled DSP class-D amp), **TI PCM5102A** (I²S → headphone DAC, no control). For each: the ASoC component model for a control-less or simply-controlled device, and from-scratch drivers. The MAX98357A driver is extremely short. The TAS5805M shows DSP-coefficient loading.
-> **ASoC** - ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
+> **What:** "audio output without a codec." These chips take I²S directly and drive a speaker (class-D amp) or headphones (DAC). They have no ADC, no mic input, and no input mixer, just a digital-in, analog-out path. Three chips: **TI MAX98357A** (pure I²S → 3.2 W speaker, *no control interface at all*), **TI TAS5805M** (I²C-controlled DSP class-D amp), **TI PCM5102A** (I²S → headphone DAC, no control). For each: the ASoC component model for a control-less or simply-controlled device, and from-scratch drivers. The MAX98357A driver is extremely short. The TAS5805M shows DSP-coefficient loading.
+> **ASoC:** ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
 >
-> **Why:** for *playback-only* products — a Bluetooth speaker, a voice-announcement system, a doorbell chime, a kiosk that plays sounds — a full codec (Ch 89) is overkill. All you need is to turn I²S into sound. These chips do exactly that, cheaper and simpler. The MAX98357A needs zero configuration. Wire I²S, pick L/R/mono with a resistor, and it plays.
+> **Why:** for *playback-only* products, a Bluetooth speaker, a voice-announcement system, a doorbell chime, a kiosk that plays sounds, a full codec (Ch 89) is overkill. All you need is to turn I²S into sound. These chips do exactly that, cheaper and simpler. The MAX98357A needs zero configuration. Wire I²S, pick L/R/mono with a resistor, and it plays.
 >
-> **Focus:** an amp without a control bus is the simplest ASoC component you can write. The MAX98357A driver is ~100 lines and has no registers — it's a DAPM widget (the amp) + a DAI (the I²S sink) + maybe an enable GPIO. The TAS5805M adds I²C control + a DSP that needs a coefficient blob loaded. Driver complexity tracks chip capability — dumb amp short, DSP amp long.
+> **Focus:** an amp without a control bus is the simplest ASoC component you can write. The MAX98357A driver is ~100 lines and has no registers, it's a DAPM widget (the amp) + a DAI (the I²S sink) + maybe an enable GPIO. The TAS5805M adds I²C control + a DSP that needs a coefficient blob loaded. Driver complexity tracks chip capability, dumb amp short, DSP amp long.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Tooling.** This chapter uses `alsa-utils`, `i2c-tools`.
-> **ALSA** - Linux's kernel and user-space audio stack.
+> **ALSA:** Linux's kernel and user-space audio stack.
 > - **Ubuntu-base (target):** `apt install alsa-utils i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_I2C_TOOLS=y`
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
 ## 90.1  Chip comparison
@@ -43,10 +43,10 @@ status: draft
 
 **Pick guide:**
 - **MAX98357A**: simplest possible "make sound from I²S." Mono. Bluetooth speakers, voice prompts. *Zero config.*
-- **TAS5805M**: when you want EQ / bass boost / dynamic-range control done in hardware — a real speaker product with tuning.
-- **PCM5102A**: headphone/line-out DAC. audiophile-grade SNR. no amp.
+- **TAS5805M**: when you want EQ / bass boost / dynamic-range control done in hardware, a real speaker product with tuning.
+- **PCM5102A**: headphone/line-out DAC. Audiophile-grade SNR. No amp.
 
-## 90.2  MAX98357A — the zero-config amp
+## 90.2  MAX98357A, the zero-config amp
 
 The MAX98357A is as simple as it gets. It has **no I²C, no SPI, no registers**. Configuration is via *hardware pins*:
 
@@ -179,7 +179,7 @@ sound {
 };
 ```
 
-Note: it's a **platform_device** (not I²C/SPI) because there's no control bus — the chip is configured by pins. Test:
+Note: it's a **platform_device** (not I²C/SPI) because there's no control bus, the chip is configured by pins. Test:
 
 ```
 [root@pa-mini:~]# insmod mymax98357a.ko
@@ -190,15 +190,15 @@ card 0: imxspk [imx-spk], device 0: ...
 
 ~100 lines. The `OUT_DRV_E` widget's event callback toggles the SD_MODE GPIO with the route. The amp is on during playback and off when idle, saving power. That is the only "logic" in the driver.
 
-The mainline `max98357a.c` is similar (~150 lines) — adds the GAIN gpio and a small refinement, but it's the same shape. This is the floor of ASoC complexity.
+The mainline `max98357a.c` is similar (~150 lines), adds the GAIN gpio and a small refinement, but it's the same shape. This is the floor of ASoC complexity.
 
-## 90.4  PCM5102A — same idea, headphone DAC
+## 90.4  PCM5102A, same idea, headphone DAC
 
-The PCM5102A is also control-less (config via pins: format, de-emphasis, mute). It outputs analog line/headphone level from I²S. The "driver" is the same shape as the MAX98357A — a DAI + a DAPM output widget, no registers.
+The PCM5102A is also control-less (config via pins: format, de-emphasis, mute). It outputs analog line/headphone level from I²S. The "driver" is the same shape as the MAX98357A, a DAI + a DAPM output widget, no registers.
 
-In fact, many such control-less DACs/amps don't need a *custom* driver at all — `simple-audio-card` can use a generic "spdif-transmitter" or "dummy codec" stand-in, or the chip-specific stub driver. For PCM5102A, the `pcm512x` family driver covers the controllable variants (PCM5121/5122 with I²C). The bare PCM5102A uses a fixed-function stub.
+In fact, many such control-less DACs/amps don't need a *custom* driver at all, `simple-audio-card` can use a generic "spdif-transmitter" or "dummy codec" stand-in, or the chip-specific stub driver. For PCM5102A, the `pcm512x` family driver covers the controllable variants (PCM5121/5122 with I²C). The bare PCM5102A uses a fixed-function stub.
 
-## 90.5  TAS5805M — the DSP amp
+## 90.5  TAS5805M, the DSP amp
 
 The TAS5805M sits at the other end. It is a 2×23 W stereo class-D amp with an **on-chip DSP** that provides:
 - Parametric EQ (15 biquads per channel).
@@ -220,7 +220,7 @@ All of this is configured over I²C. The DSP runs a *coefficient set*. You compu
 
 The "book + page" model: the TAS5805M's register space is paged (256 registers per page, multiple pages, organized into "books"). You select a book (write reg 0x7F), select a page (write reg 0x00), then access the page's registers. The DSP coefficients live in specific book/page locations.
 
-TI provides **PPC3** (a GUI tool) to design the EQ/DRC and export a register-write sequence (a `.h` file or a binary blob). The driver replays this blob at probe — like the camera (Ch 87) and ToF (Ch 72) register blobs.
+TI provides **PPC3** (a GUI tool) to design the EQ/DRC and export a register-write sequence (a `.h` file or a binary blob). The driver replays this blob at probe, like the camera (Ch 87) and ToF (Ch 72) register blobs.
 
 ### Mainline driver
 
@@ -244,9 +244,9 @@ static int tas5805m_load_config(struct tas5805m_priv *tas)
 }
 ```
 
-The blob is your speaker tuning. A from-scratch TAS5805M driver would: regmap for the paged register access, a firmware-blob loader for the DSP config, a volume control, and DAPM — roughly the WM8960 shape from Ch 89 plus the book/page paging and the firmware blob. We won't reproduce the full driver. The *new* concept beyond Ch 89 is the book/page paging + the externally-designed DSP coefficient blob.
+The blob is your speaker tuning. A from-scratch TAS5805M driver would: regmap for the paged register access, a firmware-blob loader for the DSP config, a volume control, and DAPM, roughly the WM8960 shape from Ch 89 plus the book/page paging and the firmware blob. We won't reproduce the full driver. The *new* concept beyond Ch 89 is the book/page paging + the externally-designed DSP coefficient blob.
 > **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
-**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+> **regmap:** a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 
 ### Designing the DSP config
 
@@ -268,38 +268,38 @@ The i.MX6ULL does the Bluetooth + decode. The TAS5805M does the analog + acousti
 
 ## 90.7  Lab
 
-1. **MAX98357A bring-up.** Wire I²S + SD_MODE + speaker. Build `mymax98357a.ko`. `aplay test.wav`. hear sound.
-2. **SD_MODE channel select.** Change the SD_MODE resistor to select L / R / (L+R)/2. verify the channel routing.
+1. **MAX98357A bring-up.** Wire I²S + SD_MODE + speaker. Build `mymax98357a.ko`. `aplay test.wav`. Hear sound.
+2. **SD_MODE channel select.** Change the SD_MODE resistor to select L / R / (L+R)/2. Verify the channel routing.
 3. **DAPM power.** Confirm the SD_MODE GPIO goes high on play, low on stop (scope it or read the GPIO). Amp is off when idle → no idle hiss.
-4. **PCM5102A.** Wire one as a headphone DAC. Use `simple-audio-card`. verify line-out audio.
+4. **PCM5102A.** Wire one as a headphone DAC. Use `simple-audio-card`. Verify line-out audio.
 5. **TAS5805M bring-up.** Wire I²C + I²S + speaker. Use the mainline driver with a DSP blob. Verify playback.
-6. **EQ tuning.** Use TI PPC3 (on a PC) to design a bass boost. export the blob. load it. A/B the sound with/without.
-7. **Bluetooth speaker.** Combine BlueZ A2DP (Ch 95) + TAS5805M. pair a phone. play music. tune the EQ for your enclosure.
+6. **EQ tuning.** Use TI PPC3 (on a PC) to design a bass boost. Export the blob. Load it. A/B the sound with/without.
+7. **Bluetooth speaker.** Combine BlueZ A2DP (Ch 95) + TAS5805M. Pair a phone. Play music. Tune the EQ for your enclosure.
 
 ## 90.8  Pitfalls
 
-- **MAX98357A SD_MODE resistor wrong.** The resistor value encodes channel select. wrong value = wrong channel or shutdown. Use the datasheet's resistor table exactly.
+- **MAX98357A SD_MODE resistor wrong.** The resistor value encodes channel select. Wrong value = wrong channel or shutdown. Use the datasheet's resistor table exactly.
 - **No DAI → no sound.** Even a control-less amp needs an ASoC DAI registered so the machine driver can bind it. The "dummy codec" must still expose a DAI.
 - **MAX98357A idle hiss.** If SD_MODE stays high when idle, the amp's output stage hisses. Gate it via the DAPM event callback (amp off when no stream).
-- **TAS5805M book/page confusion.** Forgetting to select the right book/page before a register access writes to the wrong location → garbage config or no sound. The paging model is error-prone. follow TI's sequence exactly.
+- **TAS5805M book/page confusion.** Forgetting to select the right book/page before a register access writes to the wrong location → garbage config or no sound. The paging model is error-prone. Follow TI's sequence exactly.
 - **TAS5805M PLAY/HiZ state.** The amp must be explicitly switched to PLAY mode after config. Left in HiZ → silent.
 - **Sample-rate mismatch.** The amp auto-detects rate from I²S clocks (MAX98357A) or must be told (TAS5805M). A mismatch → wrong pitch or no audio.
-- **Speaker impedance vs amp.** A 3.2 W amp into a 4 Ω speaker is fine. into 32 Ω headphones it's too weak. Match amp to load.
+- **Speaker impedance vs amp.** A 3.2 W amp into a 4 Ω speaker is fine. Into 32 Ω headphones it's too weak. Match amp to load.
 - **Class-D EMI.** Class-D amps switch at ~400 kHz. The speaker leads radiate. Keep leads short, use ferrites/filters, or fail EMC.
 - **Power supply for the amp.** A 2×23 W TAS5805M needs a beefy supply (peaks > 4 A). Brownouts cause clipping/reset. Budget the rail.
 
 ## 90.9  Going deeper
 
-- **`sound/soc/codecs/max98357a.c`** — the production driver. Compare to the from-scratch version — nearly identical, ~150 lines.
-- **`sound/soc/codecs/tas5805m.c`** — the DSP amp driver with firmware-blob loading.
-- **`sound/soc/codecs/pcm512x.c`** — PCM510x/512x family.
-- **`Documentation/sound/soc/`** — ASoC framework (same as Ch 89).
-- **MAX98357A datasheet (TI/Maxim)** — the SD_MODE / GAIN resistor tables.
-- **TAS5805M datasheet + PPC3 tool (TI)** — the book/page model and the EQ designer.
-- **TI app note SLAA738** — TAS5805M DSP configuration.
+- **`sound/soc/codecs/max98357a.c`**: the production driver. Compare to the from-scratch version, nearly identical, ~150 lines.
+- **`sound/soc/codecs/tas5805m.c`**: the DSP amp driver with firmware-blob loading.
+- **`sound/soc/codecs/pcm512x.c`**: PCM510x/512x family.
+- **`Documentation/sound/soc/`**: ASoC framework (same as Ch 89).
+- **MAX98357A datasheet (TI/Maxim)**: the SD_MODE / GAIN resistor tables.
+- **TAS5805M datasheet + PPC3 tool (TI)**: the book/page model and the EQ designer.
+- **TI app note SLAA738**: TAS5805M DSP configuration.
 
 ---
 
-> **End of Group J — Audio (Ch 89–90).** Full codecs (Ch 89: DAC+ADC+amp+mic, the WM8960 class) vs playback-only amps/DACs (Ch 90: I²S → speaker/headphone, the MAX98357A/TAS5805M class). The driver complexity spectrum — control-less amp (~100 lines) → simple codec (~200) → full codec (~1500) → DSP amp (regmap + firmware blob) — maps directly to the chip's capabilities.
+> **End of Group J, Audio (Ch 89–90).** Full codecs (Ch 89: DAC+ADC+amp+mic, the WM8960 class) vs playback-only amps/DACs (Ch 90: I²S → speaker/headphone, the MAX98357A/TAS5805M class). The driver complexity spectrum, control-less amp (~100 lines) → simple codec (~200) → full codec (~1500) → DSP amp (regmap + firmware blob), maps directly to the chip's capabilities.
 
-> Next chapter: **Chapter 91 — SDIO WiFi.** Group K (WiFi) opens with the SDIO-attached modules (AP6212, RTL8189) — firmware loading, the brcmfmac/rtl driver stack, and the SDIO bring-up that trips up every new board.
+> Next chapter: **Chapter 91: SDIO WiFi.** Group K (WiFi) opens with the SDIO-attached modules (AP6212, RTL8189), firmware loading, the brcmfmac/rtl driver stack, and the SDIO bring-up that trips up every new board.

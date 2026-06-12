@@ -1,19 +1,19 @@
 ---
 chapter: 81
 title: External DACs + clock generators (MCP4725 / AD5663 / Si5351)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 20
 status: draft
 ---
 
-# Chapter 81 — External DACs + clock generators
+# Chapter 81: External DACs + clock generators
 
-> **What:** analog *output* and clock *generation* — the inverse of Chapter 80. **Microchip MCP4725** (12-bit I²C DAC with EEPROM), **Analog Devices AD5663** (16-bit dual SPI DAC), and **SiLabs Si5351** (programmable 3-output clock generator). For each: protocol, the IIO `out_voltage` model (DACs) or the `clk` framework (Si5351), and a from-scratch MCP4725 IIO DAC driver.
-> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **What:** analog *output* and clock *generation*, the inverse of Chapter 80. **Microchip MCP4725** (12-bit I²C DAC with EEPROM), **Analog Devices AD5663** (16-bit dual SPI DAC), and **SiLabs Si5351** (programmable 3-output clock generator). For each: protocol, the IIO `out_voltage` model (DACs) or the `clk` framework (Si5351), and a from-scratch MCP4725 IIO DAC driver.
+> **IIO:** Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
 > **Why:** embedded systems sometimes need to *produce* an analog voltage (control a VCO, set a programmable power-supply setpoint, generate a waveform) or *produce a precise clock* (drive an SDR mixer, clock an external ADC, generate a reference frequency). The SoC has neither a DAC nor flexible clock outputs in most cases. These three chips cover the common cases, and they introduce two new frameworks: IIO's output channels and the kernel's `clk` provider model.
 >
-> **Focus:** A DAC is an IIO channel that flows out instead of in. A clock generator is a `clk` provider. DAC: `out_voltage0_raw` is *writable*. writing it sets the output voltage. Clock gen: the chip registers as a `clk` in the kernel clock tree, and other devices (or user-space via `/sys/.../clk`) consume its output. These are two different frameworks. both are useful.
+> **Focus:** A DAC is an IIO channel that flows out instead of in. A clock generator is a `clk` provider. DAC: `out_voltage0_raw` is *writable*. Writing it sets the output voltage. Clock gen: the chip registers as a `clk` in the kernel clock tree, and other devices (or user-space via `/sys/.../clk`) consume its output. These are two different frameworks. Both are useful.
 
 
 ## 81.1  Chip comparison
@@ -23,7 +23,7 @@ status: draft
 | Function | 12-bit DAC | dual 16-bit DAC | 3-output clock generator |
 | Interface | I²C | SPI | I²C |
 | Channels | 1 | 2 | 3 (clock outputs) |
-| Output range | 0 – VDD | 0 – VREF | 2.5 kHz – 200 MHz |
+| Output range | 0, VDD | 0, VREF | 2.5 kHz, 200 MHz |
 | Settling time | 6 µs | 5 µs | n/a |
 | EEPROM (power-on default) | yes | no | optional (Si5351B) |
 | I²C / SPI address | 0x60–0x67 | (SPI CS) | 0x60 / 0x61 |
@@ -32,15 +32,15 @@ status: draft
 
 **Pick guide:**
 - **MCP4725**: cheap single-channel analog output. Set a control voltage, generate slow waveforms.
-- **AD5663**: dual-channel, 16-bit, faster — stereo control, precision setpoints.
+- **AD5663**: dual-channel, 16-bit, faster, stereo control, precision setpoints.
 - **Si5351**: programmable clocks for RF, SDR, clocking external chips. Up to 200 MHz, arbitrary frequencies.
 
-## 81.2  MCP4725 — the simplest DAC
+## 81.2  MCP4725, the simplest DAC
 
 MCP4725 takes a 12-bit value and outputs `V = (value / 4096) × VDD`. Two write modes:
 
-- **Fast write**: 2 bytes — just the 12-bit value. Updates output immediately.
-- **Write + EEPROM**: 3 bytes — value + store to EEPROM (so the chip powers up at this value next time).
+- **Fast write**: 2 bytes, just the 12-bit value. Updates output immediately.
+- **Write + EEPROM**: 3 bytes, value + store to EEPROM (so the chip powers up at this value next time).
 
 Fast-write protocol:
 
@@ -69,7 +69,7 @@ buf[2] = (value << 4) & 0xF0;     /* D3..D0 in upper nibble */
 i2c_master_send(client, buf, 3);
 ```
 
-(The two formats pack the 12 bits differently — fast write splits 4+8, EEPROM write splits 8+4. Datasheet figures 6-1 and 6-2.)
+(The two formats pack the 12 bits differently, fast write splits 4+8, EEPROM write splits 8+4. Datasheet figures 6-1 and 6-2.)
 
 ## 81.3  IIO output channels
 
@@ -279,9 +279,9 @@ done
 
 ~5 Hz sine on a scope. For faster/cleaner waveforms, write a kernel-side waveform generator or use the AD5663 (faster SPI).
 
-Driver is ~120 lines. gives writable IIO output. Mainline `mcp4725.c` adds EEPROM persistence, power-down modes, and read-back of the actual chip register.
+Driver is ~120 lines. Gives writable IIO output. Mainline `mcp4725.c` adds EEPROM persistence, power-down modes, and read-back of the actual chip register.
 
-## 81.5  AD5663 — dual 16-bit SPI DAC
+## 81.5  AD5663, dual 16-bit SPI DAC
 
 AD5663 is two 16-bit DACs in one package, SPI-controlled. Each write is a 24-bit SPI frame: 8 command/address bits + 16 data bits.
 
@@ -296,11 +296,11 @@ The mainline `drivers/iio/dac/ad5446.c` covers the AD5446/AD5663 family. Two `ou
 
 Use AD5663 over MCP4725 when you need: 16-bit precision, two synchronized channels, faster update (SPI at 10+ MHz vs I²C at 400 kHz), or external precision reference.
 
-## 81.6  Si5351 — programmable clock generator, and the clk framework
+## 81.6  Si5351, programmable clock generator, and the clk framework
 
-Si5351 is different from the DACs: it produces *clocks*, not voltages. It has a 25 MHz crystal, two internal PLLs, and three output dividers — letting it synthesize almost any frequency from 2.5 kHz to 200 MHz on each of three outputs.
+Si5351 is different from the DACs: it produces *clocks*, not voltages. It has a 25 MHz crystal, two internal PLLs, and three output dividers, letting it synthesize almost any frequency from 2.5 kHz to 200 MHz on each of three outputs.
 
-This integrates with the kernel's **clk framework** — the same framework that manages the SoC's internal clock tree (Ch 13, Ch 25). The Si5351 registers as a **clock provider**. its outputs become entries in the kernel clock tree that other devices can consume.
+This integrates with the kernel's **clk framework**, the same framework that manages the SoC's internal clock tree (Ch 13, Ch 25). The Si5351 registers as a **clock provider**. Its outputs become entries in the kernel clock tree that other devices can consume.
 
 ### How clocks flow
 
@@ -310,9 +310,9 @@ This integrates with the kernel's **clk framework** — the same framework that 
                           PLL_B ──► Output divider 2 ──► CLK2 (e.g., 27 MHz)
 ```
 
-The frequency synthesis: `f_out = f_xtal × (PLL_mult) / (output_divider)`. The PLL multiplier is a fractional value (a + b/c), giving fine resolution. The math to derive (a, b, c, divider) for a target frequency is non-trivial — the driver does it.
+The frequency synthesis: `f_out = f_xtal × (PLL_mult) / (output_divider)`. The PLL multiplier is a fractional value (a + b/c), giving fine resolution. The math to derive (a, b, c, divider) for a target frequency is non-trivial, the driver does it.
 > **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
-**PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
+> **PLL:** Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 
 ### DT
 
@@ -357,7 +357,7 @@ unsigned long rate = clk_get_rate(clk);    /* 100000000 */
 clk_set_rate(clk, 48000000);                /* retune to 48 MHz */
 ```
 
-So the Si5351's outputs become first-class kernel clocks — the same `clk_get` / `clk_set_rate` API used for SoC clocks. A consumer driver doesn't know or care that the clock comes from an external I²C chip.
+So the Si5351's outputs become first-class kernel clocks, the same `clk_get` / `clk_set_rate` API used for SoC clocks. A consumer driver doesn't know or care that the clock comes from an external I²C chip.
 
 ### User-space access
 
@@ -371,7 +371,7 @@ The `clk_summary` debugfs file lists every clock in the tree, including the Si53
 
 ### Mainline driver
 
-`drivers/clk/clk-si5351.c` (~1700 lines) implements the full frequency-synthesis math, PLL configuration, and clk-provider registration. Writing this from scratch is a *substantial* effort (the (a,b,c,divider) solver is the hard part). Reimplementing Si5351's PLL math is not a productive exercise — read the existing driver instead. The chapter shows the clk-framework integration conceptually. reimplementing the Si5351's PLL math is left as an advanced exercise.
+`drivers/clk/clk-si5351.c` (~1700 lines) implements the full frequency-synthesis math, PLL configuration, and clk-provider registration. Writing this from scratch is a *substantial* effort (the (a,b,c,divider) solver is the hard part). Reimplementing Si5351's PLL math is not a productive exercise, read the existing driver instead. The chapter shows the clk-framework integration conceptually. Reimplementing the Si5351's PLL math is left as an advanced exercise.
 
 A from-scratch clk provider *skeleton* (for a fixed-frequency case) looks like:
 
@@ -409,43 +409,43 @@ err = devm_clk_hw_register(&client->dev, &c->hw);
 of_clk_add_hw_provider(client->dev.of_node, of_clk_hw_simple_get, &c->hw);
 ```
 
-That registers a clk that consumers can `clk_get`. The hard part — the actual PLL math in `set_rate` — is chip-specific.
+That registers a clk that consumers can `clk_get`. The hard part, the actual PLL math in `set_rate`, is chip-specific.
 
 ## 81.7  Lab
 
 1. **MCP4725 bring-up.** Wire to I²C1 at 0x60. Build and load `mymcp4725.ko`.
-2. **Voltage sweep.** Write 0, 1024, 2048, 3072, 4095 to `out_voltage0_raw`. measure output with a multimeter. verify linear 0 → VDD.
-3. **Sine generation.** Run the shell script in §81.4. scope the output. Note the staircase quantization at 12-bit.
+2. **Voltage sweep.** Write 0, 1024, 2048, 3072, 4095 to `out_voltage0_raw`. Measure output with a multimeter. Verify linear 0 → VDD.
+3. **Sine generation.** Run the shell script in §81.4. Scope the output. Note the staircase quantization at 12-bit.
 4. **Switch to mainline.** `compatible = "microchip,mcp4725"`. Try writing to EEPROM via the mainline driver's persistence (chip powers up at saved value next boot).
-5. **AD5663** (if available). Configure on SPI. verify two channels with 16-bit resolution. Compare cleaner waveform vs MCP4725.
+5. **AD5663** (if available). Configure on SPI. Verify two channels with 16-bit resolution. Compare cleaner waveform vs MCP4725.
 6. **Si5351 clock gen.** Configure in DT for 100 MHz on CLK0. Scope the output. Verify `cat /sys/kernel/debug/clk/clk_summary` shows the clock.
-7. **Si5351 consumer.** Wire CLK0 to an external chip (e.g., an ADC's master clock). In the consuming driver, `clk_get` + `clk_set_rate`. verify the Si5351 retunes.
+7. **Si5351 consumer.** Wire CLK0 to an external chip (e.g., an ADC's master clock). In the consuming driver, `clk_get` + `clk_set_rate`. Verify the Si5351 retunes.
 
 ## 81.8  Pitfalls
 
 - **MCP4725 bit-packing.** Fast-write packs 12 bits as 4+8. EEPROM-write packs as 8+4. Mixing them up produces a value 16× off. Datasheet figures 6-1 / 6-2.
 - **DAC output loading.** MCP4725 can source or sink only a few mA. Driving a low-impedance load directly causes the output voltage to drop. Buffer with an op-amp follower for current.
 - **DAC output range = VDD.** MCP4725's full-scale is VDD, not a fixed reference. If VDD is noisy (shared digital rail), the output is noisy. Use a clean rail or AD5663 with external reference.
-- **EEPROM write endurance.** MCP4725's EEPROM is rated ~1M cycles. Don't write EEPROM on every output change (use fast-write). reserve EEPROM-write for "set the power-on default."
+- **EEPROM write endurance.** MCP4725's EEPROM is rated ~1M cycles. Don't write EEPROM on every output change (use fast-write). Reserve EEPROM-write for "set the power-on default."
 - **Si5351 PLL constraints.** Each PLL must run between 600 and 900 MHz internally. The output dividers are 4 to 2048. Not every target frequency is achievable on every output. The driver's solver picks the closest valid combination. Verify the actual rate via `clk_get_rate`.
 - **Si5351 output drive vs load.** Output drive strength (2/4/6/8 mA) must match the load (50 Ω termination etc.). Wrong drive = distorted clock or ringing.
-- **Clock consumer ordering.** If a device's `clk_get` happens before the Si5351 driver probes, it gets `-EPROBE_DEFER`. The kernel retries. usually fine. But circular clock dependencies deadlock.
+- **Clock consumer ordering.** If a device's `clk_get` happens before the Si5351 driver probes, it gets `-EPROBE_DEFER`. The kernel retries. Usually fine. But circular clock dependencies deadlock.
 - **#clock-cells mismatch.** Si5351 has `#clock-cells = <1>` (the output index is the cell). A consumer referencing `<&si5351>` without the index fails. Always `<&si5351 N>`.
 
 ## 81.9  Going deeper
 
-- **`drivers/iio/dac/mcp4725.c`** — production MCP4725/4726 driver with EEPROM + power-down.
-- **`drivers/iio/dac/ad5446.c`** — AD5446/AD5663 family.
-- **`drivers/clk/clk-si5351.c`** — the Si5351 clk provider. study the `si5351_*_set_rate` math.
-- **`Documentation/driver-api/clk.rst`** — the clk framework provider/consumer model.
-- **`drivers/clk/clk.c`** — the clk core.
-- **MCP4725 datasheet (Microchip)** — write-format figures.
-- **AD5663 datasheet (ADI)** — 24-bit SPI frame layout.
-- **Si5351 datasheet + AN619 (SiLabs)** — "Manually generating an Si5351 register map" — the PLL math reference.
-- **`Documentation/devicetree/bindings/clock/silabs,si5351.yaml`** — DT binding.
+- **`drivers/iio/dac/mcp4725.c`**: production MCP4725/4726 driver with EEPROM + power-down.
+- **`drivers/iio/dac/ad5446.c`**: AD5446/AD5663 family.
+- **`drivers/clk/clk-si5351.c`**: the Si5351 clk provider. Study the `si5351_*_set_rate` math.
+- **`Documentation/driver-api/clk.rst`**: the clk framework provider/consumer model.
+- **`drivers/clk/clk.c`**: the clk core.
+- **MCP4725 datasheet (Microchip)**: write-format figures.
+- **AD5663 datasheet (ADI)**: 24-bit SPI frame layout.
+- **Si5351 datasheet + AN619 (SiLabs)**: "Manually generating an Si5351 register map", the PLL math reference.
+- **`Documentation/devicetree/bindings/clock/silabs,si5351.yaml`**: DT binding.
 
 ---
 
-> **End of Group G — Analog conversion & clock generation (Ch 80–81).** ADCs in (Ch 80), DACs + clocks out (Ch 81). Both wrap into IIO (`out_voltage`) or the clk framework. The Si5351 is also our first encounter with writing a kernel *clock provider*.
+> **End of Group G, Analog conversion & clock generation (Ch 80–81).** ADCs in (Ch 80), DACs + clocks out (Ch 81). Both wrap into IIO (`out_voltage`) or the clk framework. The Si5351 is also our first encounter with writing a kernel *clock provider*.
 
-> Next chapter: **Chapter 82 — RGB parallel LCD on LCDIF.** Group H (Displays) opens with the i.MX6ULL's native parallel-RGB display interface: panel timings, `panel-simple`, the DRM bridge, and bringing up a real ATK panel.
+> Next chapter: **Chapter 82: RGB parallel LCD on LCDIF.** Group H (Displays) opens with the i.MX6ULL's native parallel-RGB display interface: panel timings, `panel-simple`, the DRM bridge, and bringing up a real ATK panel.

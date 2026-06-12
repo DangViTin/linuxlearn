@@ -1,19 +1,19 @@
 ---
 chapter: 79
 title: Health sensors (MAX30100 / MAX30102)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 18
 status: draft
 ---
 
-# Chapter 79 — Health sensors
+# Chapter 79: Health sensors
 
-> **What:** **PPG** (photoplethysmography) sensors — Maxim **MAX30100** (the original) and **MAX30102** (the improved successor). Both: red + IR LED + photodiode + FIFO + I²C. They give you raw light-intensity samples from a finger (or earlobe, forehead). your code extracts **heart rate** and **SpO₂** (blood-oxygen saturation) from those samples. Protocol, FIFO mechanics, from-scratch IIO driver, and a sketch of the HR/SpO₂ extraction algorithm.
-> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **What:** **PPG** (photoplethysmography) sensors, Maxim **MAX30100** (the original) and **MAX30102** (the improved successor). Both: red + IR LED + photodiode + FIFO + I²C. They give you raw light-intensity samples from a finger (or earlobe, forehead). Your code extracts **heart rate** and **SpO₂** (blood-oxygen saturation) from those samples. Protocol, FIFO mechanics, from-scratch IIO driver, and a sketch of the HR/SpO₂ extraction algorithm.
+> **IIO:** Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
 > **Why:** "wellness" features (fitness bands, smart watches, baby monitors, medical IoT) all use PPG. The chip is cheap, the wiring trivial, the principle is simple, but the work is in the signal processing on the host side. This chapter covers the chip end-to-end and points at what user-space must do.
 >
-> **Focus:** The chip delivers light-intensity samples. Your code turns those samples into heart rate and SpO₂ — the chip cannot do this for you. Heart rate comes from counting peaks in the IR signal. SpO₂ comes from the ratio of red-AC/red-DC to IR-AC/IR-DC mapped through an empirical curve. The driver delivers raw 18-bit samples at 100 Hz. user-space filters, finds peaks, computes. Without good signal processing, the readings are unreliable. The chip cannot compensate for bad code on the host.
+> **Focus:** The chip delivers light-intensity samples. Your code turns those samples into heart rate and SpO₂, the chip cannot do this for you. Heart rate comes from counting peaks in the IR signal. SpO₂ comes from the ratio of red-AC/red-DC to IR-AC/IR-DC mapped through an empirical curve. The driver delivers raw 18-bit samples at 100 Hz. User-space filters, finds peaks, computes. Without good signal processing, the readings are unreliable. The chip cannot compensate for bad code on the host.
 
 
 ## 79.1  Chip comparison
@@ -25,7 +25,7 @@ status: draft
 | Sample rates | 50/100/167/200/400/600/800/1000 Hz | 50–3200 Hz | 50–3200 Hz |
 | FIFO | 16 samples | 32 samples | 32 samples |
 | Sensitivity | per-LED current 0–50 mA | 0–51 mA | 0–51 mA |
-| Operating voltage | 1.7 – 2.0 V (sensor) + 3.3 V (I/O) | 1.7 – 2.0 V + 3.3 V | 1.7 – 2.0 V + 3.3 V |
+| Operating voltage | 1.7, 2.0 V (sensor) + 3.3 V (I/O) | 1.7, 2.0 V + 3.3 V | 1.7, 2.0 V + 3.3 V |
 | I²C address | 0x57 | 0x57 | 0x57 |
 | Idle current | 0.6 µA shutdown | 0.7 µA | 0.7 µA |
 | Status | EOL, replaced by MAX30102 | active | active |
@@ -36,11 +36,11 @@ status: draft
 - **MAX30100** for legacy / module-already-on-hand.
 - **MAX30105** when you need a third LED (green for "is there a finger present?" via particle sensing).
 
-## 79.2  The physics — photoplethysmography
+## 79.2  The physics, photoplethysmography
 
 Shine light into tissue. Some of it is absorbed by blood. The rest reflects or scatters back to a photodiode. As your heart beats, the volume of blood in capillaries fluctuates → light absorption fluctuates → photodiode current fluctuates. That AC component is the **PPG signal**.
 
-The pulsatile signal is small — about 1 % of the DC level. Most of the light hitting the photodiode is the constant amount that passes through tissue without modulation. The pulsatile AC component is the signal we actually want.
+The pulsatile signal is small, about 1 % of the DC level. Most of the light hitting the photodiode is the constant amount that passes through tissue without modulation. The pulsatile AC component is the signal we actually want.
 
 For **SpO₂**, you measure with two wavelengths:
 - **Red (660 nm)**: oxygenated hemoglobin absorbs *less* red light.
@@ -53,11 +53,11 @@ R = (AC_red / DC_red) / (AC_IR / DC_IR)
 SpO₂ ≈ 110 - 25·R    (empirical for fingertip PPG; calibration-dependent)
 ```
 
-The "110 − 25·R" is fitted to clinical pulse-oximeter data. Different chips, different fits — Maxim publishes a recommended table for each.
+The "110 − 25·R" is fitted to clinical pulse-oximeter data. Different chips, different fits, Maxim publishes a recommended table for each.
 
 For **heart rate**, you find peaks in the IR-AC signal. Peak-to-peak time × 60 = BPM. Modern algorithms use FFT-based methods or autocorrelation for robustness against motion artifacts.
 
-## 79.3  Protocol — MAX30102
+## 79.3  Protocol, MAX30102
 
 Register map (the highlights):
 
@@ -88,7 +88,7 @@ Register map (the highlights):
 8. Write 0x0D = 0x24 → LED2 (IR) current ~7 mA.
 9. Wait for IRQ or poll. Each FIFO entry is 6 bytes: 3 bytes red + 3 bytes IR.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ### Reading the FIFO
 
@@ -97,7 +97,7 @@ Host: write 0x07 to set register pointer, then read N×6 bytes back.
        N = (write_ptr - read_ptr) mod 32
 ```
 
-Each 3-byte sample is *18 bits packed in 24 bits* — the top 6 bits are zero. To extract:
+Each 3-byte sample is *18 bits packed in 24 bits*, the top 6 bits are zero. To extract:
 
 ```c
 u32 red_sample = ((buf[0] << 16) | (buf[1] << 8) | buf[2]) & 0x3FFFF;
@@ -108,7 +108,7 @@ The chip increments its write pointer. You increment your read pointer (write to
 
 ## 79.4  How a mainline driver would work
 
-As of v6.6, mainline does include IIO drivers — `drivers/iio/health/max30100.c` and `drivers/iio/health/max30102.c` — that handle the basics (FIFO drain via IRQ, raw red/IR/green samples to a triggered buffer). Most ecosystems still ship Arduino-style ports with the HR/SpO₂ math built in. The mainline drivers deliberately leave the DSP for user space. A complete in-kernel driver would:
+As of v6.6, mainline does include IIO drivers, `drivers/iio/health/max30100.c` and `drivers/iio/health/max30102.c`, that handle the basics (FIFO drain via IRQ, raw red/IR/green samples to a triggered buffer). Most ecosystems still ship Arduino-style ports with the HR/SpO₂ math built in. The mainline drivers deliberately leave the DSP for user space. A complete in-kernel driver would:
 
 1. Read part-id at probe (verify 0x15 for MAX30102).
 2. Configure via DT properties (sample rate, LED current).
@@ -118,9 +118,9 @@ As of v6.6, mainline does include IIO drivers — `drivers/iio/health/max30100.c
 
 User-space then sees `/dev/iio:device0` streaming 6-byte samples at 100 Hz, processes them.
 
-The MAX30102's data-ready IRQ pin connects to a GPIO. The driver uses `request_threaded_irq` (Ch 43) → drains the FIFO → pushes to IIO buffer (Ch 49/70). It's an IIO driver with a FIFO. structurally identical to the IMU drivers in Ch 70–71, just with intensity channels instead of accel/gyro.
+The MAX30102's data-ready IRQ pin connects to a GPIO. The driver uses `request_threaded_irq` (Ch 43) → drains the FIFO → pushes to IIO buffer (Ch 49/70). It's an IIO driver with a FIFO. Structurally identical to the IMU drivers in Ch 70–71, just with intensity channels instead of accel/gyro.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 79.5  Writing a MAX30102 driver from scratch
 
@@ -377,7 +377,7 @@ DT:
 ```
 
 Test (one-shot via sysfs):
-**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 ```
 [root@pa-mini:~]# insmod mymax30102.ko
@@ -448,9 +448,9 @@ print(f"SpO2: {spo2:.1f}% (R-ratio {R:.3f})")
 
 That's the textbook approach. Production systems add:
 
-- **Motion artifact rejection** (accelerometer cross-correlation. gate readings during walking).
+- **Motion artifact rejection** (accelerometer cross-correlation. Gate readings during walking).
 - **Auto-gain** (adjust LED currents to keep DC within the ADC's sweet spot).
-- **Finger-detection** (if ir_dc < threshold, no finger present. report "no signal").
+- **Finger-detection** (if ir_dc < threshold, no finger present. Report "no signal").
 - **FFT/autocorrelation** instead of peak-finding for noisy signals.
 
 Maxim's reference code includes the algorithm. Apple Watch's algorithm is patented and proprietary. For a hobby/demo: peak-finding + a 10-second running average works.
@@ -459,12 +459,12 @@ Maxim's reference code includes the algorithm. Apple Watch's algorithm is patent
 
 1. **Wire MAX30102** to your I²C bus + a GPIO for the IRQ.
 2. **Build and load `mymax30102.ko`.** Verify probe in dmesg.
-3. **Bare-finger test.** Cover the sensor with your fingertip. verify red_raw and ir_raw jump from ~3000 (ambient) to 100k+.
+3. **Bare-finger test.** Cover the sensor with your fingertip. Verify red_raw and ir_raw jump from ~3000 (ambient) to 100k+.
 4. **Stream + process.** Capture 30 s of data. Use a Python script (see §79.6) to extract HR. Compare to a real pulse oximeter or your own pulse rate (count for 15 s × 4).
 5. **SpO₂ check.** Compute R-ratio + SpO₂. At rest, healthy adults are 95–99 %. Compare to medical pulse-oximeter on the other finger if available.
-6. **Motion artifacts.** Capture while moving the sensor. verify HR-extraction algorithm goes haywire. This is why fitness watches use accelerometer-gated HR.
+6. **Motion artifacts.** Capture while moving the sensor. Verify HR-extraction algorithm goes haywire. This is why fitness watches use accelerometer-gated HR.
 7. **LED current sweep.** Vary `LED1_PA` and `LED2_PA` from 0x10 to 0x60. Observe DC level scaling linearly. Higher currents = stronger signal but higher noise from photodiode saturation.
-8. **Compare against a MAX30100** (if available). Same code. different chip-id. ~14-bit vs 18-bit visible in signal SNR.
+8. **Compare against a MAX30100** (if available). Same code. Different chip-id. ~14-bit vs 18-bit visible in signal SNR.
 
 ## 79.8  Pitfalls
 
@@ -472,28 +472,28 @@ Maxim's reference code includes the algorithm. Apple Watch's algorithm is patent
 > Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
 
 
-- **Sensor in direct sun.** Photodiode saturated by ambient IR. DC level pinned at max. no pulsatile signal. Use indoor or covered.
-- **Loose finger placement.** Tiny finger movements look like enormous "pulses." Mechanical fixturing matters — clip designs work, finger-on-flat-board doesn't.
-- **Cold fingers.** Reduced peripheral perfusion → weak AC signal. SpO₂ readings unreliable. Warm hands. or use earlobe.
+- **Sensor in direct sun.** Photodiode saturated by ambient IR. DC level pinned at max. No pulsatile signal. Use indoor or covered.
+- **Loose finger placement.** Tiny finger movements look like enormous "pulses." Mechanical fixturing matters, clip designs work, finger-on-flat-board doesn't.
+- **Cold fingers.** Reduced peripheral perfusion → weak AC signal. SpO₂ readings unreliable. Warm hands. Or use earlobe.
 - **No DC tracking.** Naive AC extraction (just band-pass) fails when DC drifts with finger pressure. Real algorithms track DC adaptively.
 - **R-ratio calibration off.** The 110-25·R formula is for one specific chip's geometry. Use Maxim's chip-specific table for accuracy. Don't claim "medical-grade SpO₂" without proper calibration against a reference oximeter.
 - **FIFO overflow.** If user-space drains slower than 100 Hz × 6 bytes = 600 B/s, FIFO overflows. Check REG_FIFO_OVF (0x05) and warn.
 - **IRQ pin polarity.** Open-drain output, active-low. Pull-up to 3.3V required.
-- **18-bit data in 24-bit container.** Top 6 bits are zero — they're padding. Mask with 0x3FFFF or the math goes wrong.
-- **No mainline IIO driver.** Multiple out-of-tree implementations exist. quality varies. Writing your own from §79.5 is reasonable.
+- **18-bit data in 24-bit container.** Top 6 bits are zero, they're padding. Mask with 0x3FFFF or the math goes wrong.
+- **No mainline IIO driver.** Multiple out-of-tree implementations exist. Quality varies. Writing your own from §79.5 is reasonable.
 
 ## 79.9  Going deeper
 
-- **MAX30102 datasheet (Maxim 19-7740 Rev 1)** — full register map.
-- **Maxim app note AN6409** — "PPG signal processing on MAX30102."
-- **Maxim's reference C library** (Arduino-flavored but algorithmically clear) — at `github.com/MaximIntegratedRefDesTeam/`.
-- **`drivers/iio/light/`** — IIO INTENSITY-channel drivers for comparison.
-- **`scipy.signal`** documentation — Butterworth, peak-finding.
-- **PhysioNet** — open-access ECG/PPG signal databases for testing algorithms.
-- **WHO SpO₂ measurement guidelines** — for understanding what "medical-grade" means.
+- **MAX30102 datasheet (Maxim 19-7740 Rev 1)**: full register map.
+- **Maxim app note AN6409**: "PPG signal processing on MAX30102."
+- **Maxim's reference C library** (Arduino-flavored but algorithmically clear), at `github.com/MaximIntegratedRefDesTeam/`.
+- **`drivers/iio/light/`**: IIO INTENSITY-channel drivers for comparison.
+- **`scipy.signal`** documentation, Butterworth, peak-finding.
+- **PhysioNet**: open-access ECG/PPG signal databases for testing algorithms.
+- **WHO SpO₂ measurement guidelines**: for understanding what "medical-grade" means.
 
 ---
 
-> **End of Group F — Specialty sensors (Ch 77–79).** Three sensors that each represent a different driver pattern: 1-Wire's bit-bang master + slave-driver split (Ch 77), I²S audio capture without a chip driver (Ch 78), and an IIO chip with FIFO + user-space DSP (Ch 79).
+> **End of Group F, Specialty sensors (Ch 77–79).** Three sensors that each represent a different driver pattern: 1-Wire's bit-bang master + slave-driver split (Ch 77), I²S audio capture without a chip driver (Ch 78), and an IIO chip with FIFO + user-space DSP (Ch 79).
 
-> Next chapter: **Chapter 80 — External ADCs (ADS1115 / ADS1256 / MCP3008 / AD7606).** When the SoC's internal ADC isn't accurate enough, fast enough, or has the wrong number of channels.
+> Next chapter: **Chapter 80: External ADCs (ADS1115 / ADS1256 / MCP3008 / AD7606).** When the SoC's internal ADC isn't accurate enough, fast enough, or has the wrong number of channels.

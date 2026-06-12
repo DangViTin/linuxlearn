@@ -1,23 +1,23 @@
 ---
 chapter: 38
 title: Auto-creating /dev nodes (class + device + uevent)
-part: VI — Driver development
+part: VI - Driver development
 estimated_pages: 14
 status: draft
 ---
 
-# Chapter 38 — Auto-creating `/dev/` nodes
+# Chapter 38: Auto-creating `/dev/` nodes
 
 > **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
 > After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
 
 
-> **What:** `class_create` + `device_create` — the two calls that let your driver tell the kernel "I have a new device. please broadcast a hot-plug event so user-space creates `/dev/<name>` for me." With these in place you never `mknod` by hand again.
+> **What:** `class_create` + `device_create`, the two calls that let your driver tell the kernel "I have a new device. Please broadcast a hot-plug event so user-space creates `/dev/<name>` for me." With these in place you never `mknod` by hand again.
 >
-> **Why:** real drivers don't burden users with manual `mknod` steps after every `insmod`. Modern Linux uses the **uevent** mechanism — the kernel broadcasts a netlink message describing the new device, and a user-space agent (udev on workstations, mdev on embedded) reacts by creating the right file in `/dev/`, setting permissions, and possibly running scripts. Your driver's only responsibility is to register the device and let the framework do the rest.
-> **udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
+> **Why:** real drivers don't burden users with manual `mknod` steps after every `insmod`. Modern Linux uses the **uevent** mechanism, the kernel broadcasts a netlink message describing the new device, and a user-space agent (udev on workstations, mdev on embedded) reacts by creating the right file in `/dev/`, setting permissions, and possibly running scripts. Your driver's only responsibility is to register the device and let the framework do the rest.
+> **udev:** the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 >
-> **Focus:** **the relationship between `/sys/class/...` and `/dev/...`**. The class hierarchy in sysfs is the *source of truth* — that's where the kernel describes what devices exist. The `/dev/` tree is a **shadow** of sysfs maintained by the hot-plug agent. Get this picture right and most "why is my device file missing?" debugging becomes trivial.
+> **Focus:** **the relationship between `/sys/class/...` and `/dev/...`**. The class hierarchy in sysfs is the *source of truth*, that's where the kernel describes what devices exist. The `/dev/` tree is a **shadow** of sysfs maintained by the hot-plug agent. Get this picture right and most "why is my device file missing?" debugging becomes trivial.
 
 
 ## 38.1  The hot-plug pipeline
@@ -52,13 +52,13 @@ When your driver calls `device_create(...)`, this happens:
 
 The driver call (`device_create`) doesn't itself create `/dev/hello`. It creates the **sysfs entry** at `/sys/class/hello/hello/`, which the kernel uses to broadcast the uevent. The actual `/dev/hello` is created by the **listener**.
 
-This is different from how you might imagine it. The kernel does not maintain `/dev/`. It publishes events. User-space decides what to do with them. Different listeners can make wildly different choices (udev creates rich-permission nodes with named symlinks. mdev creates minimal nodes. both work).
+This is different from how you might imagine it. The kernel does not maintain `/dev/`. It publishes events. User-space decides what to do with them. Different listeners can make wildly different choices (udev creates rich-permission nodes with named symlinks. Mdev creates minimal nodes. Both work).
 
-(Aside: there is a fallback. If `CONFIG_DEVTMPFS=y` and the kernel mounts devtmpfs on `/dev/` — Ch 32 — the *kernel itself* auto-creates the device node, no user-space listener required. Then udev/mdev's job becomes just refining permissions and creating symlinks. We'll assume devtmpfs is on, which it is in 99% of modern setups.)
+(Aside: there is a fallback. If `CONFIG_DEVTMPFS=y` and the kernel mounts devtmpfs on `/dev/`, Ch 32, the *kernel itself* auto-creates the device node, no user-space listener required. Then udev/mdev's job becomes just refining permissions and creating symlinks. We'll assume devtmpfs is on, which it is in 99% of modern setups.)
 
 ## 38.2  Adding to the chardev driver
 
-Take the Ch 37 driver and add a class, a device, and matching cleanup — about a dozen lines.
+Take the Ch 37 driver and add a class, a device, and matching cleanup, about a dozen lines.
 
 ```c
 #include <linux/device.h>
@@ -132,9 +132,9 @@ No `mknod` step. The file appears at load and disappears at unload.
 struct class *class_create(struct module *owner, const char *name);
 ```
 
-Creates a directory `/sys/class/<name>/`. A *class* is a group of devices that share a role — LED, RTC, GPIO chip, network interface, sound card. The class directory holds one entry per device in that group. It also publishes group-level attributes that udev/mdev rules can match on.
+Creates a directory `/sys/class/<name>/`. A *class* is a group of devices that share a role, LED, RTC, GPIO chip, network interface, sound card. The class directory holds one entry per device in that group. It also publishes group-level attributes that udev/mdev rules can match on.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 The kernel ships dozens of standard classes:
 
@@ -146,7 +146,7 @@ bluetooth   input       net        regulator     spi_master
 ...
 ```
 
-When you create your own class (`"hello"`), `/sys/class/hello/` appears. New custom-driver chardevs that *don't fit* an existing class do this — make a class with the driver's name. Drivers that fit an existing class skip `class_create` and register with the subsystem framework directly. For example, an LED driver belongs in `leds` and an RTC in `rtc`. Ch 44–48 cover these subsystems.
+When you create your own class (`"hello"`), `/sys/class/hello/` appears. New custom-driver chardevs that *don't fit* an existing class do this, make a class with the driver's name. Drivers that fit an existing class skip `class_create` and register with the subsystem framework directly. For example, an LED driver belongs in `leds` and an RTC in `rtc`. Ch 44–48 cover these subsystems.
 
 ### `device_create`
 
@@ -156,11 +156,11 @@ struct device *device_create(struct class *class, struct device *parent,
                               const char *fmt, ...);
 ```
 
-- **`class`** — which class this device belongs to.
-- **`parent`** — the device's parent in the device hierarchy. `NULL` is fine for top-level chardev. Real subsystem drivers set this to the platform device or USB device that hosts them, so sysfs reflects the bus topology.
-- **`devt`** — the `dev_t` (major:minor). The kernel writes `MAJOR:MINOR` into the device's `dev` attribute, which is what udev/mdev reads.
-- **`drvdata`** — a `void *` stored in the `device`'s `driver_data` field. Use it (or `dev_set_drvdata` later) to attach your own state.
-- **`fmt, ...`** — `printf`-style device name. Becomes the directory name in `/sys/class/<class>/<name>/` *and* (via the uevent's `DEVNAME`) the filename in `/dev/`.
+- **`class`**: which class this device belongs to.
+- **`parent`**: the device's parent in the device hierarchy. `NULL` is fine for top-level chardev. Real subsystem drivers set this to the platform device or USB device that hosts them, so sysfs reflects the bus topology.
+- **`devt`**: the `dev_t` (major:minor). The kernel writes `MAJOR:MINOR` into the device's `dev` attribute, which is what udev/mdev reads.
+- **`drvdata`**: a `void *` stored in the `device`'s `driver_data` field. Use it (or `dev_set_drvdata` later) to attach your own state.
+- **`fmt, ...`**: `printf`-style device name. Becomes the directory name in `/sys/class/<class>/<name>/` *and* (via the uevent's `DEVNAME`) the filename in `/dev/`.
 
 A few naming conventions to know:
 
@@ -189,11 +189,11 @@ The `uevent` file is special: reading it prints the current state, **writing** t
 
 ## 38.4  Picking permissions and ownership
 
-By default, udev/mdev creates `/dev/hello` with permissions 0600 (root-only). That's safe but unhelpful — your test programs running as a regular user can't open the device.
+By default, udev/mdev creates `/dev/hello` with permissions 0600 (root-only). That's safe but unhelpful, your test programs running as a regular user can't open the device.
 
 Three places to set device permissions, in order of preference:
 
-### A. udev rule (cleanest)
+### A. Udev rule (cleanest)
 
 Create `/etc/udev/rules.d/99-hello.rules`:
 
@@ -210,7 +210,7 @@ Reload:
 
 Now `/dev/hello` is mode 0660, owned by `root:plugdev`. Add your user to the `plugdev` group and they can read/write it.
 
-### B. mdev rule (embedded with BusyBox)
+### B. Mdev rule (embedded with BusyBox)
 
 `/etc/mdev.conf`:
 
@@ -218,7 +218,7 @@ Now `/dev/hello` is mode 0660, owned by `root:plugdev`. Add your user to the `pl
 hello   0:plugdev 0660
 ```
 
-`mdev`'s syntax is positional, not key=value: name, owner:group, mode. mdev applies these on every new device event. (Re-trigger by `mdev -s` to apply to already-created files.)
+`mdev`'s syntax is positional, not key=value: name, owner:group, mode. Mdev applies these on every new device event. (Re-trigger by `mdev -s` to apply to already-created files.)
 
 ### C. Devnode callback in the driver
 
@@ -236,7 +236,7 @@ static char *hello_devnode(struct device *dev, umode_t *mode)
 hd->class->devnode = hello_devnode;
 ```
 
-The kernel's devtmpfs runs `devnode` when creating the device and respects the returned mode. This is the most reliable but least configurable approach — most production systems use udev rules instead.
+The kernel's devtmpfs runs `devnode` when creating the device and respects the returned mode. This is the most reliable but least configurable approach, most production systems use udev rules instead.
 
 ## 38.5  Multiple devices in one driver
 
@@ -348,14 +348,14 @@ For multiple attributes, group them and use `device_create_file` per attribute, 
 1. **Add `class_create` + `device_create`** to the Ch 37 driver. Verify `/dev/hello` appears at load and disappears at unload.
 2. **Switch to multi-device.** Modify your driver to create 4 instances (`/dev/hello0` … `/dev/hello3`). Each instance has its own buffer.
 3. **Make it user-accessible.** Write a udev rule that gives your devices mode 0660 in group `plugdev`. Verify a non-root user can `cat /dev/hello0`.
-4. **Add a sysfs attribute.** Create `state_show`/`state_store` to expose a runtime knob — say, an integer that throttles your write speed.
+4. **Add a sysfs attribute.** Create `state_show`/`state_store` to expose a runtime knob, say, an integer that throttles your write speed.
 5. **Inspect the uevent.** Open two terminals on the target. In one, run `udevadm monitor` (or `mdev -d` if using mdev). In the other, `insmod` and `rmmod`. Watch the events fire.
 6. **Use the `devnode` callback** to set 0660 mode in the driver itself. Verify `/dev/hello` comes up with the right mode even without a udev rule.
 
 ## 38.8  Pitfalls
 
 - **Calling `device_create` before `cdev_add`.** Device node appears but `open` on it returns `-ENXIO` because no cdev is registered for that major. Always `cdev_add` first, then `device_create`. Cleanup in reverse order.
-- **Forgetting `device_destroy` in cleanup.** The `/dev/` node lingers (kernel side) — udev/mdev never gets the "remove" event. Next load creates `/dev/hello` *again*, double-registered. Eventually you'll trip over name conflicts.
+- **Forgetting `device_destroy` in cleanup.** The `/dev/` node lingers (kernel side), udev/mdev never gets the "remove" event. Next load creates `/dev/hello` *again*, double-registered. Eventually you'll trip over name conflicts.
 - **`IS_ERR(class)` vs `class == NULL`.** `class_create` returns an `ERR_PTR` on failure, not `NULL`. Test with `IS_ERR(class)` and recover with `PTR_ERR(class)`. Same for `device_create`.
 - **Race between insmod and udev.** If your user-space code does `insmod hello.ko && cat /dev/hello`, the second part may run before udev has created `/dev/hello`. Mitigation: use `udevadm settle` between `insmod` and the access, or have your user-space code retry with a short delay.
 - **Class name collisions.** Two drivers trying to register a class with the same name fail loudly. Use unique names. If you're adding a driver to an existing subsystem, use that subsystem's `register` API (e.g., `led_classdev_register`) instead of creating a competing class.
@@ -364,9 +364,9 @@ For multiple attributes, group them and use `device_create_file` per attribute, 
 
 ## 38.9  Going deeper
 
-- **`Documentation/driver-api/driver-model/overview.rst`** — the device model is much richer than what we use here. classes are one slice of it.
-- **`Documentation/admin-guide/devices.rst`** — udev/mdev rule syntax in detail.
-- **`drivers/leds/led-class.c`** — a real subsystem class, fully fleshed out. Read it once.
-- **`Documentation/filesystems/sysfs.rst`** — the sysfs design rationale. explains why each file is limited to PAGE_SIZE and how the kobject hierarchy works.
+- **`Documentation/driver-api/driver-model/overview.rst`**: the device model is much richer than what we use here. Classes are one slice of it.
+- **`Documentation/admin-guide/devices.rst`**: udev/mdev rule syntax in detail.
+- **`drivers/leds/led-class.c`**: a real subsystem class, fully fleshed out. Read it once.
+- **`Documentation/filesystems/sysfs.rst`**: the sysfs design rationale. Explains why each file is limited to PAGE_SIZE and how the kobject hierarchy works.
 
-> Next chapter: **Chapter 39 — Platform drivers + device tree.** With manual device registration understood, we move to the *real* way Linux drivers describe themselves: a `platform_driver` that gets matched to a device-tree `compatible` string, with `probe`/`remove` doing what `module_init`/`module_exit` did up until now.
+> Next chapter: **Chapter 39: Platform drivers + device tree.** With manual device registration understood, we move to the *real* way Linux drivers describe themselves: a `platform_driver` that gets matched to a device-tree `compatible` string, with `probe`/`remove` doing what `module_init`/`module_exit` did up until now.

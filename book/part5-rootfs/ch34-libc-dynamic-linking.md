@@ -1,19 +1,19 @@
 ---
 chapter: 34
 title: libc, dynamic linking, and the loader
-part: V — Root filesystem & user space
+part: V - Root filesystem & user space
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 34 — libc, dynamic linking, and the loader
+# Chapter 34: libc, dynamic linking, and the loader
 
 > **What:** the C library that user-space programs link against (glibc, musl, uClibc-ng), the ELF dynamic-linker that resolves shared-library references at runtime (`/lib/ld-linux-armhf.so.3`), and the bookkeeping (PLT, GOT, `LD_LIBRARY_PATH`, `RPATH`) that makes `hello-world` actually find `printf`.
-> **ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
+> **ELF:** Executable and Linkable Format, the standard Linux object and executable file format.
 >
 > **Why:** every dynamically-linked program on the target depends on this machinery. When it works it's invisible. When it breaks you get `No such file or directory` on a file that does exist. Knowing what the loader does demystifies these failures.
 >
-> **Focus:** **ld-linux's job.** When the kernel `exec`s a dynamically-linked program, the first thing that runs is *not* `main()` — it's the dynamic linker, which loads every required shared library, fixes up addresses, and only *then* jumps to your code. Once you've traced this sequence you can debug most `libfoo.so.X: cannot open shared object file` problems.
+> **Focus:** **ld-linux's job.** When the kernel `exec`s a dynamically-linked program, the first thing that runs is *not* `main()`, it's the dynamic linker, which loads every required shared library, fixes up addresses, and only *then* jumps to your code. Once you've traced this sequence you can debug most `libfoo.so.X: cannot open shared object file` problems.
 
 
 ## 34.1  Three C libraries
@@ -40,7 +40,7 @@ For embedded Linux **musl is the default**. Reasons:
 
 glibc remains right for: anything that ships large dynamic apps (Qt, Python, Java), or any rootfs that's a distro derivative (Ubuntu-base / Debian).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 ## 34.2  Anatomy of a dynamically-linked ELF
 
@@ -59,8 +59,8 @@ hello: ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV),
 
 Two things to notice from `file`:
 
-- **dynamically linked** — references shared libraries that aren't part of the binary.
-- **interpreter /lib/ld-linux-armhf.so.3** — when the kernel `exec`s this binary, it actually runs the *interpreter* first, passing the binary as an argument.
+- **dynamically linked**: references shared libraries that aren't part of the binary.
+- **interpreter /lib/ld-linux-armhf.so.3**: when the kernel `exec`s this binary, it actually runs the *interpreter* first, passing the binary as an argument.
 
 That second point is the heart of dynamic linking and worth understanding precisely.
 
@@ -84,7 +84,7 @@ Program Headers:
   ...
 ```
 
-The **INTERP** segment is a single string: `/lib/ld-linux-armhf.so.3`. The kernel reads this string out of the ELF, opens that file, and `exec`s *it* — passing your `hello` as a regular argument to the linker. The dynamic linker is the *real* program PID-wise. your `hello` is its workload.
+The **INTERP** segment is a single string: `/lib/ld-linux-armhf.so.3`. The kernel reads this string out of the ELF, opens that file, and `exec`s *it*, passing your `hello` as a regular argument to the linker. The dynamic linker is the *real* program PID-wise. Your `hello` is its workload.
 
 ### What the linker does
 
@@ -103,8 +103,8 @@ The **INTERP** segment is a single string: `/lib/ld-linux-armhf.so.3`. The kerne
    - `/etc/ld.so.cache` (built by `ldconfig`)
    - `/lib`, `/usr/lib` (default fallback)
 3. **`mmap`s each `.so` into memory** at addresses chosen for that process (ASLR shuffles them if enabled).
-4. **Repeats recursively** — libc may need other libraries (pthread, ld, …).
-5. **Performs symbol resolution.** For every undefined symbol in `hello` and the loaded libraries, find the defining library. rewrite the address tables (PLT / GOT) so that calls go to the right place.
+4. **Repeats recursively**: Libc may need other libraries (pthread, ld, …).
+5. **Performs symbol resolution.** For every undefined symbol in `hello` and the loaded libraries, find the defining library. Rewrite the address tables (PLT / GOT) so that calls go to the right place.
 6. **Calls the program's entry point** (`_start`, which eventually calls `main`).
 
 All of that happens before your `main()` runs. On embedded i.MX6ULL hardware, dynamic linking adds ~5-50 ms to startup depending on how many libraries are pulled in.
@@ -113,7 +113,7 @@ All of that happens before your `main()` runs. On embedded i.MX6ULL hardware, dy
 
 The PLT and GOT are the two tables that make dynamic linking efficient.
 
-### GOT — Global Offset Table
+### GOT, Global Offset Table
 
 The GOT holds runtime addresses of every external symbol the program references. The compiler emits `LOAD r0, [GOT+offset]` instead of a fixed address.
 
@@ -134,7 +134,7 @@ Relocation section '.rel.plt' at offset 0x464 contains 1 entry:
 
 `R_ARM_GLOB_DAT` entries are data-section relocations. The loader writes the resolved address of `__libc_start_main` into the GOT slot at `0x10ff0`.
 
-### PLT — Procedure Linkage Table
+### PLT, Procedure Linkage Table
 
 The PLT is a tiny stub per function that jumps via the GOT. The first time you call `puts()`:
 
@@ -144,7 +144,7 @@ puts@plt:
     bx   r12              @ → resolved address of puts, or to the resolver stub
 ```
 
-The first time, the GOT slot still points at a "resolver" routine inside ld-linux. The resolver looks up `puts` for real, writes the real address into the GOT slot, and jumps there. **Subsequent calls** go directly via the GOT — fast.
+The first time, the GOT slot still points at a "resolver" routine inside ld-linux. The resolver looks up `puts` for real, writes the real address into the GOT slot, and jumps there. **Subsequent calls** go directly via the GOT, fast.
 
 This trick is called **lazy binding**. The dynamic linker doesn't resolve every function at startup. It resolves them on first use. You can disable lazy binding with `LD_BIND_NOW=1`, useful for security-hardened systems (no resolver stub at runtime).
 
@@ -167,9 +167,9 @@ libm.so.6               librt.so.1
 Notice:
 
 - `libc.so.6` is a *symlink* to `libc-2.31.so`. The "6" is the ABI version. "2.31" is the implementation version.
-**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
-- `ld-linux-armhf.so.3` is the dynamic linker — a *real file*, not a symlink. (See Ch 31 §31.10's gotcha.)
-- The `nss_files` library is for Name Service Switch — loaded dynamically by glibc when you call `gethostbyname`, `getpwuid`, etc. This is the part that breaks under static linking.
+> **ABI:** Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
+- `ld-linux-armhf.so.3` is the dynamic linker, a *real file*, not a symlink. (See Ch 31 §31.10's gotcha.)
+- The `nss_files` library is for Name Service Switch, loaded dynamically by glibc when you call `gethostbyname`, `getpwuid`, etc. This is the part that breaks under static linking.
 
 The dynamic linker also consults `/etc/ld.so.cache`, a pre-indexed map of `library-name → file-path`:
 
@@ -181,7 +181,7 @@ $ ldconfig -p | head
    ...
 ```
 
-`ldconfig` rebuilds this cache from `/etc/ld.so.conf` and `/etc/ld.so.conf.d/*.conf`. On embedded systems running BusyBox, `ldconfig` is often skipped — the search defaults (`/lib`, `/usr/lib`) cover everything.
+`ldconfig` rebuilds this cache from `/etc/ld.so.conf` and `/etc/ld.so.conf.d/*.conf`. On embedded systems running BusyBox, `ldconfig` is often skipped, the search defaults (`/lib`, `/usr/lib`) cover everything.
 
 ## 34.5  Looking inside a real program
 
@@ -192,7 +192,7 @@ $ ldconfig -p | head
         not a dynamic executable
 ```
 
-(Static — no dependencies.) But:
+(Static, no dependencies.) But:
 
 ```sh
 [root@pa-mini:~]# ldd /usr/bin/some-dynamic-binary
@@ -202,7 +202,7 @@ $ ldconfig -p | head
         /lib/ld-linux-armhf.so.3 (0xb6f80000)
 ```
 
-Right column is *load addresses* — where each `.so` was `mmap`'d into the process's address space.
+Right column is *load addresses*, where each `.so` was `mmap`'d into the process's address space.
 
 For a deeper look:
 
@@ -234,7 +234,7 @@ Sometimes you ship a binary that depends on libraries *not* in `/lib`. Three com
 [root@pa-mini:~]# LD_LIBRARY_PATH=/opt/myapp/lib /opt/myapp/bin/my-binary
 ```
 
-Most general. user can override per-invocation. Downside: easy to forget. security-sensitive binaries (setuid) ignore it for safety.
+Most general. User can override per-invocation. Downside: easy to forget. Security-sensitive binaries (setuid) ignore it for safety.
 
 ### `RPATH` baked into the binary
 
@@ -250,7 +250,7 @@ The binary now searches `/opt/myapp/lib/` automatically. Visible in `readelf -d`
 $ arm-none-linux-gnueabihf-gcc -Wl,-rpath,'$ORIGIN/../lib' -o my-binary my.c
 ```
 
-Binary in `/opt/myapp/bin/` searches `/opt/myapp/lib/` — regardless of where the package is installed.
+Binary in `/opt/myapp/bin/` searches `/opt/myapp/lib/`, regardless of where the package is installed.
 
 ### `/etc/ld.so.conf.d/myapp.conf`
 
@@ -261,7 +261,7 @@ $ ldconfig
 
 System-wide. Affects all binaries. Use sparingly.
 
-## 34.7  Static vs dynamic for embedded — the real trade-off
+## 34.7  Static vs dynamic for embedded, the real trade-off
 
 | | Static | Dynamic |
 |---|---|---|
@@ -275,23 +275,23 @@ System-wide. Affects all binaries. Use sparingly.
 
 For embedded with **N small binaries**, dynamic linking is almost always smaller in total. For embedded with **1 large binary**, static can win.
 
-`busybox`, our biggest single binary, is the canonical case for static: 580 KB static vs ~580 KB binary + ~2 MB glibc dynamic. Choosing static for busybox saves 2 MB. choosing dynamic means dozens of other small dynamic binaries can also be on the system without adding more libc copies.
+`busybox`, our biggest single binary, is the canonical case for static: 580 KB static vs ~580 KB binary + ~2 MB glibc dynamic. Choosing static for busybox saves 2 MB. Choosing dynamic means dozens of other small dynamic binaries can also be on the system without adding more libc copies.
 
 The decision is per-binary, not per-system. Mix as needed.
 
 ## 34.8  Lab
 
-1. **Inspect a binary's dependencies.** `arm-none-linux-gnueabihf-readelf -d /bin/my-binary` from the host (or from the target after copying). Note each NEEDED entry. verify each exists in `/lib/` or `/usr/lib/`.
-2. **`ldd` on the target.** Run `ldd /usr/bin/...` on something dynamic and read each line. Identify the dynamic linker. verify it matches the INTERP from `readelf`.
-3. **Break a dynamic binary on purpose.** Move `/lib/libm.so.6` somewhere. try to run a math-dependent binary. Observe the "cannot open shared object file" error. Restore.
+1. **Inspect a binary's dependencies.** `arm-none-linux-gnueabihf-readelf -d /bin/my-binary` from the host (or from the target after copying). Note each NEEDED entry. Verify each exists in `/lib/` or `/usr/lib/`.
+2. **`ldd` on the target.** Run `ldd /usr/bin/...` on something dynamic and read each line. Identify the dynamic linker. Verify it matches the INTERP from `readelf`.
+3. **Break a dynamic binary on purpose.** Move `/lib/libm.so.6` somewhere. Try to run a math-dependent binary. Observe the "cannot open shared object file" error. Restore.
 4. **Trace library loading.** `LD_DEBUG=libs LD_DEBUG_OUTPUT=/tmp/ldlog my-binary. cat /tmp/ldlog`. Identify every library load.
 5. **Build the same program against musl.** If you have a musl-targeting cross toolchain, build `hello.c` against musl and against glibc. Compare sizes statically: `arm-linux-musleabihf-gcc -static -o hello-musl hello.c` versus `arm-none-linux-gnueabihf-gcc -static -o hello-glibc hello.c`.
 6. **Set up `$ORIGIN` rpath.** Build a binary with `-Wl,-rpath,'$ORIGIN/../lib'`, place it under `/opt/myapp/bin/`, place a custom `.so` under `/opt/myapp/lib/`, verify the binary finds it without `LD_LIBRARY_PATH`.
 
 ## 34.9  Pitfalls
 
-- **`libfoo.so.X: cannot open shared object file`** — the dynamic linker can't find a NEEDED library. Diagnose with `LD_DEBUG=libs`. Fix by copying the library into `/lib` or adding to `LD_LIBRARY_PATH` / `RPATH`.
-- **`relocation error: undefined symbol`** — the library was found but doesn't have a symbol the binary needs. Usually means library *version* mismatch. The binary was built against newer libc. The runtime has older.
+- **`libfoo.so.X: cannot open shared object file`**: the dynamic linker can't find a NEEDED library. Diagnose with `LD_DEBUG=libs`. Fix by copying the library into `/lib` or adding to `LD_LIBRARY_PATH` / `RPATH`.
+- **`relocation error: undefined symbol`**: the library was found but doesn't have a symbol the binary needs. Usually means library *version* mismatch. The binary was built against newer libc. The runtime has older.
 - **Mixed glibc and musl on one rootfs.** Mixing glibc and musl on one rootfs is possible but easy to get wrong. Glibc uses SONAME `libc.so.6` and loader `/lib/ld-linux-armhf.so.3`. Musl uses its own loader `/lib/ld-musl-armhf.so.1` and its own libc. They can live in separate prefixes. The failure mode is when both want to own the same `/lib/libc.so.6` symlink. Pick one libc per rootfs, or put musl binaries under their own prefix with the loader path baked in via `RPATH`.
 - **Static glibc + getaddrinfo.** Returns "Temporary failure in name resolution" with no obvious cause. NSS modules are dlopen'd at runtime even for "static" binaries. If the .so files aren't on disk you lose DNS. Either ship the NSS .so files alongside your "static" binary or switch to musl.
 - **`LD_LIBRARY_PATH` and setuid binaries.** Ignored for setuid binaries (security). Don't rely on it for system binaries.
@@ -300,12 +300,12 @@ The decision is per-binary, not per-system. Mix as needed.
 
 ## 34.10  Going deeper
 
-- **`man ld.so`** — the canonical loader reference.
+- **`man ld.so`**: the canonical loader reference.
 - **`man ldd`**, **`man ldconfig`**, **`man dlopen`**.
 - **`Documentation/admin-guide/dynamic-debug-howto.rst`** for kernel-side dlopen-like patterns.
-- **`Drepper, "How to Write Shared Libraries"`** — long PDF, gold standard.
-- **musl's website**, `musl.libc.org` — design rationale, comparison tables.
+- **`Drepper, "How to Write Shared Libraries"`**: long PDF, gold standard.
+- **musl's website**, `musl.libc.org`, design rationale, comparison tables.
 - **`The ELF Specification`** (System V ABI, ARM supplement) for the gritty details of dynamic sections.
 
-> Next chapter: **Chapter 35 — Buildroot, after you can do it by hand.** With BusyBox + libc + init understood, we adopt the tool that automates all of it.
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> Next chapter: **Chapter 35: Buildroot, after you can do it by hand.** With BusyBox + libc + init understood, we adopt the tool that automates all of it.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.

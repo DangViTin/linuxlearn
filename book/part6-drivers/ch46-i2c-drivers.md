@@ -1,29 +1,29 @@
 ---
 chapter: 46
 title: I²C drivers
-part: VI — Driver development
+part: VI - Driver development
 estimated_pages: 22
 status: draft
 ---
 
-# Chapter 46 — I²C drivers
+# Chapter 46: I²C drivers
 
-> **What:** the Linux **I²C subsystem** — `i2c_adapter` (the controller, which we don't write), `i2c_client` (one chip on the bus), `i2c_driver` (the per-chip driver), `i2c_msg` (one transaction). By the end you'll have a driver that probes when a DT node says `compatible = "your,chip"`, talks to it with `i2c_transfer`, and exposes it via chardev or sysfs.
-> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+> **What:** the Linux **I²C subsystem**, `i2c_adapter` (the controller, which we don't write), `i2c_client` (one chip on the bus), `i2c_driver` (the per-chip driver), `i2c_msg` (one transaction). By the end you'll have a driver that probes when a DT node says `compatible = "your,chip"`, talks to it with `i2c_transfer`, and exposes it via chardev or sysfs.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
-> **Why:** I²C is the most common slow bus in embedded systems: temp sensors, EEPROMs, GPIO expanders, RTCs, audio codecs, touch controllers, PMICs, battery gauges — half of Part VII's cookbook chapters are I²C devices. The Linux I²C model is a *clean* example of the bus/driver/device split first introduced in Ch 39 — and every I²C driver looks the same once you know the shape.
+> **Why:** I²C is the most common slow bus in embedded systems: temp sensors, EEPROMs, GPIO expanders, RTCs, audio codecs, touch controllers, PMICs, battery gauges, half of Part VII's cookbook chapters are I²C devices. The Linux I²C model is a *clean* example of the bus/driver/device split first introduced in Ch 39, and every I²C driver looks the same once you know the shape.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
-> **Focus:** **i2c_msg is the universal transaction**. `i2c_transfer(adapter, msgs, count)` sends a sequence of `i2c_msg` structs. each is one read or write, and adjacent ones share the bus without a STOP between them. Get this primitive right and you can talk to any I²C chip: write-then-read, repeated-start, 10-bit addressing, SMBus quirks.
+> **Focus:** **i2c_msg is the universal transaction**. `i2c_transfer(adapter, msgs, count)` sends a sequence of `i2c_msg` structs. Each is one read or write, and adjacent ones share the bus without a STOP between them. Get this primitive right and you can talk to any I²C chip: write-then-read, repeated-start, 10-bit addressing, SMBus quirks.
 >
 > **Tooling.** This chapter uses `i2c-tools` (`i2cdetect`, `i2cdump`, `i2cset`, `i2cget`).
 > - **Ubuntu-base (target):** `apt install i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_I2C_TOOLS=y`
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
 ## 46.1  The split: adapter vs client vs driver
@@ -40,8 +40,8 @@ Three players:
    on bus #1
 ```
 
-- **`i2c_adapter`** is the I²C controller driver — i.MX6ULL has 4 (I2C1, I2C2, I2C3, I2C4). NXP wrote `drivers/i2c/busses/i2c-imx.c`. You don't touch this unless you're porting Linux to a new SoC. It exposes the bus as `/dev/i2c-N` and registers with the kernel's I²C core.
-- **`i2c_client`** describes one chip: bus number, 7-bit address, name. The kernel creates these from DT nodes — for every child node of an `&i2c1` block, you get one `i2c_client`.
+- **`i2c_adapter`** is the I²C controller driver, i.MX6ULL has 4 (I2C1, I2C2, I2C3, I2C4). NXP wrote `drivers/i2c/busses/i2c-imx.c`. You don't touch this unless you're porting Linux to a new SoC. It exposes the bus as `/dev/i2c-N` and registers with the kernel's I²C core.
+- **`i2c_client`** describes one chip: bus number, 7-bit address, name. The kernel creates these from DT nodes, for every child node of an `&i2c1` block, you get one `i2c_client`.
 - **`i2c_driver`** is what you write. It declares "I handle chips whose DT `compatible` is X" and provides `probe()` / `remove()` callbacks.
 
 When the kernel parses DT, it sees:
@@ -91,8 +91,8 @@ The i.MX6ULL has 4 I²C controllers. Enable one in your board DT:
 
 Three rules:
 
-1. **`reg` is the I²C address** (7-bit, low 7 bits — so 0x76 means address pattern `1110110`). Not a memory address.
-2. **The unit-name** (`bme280@76`) must match `reg` in hex. This is a DT lint rule. mismatch produces a warning.
+1. **`reg` is the I²C address** (7-bit, low 7 bits, so 0x76 means address pattern `1110110`). Not a memory address.
+2. **The unit-name** (`bme280@76`) must match `reg` in hex. This is a DT lint rule. Mismatch produces a warning.
 3. **`clock-frequency`** sets the bus speed: 100 kHz (standard), 400 kHz (fast), 1 MHz (fast-plus), or 3.4 MHz (high-speed). Limited by your slowest device on the bus.
 
 ## 46.3  Anatomy of an I²C driver
@@ -166,15 +166,15 @@ MODULE_LICENSE("GPL");
 
 Key things to notice:
 
-**`module_i2c_driver(mychip_driver)`** — like `module_platform_driver`, this is a macro that generates the `module_init`/`module_exit` pair. One-liner registration.
+**`module_i2c_driver(mychip_driver)`**, like `module_platform_driver`, this is a macro that generates the `module_init`/`module_exit` pair. One-liner registration.
 
-**`i2c_set_clientdata` / `i2c_get_clientdata`** — store and retrieve your private struct pointer on the client. Used to find the priv struct from later callbacks.
+**`i2c_set_clientdata` / `i2c_get_clientdata`**, store and retrieve your private struct pointer on the client. Used to find the priv struct from later callbacks.
 
-**Two match tables** — `i2c_device_id` for non-DT systems (the `id_table`) *and* `of_device_id` for DT. Modern systems use DT. The `i2c_device_id` is the historical fallback. Include both for portability.
+**Two match tables**, `i2c_device_id` for non-DT systems (the `id_table`) *and* `of_device_id` for DT. Modern systems use DT. The `i2c_device_id` is the historical fallback. Include both for portability.
 
-**`MODULE_DEVICE_TABLE(i2c, mychip_id)`** — exposes the table to depmod so the right module autoloads when an I²C device with that name is detected.
+**`MODULE_DEVICE_TABLE(i2c, mychip_id)`**, exposes the table to depmod so the right module autoloads when an I²C device with that name is detected.
 
-## 46.4  SMBus API — the simple case
+## 46.4  SMBus API, the simple case
 
 For one-byte, one-word, and block transfers, use the **SMBus** API:
 
@@ -202,9 +202,9 @@ int temp_raw = (raw[0] << 12) | (raw[1] << 4) | (raw[2] >> 4);
 
 SMBus is technically a subset of I²C with stricter timing, but the SMBus helpers work on any standard I²C bus. Almost all chips with "register N, read M bytes" semantics work with SMBus calls.
 
-## 46.5  Raw `i2c_transfer` — when SMBus isn't enough
+## 46.5  Raw `i2c_transfer`, when SMBus isn't enough
 
-Some chips need transactions SMBus doesn't model directly — for example, a write of 5 bytes followed by a read of 200 bytes, or a write with no repeated-start. For those, drop down to the lowest-level API:
+Some chips need transactions SMBus doesn't model directly, for example, a write of 5 bytes followed by a read of 200 bytes, or a write with no repeated-start. For those, drop down to the lowest-level API:
 
 ```c
 struct i2c_msg msgs[2] = {
@@ -227,13 +227,13 @@ if (ret != 2)
     return ret < 0 ? ret : -EIO;
 ```
 
-The kernel issues the entire message group atomically — START, addr+W, two write bytes, repeated-START, addr+R, 16 read bytes, STOP. Between two `i2c_msg`s there's a *repeated start* (no STOP). If you wanted separate transactions with bus release in between, two separate `i2c_transfer` calls.
+The kernel issues the entire message group atomically, START, addr+W, two write bytes, repeated-START, addr+R, 16 read bytes, STOP. Between two `i2c_msg`s there's a *repeated start* (no STOP). If you wanted separate transactions with bus release in between, two separate `i2c_transfer` calls.
 
 `i2c_msg.flags` bits:
-- `I2C_M_RD` — this message is a read.
-- `I2C_M_TEN` — 10-bit address (rare).
-- `I2C_M_NOSTART` — don't issue START for this message (concatenates with previous. rare).
-- `I2C_M_IGNORE_NAK` — don't treat NAK as an error (for "best-effort" writes).
+- `I2C_M_RD`: this message is a read.
+- `I2C_M_TEN`: 10-bit address (rare).
+- `I2C_M_NOSTART`: don't issue START for this message (concatenates with previous. Rare).
+- `I2C_M_IGNORE_NAK`: don't treat NAK as an error (for "best-effort" writes).
 
 ## 46.6  A complete example: AT24C02 EEPROM-backed sysfs
 
@@ -371,9 +371,9 @@ hello world
 
 11 bytes wrote, 11 bytes read. The `dd` triggered an `at24_read` that issued a write-then-read transaction. The `echo` triggered an `at24_write` that paged out the data 8 bytes at a time with 5 ms waits between pages.
 
-The mainline `at24` driver (`drivers/misc/eeprom/at24.c`) does this and more — nvmem integration, large-EEPROM support, write-protect-GPIO, etc. Read it.
+The mainline `at24` driver (`drivers/misc/eeprom/at24.c`) does this and more, nvmem integration, large-EEPROM support, write-protect-GPIO, etc. Read it.
 
-## 46.7  /dev/i2c-N — user-space access
+## 46.7  /dev/i2c-N, user-space access
 
 For development, prototyping, and quick chip inspection, user-space can talk directly to any I²C bus via the `i2c-dev` chardev:
 
@@ -404,39 +404,39 @@ Install the `i2c-tools` package and you get `i2cdetect`, `i2cget`, `i2cset`, `i2
                                         ← write 0xAB to AT24 address 0
 ```
 
-If a kernel driver has already bound to the device, `i2c-tools` will refuse to touch it (you would race the driver). Pass `-y -f` to override — only for known-safe testing.
+If a kernel driver has already bound to the device, `i2c-tools` will refuse to touch it (you would race the driver). Pass `-y -f` to override, only for known-safe testing.
 
 ## 46.8  Lab
 
 1. **Build and load the AT24 driver.** Connect an AT24C02 to I²C1, populate the DT node, verify sysfs `data` attribute reads back what you wrote.
 2. **Try i2cdetect.** Identify the AT24's address, confirm it matches your DT `reg`.
 3. **Switch to SMBus calls.** Rewrite the read path using `i2c_smbus_read_i2c_block_data`. Verify identical behavior. Discuss when each form is appropriate.
-4. **Test write-protect.** Add a `wp-gpios` GPIO. in your write path, deassert WP before writing, assert after. Compare against the in-tree `at24` driver, which has this feature.
+4. **Test write-protect.** Add a `wp-gpios` GPIO. In your write path, deassert WP before writing, assert after. Compare against the in-tree `at24` driver, which has this feature.
 5. **Stress-test page alignment.** Write 256 bytes starting at offset 3. Verify the driver correctly handles the page boundaries at 8, 16, 24, …
-6. **Inspect with strace.** `strace -e read,write,ioctl i2cget -y 1 0x76 0xD0` — see the `I2C_RDWR` ioctl in action. that's how i2c-tools talk to the i2c-dev chardev.
+6. **Inspect with strace.** `strace -e read,write,ioctl i2cget -y 1 0x76 0xD0`, see the `I2C_RDWR` ioctl in action. That's how i2c-tools talk to the i2c-dev chardev.
 
 ## 46.9  Pitfalls
 
-- **Wrong unit-name vs `reg`.** `bme280@76` with `reg = <0x77>` doesn't match — kernel warns, but the device may still probe at 0x77 (the `reg` wins). DT lint catches it. Check your DT compilation log.
+- **Wrong unit-name vs `reg`.** `bme280@76` with `reg = <0x77>` doesn't match, kernel warns, but the device may still probe at 0x77 (the `reg` wins). DT lint catches it. Check your DT compilation log.
 - **Missing pinctrl.** SDA/SCL pins not muxed to I²C function. Symptom: `i2cdetect` shows nothing. Use `gpioinfo` to confirm pins aren't claimed as GPIO instead.
 - **Pull-up resistors missing.** I²C requires external pull-ups (typically 4.7 kΩ to 3.3 V). The SoC's internal pull-ups (~50 kΩ) usually work at 100 kHz but fail at 400 kHz. Schematic problem, not software.
 - **Bus contention with multiple drivers.** Two drivers each claiming the same address → second one fails to probe. `dmesg` says `"address 0x76 already in use"`. Check for hidden DT children.
-- **Wrong clock-frequency.** Some chips can't handle 400 kHz. The bus runs as fast as `clock-frequency` says. slower devices NAK or corrupt data. Drop to 100 kHz when in doubt.
+- **Wrong clock-frequency.** Some chips can't handle 400 kHz. The bus runs as fast as `clock-frequency` says. Slower devices NAK or corrupt data. Drop to 100 kHz when in doubt.
 - **Calling SMBus block read with the wrong size.** SMBus has `read_i2c_block_data` (variable length) and `read_block_data` (size sent by chip). They look similar. Check your chip's protocol.
 - **Mixing `i2c_master_send/recv` and `i2c_transfer` styles.** They work, but `i2c_transfer` is more flexible. New code should prefer it.
 - **Forgetting `MODULE_DEVICE_TABLE`.** Auto-loading silently fails.
-- **Address aliasing.** Some chips support multiple addresses based on address-pin pull. If two of the same chip are on the bus, configure them with different pull strappings. otherwise both respond to the same address.
+- **Address aliasing.** Some chips support multiple addresses based on address-pin pull. If two of the same chip are on the bus, configure them with different pull strappings. Otherwise both respond to the same address.
 
 ## 46.10  Going deeper
 
-- **`Documentation/i2c/`** — full I²C subsystem documentation. Read `summary.rst`, `writing-clients.rst`, `instantiating-devices.rst`.
-- **`Documentation/devicetree/bindings/i2c/`** — DT bindings for the I²C subsystem.
-- **`drivers/i2c/busses/i2c-imx.c`** — the i.MX I²C controller driver. ~1200 lines. Worth reading once.
-- **`drivers/misc/eeprom/at24.c`** — production-grade EEPROM driver with nvmem, regmap, and write-protect support.
+- **`Documentation/i2c/`**: full I²C subsystem documentation. Read `summary.rst`, `writing-clients.rst`, `instantiating-devices.rst`.
+- **`Documentation/devicetree/bindings/i2c/`**: DT bindings for the I²C subsystem.
+- **`drivers/i2c/busses/i2c-imx.c`**: the i.MX I²C controller driver. ~1200 lines. Worth reading once.
+- **`drivers/misc/eeprom/at24.c`**: production-grade EEPROM driver with nvmem, regmap, and write-protect support.
 > **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
-**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
-- **`drivers/iio/pressure/bmp280-i2c.c`** + `bmp280-core.c` — clean modern I²C IIO driver. Pairs nicely with Ch 49.
-**IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
-- **`drivers/i2c/i2c-core.c`** — the I²C core itself. Hundreds of pages of API to skim.
+> **regmap:** a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+- **`drivers/iio/pressure/bmp280-i2c.c`** + `bmp280-core.c`, clean modern I²C IIO driver. Pairs nicely with Ch 49.
+> **IIO:** Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+- **`drivers/i2c/i2c-core.c`**: the I²C core itself. Hundreds of pages of API to skim.
 
-> Next chapter: **Chapter 47 — SPI drivers.** Same shape as I²C: a controller subsystem we don't write, a `spi_device` per chip, a `spi_driver` per chip-class — but now with full-duplex transactions and per-CS configuration.
+> Next chapter: **Chapter 47: SPI drivers.** Same shape as I²C: a controller subsystem we don't write, a `spi_device` per chip, a `spi_driver` per chip-class, but now with full-duplex transactions and per-CS configuration.

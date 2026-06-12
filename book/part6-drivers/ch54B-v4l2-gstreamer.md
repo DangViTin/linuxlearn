@@ -1,17 +1,17 @@
 ---
 chapter: 54B
 title: V4L2 + GStreamer for CSI cameras
-part: VI — Driver development (supplementary v1.2)
+part: VI - Driver development (supplementary v1.2)
 estimated_pages: 14
 status: draft
 ---
 
-# Chapter 54B — V4L2 + GStreamer
-**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
+# Chapter 54B: V4L2 + GStreamer
+> **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
 > **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
-**DDR** - external DRAM that must be configured and trained before most software can run from it.
+> **DDR:** external DRAM that must be configured and trained before most software can run from it.
 
-> **What:** the **V4L2** (Video for Linux 2) subsystem — the kernel framework that abstracts video capture and output devices behind `/dev/videoN` — and **GStreamer**, the user-space pipeline framework that consumes V4L2 frames. We focus on the i.MX6ULL's **CSI** (Camera Serial Interface) for parallel cameras (OV5640, OV7725, GC2145), the only camera interface on this SoC.
+> **What:** the **V4L2** (Video for Linux 2) subsystem, the kernel framework that abstracts video capture and output devices behind `/dev/videoN`, and **GStreamer**, the user-space pipeline framework that consumes V4L2 frames. We focus on the i.MX6ULL's **CSI** (Camera Serial Interface) for parallel cameras (OV5640, OV7725, GC2145), the only camera interface on this SoC.
 >
 > **Why:** every IP camera, dashcam, smart-doorbell, machine-vision product runs this stack. The complexity comes from V4L2's flexibility: sub-devices (the sensor, the CSI, the IPU) compose into pipelines that can be configured at runtime. Once the pipeline model clicks, the rest of the imaging stack reads easily.
 >
@@ -20,10 +20,10 @@ status: draft
 > **Tooling.** This chapter uses `v4l-utils` + `gstreamer1.0-tools` + base/good/bad plugins.
 > - **Ubuntu-base (target):** `apt install v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad`
 > - **Buildroot:** `BR2_PACKAGE_V4L_UTILS=y BR2_PACKAGE_GSTREAMER1=y BR2_PACKAGE_GST1_PLUGINS_BASE=y BR2_PACKAGE_GST1_PLUGINS_GOOD=y BR2_PACKAGE_GST1_PLUGINS_BAD=y`
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
 ## 54B.1  V4L2 architecture
@@ -51,7 +51,7 @@ status: draft
    DMA → DDR                                       I²C control
 ```
 
-A V4L2 *device* is what user-space opens (`/dev/video0`). It connects to *sub-devices* — the sensor (OV5640) and the CSI bridge (i.MX CSI/ISI) — through a **media graph**. User-space sets the format (resolution, pixelformat) on both the video device and on each subdev.
+A V4L2 *device* is what user-space opens (`/dev/video0`). It connects to *sub-devices*, the sensor (OV5640) and the CSI bridge (i.MX CSI/ISI), through a **media graph**. User-space sets the format (resolution, pixelformat) on both the video device and on each subdev.
 
 ## 54B.2  Device tree
 
@@ -92,7 +92,7 @@ Two things to notice:
 - **Endpoints + remote-endpoint** form the graph. The OV5640's output endpoint links to the CSI's input endpoint, forming a media-controller pipeline.
 - The OV5640 needs a master clock (XCLK) from the SoC, powerdown and reset GPIOs, and I²C for control.
 
-## 54B.3  V4L2 user-space — the bare minimum
+## 54B.3  V4L2 user-space, the bare minimum
 
 ```c
 int fd = open("/dev/video0", O_RDWR);
@@ -168,16 +168,16 @@ GStreamer is a *pipeline* engine: elements connected with `!` pipes form a data 
 ```
 
 Elements:
-- **`v4l2src`** — V4L2 capture source.
-- **`videoconvert`** — color-space conversion (YUYV → RGB if needed).
-- **`fbdevsink`** — output to `/dev/fb0`.
-- **`jpegenc`** — JPEG-encode each frame.
-- **`avimux`** — wrap in AVI container.
-- **`rtpjpegpay`** — RTP packetize.
+- **`v4l2src`**: V4L2 capture source.
+- **`videoconvert`**: color-space conversion (YUYV → RGB if needed).
+- **`fbdevsink`**: output to `/dev/fb0`.
+- **`jpegenc`**: JPEG-encode each frame.
+- **`avimux`**: wrap in AVI container.
+- **`rtpjpegpay`**: RTP packetize.
 
 i.MX6ULL has no GPU/VPU, so video encoding is software (slow). Useful up to ~5–10 fps at QVGA. For higher framerates and resolutions you need a different SoC.
 
-## 54B.5  Controls — exposure, gain, white balance
+## 54B.5  Controls, exposure, gain, white balance
 
 ```sh
 [root@pa-mini:~]# v4l2-ctl --list-ctrls
@@ -191,25 +191,25 @@ i.MX6ULL has no GPU/VPU, so video encoding is software (slow). Useful up to ~5�
 [root@pa-mini:~]# v4l2-ctl --set-ctrl=exposure_absolute=300
 ```
 
-The sensor driver (ov5640) exposes a stack of controls. user-space tunes them. Auto-exposure and auto-white-balance are good enough for general use.
+The sensor driver (ov5640) exposes a stack of controls. User-space tunes them. Auto-exposure and auto-white-balance are good enough for general use.
 
 ## 54B.6  Lab
 
 1. **Bring up the OV5640.** DT, kernel config (`CONFIG_VIDEO_OV5640`), reboot, look for `/dev/video0`.
 2. **Inspect the pipeline.** `media-ctl -p -d /dev/media0` shows the graph.
-3. **GStreamer capture + display.** Run the launch line above. see your camera on the LCD.
+3. **GStreamer capture + display.** Run the launch line above. See your camera on the LCD.
 4. **Save snapshots.** `v4l2-ctl --device /dev/video0 --stream-mmap=3 --stream-to=img.raw --stream-count=1`. Convert to PNG with ImageMagick.
-5. **Auto-exposure off.** Set manual exposure. sweep values. observe brightness changes.
-6. **Network stream + viewer.** Stream H.264 (software-encoded. slow) over UDP to a desktop running `vlc udp://@:5000`.
+5. **Auto-exposure off.** Set manual exposure. Sweep values. Observe brightness changes.
+6. **Network stream + viewer.** Stream H.264 (software-encoded. Slow) over UDP to a desktop running `vlc udp://@:5000`.
 
 ## 54B.7  Pitfalls
 
 - **Sensor reset/powerdown GPIO polarity.** Wrong polarity → I²C-detect fails for the sensor.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-- **Wrong XCLK rate.** OV5640 wants 12–27 MHz. outside that range, sensor doesn't enumerate.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+- **Wrong XCLK rate.** OV5640 wants 12–27 MHz. Outside that range, sensor doesn't enumerate.
 - **Pixel format mismatch.** Sensor outputs YUYV, but you request RGB. GStreamer can convert, but it costs CPU.
-- **Buffer underrun.** 4 buffers minimum for smooth capture. fewer cause dropped frames.
+- **Buffer underrun.** 4 buffers minimum for smooth capture. Fewer cause dropped frames.
 - **Concurrent open.** Only one user-space client per `/dev/video0`. Either GStreamer or your custom app, not both.
 - **Frame size > VPU/memory budget.** 5 MP at 30 fps needs about 140 MB/s of memory bandwidth. This is close to the i.MX6ULL's practical limit.
 
@@ -219,11 +219,11 @@ The sensor driver (ov5640) exposes a stack of controls. user-space tunes them. A
 > Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
 
 
-- **`Documentation/userspace-api/media/`** — V4L2 user-space API.
-- **`Documentation/userspace-api/media/v4l/`** — V4L2 user-space programming reference (the bible).
-- **`drivers/media/i2c/ov5640.c`** — production OmniVision driver.
-- **`drivers/staging/media/imx/`** — i.MX CSI/IPU drivers (historically out-of-tree).
-- **<https://gstreamer.freedesktop.org/documentation/>** — GStreamer manual.
-- **`v4l-utils` package** — `v4l2-ctl`, `media-ctl`, `qv4l2`.
+- **`Documentation/userspace-api/media/`**: V4L2 user-space API.
+- **`Documentation/userspace-api/media/v4l/`**: V4L2 user-space programming reference (the bible).
+- **`drivers/media/i2c/ov5640.c`**: production OmniVision driver.
+- **`drivers/staging/media/imx/`**: i.MX CSI/IPU drivers (historically out-of-tree).
+- **<https://gstreamer.freedesktop.org/documentation/>**: GStreamer manual.
+- **`v4l-utils` package**: `v4l2-ctl`, `media-ctl`, `qv4l2`.
 
-> Next chapter: **Chapter 55 — USB gadget.** With the host side covered earlier, the gadget side turns the i.MX6ULL into a USB device: USB mass storage, USB serial, USB Ethernet, custom HID.
+> Next chapter: **Chapter 55: USB gadget.** With the host side covered earlier, the gadget side turns the i.MX6ULL into a USB device: USB mass storage, USB serial, USB Ethernet, custom HID.

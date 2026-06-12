@@ -1,18 +1,18 @@
 ---
 chapter: 85
 title: OLED & e-paper (SSD1306 / SH1106 / SSD1680)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 20
 status: draft
 ---
 
-# Chapter 85 — OLED & e-paper
+# Chapter 85: OLED & e-paper
 
-> **What:** two non-backlit display technologies. **OLED** — self-emissive monochrome dot-matrix: **Solomon SSD1306** (128×64, I²C/SPI), **Sino Wealth SH1106** (132×64, the "almost-SSD1306"). **E-paper** — bistable reflective: **Solomon SSD1680** (the controller behind most 1.5"–2.9" e-paper modules). For each: the framebuffer-RAM model, the refresh mechanics (instant for OLED, multi-second for e-paper), the mainline driver, and a from-scratch SSD1306 fbdev driver.
+> **What:** two non-backlit display technologies. **OLED**, self-emissive monochrome dot-matrix: **Solomon SSD1306** (128×64, I²C/SPI), **Sino Wealth SH1106** (132×64, the "almost-SSD1306"). **E-paper**, bistable reflective: **Solomon SSD1680** (the controller behind most 1.5"–2.9" e-paper modules). For each: the framebuffer-RAM model, the refresh mechanics (instant for OLED, multi-second for e-paper), the mainline driver, and a from-scratch SSD1306 fbdev driver.
 >
-> **Why:** OLEDs are the cheapest "real display" you can buy. A 128×64 OLED costs around $2, draws ~20 mA, and has perfect contrast without a backlight. E-paper is the opposite. Zero idle power — the image persists with no power. Sunlight-readable. But slow to update. Both show up constantly in IoT status displays, instruments, smart-home panels, electronic shelf labels. They need very different driver thinking than the raster panels of Ch 82–84.
+> **Why:** OLEDs are the cheapest "real display" you can buy. A 128×64 OLED costs around $2, draws ~20 mA, and has perfect contrast without a backlight. E-paper is the opposite. Zero idle power, the image persists with no power. Sunlight-readable. But slow to update. Both show up constantly in IoT status displays, instruments, smart-home panels, electronic shelf labels. They need very different driver thinking than the raster panels of Ch 82–84.
 >
-> **Focus:** OLED uses a page-addressed bitmap. E-paper uses a two-buffer waveform replay driven by a LUT. They need very different driver code. The SSD1306 stores a 1-bit-per-pixel image in internal RAM organized as 8 "pages" of 128 bytes. You push the whole bitmap and it displays instantly. The SSD1680 stores *two* images (old + new) and replays a per-pixel voltage *waveform* (the LUT) over ~2 seconds to flip the e-ink particles — a completely different mental model.
+> **Focus:** OLED uses a page-addressed bitmap. E-paper uses a two-buffer waveform replay driven by a LUT. They need very different driver code. The SSD1306 stores a 1-bit-per-pixel image in internal RAM organized as 8 "pages" of 128 bytes. You push the whole bitmap and it displays instantly. The SSD1680 stores *two* images (old + new) and replays a per-pixel voltage *waveform* (the LUT) over ~2 seconds to flip the e-ink particles, a completely different mental model.
 
 
 ## 85.1  Technology & chip comparison
@@ -33,10 +33,10 @@ status: draft
 
 **Pick guide:**
 - **SSD1306**: default tiny status display. Ubiquitous.
-- **SH1106**: nearly identical. The catch is its 132-column RAM with a 2-pixel offset — drivers must account for it.
+- **SH1106**: nearly identical. The catch is its 132-column RAM with a 2-pixel offset, drivers must account for it.
 - **SSD1680**: e-paper for "set it and forget it" displays (shelf labels, room signs, low-power dashboards).
 
-## 85.2  SSD1306 — page-addressed framebuffer
+## 85.2  SSD1306, page-addressed framebuffer
 
 The SSD1306 has 128×64 = 8192 pixels = 1024 bytes of internal RAM (1 bit/pixel). It's organized as **8 pages**, each 128 bytes wide. Within a page, *each byte is a vertical column of 8 pixels* (bit 0 = top, bit 7 = bottom):
 
@@ -50,7 +50,7 @@ The SSD1306 has 128×64 = 8192 pixels = 1024 bytes of internal RAM (1 bit/pixel)
    Page 7: rows 56-63
 ```
 
-This vertical-byte layout is unusual (most framebuffers are row-major with horizontal bytes). To set pixel (x, y): `page = y / 8. bit = y % 8. ram[page*128 + x] |= (1 << bit);`.
+This vertical-byte layout is unusual (most framebuffers are row-major with horizontal bytes). To set pixel (x, y): `page = y / 8; bit = y % 8; ram[page*128 + x] |= (1 << bit);`.
 
 ### Commands vs data
 
@@ -64,7 +64,7 @@ Like the SPI LCDs (Ch 83), the SSD1306 distinguishes commands from data. Over **
 
 Over **SPI**, a D/C GPIO selects (like Ch 83).
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ### Key commands
 
@@ -109,8 +109,8 @@ The `0x8D 0x14` (charge pump enable) is the #1 gotcha. The OLED needs an interna
 
 Two mainline drivers exist:
 
-- **`drivers/video/fbdev/ssd1307fb.c`** — legacy fbdev driver. Exposes `/dev/fb0`. a 1-bit framebuffer.
-- **`drivers/gpu/drm/solomon/ssd130x.c`** + `ssd130x-i2c.c` / `ssd130x-spi.c` — modern DRM driver. Covers SSD1305/1306/1307/1309 and SH1106.
+- **`drivers/video/fbdev/ssd1307fb.c`**: legacy fbdev driver. Exposes `/dev/fb0`. A 1-bit framebuffer.
+- **`drivers/gpu/drm/solomon/ssd130x.c`** + `ssd130x-i2c.c` / `ssd130x-spi.c`, modern DRM driver. Covers SSD1305/1306/1307/1309 and SH1106.
 
 The DRM `ssd130x` driver:
 1. Reads geometry from DT (width, height, page-offset, COM config).
@@ -145,7 +145,7 @@ The DRM helper does the XRGB→1bit conversion (any non-black pixel → on). The
 
 ## 85.4  Writing an SSD1306 fbdev driver from scratch
 
-A DRM driver is the modern way, but for a monochrome OLED a simple **fbdev** driver is more illustrative — it's the bare "here's a framebuffer, here's how I push it to the chip" model. ~200 lines.
+A DRM driver is the modern way, but for a monochrome OLED a simple **fbdev** driver is more illustrative, it's the bare "here's a framebuffer, here's how I push it to the chip" model. ~200 lines.
 
 `myssd1306.c`:
 
@@ -359,35 +359,35 @@ myssd1306 1-003c: SSD1306 OLED at /dev/fb0
 [root@pa-mini:~]# # → vertical stripes appear on the OLED
 ```
 
-The key abstraction: **`fb_deferred_io`**. The framebuffer lives in vmalloc'd RAM. user-space writes to it via mmap or write(). The deferred-io machinery batches writes and calls `ms_deferred_io` (which calls `ms_flush`) at most 30×/second — so a flurry of pixel writes results in one I²C burst, not thousands.
+The key abstraction: **`fb_deferred_io`**. The framebuffer lives in vmalloc'd RAM. User-space writes to it via mmap or write(). The deferred-io machinery batches writes and calls `ms_deferred_io` (which calls `ms_flush`) at most 30×/second, so a flurry of pixel writes results in one I²C burst, not thousands.
 
 What we got, ~200 lines:
 - `/dev/fb0` at 128×64, 1-bit.
 - Deferred-io batched flushing.
-- Standard fbdev ops (fillrect, imageblit) work — so toolkits like `fbi`, `fbcon`, simple Cairo apps render.
+- Standard fbdev ops (fillrect, imageblit) work, so toolkits like `fbi`, `fbcon`, simple Cairo apps render.
 
 What we skipped vs the mainline `ssd130x` DRM driver:
-- DRM integration (mainline is DRM. fbdev is legacy).
+- DRM integration (mainline is DRM. Fbdev is legacy).
 - SPI transport (we did I²C only).
 - SH1106 column-offset handling.
 - Contrast / inversion runtime control.
 - Partial-page updates (we flush the whole frame).
 
-## 85.5  SH1106 — the off-by-2 sibling
+## 85.5  SH1106, the off-by-2 sibling
 
-SH1106 is nearly pin- and command-compatible with SSD1306, *except* its RAM is **132 columns wide** while the visible panel is 128. The visible area is centered, so columns 2–129 are shown. columns 0–1 and 130–131 are off-screen.
+SH1106 is nearly pin- and command-compatible with SSD1306, *except* its RAM is **132 columns wide** while the visible panel is 128. The visible area is centered, so columns 2–129 are shown. Columns 0–1 and 130–131 are off-screen.
 
 The consequence: when you set the column window, you must offset by 2. A driver written for SSD1306 (offset 0) shows the SH1106 image shifted 2 pixels right, with garbage wrapping on the left edge. The mainline `ssd130x` driver reads a `col_offset` value from DT to handle this case.
 
-For SH1106, change the column window from 0–127 to 2–129. Some SH1106 variants do not support horizontal addressing mode at all — for those, set the page and column manually for each page.
+For SH1106, change the column window from 0–127 to 2–129. Some SH1106 variants do not support horizontal addressing mode at all, for those, set the page and column manually for each page.
 
-## 85.6  SSD1680 e-paper — a completely different model
+## 85.6  SSD1680 e-paper, a completely different model
 
 E-paper is *bistable*: each pixel is a microcapsule of black and white particles that move under an electric field and *stay put* with no power. This gives zero-power image retention but makes refreshing slow and weird.
 
 ### The dual-buffer + LUT model
 
-The SSD1680 holds **two image buffers**: the "old" image (currently on the glass) and the "new" image. To refresh, the controller replays a **waveform** — a sequence of voltage pulses per pixel — that moves the particles from old to new state. The waveform is defined by a **LUT** (look-up table) loaded into the controller.
+The SSD1680 holds **two image buffers**: the "old" image (currently on the glass) and the "new" image. To refresh, the controller replays a **waveform**, a sequence of voltage pulses per pixel, that moves the particles from old to new state. The waveform is defined by a **LUT** (look-up table) loaded into the controller.
 
 ```
    1. Write new image to the "new" buffer (SPI, like SSD1306 RAM).
@@ -404,9 +404,9 @@ Two refresh modes:
 
 ### Why this is hard for a generic framebuffer
 
-A normal framebuffer is "write pixel, see it." E-paper is "write image, trigger update, wait 2 seconds, see it." The deferred-io model breaks (you can't flush 30×/sec — each flush takes 2 s). E-paper drivers expose a custom update trigger and let user-space decide *when* to refresh.
+A normal framebuffer is "write pixel, see it." E-paper is "write image, trigger update, wait 2 seconds, see it." The deferred-io model breaks (you can't flush 30×/sec, each flush takes 2 s). E-paper drivers expose a custom update trigger and let user-space decide *when* to refresh.
 
-Mainline: `drivers/gpu/drm/tiny/repaper.c` (for Pervasive Displays panels) and various SSD1680 patches. The DRM driver does a full refresh on each DRM page-flip — acceptable for "update once per minute" status displays, terrible for anything interactive.
+Mainline: `drivers/gpu/drm/tiny/repaper.c` (for Pervasive Displays panels) and various SSD1680 patches. The DRM driver does a full refresh on each DRM page-flip, acceptable for "update once per minute" status displays, terrible for anything interactive.
 
 ### Practical use
 
@@ -423,12 +423,12 @@ For e-paper, you design the UI around the refresh model: update once per minute 
 ## 85.7  Lab
 
 1. **SSD1306 bring-up.** Wire to I²C1 at 0x3C. Build and load `myssd1306.ko`. Verify `/dev/fb0`.
-2. **Draw patterns.** Write 0xFF/0x00 patterns. verify stripes. Write all 0xFF. full screen lit.
-3. **The charge-pump test.** Comment out the `0x8D 0x14` command in the init. reload. Screen stays black — proving the charge pump's necessity. Restore.
+2. **Draw patterns.** Write 0xFF/0x00 patterns. Verify stripes. Write all 0xFF. Full screen lit.
+3. **The charge-pump test.** Comment out the `0x8D 0x14` command in the init. Reload. Screen stays black, proving the charge pump's necessity. Restore.
 4. **fbcon.** If your kernel has `CONFIG_FRAMEBUFFER_CONSOLE`, the boot console might appear on the OLED. Tiny but readable.
-5. **Cairo / Python PIL.** Use Python PIL to render text into a 128×64 1-bit image. write to `/dev/fb0`. A real status display.
-6. **SH1106 offset.** If you have an SH1106, run the SSD1306 driver. observe the 2-pixel shift. fix with the column offset.
-7. **E-paper (if available).** Bring up an SSD1680 module. Display an image. measure refresh time (~2 s). Cut power. verify the image persists. Do 10 partial refreshes. observe ghosting accumulate. do a full refresh. observe it clear.
+5. **Cairo / Python PIL.** Use Python PIL to render text into a 128×64 1-bit image. Write to `/dev/fb0`. A real status display.
+6. **SH1106 offset.** If you have an SH1106, run the SSD1306 driver. Observe the 2-pixel shift. Fix with the column offset.
+7. **E-paper (if available).** Bring up an SSD1680 module. Display an image. Measure refresh time (~2 s). Cut power. Verify the image persists. Do 10 partial refreshes. Observe ghosting accumulate. Do a full refresh. Observe it clear.
 
 ## 85.8  Pitfalls
 
@@ -436,21 +436,21 @@ For e-paper, you design the UI around the refresh model: update once per minute 
 - **Wrong I²C address.** SSD1306 is 0x3C (or 0x3D if the addr-select pad is bridged). Check with `i2cdetect`.
 - **SH1106 treated as SSD1306.** 2-pixel horizontal shift + edge garbage. Set the column offset.
 - **Vertical-byte confusion.** The SSD1306 RAM layout is column-of-8-vertical-pixels per byte. A driver that assumes row-major bytes shows a scrambled image. Pack correctly.
-- **Flushing too often.** Without deferred-io, every pixel write triggers a full 1 KB I²C transfer — the bus saturates. Batch with `fb_deferred_io`.
+- **Flushing too often.** Without deferred-io, every pixel write triggers a full 1 KB I²C transfer, the bus saturates. Batch with `fb_deferred_io`.
 - **OLED burn-in.** A static image (a logo, a fixed UI) burns in over months. Invert/shift periodically, or dim, for always-on displays.
-- **E-paper partial-refresh ghosting.** Accumulates. schedule periodic full refreshes.
+- **E-paper partial-refresh ghosting.** Accumulates. Schedule periodic full refreshes.
 - **E-paper update while busy.** Triggering a new update before BUSY clears corrupts the image. Always wait for BUSY.
 - **E-paper temperature sensitivity.** Below ~0 °C, e-paper refreshes very slowly or not at all. The waveform LUT is temperature-dependent. Good modules include a temperature sensor and ship multiple LUTs for the controller to switch between.
 
 ## 85.9  Going deeper
 
-- **`drivers/gpu/drm/solomon/ssd130x.c`** — modern DRM OLED driver (SSD1306/SH1106).
-- **`drivers/video/fbdev/ssd1307fb.c`** — legacy fbdev OLED driver. compare to the from-scratch version.
-- **`drivers/gpu/drm/tiny/repaper.c`** — e-paper DRM driver (Pervasive Displays).
-- **`Documentation/fb/deferred_io.rst`** — the deferred-io framework.
-- **SSD1306 datasheet (Solomon Systech)** — command table. page-addressing model.
-- **SH1106 datasheet** — note the 132-column RAM.
-- **SSD1680 datasheet** — the dual-buffer + LUT waveform model.
-- **`drivers/video/fbdev/core/fb_defio.c`** — deferred-io implementation.
+- **`drivers/gpu/drm/solomon/ssd130x.c`**: modern DRM OLED driver (SSD1306/SH1106).
+- **`drivers/video/fbdev/ssd1307fb.c`**: legacy fbdev OLED driver. Compare to the from-scratch version.
+- **`drivers/gpu/drm/tiny/repaper.c`**: e-paper DRM driver (Pervasive Displays).
+- **`Documentation/fb/deferred_io.rst`**: the deferred-io framework.
+- **SSD1306 datasheet (Solomon Systech)**: command table. Page-addressing model.
+- **SH1106 datasheet**: note the 132-column RAM.
+- **SSD1680 datasheet**: the dual-buffer + LUT waveform model.
+- **`drivers/video/fbdev/core/fb_defio.c`**: deferred-io implementation.
 
-> Next chapter: **Chapter 86 — Touch input ICs.** Turning a display into an interface: capacitive buttons (TTP223), capacitive matrices (MPR121), and resistive 4-wire touch (XPT2046) with its calibration story.
+> Next chapter: **Chapter 86: Touch input ICs.** Turning a display into an interface: capacitive buttons (TTP223), capacitive matrices (MPR121), and resistive 4-wire touch (XPT2046) with its calibration story.

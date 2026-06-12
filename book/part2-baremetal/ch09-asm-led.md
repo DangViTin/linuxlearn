@@ -1,21 +1,21 @@
 ---
 chapter: 9
 title: First LED, pure assembly
-part: II — Bare-metal i.MX6ULL
+part: II - Bare-metal i.MX6ULL
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 9 — First LED, pure assembly
-**HAB** - High Assurance Boot, NXP's ROM-enforced secure boot mechanism on i.MX SoCs.
+# Chapter 9: First LED, pure assembly
+> **HAB:** High Assurance Boot, NXP's ROM-enforced secure boot mechanism on i.MX SoCs.
 
 > **What:** code that blinks an LED on the Point Atom MINI. No C. No libc. No bootloader. ~25 lines of ARM assembly, < 1 KB image, loaded into OCRAM by the Boot ROM over USB-OTG.
 >
 > **Why:** This is the moment you really own the chip. Higher layers exist to make hard things easy, but you can only judge them if you have done it the hard way once.
 >
-> **Focus:** the **three-write pattern** that brings up any GPIO on any i.MX SoC — `CCGR` (clock), `IOMUXC` (pin), `GPIO_GDIR + GPIO_DR` (use). Memorize it. We use it for every peripheral in the book.
+> **Focus:** the **three-write pattern** that brings up any GPIO on any i.MX SoC, `CCGR` (clock), `IOMUXC` (pin), `GPIO_GDIR + GPIO_DR` (use). Memorize it. We use it for every peripheral in the book.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 
 ## 9.1  What we are about to build
@@ -63,7 +63,7 @@ Addresses for GPIO1_IO03, from the Reference Manual:
 
 The value to write into `MUX_CTL` for GPIO function is **5**. The IOMUX table in RM Chapter 32 says, for the pad `GPIO1_IO03`, ALT5 is `GPIO1_IO03`. (The naming is circular: the *pad* is named for the GPIO function it has at ALT5.)
 > **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
-**IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
+> **IOMUX:** the pin multiplexer that decides which peripheral function appears on each package pin.
 
 ### CCM_CCGR encoding (2 bits per gate)
 
@@ -71,12 +71,12 @@ Every CCM_CCGRx register holds **16 clock gates × 2 bits each** = 32 bits. The 
 
 | Bits | Meaning |
 |------|---------|
-| `00` | **Clock off** in all CPU run modes — peripheral cannot be accessed |
-| `01` | Clock on in RUN mode, **off** in WAIT and STOP — low-power-friendly |
-| `10` | *Reserved* — do not program this value |
-| `11` | Clock on in all CPU run modes (RUN/WAIT/STOP) — "always on" |
+| `00` | **Clock off** in all CPU run modes, peripheral cannot be accessed |
+| `01` | Clock on in RUN mode, **off** in WAIT and STOP, low-power-friendly |
+| `10` | *Reserved*, do not program this value |
+| `11` | Clock on in all CPU run modes (RUN/WAIT/STOP), "always on" |
 
-So "enable GPIO1 always" is `0b11` written into CG13's bit-pair. CG13 occupies bits 26–27 of CCGR1 (CG0 is bits 0–1, CG1 bits 2–3, …, CG15 bits 30–31). The OR-mask is `0b11 << 26 = 0x0C000000`. We can either OR-in that mask or just write `0xFFFFFFFF` to CCGR1 (turning every gate in CCGR1 on). For a learning exercise the OR form is cleaner because it leaves the other gates unchanged. **This 2-bit encoding applies to every CCGR write throughout the book** — Chapters 13, 14, 18 reuse it.
+So "enable GPIO1 always" is `0b11` written into CG13's bit-pair. CG13 occupies bits 26–27 of CCGR1 (CG0 is bits 0–1, CG1 bits 2–3, …, CG15 bits 30–31). The OR-mask is `0b11 << 26 = 0x0C000000`. We can either OR-in that mask or just write `0xFFFFFFFF` to CCGR1 (turning every gate in CCGR1 on). For a learning exercise the OR form is cleaner because it leaves the other gates unchanged. **This 2-bit encoding applies to every CCGR write throughout the book**, Chapters 13, 14, 18 reuse it.
 
 ## 9.3  The assembly source
 
@@ -222,7 +222,7 @@ Disassembly of section .text:
 
 ## 9.5  Wrapping the .bin in an .imx
 
-`led.bin` is raw machine code. The Boot ROM in SDP mode does *not* execute raw bins — it executes images that present an IVT (Chapter 7). We need to wrap.
+`led.bin` is raw machine code. The Boot ROM in SDP mode does *not* execute raw bins, it executes images that present an IVT (Chapter 7). We need to wrap.
 
 For this chapter we use the simplest possible wrapper: a 3-line shell command that builds an IVT and BootData in front of our code. We will write a Python tool that does this cleanly in **Chapter 11**. For now, accept the magic and let it work.
 
@@ -318,8 +318,8 @@ SDP: boot -f <image>
 
 which translates into:
 
-- `WRITE_FILE` — push `led.imx` (starting at offset `0x400`, the IVT) to the IVT.self address in RAM.
-- `JUMP_ADDRESS` — jump to IVT.self. The ROM there interprets the IVT, transfers control to IVT.entry.
+- `WRITE_FILE`: push `led.imx` (starting at offset `0x400`, the IVT) to the IVT.self address in RAM.
+- `JUMP_ADDRESS`: jump to IVT.self. The ROM there interprets the IVT, transfers control to IVT.entry.
 
 Watch the LED. It should blink.
 
@@ -327,7 +327,7 @@ If it does not:
 
 1. **Check the LED's polarity.** If your board's LED is active-low, our toggle still blinks it but the on/off pattern is inverted from what you might expect.
 2. **Check the IOMUX value.** Did your board's schematic say GPIO1_IO03 or a different pin? If different, every register address in §9.2 changes.
-3. **Confirm `uuu` reported success.** If `uuu` reported failure, the image was rejected by the ROM — most often because IVT.self does not match the load address. Re-decode the IVT and confirm.
+3. **Confirm `uuu` reported success.** If `uuu` reported failure, the image was rejected by the ROM, most often because IVT.self does not match the load address. Re-decode the IVT and confirm.
 4. **Power-cycle and retry.** The ROM, once it jumps to user code, will not accept another SDP push without a reset.
 
 ## 9.7  What just happened, sequence-level
@@ -363,27 +363,27 @@ Nothing sits between your code and the chip. The next 50 chapters add layers on 
 You have already done the lab if the LED blinked. To deepen:
 
 1. **Change the blink rate** by editing the delay constant. Measure the resulting frequency with a scope or with a phone's slow-motion camera. The CPU's reset clock is 396 MHz, so an inner-loop body of 4 instructions and a counter of 1.5M is ~15 ms per half-period. Verify experimentally.
-2. **Use a different pin.** Look up the schematic. Find a second LED, or an unused GPIO that goes to a header pin you can probe. Modify the source to use that pin instead. *Do not* read register addresses from the previous example. look them up in the RM yourself.
+2. **Use a different pin.** Look up the schematic. Find a second LED, or an unused GPIO that goes to a header pin you can probe. Modify the source to use that pin instead. *Do not* read register addresses from the previous example. Look them up in the RM yourself.
 3. **Add a second LED** that blinks at half the rate. Now you have a counter.
-4. **Measure image size growth.** Run `wc -c led.bin` before and after. observe the marginal cost.
+4. **Measure image size growth.** Run `wc -c led.bin` before and after. Observe the marginal cost.
 
 ## 9.9  Pitfalls
 
 - **Forgetting the CCGR write.** Symptoms: register reads return 0, writes have no effect. *Always* enable the clock before touching a peripheral. Always.
-- **Wrong IOMUX ALT.** Symptom: writes to GPIO_DR succeed but the pin doesn't move. Some pads default to "GPIO" in their reset ALT. many do not. Always set ALT explicitly.
-- **`IVT.self` ≠ load address.** Symptoms: `uuu` reports success, board does nothing, no blink. The ROM jumped — but to the wrong place. Decode the IVT again. ensure `self` and the load argument match.
+- **Wrong IOMUX ALT.** Symptom: writes to GPIO_DR succeed but the pin doesn't move. Some pads default to "GPIO" in their reset ALT. Many do not. Always set ALT explicitly.
+- **`IVT.self` ≠ load address.** Symptoms: `uuu` reports success, board does nothing, no blink. The ROM jumped, but to the wrong place. Decode the IVT again. Ensure `self` and the load argument match.
 - **Leaving the boot-mode switch in SDP.** After your image runs, if you reset the board, it goes back into SDP and does nothing visible. Move the switch back to SD when you are done with SDP work for the day.
 - **Push-pull vs open-drain.** If your LED is wired to VCC through a resistor (common for active-low LEDs), driving the GPIO high turns it off, not on. Read the schematic.
 - **Optimization eating your loop.** GCC with `-O2` may unroll or completely eliminate a delay loop with no side-effects. We avoided this here by leaving the loop in raw asm. If you port to C, mark the counter `volatile`.
 
 ## 9.10  Going deeper
 
-- **IMX6ULLRM Chapter 28 — GPIO**. Specifically Table 28-1 (register summary) and Table 28-3 (GPIOx_DR bit layout).
-- **IMX6ULLRM Chapter 32 — IOMUXC**. Look up GPIO1_IO03 in the IOMUX table.
-- **IMX6ULLRM Chapter 18 — CCM**. Table 18-5 (CCGR bit definitions).
-**CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
-- **ARM DDI 0406** Section A8.8.62 — `LDR (literal)` form, which is what `ldr Rn, =const` expands into.
-- The GNU Assembler manual, "ARM Dependent Features" — `.syntax unified`, `.cpu`, `.global`, literal pools.
-- Your **Point Atom MINI schematic** — the only authoritative source for which LED is on which pin on *your* board.
+- **IMX6ULLRM Chapter 28, GPIO**: Specifically Table 28-1 (register summary) and Table 28-3 (GPIOx_DR bit layout).
+- **IMX6ULLRM Chapter 32, IOMUXC**: Look up GPIO1_IO03 in the IOMUX table.
+- **IMX6ULLRM Chapter 18, CCM**: Table 18-5 (CCGR bit definitions).
+> **CCM:** Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
+- **ARM DDI 0406** Section A8.8.62, `LDR (literal)` form, which is what `ldr Rn, =const` expands into.
+- The GNU Assembler manual, "ARM Dependent Features", `.syntax unified`, `.cpu`, `.global`, literal pools.
+- Your **Point Atom MINI schematic**, the only authoritative source for which LED is on which pin on *your* board.
 
-> Next chapter: **Chapter 10 — C + startup.S + linker script.** We graduate from one-shot assembly to a real bare-metal C environment with proper `.data` initialization and `.bss` zeroing. Same LED, ten times more useful.
+> Next chapter: **Chapter 10: C + startup.S + linker script.** We graduate from one-shot assembly to a real bare-metal C environment with proper `.data` initialization and `.bss` zeroing. Same LED, ten times more useful.

@@ -1,26 +1,26 @@
 ---
 chapter: 55C
 title: CAN bus (SocketCAN + FlexCAN)
-part: VI — Driver development (supplementary v1.1)
+part: VI - Driver development (supplementary v1.1)
 estimated_pages: 14
 status: draft
 ---
 
-# Chapter 55C — CAN bus (SocketCAN + FlexCAN)
+# Chapter 55C: CAN bus (SocketCAN + FlexCAN)
 
-> **What:** **SocketCAN** — Linux's abstraction that exposes a CAN interface as a network device (`can0`) and CAN frames as `struct sockaddr_can` / `struct can_frame` over a normal socket. The **FlexCAN** driver covers i.MX6ULL's 2 FlexCAN controllers. user-space speaks the socket API. By the end you can `cansend can0 123#DEADBEEF` and watch the frame on a scope.
+> **What:** **SocketCAN**, Linux's abstraction that exposes a CAN interface as a network device (`can0`) and CAN frames as `struct sockaddr_can` / `struct can_frame` over a normal socket. The **FlexCAN** driver covers i.MX6ULL's 2 FlexCAN controllers. User-space speaks the socket API. By the end you can `cansend can0 123#DEADBEEF` and watch the frame on a scope.
 >
-> **Why:** CAN is the dominant bus in automotive and a strong second in industrial automation. The SocketCAN abstraction means you write CAN apps with `socket()` / `sendto()` / `recvmsg()` — same APIs as TCP/UDP. No proprietary library. tools work across all CAN hardware on Linux.
+> **Why:** CAN is the dominant bus in automotive and a strong second in industrial automation. The SocketCAN abstraction means you write CAN apps with `socket()` / `sendto()` / `recvmsg()`, same APIs as TCP/UDP. No proprietary library. Tools work across all CAN hardware on Linux.
 >
-> **Focus:** **CAN looks like a network device.** Once `can0` is "up," everything is generic — Wireshark, tcpdump-equivalent (`candump`), `iproute2` configuration, even SO_TIMESTAMP for nanosecond-accurate receive timestamps.
+> **Focus:** **CAN looks like a network device.** Once `can0` is "up," everything is generic, Wireshark, tcpdump-equivalent (`candump`), `iproute2` configuration, even SO_TIMESTAMP for nanosecond-accurate receive timestamps.
 >
 > **Tooling.** This chapter uses `can-utils` + `iproute2` (`ip link set canX type can ...`).
 > - **Ubuntu-base (target):** `apt install can-utils iproute2`
 > - **Buildroot:** `BR2_PACKAGE_CAN_UTILS=y BR2_PACKAGE_IPROUTE2=y`
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
 ## 55C.1  CAN basics
@@ -31,7 +31,7 @@ status: draft
 - 11-bit (standard) or 29-bit (extended) frame identifier.
 - 0–8 data bytes per frame.
 
-**CAN-FD** (Flexible Data-rate) extends payload to 64 bytes and allows 5 Mbps data-phase. i.MX6ULL FlexCAN supports CAN-FD on the newer revisions.
+**CAN-FD** (Flexible Data-rate) extends payload to 64 bytes and allows 5 Mbps data-phase. I.MX6ULL FlexCAN supports CAN-FD on the newer revisions.
 
 Physical layer needs a *transceiver* between SoC and bus: TJA1051 (5V), TJA1463 (CAN-FD), MCP2562. The SoC speaks 3.3V TTL CAN_TX/CAN_RX. The transceiver speaks differential CAN_H/CAN_L.
 
@@ -120,7 +120,7 @@ int n = read(sock, &rxframe, sizeof(rxframe));
 printf("rx id=%x dlc=%d\n", rxframe.can_id, rxframe.can_dlc);
 ```
 
-For filtering — only receive frames with specific IDs:
+For filtering, only receive frames with specific IDs:
 
 ```c
 struct can_filter rfilter[2];
@@ -137,9 +137,9 @@ The kernel filters in software, or in hardware where the controller supports it.
 
 CAN-RAW is the bottom layer. Real applications use one of:
 
-- **ISO-TP** (ISO-15765-2) — fragmentation/reassembly for >8-byte payloads. `linux/can/isotp.h`. Used by OBD-II and UDS automotive diagnostics.
-- **J1939** — heavy-duty truck/agricultural protocol. `linux/can/j1939.h`.
-- **CAN BCM** (Broadcast Manager) — kernel-side periodic frame TX/RX with filtering. Reduces user-space wakeups.
+- **ISO-TP** (ISO-15765-2), fragmentation/reassembly for >8-byte payloads. `linux/can/isotp.h`. Used by OBD-II and UDS automotive diagnostics.
+- **J1939**: heavy-duty truck/agricultural protocol. `linux/can/j1939.h`.
+- **CAN BCM** (Broadcast Manager), kernel-side periodic frame TX/RX with filtering. Reduces user-space wakeups.
 
 ```c
 /* ISO-TP socket */
@@ -175,9 +175,9 @@ Or do it manually with `ip link set can0 down. ip link set can0 up;` after sorti
 1. **Bring up FlexCAN1.** DT, bitrate 500 kbit, `ip link set can0 up`.
 2. **Loop two nodes.** Connect can0 on i.MX6ULL to a USB-CAN adapter on a host PC, terminated with 60 Ω each end. Send frames with `cansend` from one side, watch `candump` on the other.
 3. **Throughput test.** `cangen can0 -g 0 -I 0x123 -L 8` floods at maximum rate. `canbusload can0 500000` reports utilization.
-4. **Filter receive.** Set up two sockets with different filters. verify each receives only matching frames.
-5. **ISO-TP echo.** Write a small ISO-TP server that replies with what it received. client sends 50-byte payloads.
-6. **Bus-off recovery.** Disconnect transceiver during transmission. observe bus-off error frame. verify `restart-ms` auto-recovers.
+4. **Filter receive.** Set up two sockets with different filters. Verify each receives only matching frames.
+5. **ISO-TP echo.** Write a small ISO-TP server that replies with what it received. Client sends 50-byte payloads.
+6. **Bus-off recovery.** Disconnect transceiver during transmission. Observe bus-off error frame. Verify `restart-ms` auto-recovers.
 
 ## 55C.8  Pitfalls
 
@@ -186,14 +186,14 @@ Or do it manually with `ip link set can0 down. ip link set can0 up;` after sorti
 - **CAN_TX/RX swapped at transceiver.** Symptom: no transmit. Verify schematic.
 - **No transceiver supply.** Many transceivers need their own VCC. Without it, no signaling.
 - **Bus-off and no restart-ms.** Bus stuck off after first error storm. Set `restart-ms`.
-- **Different CAN-FD speeds.** Old nodes can't handle CAN-FD speed-shift frames. bus collapses. Use CAN-FD only on segments where all nodes support it.
+- **Different CAN-FD speeds.** Old nodes can't handle CAN-FD speed-shift frames. Bus collapses. Use CAN-FD only on segments where all nodes support it.
 
 ## 55C.9  Going deeper
 
-- **`Documentation/networking/can.rst`** — SocketCAN documentation.
-- **`drivers/net/can/flexcan.c`** — i.MX FlexCAN driver.
-- **`can-utils`** — `cansend`, `candump`, `cangen`, `canbusload`, `isotpdump`. Required.
-- **`linux/can/isotp.h`**, **`linux/can/j1939.h`** — higher-protocol headers.
-- **OpenXC** project — open-source automotive data over CAN.
+- **`Documentation/networking/can.rst`**: SocketCAN documentation.
+- **`drivers/net/can/flexcan.c`**: i.MX FlexCAN driver.
+- **`can-utils`**: `cansend`, `candump`, `cangen`, `canbusload`, `isotpdump`. Required.
+- **`linux/can/isotp.h`**, **`linux/can/j1939.h`**, higher-protocol headers.
+- **OpenXC** project, open-source automotive data over CAN.
 
-> Next chapter: **Chapter 55D — Block device drivers.** The other half of "storage" — `gendisk`, request queues, blk-mq.
+> Next chapter: **Chapter 55D: Block device drivers.** The other half of "storage", `gendisk`, request queues, blk-mq.

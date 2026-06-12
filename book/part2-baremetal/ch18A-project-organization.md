@@ -1,20 +1,20 @@
 ---
 chapter: 18A
-title: Project organization — STM32-style headers, BSP layout, the SDK alternative
-part: II — Bare-metal i.MX6ULL (inserted v1.1)
+title: Project organization: STM32-style headers, BSP layout, the SDK alternative
+part: II - Bare-metal i.MX6ULL (inserted v1.1)
 estimated_pages: 14
 status: draft
 ---
 
-# Chapter 18A — Project organization
-**GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
+# Chapter 18A: Project organization
+> **GIC:** ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 
-> **What:** refactor the monolithic single-file layout we used through Chapter 17 into a real project tree — `bsp/` folder with one subdirectory per peripheral, a single `imx6ull.h` containing all register definitions, and a top-level Makefile that builds and links everything cleanly.
-> **BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
+> **What:** refactor the monolithic single-file layout we used through Chapter 17 into a real project tree, `bsp/` folder with one subdirectory per peripheral, a single `imx6ull.h` containing all register definitions, and a top-level Makefile that builds and links everything cleanly.
+> **BSP:** Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 >
 > **Why:** once a bare-metal project crosses ~500 lines and ~3 peripherals, the single-file layout costs more than it saves. Every new peripheral becomes a merge conflict with the one before it. Every register `#define` competes for namespace with every other. We refactor now, before Part III's U-Boot work pushes us into larger codebases.
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Focus:** **the BSP folder pattern** (one driver = one folder = one `.h` + one `.c`) and `imx6ull.h` holds every register definition in one place. The NXP SDK's `MCIMX6Y2.h` does the same thing with auto-generated struct headers. We hand-write ours so the auto-generated version reads as a productivity tool, not a black box.
 
@@ -23,22 +23,22 @@ status: draft
 
 Open the Chapter 16 code in your editor. You have:
 
-- `main.c` — `main()` plus inline UART init, GPIO init, CCM writes
+- `main.c`: `main()` plus inline UART init, GPIO init, CCM writes
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-- `startup.S`, `link.ld` — unchanged
+> **CCM:** Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+- `startup.S`, `link.ld`, unchanged
 - A growing forest of `#define UART_UCR1 0x02020080` and friends, scattered across files
-- Function names like `uart_init`, `gpio_init`, `epit_init` — fine when there are 3 of them, brittle when there are 30
+- Function names like `uart_init`, `gpio_init`, `epit_init`, fine when there are 3 of them, brittle when there are 30
 
 Two specific kinds of pain start to appear:
 
 1. **Header pollution.** `uart.c` defines `UART_UCR1`. `main.c` happens to define it again with a slightly different value (typo). Both compile. The behavior of the program depends on which `#define` `cpp` saw last.
 2. **Reuse friction.** To use the Chapter 18 I²C driver in a new project, you copy `i2c.c`, plus the relevant `#define`s from `main.c`, plus the CCM gate bit, plus the IOMUX writes. Five files involved per peripheral.
 > **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
-**IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
+> **IOMUX:** the pin multiplexer that decides which peripheral function appears on each package pin.
 
-The fix is structural: separate **what the hardware looks like** (one file: `imx6ull.h`) from **what each driver does** (one folder per peripheral). The NXP SDK does the same thing with auto-generated headers — we are reaching for the same structure by hand.
+The fix is structural: separate **what the hardware looks like** (one file: `imx6ull.h`) from **what each driver does** (one folder per peripheral). The NXP SDK does the same thing with auto-generated headers, we are reaching for the same structure by hand.
 
 ## 18A.2  Target layout
 
@@ -290,12 +290,12 @@ clean:
 Two things to notice:
 
 - **`$(wildcard bsp/*/*.c)`** picks up every BSP source file automatically. Adding a new peripheral means making a new folder and dropping `bsp_foo.c` + `bsp_foo.h` into it. No Makefile edit.
-- **`$(addprefix -I,$(BSP_DIRS))`** makes every BSP header reachable from every other BSP. (If you want strict layering — only `main.c` includes `bsp_*.h`, BSPs include `imx6ull.h` only — drop the addprefix and add only `-I.`.)
+- **`$(addprefix -I,$(BSP_DIRS))`** makes every BSP header reachable from every other BSP. (If you want strict layering, only `main.c` includes `bsp_*.h`, BSPs include `imx6ull.h` only, drop the addprefix and add only `-I.`.)
 
 ## 18A.6  Cost of the refactor
 
 For the LED-blink-with-IRQ-echo program we've been building, the refactor:
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 - **Files:** 3 → 18. The eye registers this as "more complexity."
 - **Total LoC:** ~600 → ~620. (Header skeletons add ~20 lines.)
@@ -305,9 +305,9 @@ For the LED-blink-with-IRQ-echo program we've been building, the refactor:
 
 The 30-vs-10-minute gap is the point. The refactor pays back over the rest of Part II and the lab work that follows.
 
-## 18A.7  Sidebar — the NXP SDK alternative
+## 18A.7  Sidebar, the NXP SDK alternative
 
-The NXP MCUXpresso SDK ships `MCIMX6Y2.h` (downloadable from `mcuxpresso.nxp.com` after free registration). The same content as our `imx6ull.h`, but expressed differently — as **struct definitions** rather than `#define`s:
+The NXP MCUXpresso SDK ships `MCIMX6Y2.h` (downloadable from `mcuxpresso.nxp.com` after free registration). The same content as our `imx6ull.h`, but expressed differently, as **struct definitions** rather than `#define`s:
 
 ```c
 typedef struct {
@@ -342,18 +342,18 @@ Both compile to the same machine code. The struct version:
 
 - Has typed access (the struct knows offsets), so a typo like `CCM->CGGR1` is a compile error rather than runtime garbage.
 - Plays nicely with debuggers: GDB displays `CCM` as a struct with named fields.
-**GDB** - the debugger. in cross-debugging it runs on the host while controlling code on the target.
+> **GDB:** the debugger. In cross-debugging it runs on the host while controlling code on the target.
 - Hides the address. You can `printf("base = %p\r\n", CCM)` to recover it, but it's not in your face.
 
-Most production projects on NXP parts adopt the struct style by the time they have three peripherals. We do not — at least not in this book. The same reason applies as in Chapter 9: once you can hand-roll it, the SDK becomes a productivity tool instead of a black box.
+Most production projects on NXP parts adopt the struct style by the time they have three peripherals. We do not, at least not in this book. The same reason applies as in Chapter 9: once you can hand-roll it, the SDK becomes a productivity tool instead of a black box.
 
-If you ship products with NXP parts, use the SDK headers in production. They are correct, kept in sync with silicon revisions, and save typos. Use the macro style in this book to *learn*. switch styles when you are ready to ship.
+If you ship products with NXP parts, use the SDK headers in production. They are correct, kept in sync with silicon revisions, and save typos. Use the macro style in this book to *learn*. Switch styles when you are ready to ship.
 
 ## 18A.8  Lab
 
-1. **Refactor.** Take your most-complete Chapter 17 build (MMU + caches + everything before). Refactor it into the layout in §18A.2. The diffs should compile bit-identical to your original — verify with `cmp app.bin original_app.bin`.
-**MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
-2. **Add one new peripheral the new way.** Pick I²C (we did it monolithically in Chapter 18. redo it as `bsp/i2c/`). Time how long it takes vs the original — keep notes.
+1. **Refactor.** Take your most-complete Chapter 17 build (MMU + caches + everything before). Refactor it into the layout in §18A.2. The diffs should compile bit-identical to your original, verify with `cmp app.bin original_app.bin`.
+> **MMU:** Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
+2. **Add one new peripheral the new way.** Pick I²C (we did it monolithically in Chapter 18. Redo it as `bsp/i2c/`). Time how long it takes vs the original, keep notes.
 3. **Stress-test header layering.** Try moving `imx6ull.h` into `bsp/include/`. What needs to change in the Makefile? In each `bsp_*.c`?
 4. **Try the SDK style.** Take just `bsp_clk.c` and rewrite it using `MCIMX6Y2.h` (download from NXP). Same output? Compare disassembly with `arm-none-eabi-objdump -d app.elf` between the two builds and confirm identical machine code.
 
@@ -361,17 +361,17 @@ If you ship products with NXP parts, use the SDK headers in production. They are
 
 - **Naming the BSP folder `lib/` or `drv/`.** Both names collide with conventions used by other projects' build systems. `bsp/` is unambiguous.
 - **Letting `imx6ull.h` `#include "bsp_xxx.h"`.** Circular dependency in waiting. `imx6ull.h` declares nothing about your code. It only describes the hardware.
-- **Header-only "drivers" via `static inline`.** Tempting. bloats every `.o` that includes the header. defeats the point. Keep declarations in `.h`, definitions in `.c`.
+- **Header-only "drivers" via `static inline`.** Tempting. Bloats every `.o` that includes the header. Defeats the point. Keep declarations in `.h`, definitions in `.c`.
 - **Forgetting `-I` for every BSP folder.** Symptom: `bsp_clk.h: No such file or directory`. The `$(addprefix -I,$(BSP_DIRS))` line saves you.
-- **Mixing the macro style and the SDK struct style in the same project.** Pick one. The conversion is a global search-and-replace. doing it partway makes the codebase confusing.
+- **Mixing the macro style and the SDK struct style in the same project.** Pick one. The conversion is a global search-and-replace. Doing it partway makes the codebase confusing.
 
 ## 18A.10  Going deeper
 
-- **Linux kernel** `arch/arm/include/asm/io.h` and `arch/arm/include/asm/hardware/` — the kernel uses the same "one header per controller" pattern at scale.
-- **U-Boot** `arch/arm/include/asm/arch-mx6/imx-regs.h` — register addresses for i.MX6 family in U-Boot.
-- **NXP MCUXpresso SDK** — download the i.MX6ULL SDK. read `MCIMX6Y2.h` for the canonical struct-based register definition.
-- **Cortex-A Series Programmer's Guide §10.2** — recommended startup-and-BSP project layout for ARM Cortex-A bare-metal.
+- **Linux kernel** `arch/arm/include/asm/io.h` and `arch/arm/include/asm/hardware/`, the kernel uses the same "one header per controller" pattern at scale.
+- **U-Boot** `arch/arm/include/asm/arch-mx6/imx-regs.h`, register addresses for i.MX6 family in U-Boot.
+- **NXP MCUXpresso SDK**: download the i.MX6ULL SDK. Read `MCIMX6Y2.h` for the canonical struct-based register definition.
+- **Cortex-A Series Programmer's Guide §10.2**: recommended startup-and-BSP project layout for ARM Cortex-A bare-metal.
 
-> Next chapter: **Chapter 18B — Button input and beep.** First input peripheral, plus our first PWM-adjacent output.
+> Next chapter: **Chapter 18B: Button input and beep.** First input peripheral, plus our first PWM-adjacent output.
 > **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
-> **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+> **PWM:** Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.

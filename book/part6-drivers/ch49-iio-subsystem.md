@@ -1,22 +1,22 @@
 ---
 chapter: 49
 title: IIO subsystem (ADC, sensors)
-part: VI — Driver development
+part: VI - Driver development
 estimated_pages: 18
 status: draft
 ---
 
-# Chapter 49 — IIO subsystem (ADCs, sensors)
+# Chapter 49: IIO subsystem (ADCs, sensors)
 
-> **What:** **Industrial I/O** (IIO) — the kernel framework that everything sensor-related lives in. ADCs, DACs, temperature/humidity/pressure/light/proximity sensors, IMUs (accel + gyro + mag), color sensors, particulate-matter sensors, current sensors — all expose themselves through one consistent API: `/sys/bus/iio/devices/iio:deviceN/in_<type>_<index>_raw` for one-shot reads, `/dev/iio:deviceN` for streamed buffers.
-> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **What:** **Industrial I/O** (IIO), the kernel framework that everything sensor-related lives in. ADCs, DACs, temperature/humidity/pressure/light/proximity sensors, IMUs (accel + gyro + mag), color sensors, particulate-matter sensors, current sensors, all expose themselves through one consistent API: `/sys/bus/iio/devices/iio:deviceN/in_<type>_<index>_raw` for one-shot reads, `/dev/iio:deviceN` for streamed buffers.
+> **IIO:** Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
 > **Why:** before IIO (~2011), every sensor driver invented its own sysfs layout. Reading an ADXL345 was completely different from reading an LIS3DH despite both being 3-axis accelerometers. IIO standardised the interface: every accelerometer reports `in_accel_x_raw` in the same units after `_scale` is applied. User-space tools (`iio-utils`, libiio, gnuplot wrappers) work generically. **Every chip in Part VII's sensor cookbook is an IIO driver.**
-> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
 > **Focus:** **channels, scale, and triggers**. A *channel* is one measurable thing (accel-x, temp, ADC-in-3). A *scale* converts raw value to engineering units. A *trigger* is what causes a coordinated sample to be taken (a timer, an IRQ, a sysfs poke). Get those three concepts right and the rest of IIO follows.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 
 ## 49.1  Architecture
@@ -45,22 +45,22 @@ status: draft
 
 Drivers declare a list of `iio_chan_spec` (channel specifications) and provide `read_raw` / `write_raw` callbacks. The core handles user-space exposure.
 
-## 49.2  The channel — IIO's atom
+## 49.2  The channel, IIO's atom
 
 An IIO channel describes *one measurable quantity*. Examples:
 
 | Channel type | Direction | Modifier | Common index | Sysfs file |
 |--------------|-----------|----------|--------------|------------|
 | `IIO_VOLTAGE` | input | (none) | 0..7 | `in_voltage0_raw` |
-| `IIO_ACCEL` | input | `X/Y/Z` | — | `in_accel_x_raw` |
-| `IIO_TEMP` | input | (none) | — | `in_temp_raw` |
-| `IIO_HUMIDITYRELATIVE` | input | (none) | — | `in_humidityrelative_raw` |
-| `IIO_PRESSURE` | input | (none) | — | `in_pressure_raw` |
-| `IIO_LIGHT` | input | (none) | — | `in_illuminance_raw` |
-| `IIO_PROXIMITY` | input | (none) | — | `in_proximity_raw` |
-| `IIO_INTENSITY` | input | `IR / BOTH / RED / GREEN / BLUE` | — | `in_intensity_ir_raw` |
-| `IIO_ANGL_VEL` | input | `X/Y/Z` | — | `in_anglvel_x_raw` |
-| `IIO_MAGN` | input | `X/Y/Z` | — | `in_magn_x_raw` |
+| `IIO_ACCEL` | input | `X/Y/Z` |, | `in_accel_x_raw` |
+| `IIO_TEMP` | input | (none) |, | `in_temp_raw` |
+| `IIO_HUMIDITYRELATIVE` | input | (none) |, | `in_humidityrelative_raw` |
+| `IIO_PRESSURE` | input | (none) |, | `in_pressure_raw` |
+| `IIO_LIGHT` | input | (none) |, | `in_illuminance_raw` |
+| `IIO_PROXIMITY` | input | (none) |, | `in_proximity_raw` |
+| `IIO_INTENSITY` | input | `IR / BOTH / RED / GREEN / BLUE` |, | `in_intensity_ir_raw` |
+| `IIO_ANGL_VEL` | input | `X/Y/Z` |, | `in_anglvel_x_raw` |
+| `IIO_MAGN` | input | `X/Y/Z` |, | `in_magn_x_raw` |
 | `IIO_VOLTAGE` | output | (none) | 0..N | `out_voltage0_raw` (DAC) |
 
 A channel reports a *raw* integer plus a *scale* and (optionally) an *offset*:
@@ -150,10 +150,10 @@ static const struct iio_info my_iio_info = {
 ```
 
 Return values:
-- `IIO_VAL_INT` — `*val` holds an integer.
-- `IIO_VAL_INT_PLUS_MICRO` — value is `*val + *val2/1000000`. Used for fractional scales.
-- `IIO_VAL_INT_PLUS_NANO` — `*val + *val2/1e9`. For very precise scales (e.g., picoteslas).
-- `IIO_VAL_FRACTIONAL_LOG2` — `*val / 2^*val2`. Common for ADC scales like 1/4096.
+- `IIO_VAL_INT`: `*val` holds an integer.
+- `IIO_VAL_INT_PLUS_MICRO`: value is `*val + *val2/1000000`. Used for fractional scales.
+- `IIO_VAL_INT_PLUS_NANO`: `*val + *val2/1e9`. For very precise scales (e.g., picoteslas).
+- `IIO_VAL_FRACTIONAL_LOG2`: `*val / 2^*val2`. Common for ADC scales like 1/4096.
 
 ## 49.4  Probing and registering
 
@@ -189,7 +189,7 @@ static int my_probe(struct i2c_client *client)
 
 `devm_iio_device_alloc(&client->dev, sizeof(*p))` allocates both the `iio_dev` and your private struct in one block. `iio_priv(idev)` recovers the priv pointer.
 
-`INDIO_DIRECT_MODE` is the simple mode — user-space `cat in_temp_raw` directly invokes your `read_raw`. The advanced mode (`INDIO_BUFFER_HARDWARE` etc.) enables high-rate buffered capture with triggers.
+`INDIO_DIRECT_MODE` is the simple mode, user-space `cat in_temp_raw` directly invokes your `read_raw`. The advanced mode (`INDIO_BUFFER_HARDWARE` etc.) enables high-rate buffered capture with triggers.
 
 ## 49.5  User-space sees this
 
@@ -228,7 +228,7 @@ The orchestration:
 1. Driver registers a **buffer** (`devm_iio_kfifo_buffer_setup`).
 2. User-space writes `1` to `scan_elements/in_<channel>_en` for each channel to enable (e.g., `in_accel_x_en`, `in_accel_y_en`).
 3. User-space writes `buffer/length` to set the kfifo depth.
-4. User-space binds a **trigger** via `trigger/current_trigger` — typically `hrtimer-N` (a kernel high-resolution timer firing at a set rate).
+4. User-space binds a **trigger** via `trigger/current_trigger`, typically `hrtimer-N` (a kernel high-resolution timer firing at a set rate).
 5. User-space writes `buffer/enable = 1`.
 6. The trigger fires. The driver's trigger handler reads a coordinated set of samples and pushes them.
 7. User-space `read(/dev/iio:deviceN, ...)` returns the bytes.
@@ -243,11 +243,11 @@ The orchestration:
 [root@pa-mini:~]# dd if=/dev/iio:device0 of=samples.bin bs=$((6*100)) count=10
 ```
 
-Six bytes per sample (3 axes × 2 bytes), 100 samples per read, 10 reads. The trigger drives the cadence. The driver pushes. user-space drains.
+Six bytes per sample (3 axes × 2 bytes), 100 samples per read, 10 reads. The trigger drives the cadence. The driver pushes. User-space drains.
 
 We come back to triggers and buffers in Ch 70/71 (IMUs), where they become essential.
 
-## 49.7  ADC drivers — a special case
+## 49.7  ADC drivers, a special case
 
 ADCs work the same as sensors but with `IIO_VOLTAGE` channels and an `_indexed` flag so multiple channels can be numbered 0..7:
 
@@ -270,7 +270,7 @@ static const struct iio_chan_spec mcp3008_channels[] = {
 };
 ```
 
-`indexed = 1` causes the sysfs files to be named `in_voltage0_raw`, `in_voltage1_raw`, etc. `info_mask_shared_by_type` means the scale is shared (one `in_voltage_scale` for all channels) — common for ADCs where every channel has the same reference voltage.
+`indexed = 1` causes the sysfs files to be named `in_voltage0_raw`, `in_voltage1_raw`, etc. `info_mask_shared_by_type` means the scale is shared (one `in_voltage_scale` for all channels), common for ADCs where every channel has the same reference voltage.
 
 ## 49.8  Lab
 
@@ -287,8 +287,8 @@ static const struct iio_chan_spec mcp3008_channels[] = {
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
-- **Wrong `realbits` / `storagebits` in `scan_type`.** Buffered reads return junk. user-space can't decode. For a 10-bit signed value stored in 16 bits, `sign='s', realbits=10, storagebits=16, shift=0`.
-- **Forgetting `INDIO_DIRECT_MODE`.** A driver with no `modes` set behaves as "buffer-only". sysfs `_raw` reads return -EBUSY when no trigger is active. For sensors you want polled, always set `INDIO_DIRECT_MODE`.
+- **Wrong `realbits` / `storagebits` in `scan_type`.** Buffered reads return junk. User-space can't decode. For a 10-bit signed value stored in 16 bits, `sign='s', realbits=10, storagebits=16, shift=0`.
+- **Forgetting `INDIO_DIRECT_MODE`.** A driver with no `modes` set behaves as "buffer-only". Sysfs `_raw` reads return -EBUSY when no trigger is active. For sensors you want polled, always set `INDIO_DIRECT_MODE`.
 - **`indexed=1` vs `indexed=0`.** Without `indexed=1`, the sysfs file is `in_voltage_raw` (singular). With it and `.channel = 3`, it's `in_voltage3_raw`. Use indexed for multi-channel ADCs.
 - **Returning the wrong `IIO_VAL_*` from `read_raw`.** User-space sees a non-numeric "0.000000" or garbled value. Cross-check the value type with what you store in `*val`/`*val2`.
 - **Trigger / channel ordering mismatch.** With buffered capture, the bytes in `/dev/iio:deviceN` are packed in the order of `scan_index`. Make sure your driver pushes in that order.
@@ -297,14 +297,14 @@ static const struct iio_chan_spec mcp3008_channels[] = {
 
 ## 49.10  Going deeper
 
-- **`Documentation/iio/`** — the IIO subsystem documentation.
-- **`drivers/iio/`** — hundreds of drivers, mostly straightforward. Best ones to read: `pressure/bmp280-i2c.c` + `bmp280-core.c` (BME280 family), `imu/mpu6050/`, `adc/mcp320x.c`.
-- **`Documentation/ABI/testing/sysfs-bus-iio*`** — official sysfs ABI for each channel/info combo.
-**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
-- **`libiio`** at <https://github.com/analogdevicesinc/libiio> — high-level user-space library. bindings for Python, C++, etc.
-- **`Documentation/iio/iio_configfs.rst`** — how to add a software-only IIO device (useful for trigger configuration).
+- **`Documentation/iio/`**: the IIO subsystem documentation.
+- **`drivers/iio/`**: hundreds of drivers, mostly straightforward. Best ones to read: `pressure/bmp280-i2c.c` + `bmp280-core.c` (BME280 family), `imu/mpu6050/`, `adc/mcp320x.c`.
+- **`Documentation/ABI/testing/sysfs-bus-iio*`**, official sysfs ABI for each channel/info combo.
+> **ABI:** Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
+- **`libiio`** at <https://github.com/analogdevicesinc/libiio>, high-level user-space library. Bindings for Python, C++, etc.
+- **`Documentation/iio/iio_configfs.rst`**: how to add a software-only IIO device (useful for trigger configuration).
 
-> Next chapter: **Chapter 50 — regmap.** Almost every chip with registers is now talked to via the regmap abstraction. Once you know regmap, writing the I²C / SPI / MMIO half of a driver becomes mechanical — you declare a register layout and the framework handles the rest.
+> Next chapter: **Chapter 50: regmap.** Almost every chip with registers is now talked to via the regmap abstraction. Once you know regmap, writing the I²C / SPI / MMIO half of a driver becomes mechanical, you declare a register layout and the framework handles the rest.
 > **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
-> **MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
-> **regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+> **MMIO:** memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
+> **regmap:** a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.

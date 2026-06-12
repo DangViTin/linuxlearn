@@ -1,12 +1,12 @@
 ---
 chapter: 55F
 title: Cellular modems
-part: VI — Driver development (supplementary v1.1)
+part: VI - Driver development (supplementary v1.1)
 estimated_pages: 12
 status: draft
 ---
 
-# Chapter 55F — Cellular modems
+# Chapter 55F: Cellular modems
 
 > **What:** integrating a 4G/LTE modem with embedded Linux. The two big paths: **USB modems** with QMI/MBIM/RNDIS data interfaces (Quectel EC20/EC25, SimCom SIM7600), and **UART AT-command modems** with PPP (older parts and NB-IoT chips). The user-space orchestrator is **ModemManager**, supplemented by `qmicli` / `mbimcli` or, for AT modems, raw chat scripts.
 >
@@ -17,19 +17,19 @@ status: draft
 > **Tooling.** This chapter uses `ppp` (`pppd`, `chat`), `ModemManager` (`mmcli`), `libqmi-utils` (`qmicli`).
 > - **Ubuntu-base (target):** `apt install ppp modemmanager libqmi-utils`
 > - **Buildroot:** `BR2_PACKAGE_PPP=y BR2_PACKAGE_MODEM_MANAGER=y BR2_PACKAGE_LIBQMI=y`
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
 ## 55F.1  Hardware connection
 
-USB modems plug into a USB host port (i.MX6ULL USB OTG configured as host). They draw 1–2 A during TX bursts — your power supply must handle it. Most bench-test failures are power-related.
+USB modems plug into a USB host port (i.MX6ULL USB OTG configured as host). They draw 1–2 A during TX bursts, your power supply must handle it. Most bench-test failures are power-related.
 
 UART modems wire to a UART (typically 115200 baud + flow control). Plus an "enable" GPIO and a "status" GPIO.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 55F.2  USB EC25 (QMI mode)
 
@@ -54,7 +54,7 @@ usb 1-1: GSM modem (1-port) converter now attached to ttyUSB1
 
 `/dev/ttyUSB0`–`/dev/ttyUSB3` are AT-command channels. `wwan0` is the data interface. `/dev/cdc-wdm0` is the QMI control channel.
 
-## 55F.3  ModemManager — the easy path
+## 55F.3  ModemManager, the easy path
 
 ```sh
 [root@pa-mini:~]# systemctl start ModemManager
@@ -165,27 +165,27 @@ PPP is slow (~10 Mbit/s max) and adds latency. Use only for old modems without U
 ## 55F.6  Lab
 
 1. **Plug in an EC25.** Verify `lsusb`, `ttyUSB*`, `wwan0`, `cdc-wdm0` all appear.
-2. **ModemManager connect.** `mmcli --simple-connect`. verify `ip` is up, ping works.
+2. **ModemManager connect.** `mmcli --simple-connect`. Verify `ip` is up, ping works.
 3. **AT-command echo.** Open `/dev/ttyUSB2`, send `AT`, get `OK`. Try `AT+CSQ`, `AT+QSPN`.
 4. **SMS send.** `mmcli --modem=0 --messaging-create-sms="text='hello',number='+...'`. `--send`. (SMS cost is around $0.05 per message on most carriers.)
-5. **Failover to WiFi.** Write a script that periodically pings the gateway. switch routes if cellular fails.
+5. **Failover to WiFi.** Write a script that periodically pings the gateway. Switch routes if cellular fails.
 6. **Power consumption.** Measure idle vs RX vs TX-burst current. Plan your battery accordingly.
 
 ## 55F.7  Pitfalls
 
-- **USB power.** EC25 spikes to >1.5 A on TX bursts. 5V/2A is the minimum. less = USB resets at the worst moments.
+- **USB power.** EC25 spikes to >1.5 A on TX bursts. 5V/2A is the minimum. Less = USB resets at the worst moments.
 - **Wrong USB mode.** EC25 boots in RNDIS by default in some firmware. Switch to QMI: `AT+QCFG="usbnet",0`.
 - **APN wrong / missing.** Carriers reject your registration silently. Cross-check with your SIM provider.
 - **Regulatory.** Some bands are illegal in some countries. Use a regional-specific modem variant.
 - **Antenna SWR.** Bad antenna match = poor signal. Cellular antennas matter as much as WiFi antennas.
-- **`raw_ip` mode trap.** EC25 needs `raw_ip` mode. ModemManager sets it. manual QMI must too.
+- **`raw_ip` mode trap.** EC25 needs `raw_ip` mode. ModemManager sets it. Manual QMI must too.
 
 ## 55F.8  Going deeper
 
-- **<https://www.freedesktop.org/wiki/Software/ModemManager/>** — ModemManager docs.
-- **`libqmi` / `libmbim`** — the C libraries beneath qmicli/mbimcli.
-- **`drivers/net/usb/qmi_wwan.c`** — kernel QMI driver.
-- **`drivers/usb/serial/option.c`** — AT-command channel exposure.
-- **3GPP TS 27.007** — AT command set standard.
+- **<https://www.freedesktop.org/wiki/Software/ModemManager/>**: ModemManager docs.
+- **`libqmi` / `libmbim`**: the C libraries beneath qmicli/mbimcli.
+- **`drivers/net/usb/qmi_wwan.c`**: kernel QMI driver.
+- **`drivers/usb/serial/option.c`**: AT-command channel exposure.
+- **3GPP TS 27.007**: AT command set standard.
 
-> Next chapter: **Chapter 55G — Multi-touch GT911.** Touchscreens, MT-B slot protocol, calibration.
+> Next chapter: **Chapter 55G: Multi-touch GT911.** Touchscreens, MT-B slot protocol, calibration.

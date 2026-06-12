@@ -1,35 +1,35 @@
 ---
 chapter: 22
 title: Porting U-Boot to a custom board
-part: III — U-Boot, deeply
+part: III - U-Boot, deeply
 estimated_pages: 22
 status: draft
 ---
 
-# Chapter 22 — Porting U-Boot to a custom board
+# Chapter 22: Porting U-Boot to a custom board
 
 > **What:** fork the mainline `mx6ull_14x14_evk` board into a new `mx6ull_pa_mini` (Point Atom MINI) board directory. Update DDR timings, IOMUX, MAC PHY address, and defaults. End with a U-Boot binary that boots cleanly on the MINI from your bare-board changes, not on the EVK config.
 > **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
-> **MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
-> **PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
-> **DDR** - external DRAM that must be configured and trained before most software can run from it.
-> **IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
-> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **MAC:** Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
+> **PHY:** physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
+> **DDR:** external DRAM that must be configured and trained before most software can run from it.
+> **IOMUX:** the pin multiplexer that decides which peripheral function appears on each package pin.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Why:** In real product work, you rarely ship the vendor reference board. The custom PCB looks similar but has different pads, different I/O, different DRAM. The port is the deliverable. This chapter is how you produce it.
 >
-> **Focus:** the **anatomy of a board port** — board folder, defconfig, board header, DT, and the points where each touches U-Boot's core. After the first port, every later one is a copy-and-modify of the same five files.
+> **Focus:** the **anatomy of a board port**, board folder, defconfig, board header, DT, and the points where each touches U-Boot's core. After the first port, every later one is a copy-and-modify of the same five files.
 
 
 ## 22.1  What "porting" means
 
 Three categories of port:
 
-1. **Cosmetic port** — same board, different default behavior (custom hostname, prompt, autoboot env). One file changes. Not really a port.
-2. **Variant port** — same SoC, same DDR, different peripherals. New defconfig + new DT + maybe new pinmux. Most "custom" boards.
-3. **Real port** — same SoC family, different DDR part, different PMIC, different boot media. New defconfig + new DT + new DDR config + new board.c. The Point Atom MINI vs the NXP EVK is approximately this. It is mostly a variant port plus DDR and pinmux work.
+1. **Cosmetic port**: Same board, different default behavior (custom hostname, prompt, autoboot env). One file changes. Not really a port.
+2. **Variant port**: Same SoC, same DDR, different peripherals. New defconfig + new DT + maybe new pinmux. Most "custom" boards.
+3. **Real port**: Same SoC family, different DDR part, different PMIC, different boot media. New defconfig + new DT + new DDR config + new board.c. The Point Atom MINI vs the NXP EVK is approximately this. It is mostly a variant port plus DDR and pinmux work.
 > **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
-**PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
+> **PMIC:** Power Management IC, a chip that sequences and regulates the board's voltage rails.
 
 For this chapter we do a **variant + DDR port**: fork the EVK to a new board directory, change DDR timings to match the MINI's specific DRAM part, change the pinmux for KEY/LED/BEEP/Ethernet PHY, and update the env defaults.
 
@@ -51,9 +51,9 @@ configs/mx6ull_pa_mini_defconfig          # the .config we ship
 ```
 
 That's six items, four of which are short. About 90% of the work is in `spl.c` (DDR config) and the DTS.
-**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
+> **SPL:** Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 
-## 22.3  Step 1 — Fork the EVK
+## 22.3  Step 1, Fork the EVK
 
 ```sh
 $ cd ~/imx6ull/src/u-boot
@@ -118,7 +118,7 @@ obj-y := mx6ull_pa_mini.o
 obj-$(CONFIG_SPL_BUILD) += spl.o
 ```
 
-## 22.4  Step 2 — Edit the defconfig
+## 22.4  Step 2, Edit the defconfig
 
 Open `configs/mx6ull_pa_mini_defconfig`. The relevant lines to change:
 
@@ -141,7 +141,7 @@ CONFIG_SYS_MALLOC_LEN=0x400000
 
 `make oldconfig` (after `make distclean && make mx6ull_pa_mini_defconfig`) will fill in any missing settings.
 
-## 22.5  Step 3 — Update the device tree
+## 22.5  Step 3, Update the device tree
 
 ```sh
 $ vim arch/arm/dts/imx6ull-pa-mini.dts
@@ -250,7 +250,7 @@ dtb-$(CONFIG_MX6ULL) += imx6ull-pa-mini.dtb
 
 This is the *U-Boot* device tree (used to inform U-Boot of its own board's hardware). The kernel will use a similar but separately-maintained DT in Chapter 27.
 
-## 22.6  Step 4 — DDR config in `spl.c`
+## 22.6  Step 4, DDR config in `spl.c`
 
 There is no shortcut for DDR. The Point Atom MINI's DDR3 chip and trace layout differ from the EVK's. You must produce matching calibration values.
 
@@ -314,7 +314,7 @@ static void spl_dram_init(void)
 
 That one call performs every register write from Chapter 14. The library in `arch/arm/mach-imx/mx6/ddr.c` walks the structs and emits the right sequence.
 
-## 22.7  Step 5 — Per-board IOMUX and peripheral init
+## 22.7  Step 5, Per-board IOMUX and peripheral init
 
 In `mx6ull_pa_mini.c`, replace the EVK's pinmux for any pad the MINI uses differently. The pattern:
 
@@ -353,7 +353,7 @@ These macros come from the i.MX6ULL IOMUX tables. Each one encodes the pad, the 
 
 Add overrides if you need them: `board_late_init` for env defaults, `board_phy_config` for RGMII PHY tweaks, `board_eth_init` for PHY-address overrides.
 
-## 22.8  Step 6 — Build and flash
+## 22.8  Step 6, Build and flash
 
 ```sh
 $ make distclean
@@ -431,9 +431,9 @@ Even if you never plan to submit upstream, this file documents who owns the port
 2. **Configure your defconfig** and confirm `make mx6ull_pa_mini_defconfig` succeeds.
 3. **Run DDR Stress Tool on your MINI.** Copy its values into `mx6_mmdc_calib`.
 4. **Boot.** Confirm "Model: Point Atom..." appears, custom prompt appears, `mtest` is clean.
-5. **Add one MINI-specific touch.** Pick something the EVK doesn't have — for instance, the BEEP GPIO toggling once on boot from `board_late_init`. Or a custom logo string in the boot banner.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-6. **Generate a single patch series.** `git format-patch -7 origin/master` (assuming your branch has 7 new-board commits on top of upstream `master`). Inspect the patch files. ensure each is self-contained.
+5. **Add one MINI-specific touch.** Pick something the EVK doesn't have, for instance, the BEEP GPIO toggling once on boot from `board_late_init`. Or a custom logo string in the boot banner.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+6. **Generate a single patch series.** `git format-patch -7 origin/master` (assuming your branch has 7 new-board commits on top of upstream `master`). Inspect the patch files. Ensure each is self-contained.
 
 ## 22.12  Pitfalls
 
@@ -441,19 +441,19 @@ Even if you never plan to submit upstream, this file documents who owns the port
 - **Forgetting to add the DTB to `dtb-y`.** The DTS compiles to a `.dtb` only if `arch/arm/dts/Makefile` references it. Symptom: build succeeds but the `.dtb` is missing and U-Boot uses a fallback (often the EVK's DT).
 - **Mismatched `CONFIG_SYS_TEXT_BASE`.** Determines where U-Boot is *linked* for. If you change it, you must change the corresponding SPL `CONFIG_SYS_LOAD_ADDR` for `u-boot.imx`.
 - **PHY address wrong.** Symptom: `ping` says "Could not initialize PHY". The PHY's MDIO address is wired by hardware (strapping resistors). Check your schematic and update DT.
-- **`ethaddr` not set.** First boot has no MAC. Either set it via `setenv ethaddr xx:xx:xx:xx:xx:xx. saveenv`, or generate from a unique chip ID in `board_late_init`.
+- **`ethaddr` not set.** First boot has no MAC. Either set it via `setenv ethaddr xx:xx:xx:xx:xx:xx; saveenv`, or generate from a unique chip ID in `board_late_init`.
 - **Building without `make distclean` after a defconfig change.** Stale objects mismatched against the new config silently corrupt the build.
 - **Kconfig syntax errors.** Easy to miss. `make` reports them tersely. Compare against an existing `Kconfig` line by line.
 
 ## 22.13  Going deeper
 
-- **`doc/board/freescale/`** — every NXP board's README. Useful reference patterns.
-- **The `mxc_jtag_init` and `arm_pmu_init` weak hooks** — for boards with JTAG or PMU specifics.
+- **`doc/board/freescale/`**: every NXP board's README. Useful reference patterns.
+- **The `mxc_jtag_init` and `arm_pmu_init` weak hooks**: for boards with JTAG or PMU specifics.
 > **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
-**JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
-- **`board/freescale/common/`** — shared NXP utilities (`mpc8xxx`-style env helpers, PMIC drivers).
-- **U-Boot mainline commit history** — `git log board/freescale/mx6ull_14x14_evk/` is a tour of every issue that the EVK port has ever had. Read at least the most recent 50 commits.
-- **AN12085** — *Designing a Hardware Solution Based on the i.MX 6UL/6ULL*. From a U-Boot perspective: what needs to be true on a custom board for the mainline boot path to just work.
+> **JTAG:** the hardware debug scan chain used to halt, inspect, and single-step CPUs.
+- **`board/freescale/common/`**: shared NXP utilities (`mpc8xxx`-style env helpers, PMIC drivers).
+- **U-Boot mainline commit history**: `git log board/freescale/mx6ull_14x14_evk/` is a tour of every issue that the EVK port has ever had. Read at least the most recent 50 commits.
+- **AN12085**: *Designing a Hardware Solution Based on the i.MX 6UL/6ULL*. From a U-Boot perspective: what needs to be true on a custom board for the mainline boot path to just work.
 
-> Next chapter: **Chapter 23 — `bootcmd`, `bootargs`, FIT images.** With a working board port, we turn to the *contract* between U-Boot and the kernel: how U-Boot decides what kernel to load, what it tells the kernel about the system, and the modern FIT image format.
-> **FIT** - Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
+> Next chapter: **Chapter 23: `bootcmd`, `bootargs`, FIT images.** With a working board port, we turn to the *contract* between U-Boot and the kernel: how U-Boot decides what kernel to load, what it tells the kernel about the system, and the modern FIT image format.
+> **FIT:** Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.

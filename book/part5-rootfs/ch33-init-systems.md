@@ -1,14 +1,14 @@
 ---
 chapter: 33
 title: Init systems
-part: V — Root filesystem & user space
+part: V - Root filesystem & user space
 estimated_pages: 14
 status: draft
 ---
 
-# Chapter 33 — Init systems
+# Chapter 33: Init systems
 
-> **What:** PID 1 — what it does, what it should do, and the three real choices for an embedded Linux system: BusyBox `init` (tiny, traditional), `sysvinit` (the classical desktop init from the 90s), and `systemd` (the modern service manager that runs on basically every desktop distro).
+> **What:** PID 1, what it does, what it should do, and the three real choices for an embedded Linux system: BusyBox `init` (tiny, traditional), `sysvinit` (the classical desktop init from the 90s), and `systemd` (the modern service manager that runs on basically every desktop distro).
 >
 > **Why:** PID 1 is special: the kernel panics if it dies, and every other process on the system descends from it. The choice you make here determines how you write boot scripts, how you crash-restart services, how logs are collected, and how much disk and RAM the system uses just to "be up."
 >
@@ -29,20 +29,20 @@ That's it. Any program that does these five things is a legitimate PID 1. The ch
 
 ## 33.2  BusyBox init
 
-We've been using this since Chapter 29. It is **~1500 lines of C**, statically linked into the BusyBox binary as one of its applets, and does exactly the five things in §33.1 — no more, no less. Configuration is one file: `/etc/inittab` (Chapter 31 §31.5).
+We've been using this since Chapter 29. It is **~1500 lines of C**, statically linked into the BusyBox binary as one of its applets, and does exactly the five things in §33.1, no more, no less. Configuration is one file: `/etc/inittab` (Chapter 31 §31.5).
 
 Features it has:
 
 - `inittab`-based: `sysinit`, `respawn`, `askfirst`, `once`, `wait`, `shutdown`, etc. (the 8 actions from Ch 31)
-- Reads `/etc/inittab` once at boot. re-reads on SIGHUP
-- Reaps zombies. signals shutdown properly
+- Reads `/etc/inittab` once at boot. Re-reads on SIGHUP
+- Reaps zombies. Signals shutdown properly
 
 Features it does *not* have:
 
 - No service dependency tracking. If service A needs service B running, you have to encode that in shell scripts yourself.
 - No automatic restart count limit. If a service crashes 1000 times in 1 second, busybox-init dutifully restarts it 1000 times.
-- No socket activation. (Systemd's headline feature. nice to have for embedded? Rarely.)
-- No structured logging. `printf` to the console. that's it.
+- No socket activation. (Systemd's headline feature. Nice to have for embedded? Rarely.)
+- No structured logging. `printf` to the console. That's it.
 - No cgroup-based resource isolation per service.
 
 **When to choose BusyBox init:**
@@ -60,9 +60,9 @@ The classical Unix init from the 80s/90s. Still around, still on some Debian sys
 
 The model:
 
-- `/etc/inittab` (different syntax from BusyBox. runs `/etc/rc.d/rc <N>` for each runlevel)
-- `/etc/init.d/` — one shell script per service. Each script accepts `start`, `stop`, `restart`, `status` as arguments.
-- `/etc/rc<N>.d/` — symlinks to `/etc/init.d/` scripts, named `S<NN><name>` (start) or `K<NN><name>` (kill). Init runs them in numeric order when entering runlevel N.
+- `/etc/inittab` (different syntax from BusyBox. Runs `/etc/rc.d/rc <N>` for each runlevel)
+- `/etc/init.d/`: one shell script per service. Each script accepts `start`, `stop`, `restart`, `status` as arguments.
+- `/etc/rc<N>.d/`: symlinks to `/etc/init.d/` scripts, named `S<NN><name>` (start) or `K<NN><name>` (kill). Init runs them in numeric order when entering runlevel N.
 
 **Runlevels**: a number 0-6 representing system states. By convention:
 
@@ -102,7 +102,7 @@ case "$1" in
 esac
 ```
 
-The `LSB info` block in the comment header gives dependency hints — sysvinit can read these and compute service order (or you arrange the symlink names manually).
+The `LSB info` block in the comment header gives dependency hints, sysvinit can read these and compute service order (or you arrange the symlink names manually).
 
 **When to choose sysvinit:**
 
@@ -111,7 +111,7 @@ The `LSB info` block in the comment header gives dependency hints — sysvinit c
 
 **When *not* to choose sysvinit:**
 
-- You're starting fresh in 2025. BusyBox init does the same job with one tenth the bytes. systemd does *more* if you need it. Sysvinit has little reason to exist in a new design.
+- You're starting fresh in 2025. BusyBox init does the same job with one tenth the bytes. Systemd does *more* if you need it. Sysvinit has little reason to exist in a new design.
 
 ## 33.4  systemd
 
@@ -133,7 +133,7 @@ What you get:
   [Install]
   WantedBy=multi-user.target
   ```
-- **Dependency-driven ordering.** `After=`, `Before=`, `Requires=`, `Wants=`, `Conflicts=`. systemd computes the right parallel start order.
+- **Dependency-driven ordering.** `After=`, `Before=`, `Requires=`, `Wants=`, `Conflicts=`. Systemd computes the right parallel start order.
 - **Per-service resource limits** via cgroups: `CPUQuota=`, `MemoryMax=`, `IOWeight=`.
 - **Sandbox options**: `PrivateTmp=true`, `ProtectSystem=strict`, `NoNewPrivileges=true`, `CapabilityBoundingSet=`.
 - **Socket activation**: a service starts when something connects to its socket, not at boot.
@@ -142,19 +142,19 @@ What you get:
 - **A few hundred more features.**
 
 The cost is footprint. Systemd itself plus its required satellites (`udev`, `systemd-journald`, `systemd-logind`, …) is **~6 MB on disk and ~30 MB RAM at idle** on a minimal install. On i.MX6ULL's 512 MB DRAM that's tolerable but not negligible.
-**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
+> **udev:** the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 
 **When to choose systemd:**
 
-- Your rootfs is **Ubuntu-base** or **Debian** (Chapter 35A). They already use systemd. fighting it is more work than embracing it.
+- Your rootfs is **Ubuntu-base** or **Debian** (Chapter 35A). They already use systemd. Fighting it is more work than embracing it.
 - You need socket activation, advanced sandboxing, or per-service cgroup limits.
 - Your team is Linux-distro-experienced and `systemctl status` is muscle memory.
 
 **When *not* to choose systemd:**
 
 - You're on a Buildroot or yocto-core-image-minimal-style image. They default to BusyBox init for good reason.
-**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
-- Your boot-time budget is < 2 seconds. systemd needs 3-5 seconds on i.MX6ULL just for itself.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
+- Your boot-time budget is < 2 seconds. Systemd needs 3-5 seconds on i.MX6ULL just for itself.
 - RAM is tight (< 256 MB).
 
 ## 33.5  Comparing them at a glance
@@ -192,7 +192,7 @@ This is the embedded equivalent of an MCU's `main()`. Boot time: under 500 ms to
 
 - The system has one job (industrial controller, single-purpose sensor).
 - No need to ssh in, no need to inspect anything live.
-- Failure mode is "reboot" — your app crashes, PID 1 crashes, kernel panics, watchdog (Ch 51A) reboots.
+- Failure mode is "reboot", your app crashes, PID 1 crashes, kernel panics, watchdog (Ch 51A) reboots.
 
 **When this doesn't work:**
 
@@ -203,7 +203,7 @@ For a developer board you almost always want a shell. For a shipping single-purp
 
 ## 33.7  Recommendation
 
-For the rest of this book — and for most readers' real products — **BusyBox init** is the default. We use it in every chapter from here through Part VI. When we need to talk about a feature only systemd has (Chapter 51A's watchdog daemon, Chapter 35C's container manager), we'll note it explicitly. When we get to Chapter 35A (Ubuntu-base), we'll meet systemd in its natural habitat.
+For the rest of this book, and for most readers' real products, **BusyBox init** is the default. We use it in every chapter from here through Part VI. When we need to talk about a feature only systemd has (Chapter 51A's watchdog daemon, Chapter 35C's container manager), we'll note it explicitly. When we get to Chapter 35A (Ubuntu-base), we'll meet systemd in its natural habitat.
 
 ## 33.8  Lab
 
@@ -216,9 +216,9 @@ For the rest of this book — and for most readers' real products — **BusyBox 
 ## 33.9  Pitfalls
 
 - **Zombies accumulating.** Some daemons double-fork and detach. The grandchild then gets reparented to PID 1. If PID 1's `wait()` loop is correct, the kernel hands it the SIGCHLD and the child is reaped. BusyBox init does this correctly. Custom PID-1 binaries often forget the `wait()` loop. The symptom is `<defunct>` processes piling up in `ps`.
-- **Respawn storm.** A `respawn` line for a service that immediately exits causes infinite restart loop, burning CPU. BusyBox init doesn't rate-limit. add a `sleep 5` to your service or use systemd's `RestartSec=`.
+- **Respawn storm.** A `respawn` line for a service that immediately exits causes infinite restart loop, burning CPU. BusyBox init doesn't rate-limit. Add a `sleep 5` to your service or use systemd's `RestartSec=`.
 - **`/etc/inittab` syntax differences.** sysvinit uses runlevels in the second field. BusyBox ignores that field entirely. Don't copy/paste between init implementations.
-- **`init=` cmdline overrides everything.** Even if `/sbin/init` exists, if you boot with `init=/bin/sh`, the kernel runs the shell directly. Useful for recovery. surprising if you forgot you set it.
+- **`init=` cmdline overrides everything.** Even if `/sbin/init` exists, if you boot with `init=/bin/sh`, the kernel runs the shell directly. Useful for recovery. Surprising if you forgot you set it.
 - **systemd in a 256 MB system.** It will boot but everything will be sluggish. Choose BusyBox or sysvinit instead.
 - **systemd unit-file ordering bugs.** Putting both `After=` and `Wants=` on a unit can produce unexpected orderings if the targets aren't carefully chosen. When in doubt, read `systemd.unit(5)`.
 
@@ -226,8 +226,8 @@ For the rest of this book — and for most readers' real products — **BusyBox 
 
 - **BusyBox init source**: `init/init.c` in the BusyBox tree. ~1500 lines. Read it.
 - **`Documentation/admin-guide/initrd.rst`** (kernel) for the init handoff details.
-- **`man systemd.unit`**, **`man systemd.service`** — canonical systemd reference.
-- **`Lennart Poettering`'s "Rethinking PID 1"** blog post — the original systemd design rationale. Worth reading for context.
-- **`Rich Felker`'s posts on musl + init systems** — the minimalist's counter-argument.
+- **`man systemd.unit`**, **`man systemd.service`**, canonical systemd reference.
+- **`Lennart Poettering`'s "Rethinking PID 1"** blog post, the original systemd design rationale. Worth reading for context.
+- **`Rich Felker`'s posts on musl + init systems**: the minimalist's counter-argument.
 
-> Next chapter: **Chapter 34 — libc, dynamic linking, and the loader.** Down one more level: what the libraries are that everything else depends on, and how the kernel hands control to user space's first instruction.
+> Next chapter: **Chapter 34: libc, dynamic linking, and the loader.** Down one more level: what the libraries are that everything else depends on, and how the kernel hands control to user space's first instruction.

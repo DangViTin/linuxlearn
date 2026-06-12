@@ -1,28 +1,28 @@
 ---
 chapter: 78
 title: MEMS microphones (INMP441 / ICS-43434)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 18
 status: draft
 ---
 
-# Chapter 78 — MEMS microphones
+# Chapter 78: MEMS microphones
 
-> **What:** digital MEMS microphones — the chips that replaced analog electret mics in everything from phones to wearables. We focus on **I²S** mics (TDK InvenSense **INMP441**, TDK **ICS-43434**) and contrast with **PDM** mics. Plus the ASoC machine-driver pattern needed to wire one to the i.MX6ULL SAI, since this is one case where you really do write a small "machine driver" but not a chip driver.
-> **ASoC** - ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
+> **What:** digital MEMS microphones, the chips that replaced analog electret mics in everything from phones to wearables. We focus on **I²S** mics (TDK InvenSense **INMP441**, TDK **ICS-43434**) and contrast with **PDM** mics. Plus the ASoC machine-driver pattern needed to wire one to the i.MX6ULL SAI, since this is one case where you really do write a small "machine driver" but not a chip driver.
+> **ASoC:** ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
 >
-> **Why:** every smart speaker, voice-assistant, voice-controlled IoT device, dashcam, drone for FAA-broadcast — they all have one or more digital microphones. The mic outputs already-digitized PCM (or PDM). no separate ADC or codec required. The driver structure is unusual: there's no codec chip with registers, just a simple I²S DAI. The ASoC `simple-card` machine driver handles this exact pattern.
+> **Why:** every smart speaker, voice-assistant, voice-controlled IoT device, dashcam, drone for FAA-broadcast, they all have one or more digital microphones. The mic outputs already-digitized PCM (or PDM). No separate ADC or codec required. The driver structure is unusual: there's no codec chip with registers, just a simple I²S DAI. The ASoC `simple-card` machine driver handles this exact pattern.
 >
-> **Focus:** A digital MEMS mic is, from Linux's view, an I²S DAI without any control interface — clocks in, samples out. It samples audio internally, outputs PCM on SD when WS/LR-clock + BCLK are running. To the SAI driver, the mic is just an I²S slave. Wire SAI to the mic in DT via `simple-audio-card`, then `arecord` captures the audio. That is the whole audio-input pipeline.
+> **Focus:** A digital MEMS mic is, from Linux's view, an I²S DAI without any control interface, clocks in, samples out. It samples audio internally, outputs PCM on SD when WS/LR-clock + BCLK are running. To the SAI driver, the mic is just an I²S slave. Wire SAI to the mic in DT via `simple-audio-card`, then `arecord` captures the audio. That is the whole audio-input pipeline.
 >
 > **Tooling.** This chapter uses `alsa-utils` (`arecord`, `aplay`), `i2c-tools`.
-> **ALSA** - Linux's kernel and user-space audio stack.
+> **ALSA:** Linux's kernel and user-space audio stack.
 > - **Ubuntu-base (target):** `apt install alsa-utils i2c-tools`
 > - **Buildroot:** `BR2_PACKAGE_ALSA_UTILS=y BR2_PACKAGE_I2C_TOOLS=y`
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
 ## 78.1  Sensor comparison
@@ -30,7 +30,7 @@ status: draft
 | | TDK InvenSense INMP441 | TDK ICS-43434 | TDK ICS-41350 (PDM) |
 |---|---|---|---|
 | Interface | I²S | I²S | PDM (1-bit pulse-density) |
-| Sample rate | 7.19 – 52.7 kHz | 7.19 – 51.6 kHz | 1.024 – 3.072 MHz PDM (decimates to ~48 kHz) |
+| Sample rate | 7.19, 52.7 kHz | 7.19, 51.6 kHz | 1.024, 3.072 MHz PDM (decimates to ~48 kHz) |
 | Resolution | 24-bit | 24-bit | 1-bit out, 16-bit after decimation |
 | SNR | 61 dBA | 65 dBA | 64 dBA |
 | Sensitivity | -26 dBFS @ 94 dB SPL | -26 dBFS | -26 dBFS |
@@ -42,8 +42,8 @@ status: draft
 
 **Pick guide:**
 - **INMP441**: cheap, common, fine for voice. Default choice.
-- **ICS-43434**: lower noise. better for music or low-volume signal.
-- **PDM**: more compact wiring (1-bit data). but needs the SoC's PDM-decoder hardware. i.MX6ULL's SAI has *only I²S*, no native PDM. So PDM mics are awkward on i.MX6ULL — skip.
+- **ICS-43434**: lower noise. Better for music or low-volume signal.
+- **PDM**: more compact wiring (1-bit data). But needs the SoC's PDM-decoder hardware. I.MX6ULL's SAI has *only I²S*, no native PDM. So PDM mics are awkward on i.MX6ULL, skip.
 
 ## 78.2  I²S protocol primer
 
@@ -70,7 +70,7 @@ The "master" generates BCLK + LRCLK. The "slave" follows. For a microphone, the 
    SD:     ────── 24 bits of L sample ──────── 24 bits of R sample ────
 ```
 
-The mic outputs its sample MSB-first during its assigned LRCLK phase. Single mic → mono. two mics with LR-select pin strapped opposite → stereo.
+The mic outputs its sample MSB-first during its assigned LRCLK phase. Single mic → mono. Two mics with LR-select pin strapped opposite → stereo.
 
 ## 78.3  How the data flows in Linux
 
@@ -84,14 +84,14 @@ The mic outputs its sample MSB-first during its assigned LRCLK phase. Single mic
                               /dev/snd/pcmC0D0c  ← user-space arecord reads
 ```
 
-There's no I²C control — the mic has no registers. The wires alone (BCLK, LRCLK, SD, LR-select strap) determine its behavior.
+There's no I²C control, the mic has no registers. The wires alone (BCLK, LRCLK, SD, LR-select strap) determine its behavior.
 
 ### What the kernel needs
 
 The kernel needs an ASoC sound card consisting of:
 
 1. **CPU DAI**: the i.MX SAI driver (mainline, no work).
-2. **Codec DAI**: a stub representing the mic. The mainline driver for this is called **`dmic`** (digital mic) or — for I²S mics specifically — there's no chip driver because the mic has no registers. The *ASoC machine driver* uses a fake codec.
+2. **Codec DAI**: a stub representing the mic. The mainline driver for this is called **`dmic`** (digital mic) or, for I²S mics specifically, there's no chip driver because the mic has no registers. The *ASoC machine driver* uses a fake codec.
 3. **Machine driver**: wires the two DAIs together. Use **`simple-audio-card`** for this.
 
 `simple-audio-card` (in `sound/soc/generic/simple-card.c`) is a generic ASoC machine driver. You describe the audio topology in DT. The driver builds a working sound card from the description. No coding required.
@@ -139,7 +139,7 @@ sound {
 Three nodes:
 
 1. **`&sai2`**: enable the i.MX SAI2 peripheral. The mainline `fsl_sai.c` handles it.
-2. **`dmic_codec`**: a *fake* codec node. The mainline `sound/soc/codecs/dmic.c` driver (`compatible = "dmic-codec"`) is a generic "digital microphone" placeholder — no registers, no control, just claims to be an ASoC codec DAI.
+2. **`dmic_codec`**: a *fake* codec node. The mainline `sound/soc/codecs/dmic.c` driver (`compatible = "dmic-codec"`) is a generic "digital microphone" placeholder, no registers, no control, just claims to be an ASoC codec DAI.
 3. **`sound`**: the machine. `simple-audio-card` reads this and builds the sound card by wiring sai2's DAI to dmic_codec's DAI. `bitclock-master = <&cpu_dai>` tells the framework that the SoC generates BCLK.
 
 After boot:
@@ -157,7 +157,7 @@ The mic appears as a capture device. Now record:
 Recording WAVE 'test.wav' : Signed 32 bit Little Endian, Rate 48000 Hz, Mono
 ```
 
-The `S32_LE` format is required because INMP441 outputs 24 bits in a 32-bit slot. ALSA can downconvert to 16-bit via `plughw` (the `plug` prefix). writing directly to `hw:0,0` requires S32_LE.
+The `S32_LE` format is required because INMP441 outputs 24 bits in a 32-bit slot. ALSA can downconvert to 16-bit via `plughw` (the `plug` prefix). Writing directly to `hw:0,0` requires S32_LE.
 
 Listen back on the host machine: it'll be quiet (single mic, low input) but speech should be audible.
 
@@ -166,25 +166,25 @@ Listen back on the host machine: it'll be quiet (single mic, low input) but spee
 Worth understanding even when you do not write the drivers yourself:
 
 1. **SAI** is the i.MX's I²S peripheral. The mainline `fsl_sai.c` driver:
-   - Configures BCLK and LRCLK from a parent clock (the PLL4_AUDIO_DIV in our DT, at 24.576 MHz — exactly 512 × 48 kHz, a "perfect" rate for audio).
+   - Configures BCLK and LRCLK from a parent clock (the PLL4_AUDIO_DIV in our DT, at 24.576 MHz, exactly 512 × 48 kHz, a "perfect" rate for audio).
    - Programs its TX/RX FIFO settings.
    - Sets up an SDMA channel to copy RX FIFO → DDR (Ch 51).
-**DDR** - external DRAM that must be configured and trained before most software can run from it.
+> **DDR:** external DRAM that must be configured and trained before most software can run from it.
    - Implements the ASoC `snd_soc_dai_ops`: `set_fmt` (I²S vs left-justified), `hw_params` (sample rate, channels), `trigger` (start/stop).
 
 2. **ASoC core** binds the SAI DAI (CPU side) to the `dmic-codec` DAI (codec side). At `hw_params` time, both DAIs negotiate format and sample rate.
 
 3. **PCM substream**: ALSA creates a substream backed by a DMA-coherent ring buffer in DDR. The SAI's SDMA channel writes into it cyclically (Ch 51.5).
 > **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
-**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
+> **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
 
 4. **User-space**: opens `/dev/snd/pcmC0D0c`, configures format/rate via ioctl, reads samples. Reads block until enough data is available. ALSA copies from the ring buffer.
 
-In the data path: mic → BCLK timing → SD bits → SAI's RX FIFO → SDMA → DDR ring buffer → memcpy → user-space buffer. Zero CPU between mic and SDMA. one memcpy per `read()`.
+In the data path: mic → BCLK timing → SD bits → SAI's RX FIFO → SDMA → DDR ring buffer → memcpy → user-space buffer. Zero CPU between mic and SDMA. One memcpy per `read()`.
 
 ## 78.6  A "machine driver" you might write
 
-`simple-audio-card` handles most use cases. But for unusual topologies (multiple mics with different formats. on-the-fly clock-rate changes. DAPM widgets representing mute relays), you may write a custom machine driver. The shape:
+`simple-audio-card` handles most use cases. But for unusual topologies (multiple mics with different formats. On-the-fly clock-rate changes. DAPM widgets representing mute relays), you may write a custom machine driver. The shape:
 
 ```c
 /* sound/soc/fsl/my-mic-machine.c — sketch */
@@ -231,9 +231,9 @@ Two INMP441s on the same bus, one strapped LR=GND (Left), one strapped LR=VDD (R
    └── INMP441 #2, LR → VDD  (drives SD during right phase)
 ```
 
-Both mics monitor LRCLK. each drives SD only during its assigned phase. The SoC sees stereo without any extra wires.
+Both mics monitor LRCLK. Each drives SD only during its assigned phase. The SoC sees stereo without any extra wires.
 
-DT: change `simple-audio-card,routing` to declare two channels. The kernel doesn't need to know how many mics — that's a wiring choice.
+DT: change `simple-audio-card,routing` to declare two channels. The kernel doesn't need to know how many mics, that's a wiring choice.
 
 ```sh
 [root@pa-mini:~]# arecord -D plughw:0,0 -f S32_LE -r 48000 -c 2 -d 5 stereo.wav
@@ -246,34 +246,34 @@ The captured file plays back in stereo on the host.
 1. **Wire INMP441 to SAI2** on the i.MX6ULL: BCLK, LRCLK (=WS), SD, VDD, GND, LR-strap.
 2. **Add DT.** Both `&sai2` and `simple-audio-card` as in §78.4.
 3. **Verify enumeration.** `arecord -l` should show the mic. `cat /proc/asound/cards`.
-4. **Record.** `arecord -D plughw:0,0 -f S32_LE -r 48000 -c 1 -d 5 voice.wav`. Speak. copy file to host. play back. Speech should be clear though quiet.
+4. **Record.** `arecord -D plughw:0,0 -f S32_LE -r 48000 -c 1 -d 5 voice.wav`. Speak. Copy file to host. Play back. Speech should be clear though quiet.
 5. **Check volume.** Run `arecord ... | aplay` (loopback on the same i.MX, with speakers via Ch 53). Hear yourself.
-6. **Stereo.** Add a second INMP441, strap LR opposite. Record 2-channel. Check L and R are different (cover one mic while recording. that channel goes quiet).
+6. **Stereo.** Add a second INMP441, strap LR opposite. Record 2-channel. Check L and R are different (cover one mic while recording. That channel goes quiet).
 7. **Sample-rate variation.** Try 16 kHz, 32 kHz, 48 kHz. Verify the chip + SAI cooperate.
-8. **FFT in user-space.** Pipe `arecord` into a small program that does FFT over 8192-sample windows. plot spectrum live with gnuplot. Watch frequencies appear as you whistle.
+8. **FFT in user-space.** Pipe `arecord` into a small program that does FFT over 8192-sample windows. Plot spectrum live with gnuplot. Watch frequencies appear as you whistle.
 
 ## 78.9  Pitfalls
 
 - **Wrong format.** INMP441 outputs 24-bit MSB-first I²S. Configure for S32_LE in ALSA. The 24 audio bits sit in the high 24 bits of the 32-bit slot. The bottom 8 bits are zero. S24_LE *may* work depending on ASoC version.
 - **MCLK not provided.** Some I²S mics need an MCLK in addition to BCLK + LRCLK. INMP441 does *not*. ICS-43434 also doesn't. But other I²S codecs do. Verify against datasheet.
 - **Master/slave mismatch.** Both SoC and mic configured as slaves → no clock generated. INMP441 is always a slave (chip can't generate clocks).
-- **WS polarity wrong.** Some chips expect LRCLK = HIGH for left. others use LOW. `simple-audio-card,format = "i2s"` defaults to "left = LOW" (LJ vs I²S subtly differ).
-- **LR-strap floating.** INMP441 reads middle state. outputs nothing or noisy data. Strap explicitly.
+- **WS polarity wrong.** Some chips expect LRCLK = HIGH for left. Others use LOW. `simple-audio-card,format = "i2s"` defaults to "left = LOW" (LJ vs I²S subtly differ).
+- **LR-strap floating.** INMP441 reads middle state. Outputs nothing or noisy data. Strap explicitly.
 - **Single mic, stereo requested.** ALSA gives you a stereo stream with the second channel duplicated (or zero, depending on plug setup). For real stereo, wire two physical mics.
 - **DC-offset / wind noise.** MEMS mics pick up low-frequency rumble. Apply a high-pass filter in user-space (`sox` has a `highpass 100` effect).
-- **Self-noise floor not what's specified.** A 61 dBA SNR INMP441 in a quiet room measures ~33 dB SPL noise floor — anything quieter is masked. To capture whispers, choose ICS-43434 (4 dB lower noise).
+- **Self-noise floor not what's specified.** A 61 dBA SNR INMP441 in a quiet room measures ~33 dB SPL noise floor, anything quieter is masked. To capture whispers, choose ICS-43434 (4 dB lower noise).
 > **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
-**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
+> **SPL:** Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 - **dmic-codec compatible string.** Must be exactly `"dmic-codec"`. If the kernel was built without `CONFIG_SND_SOC_DMIC=y`, the placeholder driver is missing and the card fails to probe.
 
 ## 78.10  Going deeper
 
-- **`sound/soc/generic/simple-card.c`** — read the parsing logic to understand what `simple-audio-card` accepts.
-- **`sound/soc/codecs/dmic.c`** — the dmic placeholder driver (~150 lines).
-- **`sound/soc/fsl/fsl_sai.c`** — the i.MX SAI driver.
-- **`Documentation/devicetree/bindings/sound/simple-card.yaml`** — DT binding reference.
-- **INMP441 datasheet (TDK InvenSense)** — timing diagram, LR-strap behavior.
-- **ICS-43434 datasheet** — similar, with the SNR improvement.
+- **`sound/soc/generic/simple-card.c`**: read the parsing logic to understand what `simple-audio-card` accepts.
+- **`sound/soc/codecs/dmic.c`**: the dmic placeholder driver (~150 lines).
+- **`sound/soc/fsl/fsl_sai.c`**: the i.MX SAI driver.
+- **`Documentation/devicetree/bindings/sound/simple-card.yaml`**: DT binding reference.
+- **INMP441 datasheet (TDK InvenSense)**: timing diagram, LR-strap behavior.
+- **ICS-43434 datasheet**: similar, with the SNR improvement.
 - **ALSA documentation** at <https://www.alsa-project.org/> for advanced topics (ringbuffer tuning, sample-rate conversion).
 
-> Next chapter: **Chapter 79 — Health sensors (MAX30100 / MAX30102).** PPG-based heart-rate and SpO₂ measurement. The I²C interface with FIFO + the user-space DSP to extract HR/SpO₂.
+> Next chapter: **Chapter 79: Health sensors (MAX30100 / MAX30102).** PPG-based heart-rate and SpO₂ measurement. The I²C interface with FIFO + the user-space DSP to extract HR/SpO₂.

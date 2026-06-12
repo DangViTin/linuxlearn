@@ -1,27 +1,27 @@
 ---
 chapter: 32
 title: /proc, /sys, devtmpfs
-part: V — Root filesystem & user space
+part: V - Root filesystem & user space
 estimated_pages: 18
 status: draft
 ---
 
-# Chapter 32 — /proc, /sys, devtmpfs
+# Chapter 32: /proc, /sys, devtmpfs
 
 > **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
 > After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
 
 
-> **What:** the three virtual filesystems through which user space sees and pokes the kernel — `procfs` (process & system info), `sysfs` (the modern device model), and `devtmpfs` (device nodes). Each is RAM-backed and populated by the kernel.
-> **sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+> **What:** the three virtual filesystems through which user space sees and pokes the kernel, `procfs` (process & system info), `sysfs` (the modern device model), and `devtmpfs` (device nodes). Each is RAM-backed and populated by the kernel.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
-> **Why:** every later chapter pokes `/proc` or `/sys` somewhere — to read a sensor, to set a GPIO, to inspect a driver. Knowing which virtual filesystem holds what is what makes the difference between following a tutorial and debugging an unfamiliar problem.
+> **Why:** every later chapter pokes `/proc` or `/sys` somewhere, to read a sensor, to set a GPIO, to inspect a driver. Knowing which virtual filesystem holds what is what makes the difference between following a tutorial and debugging an unfamiliar problem.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Focus:** **the file-as-interface pattern.** In Unix everything is a file. The kernel takes that literally. `cat /proc/cpuinfo` reads CPU info. `echo 1 > /sys/class/leds/led0/brightness` turns on an LED. `cat /proc/interrupts` shows IRQ counts. Once you know this idiom, a lot of debugging needs no code.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 
 ## 32.1  Three virtual filesystems, three jobs
@@ -32,9 +32,9 @@ status: draft
 | **sysfs** | `/sys` | The kernel's device model (drivers, buses, devices) | Modern device introspection and control |
 | **devtmpfs** | `/dev` | Device nodes auto-created by the kernel | Actually reading from / writing to devices |
 
-All three are **virtual** — RAM-backed, no physical storage. They are populated by the kernel on the fly. Every entry corresponds to a kernel data structure. Writing to a file usually calls a kernel callback that parses the bytes.
+All three are **virtual**, RAM-backed, no physical storage. They are populated by the kernel on the fly. Every entry corresponds to a kernel data structure. Writing to a file usually calls a kernel callback that parses the bytes.
 
-## 32.2  procfs — the process FS that grew
+## 32.2  procfs, the process FS that grew
 
 `/proc` was originally a way for `ps` to list processes. Every running process gets a directory named for its PID. That part is unchanged in 30 years:
 
@@ -43,7 +43,7 @@ All three are **virtual** — RAM-backed, no physical storage. They are populate
 1   116  2    33   45   685  9          consoles    cpuinfo   ...
 ```
 
-Numbered directories are processes. `1` is `init`. `2` is `kthreadd`. later entries are everything else.
+Numbered directories are processes. `1` is `init`. `2` is `kthreadd`. Later entries are everything else.
 
 Inside a process directory:
 
@@ -63,7 +63,7 @@ root         stat         statm        status       task/        wchan
 | `root` | Symlink to the process's root (changes if `chroot`'d) |
 | `environ` | Environment variables, null-separated |
 | `fd/` | Directory of symlinks for each open file descriptor |
-| `maps` | The process's memory map — every region with addresses and permissions |
+| `maps` | The process's memory map, every region with addresses and permissions |
 | `mem` | The process's address space, as a file (mostly inaccessible without `ptrace`) |
 | `status` | Human-readable summary: state, uid, memory, signals |
 | `stat` | Machine-readable: 50+ fields used by tools like `top` |
@@ -107,7 +107,7 @@ The non-PID entries in `/proc/` are global system info:
 | `/proc/sys/` | A whole subtree of *tunable* kernel parameters (more below) |
 | `/proc/<tid>/` | Per-thread variants (a thread is a task whose pid != tgid) |
 
-`/proc/sys/` is special — most files there are **writable** and tweak kernel behavior live:
+`/proc/sys/` is special, most files there are **writable** and tweak kernel behavior live:
 
 ```sh
 # Read the current value
@@ -134,9 +134,9 @@ kernel.osrelease = 6.6.0
 
 The values are the same. `sysctl` adds value-validation and persistence support via `/etc/sysctl.conf`.
 
-## 32.3  sysfs — the modern device model
+## 32.3  sysfs, the modern device model
 
-`/sys` is newer (kernel 2.5/2.6, ~2003). It exposes the **kernel device model** — every `struct device`, `struct device_driver`, `struct bus_type`, `struct class`, etc. — as a directory tree.
+`/sys` is newer (kernel 2.5/2.6, ~2003). It exposes the **kernel device model**, every `struct device`, `struct device_driver`, `struct bus_type`, `struct class`, etc., as a directory tree.
 
 Top-level layout:
 
@@ -148,18 +148,18 @@ kernel/  module/   power/
 
 Each is a different *view* of the same underlying graph:
 
-- **`/sys/devices/`** — the master tree. Every device the kernel knows about lives here exactly once, organized by physical topology (which bus is on which controller is on which CPU complex). Hierarchical and verbose.
-- **`/sys/bus/`** — devices grouped by *bus type* (`i2c`, `spi`, `platform`, `usb`, …). Each bus lists its devices and the drivers bound to them.
-- **`/sys/class/`** — devices grouped by *function* (`leds`, `gpio`, `tty`, `net`, …). Best for "I want all the LEDs" or "all the network interfaces."
-- **`/sys/block/`** — block devices (SD card, eMMC, USB sticks).
-- **`/sys/dev/`** — devices indexed by `major:minor` number.
-- **`/sys/module/`** — every loaded kernel module, with its parameters.
-- **`/sys/kernel/`** — kernel-internal stuff (security, slab, debug).
-- **`/sys/firmware/`** — info from firmware (the DT lives here as `/sys/firmware/devicetree/base/`).
+- **`/sys/devices/`**: the master tree. Every device the kernel knows about lives here exactly once, organized by physical topology (which bus is on which controller is on which CPU complex). Hierarchical and verbose.
+- **`/sys/bus/`**: devices grouped by *bus type* (`i2c`, `spi`, `platform`, `usb`, …). Each bus lists its devices and the drivers bound to them.
+- **`/sys/class/`**: devices grouped by *function* (`leds`, `gpio`, `tty`, `net`, …). Best for "I want all the LEDs" or "all the network interfaces."
+- **`/sys/block/`**: block devices (SD card, eMMC, USB sticks).
+- **`/sys/dev/`**: devices indexed by `major:minor` number.
+- **`/sys/module/`**: every loaded kernel module, with its parameters.
+- **`/sys/kernel/`**: kernel-internal stuff (security, slab, debug).
+- **`/sys/firmware/`**: info from firmware (the DT lives here as `/sys/firmware/devicetree/base/`).
 
 ### Walking a device
 
-The on-chip ADC (Chapter 49 will be all about this. here is a teaser):
+The on-chip ADC (Chapter 49 will be all about this. Here is a teaser):
 
 ```
 [root@pa-mini:~]# ls /sys/bus/iio/devices/
@@ -179,7 +179,7 @@ in_voltage0_raw   in_voltage_scale   power       subsystem      uevent
 1453
 ```
 
-That's the ADC reading channel 0 as a raw 12-bit value, with a known scale factor to convert to volts: `1453 × 0.806884765 / 1000 = 1.172 V`. No code. one `cat`.
+That's the ADC reading channel 0 as a raw 12-bit value, with a known scale factor to convert to volts: `1453 × 0.806884765 / 1000 = 1.172 V`. No code. One `cat`.
 
 ### Controlling a device
 
@@ -231,11 +231,11 @@ Freescale i.MX6 ULL 14x14 EVK Board
 fsl,imx6ul-uartfsl,imx6q-uartfsl,imx21-uart
 ```
 
-Each DT property is a file. each node is a directory. Mirrors the DT structure exactly.
+Each DT property is a file. Each node is a directory. Mirrors the DT structure exactly.
 
-## 32.4  devtmpfs — where device nodes live
+## 32.4  devtmpfs, where device nodes live
 
-Historically, `/dev/` was a regular directory populated at install time with `mknod` calls. Every device that *might* exist had a static node. Modern Linux replaces this with **`devtmpfs`** — a tmpfs that the kernel auto-populates whenever a device probes.
+Historically, `/dev/` was a regular directory populated at install time with `mknod` calls. Every device that *might* exist had a static node. Modern Linux replaces this with **`devtmpfs`**, a tmpfs that the kernel auto-populates whenever a device probes.
 
 Enable in kernel `.config`:
 
@@ -285,9 +285,9 @@ It creates device *nodes*, not the metadata around them. For things like:
 - Running scripts when a device appears (e.g., auto-mount a USB stick)
 
 …you need either **`udev`** (full-featured but heavy) or **`mdev`** (BusyBox's tiny alternative).
-**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
+> **udev:** the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 
-### `mdev` — BusyBox's user-space helper
+### `mdev`, BusyBox's user-space helper
 
 We already wired this up in Chapter 31's `rcS`:
 
@@ -296,9 +296,9 @@ echo /sbin/mdev > /proc/sys/kernel/hotplug
 /sbin/mdev -s
 ```
 
-The first line registers mdev as the kernel's hotplug agent: whenever a device appears or disappears, the kernel `fork`+`exec`s `/sbin/mdev` with environment variables describing the event. mdev then applies rules from `/etc/mdev.conf`.
+The first line registers mdev as the kernel's hotplug agent: whenever a device appears or disappears, the kernel `fork`+`exec`s `/sbin/mdev` with environment variables describing the event. Mdev then applies rules from `/etc/mdev.conf`.
 
-The second line says "scan `/sys` for everything that already exists and create any missing nodes" — useful right after boot for devices that were enumerated before mdev was wired up.
+The second line says "scan `/sys` for everything that already exists and create any missing nodes", useful right after boot for devices that were enumerated before mdev was wired up.
 
 A minimal `/etc/mdev.conf`:
 
@@ -322,29 +322,29 @@ The `@` prefix runs the command *after* the node is created (`$` runs *before*. 
 ## 32.5  Lab
 
 1. **Tour `/proc`.** Run `cat /proc/cpuinfo`, `/proc/meminfo`, `/proc/version`, `/proc/cmdline`, `/proc/interrupts`. Match each output line to what you know about the hardware.
-2. **Tour `/sys/class/`.** `ls` each subdirectory. identify which one corresponds to your LED, your network interface, your I²C buses.
+2. **Tour `/sys/class/`.** `ls` each subdirectory. Identify which one corresponds to your LED, your network interface, your I²C buses.
 3. **Manually toggle the LED via sysfs.** `echo 1 > /sys/class/leds/led0/brightness` should turn the LED on.
-4. **Read the ADC.** `cat /sys/bus/iio/devices/iio:device0/in_voltage0_raw` — get a raw value. Apply the scale. compute volts. Touch the ADC pin and re-read. see it change.
+4. **Read the ADC.** `cat /sys/bus/iio/devices/iio:device0/in_voltage0_raw`, get a raw value. Apply the scale. Compute volts. Touch the ADC pin and re-read. See it change.
 5. **Find the device tree.** Walk `/sys/firmware/devicetree/base/` and find the I²C controller's `compatible` string. Verify it matches what's in `imx6ull.dtsi`.
 6. **Make mdev set audio permissions.** Add `snd/[!c].*` to `/etc/mdev.conf` (with a group that exists). Reboot. `ls -l /dev/snd/*` should show the new permissions.
 
 ## 32.6  Pitfalls
 
 - **`/proc/` writes that don't take effect.** Some `/proc/sys/` entries are read-only on certain configurations. Symptom: `echo 1 > /proc/sys/...` succeeds, but `cat` still shows the old value. Use `sysctl -w` and check the return code.
-- **`sysfs` attribute file write that hangs.** If a `store` callback in the driver does something blocking (e.g., reset the chip), the `echo` shell command appears to hang. It's not hung — it's waiting for the kernel callback to complete. Normal.
+- **`sysfs` attribute file write that hangs.** If a `store` callback in the driver does something blocking (e.g., reset the chip), the `echo` shell command appears to hang. It's not hung, it's waiting for the kernel callback to complete. Normal.
 - **devtmpfs not mounted.** Without `CONFIG_DEVTMPFS_MOUNT=y`, the kernel doesn't auto-mount at boot. Either set that config or mount manually in early `rcS`. Otherwise `/dev/console` may not exist and you get the dreaded "Warning: unable to open an initial console" message.
 - **Confusing `/proc/<pid>/mem` with `/proc/<pid>/maps`.** `maps` is the *layout* (text, addresses, permissions). `mem` is the raw bytes. Reading `mem` without `ptrace` is usually denied.
 - **`/proc/sys/kernel/hotplug` overwritten.** If you `echo /sbin/mdev > /proc/sys/kernel/hotplug` and later run something that sets it to something else (rare but possible), mdev stops working. Check the file's value at runtime.
 - **Forgetting that `/sys` paths are case-sensitive.** `/sys/class/Leds/` won't work. It's `leds`.
-- **Sysfs path stability assumptions.** Don't hard-code paths under `/sys/devices/`. they rename across kernel versions. Use `/sys/class/...` in scripts.
+- **Sysfs path stability assumptions.** Don't hard-code paths under `/sys/devices/`. They rename across kernel versions. Use `/sys/class/...` in scripts.
 
 ## 32.7  Going deeper
 
-- **`Documentation/filesystems/proc.rst`** — comprehensive procfs reference.
+- **`Documentation/filesystems/proc.rst`**: comprehensive procfs reference.
 - **`Documentation/filesystems/sysfs.rst`** and `Documentation/driver-api/driver-model/`.
-- **`Documentation/admin-guide/sysctl/`** — all the `/proc/sys/` knobs.
-- **`man 5 proc`** — concise but complete procfs guide.
-- **`man udev`** and **`man udevadm`** — when you outgrow mdev. Most embedded systems can stick with mdev.
-- **The `iio_utils` user-space tools** — for richer ADC/sensor interaction than `cat`/`echo`.
+- **`Documentation/admin-guide/sysctl/`**: all the `/proc/sys/` knobs.
+- **`man 5 proc`**: concise but complete procfs guide.
+- **`man udev`** and **`man udevadm`**, when you outgrow mdev. Most embedded systems can stick with mdev.
+- **The `iio_utils` user-space tools**: for richer ADC/sensor interaction than `cat`/`echo`.
 
-> Next chapter: **Chapter 33 — Init systems.** With sysfs/proc/devtmpfs understood, we look at PID 1's job in detail and compare BusyBox init, sysvinit, and systemd.
+> Next chapter: **Chapter 33: Init systems.** With sysfs/proc/devtmpfs understood, we look at PID 1's job in detail and compare BusyBox init, sysvinit, and systemd.

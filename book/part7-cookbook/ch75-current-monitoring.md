@@ -1,21 +1,21 @@
 ---
 chapter: 75
 title: Current & power monitoring (INA219 / INA226 / INA3221)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 20
 status: draft
 ---
 
-# Chapter 75 — Current & power monitoring
-**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+# Chapter 75: Current & power monitoring
+> **regmap:** a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 > **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
 
-> **What:** three I²C high-side current/voltage monitors from Texas Instruments: **INA219** (12-bit, the classic), **INA226** (16-bit, modern, programmable averaging), **INA3221** (3-channel, simultaneous-sample 3-rail monitor). For each: physics, register map, the *calibration register* that is the most common bug, and a from-scratch INA219 driver. Plus the **hwmon** subsystem — the sibling of IIO that current monitors usually live in.
-> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **What:** three I²C high-side current/voltage monitors from Texas Instruments: **INA219** (12-bit, the classic), **INA226** (16-bit, modern, programmable averaging), **INA3221** (3-channel, simultaneous-sample 3-rail monitor). For each: physics, register map, the *calibration register* that is the most common bug, and a from-scratch INA219 driver. Plus the **hwmon** subsystem, the sibling of IIO that current monitors usually live in.
+> **IIO:** Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
 > **Why:** every device that draws power benefits from knowing how much. Production telemetry (per-rail consumption logged to fleet management), fault detection (overcurrent → shutdown), low-power optimisation (which subsystem ate the budget?), battery-life prediction. INA219 in particular costs $1.50 and lets you watch any 0–26 V rail at 1 mA resolution.
 >
-> **Focus:** The shunt converts current to voltage. The chip's ADC converts voltage to a count. The calibration register tells the chip the shunt's value, so the chip can report current directly. Get the shunt size right (low enough to not waste power. high enough to get good resolution) and program the calibration register to match — the chip then reports current directly in amperes. Without the calibration register, the Current and Power registers read zero (or numbers in unknown units, depending on the chip).
+> **Focus:** The shunt converts current to voltage. The chip's ADC converts voltage to a count. The calibration register tells the chip the shunt's value, so the chip can report current directly. Get the shunt size right (low enough to not waste power. High enough to get good resolution) and program the calibration register to match, the chip then reports current directly in amperes. Without the calibration register, the Current and Power registers read zero (or numbers in unknown units, depending on the chip).
 
 
 ## 75.1  Chip comparison
@@ -40,7 +40,7 @@ status: draft
 - **INA226**: better noise, programmable averaging, alert pin. Power-budget profiling.
 - **INA3221**: 3 rails at once with their own alerts. Multi-rail system telemetry.
 
-## 75.2  The physics — shunt + amplifier
+## 75.2  The physics, shunt + amplifier
 
 You measure current with a low-value precision resistor (the **shunt**) in series with the load:
 
@@ -65,13 +65,13 @@ The INA's two inputs straddle the shunt. The chip's ADC measures the differentia
 
 **Shunt selection** is the design decision:
 
-- Too small (< 0.01 Ω): poor resolution. noise limits accuracy.
-- Too large (> 0.5 Ω): wastes power. voltage drop on the rail.
+- Too small (< 0.01 Ω): poor resolution. Noise limits accuracy.
+- Too large (> 0.5 Ω): wastes power. Voltage drop on the rail.
 - Sweet spot: choose `R_shunt = V_shunt_max / I_max` where V_shunt_max ≈ 50 mV (well below INA's 320 mV max).
 
 Example: monitoring a rail expected to draw up to 2 A. R_shunt = 50 mV / 2 A = 25 mΩ. Power dissipation: I² × R = 4 × 0.025 = 100 mW (use a 1/4 W resistor with margin). Resolution: 10 µV / 25 mΩ = 0.4 mA per LSB.
 
-## 75.3  Protocol — INA219
+## 75.3  Protocol, INA219
 
 Register map:
 
@@ -92,7 +92,7 @@ Each register is 16 bits, **big-endian** on the wire. A read of register 0x02 lo
 
 (0x40 << 1 = 0x80 for write. 0x40 << 1 | 1 = 0x81 for read.)
 
-### The calibration register — finally explained
+### The calibration register, finally explained
 
 The chip's internal `Current` register doesn't measure current directly. It computes:
 
@@ -125,22 +125,22 @@ Write 16384 (0x4000) to register 0x05. Now `Current_register` reads in units of 
 
 **Power register** (0x03) auto-computes as `(Current × BusVoltage) >> 11` with LSB = `20 × Current_LSB`. If `Current_LSB = 100 µA`, `Power_LSB = 2 mW`.
 
-The fixed `4096` and `0.04096` and `2048` (for power) come from the ADC's internal scaling — they're not adjustable, they're physical constants of the chip's design. The Calibration register is just a multiplier that maps "raw shunt voltage" to "current in your units."
+The fixed `4096` and `0.04096` and `2048` (for power) come from the ADC's internal scaling, they're not adjustable, they're physical constants of the chip's design. The Calibration register is just a multiplier that maps "raw shunt voltage" to "current in your units."
 
 This is the part most people miss on the first try. Without programming Calibration:
 
-- The Shunt Voltage register *does* work — it reads in 10 µV units regardless.
+- The Shunt Voltage register *does* work, it reads in 10 µV units regardless.
 - The Bus Voltage register works.
 - The Current register reads zero (Cal = 0 ⇒ Current = 0).
 - The Power register reads zero.
 
-So a "first-light" sanity check that just reads Shunt Voltage will work fine and seem to confirm everything... and then you wonder why Current reads zero.
+So a "first-light" sanity check that just reads Shunt Voltage will work fine and seem to confirm everything... And then you wonder why Current reads zero.
 
 ## 75.4  How the mainline `ina2xx` driver works
 
-Source: `drivers/hwmon/ina2xx.c` (~700 lines). Covers INA219, INA220, INA226, INA230, INA231 — the whole INA family.
+Source: `drivers/hwmon/ina2xx.c` (~700 lines). Covers INA219, INA220, INA226, INA230, INA231, the whole INA family.
 
-The driver auto-detects which chip based on `compatible` strings, looks up its parameters from a per-chip `ina2xx_config` table, and registers an hwmon device. The hwmon framework exposes `/sys/class/hwmon/hwmon0/in0_input`, `curr1_input`, `power1_input` — same shape across all hwmon-class drivers.
+The driver auto-detects which chip based on `compatible` strings, looks up its parameters from a per-chip `ina2xx_config` table, and registers an hwmon device. The hwmon framework exposes `/sys/class/hwmon/hwmon0/in0_input`, `curr1_input`, `power1_input`, same shape across all hwmon-class drivers.
 
 ```c
 /* Simplified */
@@ -214,7 +214,7 @@ The hwmon framework's standard attribute names: `in*_input` = voltage in millivo
 
 ## 75.5  Writing an INA219 driver from scratch
 
-We'll write a from-scratch driver that follows the hwmon convention (not IIO this time — hwmon is the canonical home for power monitoring). ~250 lines.
+We'll write a from-scratch driver that follows the hwmon convention (not IIO this time, hwmon is the canonical home for power monitoring). ~250 lines.
 
 `myina219.c`:
 
@@ -490,10 +490,10 @@ power1:        0.62 W
 
 `sensors` (from lm-sensors package) auto-discovers and prints all hwmon devices. Production telemetry scrapes `/sys/class/hwmon/` directly.
 
-## 75.6  hwmon vs IIO — when to use which
+## 75.6  hwmon vs IIO, when to use which
 
 Both expose sensor readings via sysfs. Conventions and audience differ:
-**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 | | hwmon | IIO |
 |---|---|---|
@@ -504,9 +504,9 @@ Both expose sensor readings via sysfs. Conventions and audience differ:
 | Multi-axis sensors | awkward (would need many channels) | first-class (X/Y/Z modifiers) |
 | Naming | `in*_input`, `curr*_input` | `in_<type>_<modifier>_raw` |
 
-Current monitors live in hwmon. IMUs, ADCs, and environmental sensors live in IIO. A few chips have both drivers — pick one in your kernel config and disable the other.
+Current monitors live in hwmon. IMUs, ADCs, and environmental sensors live in IIO. A few chips have both drivers, pick one in your kernel config and disable the other.
 
-## 75.7  INA226 — improved sibling
+## 75.7  INA226, improved sibling
 
 INA226's interface is nearly identical to INA219. The registers are mostly the same. Improvements:
 
@@ -517,7 +517,7 @@ INA226's interface is nearly identical to INA219. The registers are mostly the s
 
 Driver-wise: same `ina2xx.c`, just with `compatible = "ti,ina226"` and different per-register multipliers. From-scratch, you'd copy the INA219 driver and update the constants.
 
-## 75.8  INA3221 — 3-channel
+## 75.8  INA3221, 3-channel
 
 INA3221 is **three independent measurement channels** in one chip, with three pairs of shunt-voltage / bus-voltage registers (channels 1, 2, 3). Plus three alert pins.
 
@@ -554,38 +554,38 @@ Result: `/sys/class/hwmon/hwmon0/in*_label`, `in*_input`, `curr*_input` × 3 cha
 
 ## 75.9  Lab
 
-1. **Build a test rig.** Wire INA219 high-side on a 5 V rail going to your i.MX6ULL through a known current — say a 47 Ω resistor to GND (≈ 100 mA load).
+1. **Build a test rig.** Wire INA219 high-side on a 5 V rail going to your i.MX6ULL through a known current, say a 47 Ω resistor to GND (≈ 100 mA load).
 2. **i2cdetect.** Verify 0x40. With A0/A1 pin strapping you can put up to 16 INA219s on one bus.
 3. **Build and load `myina219.ko`.** Verify `in1_input` ≈ 5000 (5 V), `curr1_input` ≈ 106 mA.
-4. **Vary the load.** Swap the resistor. verify current scales linearly.
+4. **Vary the load.** Swap the resistor. Verify current scales linearly.
 5. **Sanity-check shunt voltage.** `in0_input` should equal `R_shunt × I = 0.025 × 0.106 = 2.65 mV`. The 16-bit shunt-voltage register holds raw value 265 (since 265 × 10 µV = 2650 µV = 2.65 mV).
 6. **Forget the calibration.** Modify `mi_init` to skip the `mi_write16(... REG_CALIBRATION ...)` line. Reload. Verify Current/Power read zero, while Shunt and Bus still work. This is the classic gotcha.
 7. **Switch to the mainline driver.** Use `compatible = "ti,ina219"`, set `shunt-resistor`, reboot. Confirm same values.
-8. **`sensors` output.** Install lm-sensors. run `sensors`. verify your INA appears with all channels.
+8. **`sensors` output.** Install lm-sensors. Run `sensors`. Verify your INA appears with all channels.
 
 ## 75.10  Pitfalls
 
 - **Calibration register left at zero.** Current and Power read zero forever. The #1 INA gotcha. You'll lose an hour to it.
 - **Shunt placement on low-side.** INA219 is *high-side* (V+ and V− both near VBUS). Low-side measurement is also possible (V+ at shunt-load side, V− at GND) but limits range to bus voltages near GND. For motor PWM where you want to keep GND clean, high-side is mandatory.
 > **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
-**PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+> **PWM:** Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 - **Shunt too small.** 1 mΩ shunt + 100 mA load = 100 µV shunt voltage = 10 LSB on INA219 = 5–10 LSB of noise. Get a bigger shunt or use INA226.
 - **Shunt too big.** 1 Ω shunt + 1 A load = 1 W dissipated in the resistor. Resistor heats, drift, power waste.
-- **Bus voltage > 26 V.** INA219's max bus voltage. Higher = damage. INA226 goes to 36 V. even higher needs different chips (INA138, INA260).
+- **Bus voltage > 26 V.** INA219's max bus voltage. Higher = damage. INA226 goes to 36 V. Even higher needs different chips (INA138, INA260).
 - **Common-mode voltage limit.** Both INA pins must sit within the chip's input range. On a high-side shunt at 24 V, V+ and V- are both close to 24 V. INA219 is rated up to 26 V, so that is fine. On a 36 V rail, use INA226.
-- **PWM-controlled load measurement.** Switching loads at kHz rates produce ripple that the INA's slow ADC averages — you get the mean current, not peak. For peak measurement, use a faster current-sense amplifier + scope.
-- **DC blocking on dynamic loads.** If your "current monitor" is reading near zero and you're sure load is drawing power, check if there's a series capacitor isolating DC — capacitor blocks DC current entirely. The shunt-amplifier reads zero.
+- **PWM-controlled load measurement.** Switching loads at kHz rates produce ripple that the INA's slow ADC averages, you get the mean current, not peak. For peak measurement, use a faster current-sense amplifier + scope.
+- **DC blocking on dynamic loads.** If your "current monitor" is reading near zero and you're sure load is drawing power, check if there's a series capacitor isolating DC, capacitor blocks DC current entirely. The shunt-amplifier reads zero.
 - **Mismatched A0/A1 strapping in DT vs hardware.** DT says `reg = <0x40>` but board pinned to 0x44. Silent failure.
 
 ## 75.11  Going deeper
 
-- **`drivers/hwmon/ina2xx.c`** — production driver covering the INA family.
-- **`drivers/hwmon/ina3221.c`** — multi-channel.
-- **INA219 datasheet (TI SBOS448G)** — calibration formula appendix. current_LSB choice guide.
-- **INA226 datasheet (TI SBOS547A)** — averaging mode tradeoffs. alert configuration.
-- **`Documentation/hwmon/`** — hwmon framework documentation. ABI. convention.
-**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
-- **`Documentation/hwmon/sysfs-interface.rst`** — the canonical attribute naming reference.
-- **`sensors-detect` / `sensors`** — lm-sensors user-space tooling.
+- **`drivers/hwmon/ina2xx.c`**: production driver covering the INA family.
+- **`drivers/hwmon/ina3221.c`**: multi-channel.
+- **INA219 datasheet (TI SBOS448G)**: calibration formula appendix. Current_LSB choice guide.
+- **INA226 datasheet (TI SBOS547A)**: averaging mode tradeoffs. Alert configuration.
+- **`Documentation/hwmon/`**: hwmon framework documentation. ABI. Convention.
+> **ABI:** Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
+- **`Documentation/hwmon/sysfs-interface.rst`**: the canonical attribute naming reference.
+- **`sensors-detect` / `sensors`**: lm-sensors user-space tooling.
 
-> Next chapter: **Chapter 76 — Battery fuel gauge + charger.** Linux's `power_supply_class` framework, MAX17048 ModelGauge for SoC estimation, TP4056 single-cell charger, BQ24074 path-managed charger.
+> Next chapter: **Chapter 76: Battery fuel gauge + charger.** Linux's `power_supply_class` framework, MAX17048 ModelGauge for SoC estimation, TP4056 single-cell charger, BQ24074 path-managed charger.

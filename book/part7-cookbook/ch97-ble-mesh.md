@@ -1,26 +1,26 @@
 ---
 chapter: 97
 title: BLE Mesh
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 97 — BLE Mesh
+# Chapter 97: BLE Mesh
 
-> **What:** **Bluetooth Mesh** — a many-to-many networking layer built on BLE advertising, where dozens-to-thousands of nodes relay messages for each other to cover a building. This chapter covers four things: the mesh architecture (elements, models, addresses, publish/subscribe), the **bluez-mesh** stack on Linux, the provisioning flow that adds a node to a network, and a worked lighting-control example with the i.MX6ULL as gateway and provisioner.
+> **What:** **Bluetooth Mesh**, a many-to-many networking layer built on BLE advertising, where dozens-to-thousands of nodes relay messages for each other to cover a building. This chapter covers four things: the mesh architecture (elements, models, addresses, publish/subscribe), the **bluez-mesh** stack on Linux, the provisioning flow that adds a node to a network, and a worked lighting-control example with the i.MX6ULL as gateway and provisioner.
 >
 > **Why:** BLE point-to-point (Ch 95) reaches one device at ~30 m. BLE Mesh covers an entire building with hundreds of nodes: smart lighting (the dominant use case), building sensors, industrial monitoring. Nodes relay each other's messages to extend coverage. It is the technology behind commercial smart-lighting systems, the kind installed in offices and warehouses. An i.MX6ULL makes a good mesh gateway, bridging mesh traffic to WiFi or the cloud. It can also act as a provisioner, adding new nodes to the network.
 >
-> **Focus:** mesh is a publish/subscribe protocol layered on flooded BLE advertisements, with addresses tied to models. A node has *elements*, each with *models* (e.g., a "Generic OnOff Server" model for a light). Messages are *published* to *group addresses*. nodes *subscribed* to that group act on them. "Turn off all kitchen lights" means: publish OnOff=0 to the "kitchen" group. Every light subscribed to "kitchen" responds. Flooding plus relay gives whole-building coverage without any backbone wiring.
+> **Focus:** mesh is a publish/subscribe protocol layered on flooded BLE advertisements, with addresses tied to models. A node has *elements*, each with *models* (e.g., a "Generic OnOff Server" model for a light). Messages are *published* to *group addresses*. Nodes *subscribed* to that group act on them. "Turn off all kitchen lights" means: publish OnOff=0 to the "kitchen" group. Every light subscribed to "kitchen" responds. Flooding plus relay gives whole-building coverage without any backbone wiring.
 >
 > **Tooling.** This chapter uses `bluez` + `bluetooth-meshd` + `mesh-cfgclient`.
 > - **Ubuntu-base (target):** `apt install bluez bluez-meshd`
 > - **Buildroot:** `BR2_PACKAGE_BLUEZ5_UTILS=y  # (mesh requires the Buildroot experimental option)`
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
 ## 97.1  Why mesh, not point-to-point
@@ -52,25 +52,25 @@ Key concepts:
 
 - **Node**: a provisioned device in the network. Has a unicast address.
 - **Element**: an addressable entity within a node. A multi-gang switch has multiple elements (one per gang).
-- **Model**: defines behavior — a "Generic OnOff Server" handles on/off. a "Generic OnOff Client" sends on/off. SIG-defined models (standard) or vendor models (custom).
+- **Model**: defines behavior, a "Generic OnOff Server" handles on/off. A "Generic OnOff Client" sends on/off. SIG-defined models (standard) or vendor models (custom).
 - **Address types**:
   - **Unicast**: one element.
   - **Group**: a set of elements ("all kitchen lights").
   - **Virtual**: a label-hashed group.
-- **Publish/Subscribe**: a model *publishes* messages to an address. models *subscribed* to that address receive them. A wall switch publishes "OnOff=0" to group "kitchen". all kitchen lights subscribe to "kitchen" and turn off.
+- **Publish/Subscribe**: a model *publishes* messages to an address. Models *subscribed* to that address receive them. A wall switch publishes "OnOff=0" to group "kitchen". All kitchen lights subscribe to "kitchen" and turn off.
 - **Relay**: nodes with the relay feature re-broadcast messages, extending range. This flooding is how a message reaches across a building.
 
 ### Security
 
 Mesh has two key tiers:
-- **Network key (NetKey)**: shared by all nodes in the network. encrypts at the network layer (relay nodes can relay without decrypting the application payload).
-- **Application key (AppKey)**: per-application. encrypts the payload. A light and a switch share an AppKey. relay nodes don't have it.
+- **Network key (NetKey)**: shared by all nodes in the network. Encrypts at the network layer (relay nodes can relay without decrypting the application payload).
+- **Application key (AppKey)**: per-application. Encrypts the payload. A light and a switch share an AppKey. Relay nodes don't have it.
 
-This two-tier scheme lets relays forward traffic they can't read — important for security at scale.
+This two-tier scheme lets relays forward traffic they can't read, important for security at scale.
 
-## 97.3  Provisioning — adding a node to the network
+## 97.3  Provisioning, adding a node to the network
 
-A fresh node is **unprovisioned** — it advertises "I want to join." A **provisioner** (a phone app, or your i.MX6ULL) runs the provisioning protocol:
+A fresh node is **unprovisioned**, it advertises "I want to join." A **provisioner** (a phone app, or your i.MX6ULL) runs the provisioning protocol:
 
 ```
 1. Unprovisioned node beacons.
@@ -83,11 +83,11 @@ A fresh node is **unprovisioned** — it advertises "I want to join." A **provis
    and sets up publish/subscribe.
 ```
 
-Provisioning is the security-critical step — it's where keys are distributed. The OOB authentication prevents a rogue provisioner from hijacking nodes.
+Provisioning is the security-critical step, it's where keys are distributed. The OOB authentication prevents a rogue provisioner from hijacking nodes.
 
 ## 97.4  bluez-mesh on Linux
 
-Linux's BLE Mesh stack is **bluez-mesh** — a separate daemon (`bluetooth-meshd`) from the main `bluetoothd`, with its own D-Bus API. It uses the same HCI controller (Ch 95) but runs the mesh protocol stack.
+Linux's BLE Mesh stack is **bluez-mesh**, a separate daemon (`bluetooth-meshd`) from the main `bluetoothd`, with its own D-Bus API. It uses the same HCI controller (Ch 95) but runs the mesh protocol stack.
 
 ```
    Applications (your mesh node logic, mesh-cfgclient)
@@ -102,7 +102,7 @@ Linux's BLE Mesh stack is **bluez-mesh** — a separate daemon (`bluetooth-meshd
    Controller (must support BLE advertising + scanning)
 ```
 
-The controller needs to support BLE advertising + scanning (any BLE 4.0+ controller does — nRF52, BCM4343, a USB dongle).
+The controller needs to support BLE advertising + scanning (any BLE 4.0+ controller does, nRF52, BCM4343, a USB dongle).
 
 Start the daemon:
 
@@ -114,7 +114,7 @@ Tools:
 - **`mesh-cfgclient`**: a provisioner + configuration client (provision nodes, bind keys, set pub/sub).
 - **`meshctl`**: older combined tool.
 
-## 97.5  A worked example — the i.MX6ULL as a mesh provisioner + gateway
+## 97.5  A worked example, the i.MX6ULL as a mesh provisioner + gateway
 
 Scenario: 5 smart lights (each a small nRF52 node running a "Generic OnOff Server"), and the i.MX6ULL as the provisioner + gateway (bridging the mesh to MQTT/cloud, so a cloud command controls the lights).
 
@@ -160,7 +160,7 @@ Now node 0x0002's OnOff model has the AppKey and is subscribed to group 0xC000.
 [onoff]# onoff 0            ← turn them all OFF
 ```
 
-One message to group 0xC000 → all 5 lights respond. Add more lights, subscribe them to 0xC000, and they join the group automatically — no reconfiguration of the others. Group addressing is what makes this possible.
+One message to group 0xC000 → all 5 lights respond. Add more lights, subscribe them to 0xC000, and they join the group automatically, no reconfiguration of the others. Group addressing is what makes this possible.
 
 ### Step 5: bridge to MQTT (the gateway role)
 
@@ -174,11 +174,11 @@ on_mesh_status(lambda node, value:
     mqtt_publish(f"home/lights/{node}/state", value))
 ```
 
-Now a cloud/phone MQTT command controls the mesh lights, and light state changes propagate to the cloud. The i.MX6ULL is the **mesh-to-IP gateway** — the typical role for a Linux device in a mesh network (the lights are cheap nRF52 nodes. The gateway is the one Linux box).
+Now a cloud/phone MQTT command controls the mesh lights, and light state changes propagate to the cloud. The i.MX6ULL is the **mesh-to-IP gateway**, the typical role for a Linux device in a mesh network (the lights are cheap nRF52 nodes. The gateway is the one Linux box).
 
 ## 97.6  Building a mesh node application
 
-For the i.MX6ULL to be a *node* (not just a provisioner) — e.g., a mesh sensor that publishes temperature — you write an application against `org.bluez.mesh`'s `Application1` + `Element1` interfaces, declaring your models and handling incoming messages. BlueZ ships `test/test-mesh` as a starting point. The structure: declare elements + models, register with `bluetooth-meshd`, implement the model message handlers (`DevKeyMessageReceived`, `MessageReceived`).
+For the i.MX6ULL to be a *node* (not just a provisioner), e.g., a mesh sensor that publishes temperature, you write an application against `org.bluez.mesh`'s `Application1` + `Element1` interfaces, declaring your models and handling incoming messages. BlueZ ships `test/test-mesh` as a starting point. The structure: declare elements + models, register with `bluetooth-meshd`, implement the model message handlers (`DevKeyMessageReceived`, `MessageReceived`).
 
 The structure is similar to the GATT server of Ch 95 but applies to mesh models. It is more involved, and the bluez-mesh D-Bus API is less mature than the GATT one. For most products, the i.MX6ULL is the *provisioner/gateway* (using `mesh-cfgclient`), and the cheap nodes (nRF52 with Zephyr/nRF SDK mesh firmware) are the *servers*.
 
@@ -187,35 +187,35 @@ The structure is similar to the GATT server of Ch 95 but applies to mesh models.
 1. **Start bluetooth-meshd.** Verify it runs with your HCI controller (Ch 95).
 2. **Create a network.** `mesh-cfgclient` → `create`. Note the NetKey + token.
 3. **Provision a node.** Use an nRF52 dev kit flashed with a mesh "light" sample (Nordic SDK or Zephyr). Discover + provision it.
-4. **Bind + subscribe.** Give it AppKey 0. bind to the OnOff model. subscribe to a group.
+4. **Bind + subscribe.** Give it AppKey 0. Bind to the OnOff model. Subscribe to a group.
 5. **Control it.** Send OnOff to the group. The light responds.
 6. **Multi-node.** Provision 3+ nodes into the same group. One command controls all.
 7. **Relay test.** Place a node out of direct range of the i.MX6ULL but within range of another node. Verify the message relays (the far node still responds). This is the mesh magic.
-8. **MQTT gateway.** Bridge a mesh group to MQTT. control the lights from an MQTT client (mosquitto_pub).
+8. **MQTT gateway.** Bridge a mesh group to MQTT. Control the lights from an MQTT client (mosquitto_pub).
 
 ## 97.8  Pitfalls
 
 - **bluetooth-meshd vs bluetoothd.** They're separate daemons and can conflict over the HCI controller. Run mesh on a dedicated controller, or ensure only one daemon claims `hci0`.
 - **Provisioning OOB confusion.** If OOB authentication is configured, both sides must agree on the method (number, QR, none). Mismatch = provisioning fails.
-- **AppKey not bound.** A provisioned node that hasn't had an AppKey bound to its model can't decrypt application messages — it joins the network but ignores commands. Always bind the AppKey.
+- **AppKey not bound.** A provisioned node that hasn't had an AppKey bound to its model can't decrypt application messages, it joins the network but ignores commands. Always bind the AppKey.
 - **Forgetting subscription.** A node bound to an AppKey but not subscribed to the target group won't receive group messages. Both bind *and* subscribe.
-- **Relay feature off.** If no nodes relay, range is limited to one hop. Enable relay on enough nodes for coverage (but not *all* — too many relays cause message storms).
+- **Relay feature off.** If no nodes relay, range is limited to one hop. Enable relay on enough nodes for coverage (but not *all*, too many relays cause message storms).
 - **IV index / replay protection drift.** Mesh uses sequence numbers as replay protection. If a node's stored sequence state is lost (because its flash was erased), the network may reject it. Persist mesh state correctly.
-- **bluez-mesh maturity.** The Linux mesh stack and D-Bus API are less polished than GATT. Expect rough edges. commercial mesh systems often use vendor stacks (Silicon Labs, Nordic) on the nodes and a custom gateway.
+- **bluez-mesh maturity.** The Linux mesh stack and D-Bus API are less polished than GATT. Expect rough edges. Commercial mesh systems often use vendor stacks (Silicon Labs, Nordic) on the nodes and a custom gateway.
 - **Provisioning capacity.** A network has a finite address space and key storage. Plan addressing (unicast ranges, group allocation) before deploying hundreds of nodes.
 
 ## 97.9  Going deeper
 
-- **`bluetooth-meshd` + `mesh-cfgclient`** (BlueZ) — the Linux mesh daemon + provisioner tool.
-- **BlueZ `test/test-mesh`** — a sample mesh node application.
-- **BlueZ `doc/mesh-api.txt`** — the `org.bluez.mesh` D-Bus API.
-- **Bluetooth Mesh Profile Specification** + **Mesh Model Specification** (Bluetooth SIG) — the canonical references.
-- **Nordic nRF5 SDK for Mesh / Zephyr Bluetooth Mesh** — for the *node* firmware (the cheap nRF52 lights).
-- **Silicon Labs Bluetooth Mesh docs** — an alternative node stack with good tutorials.
-- **Ch 95** — the underlying HCI controller bring-up that mesh sits on.
+- **`bluetooth-meshd` + `mesh-cfgclient`** (BlueZ), the Linux mesh daemon + provisioner tool.
+- **BlueZ `test/test-mesh`**: a sample mesh node application.
+- **BlueZ `doc/mesh-api.txt`**: the `org.bluez.mesh` D-Bus API.
+- **Bluetooth Mesh Profile Specification** + **Mesh Model Specification** (Bluetooth SIG), the canonical references.
+- **Nordic nRF5 SDK for Mesh / Zephyr Bluetooth Mesh**: for the *node* firmware (the cheap nRF52 lights).
+- **Silicon Labs Bluetooth Mesh docs**: an alternative node stack with good tutorials.
+- **Ch 95**: the underlying HCI controller bring-up that mesh sits on.
 
 ---
 
-> **End of Group L — Bluetooth (Ch 95–97).** Full HCI + BlueZ GATT (Ch 95, the capable path), AT-command transparent-serial BLE (Ch 96, the simple path), and BLE Mesh (Ch 97, the building-scale path). The i.MX6ULL spans roles from a single BLE sensor to a mesh gateway.
+> **End of Group L, Bluetooth (Ch 95–97).** Full HCI + BlueZ GATT (Ch 95, the capable path), AT-command transparent-serial BLE (Ch 96, the simple path), and BLE Mesh (Ch 97, the building-scale path). The i.MX6ULL spans roles from a single BLE sensor to a mesh gateway.
 
-> Next chapter: **Chapter 98 — LoRa.** Group M (Long-range & specialty wireless) — kilometre-range sub-GHz radio with the SX127x/SX126x, LoRaWAN vs point-to-point, and the spreading-factor trade-offs.
+> Next chapter: **Chapter 98: LoRa.** Group M (Long-range & specialty wireless), kilometre-range sub-GHz radio with the SX127x/SX126x, LoRaWAN vs point-to-point, and the spreading-factor trade-offs.

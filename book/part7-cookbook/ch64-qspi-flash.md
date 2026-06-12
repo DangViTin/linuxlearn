@@ -1,19 +1,19 @@
 ---
 chapter: 64
 title: QSPI NOR flash (W25Q128 / MX25L256 / MT25Q)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 26
 status: draft
 ---
 
-# Chapter 64 — QSPI NOR flash
-**UBI** - Unsorted Block Images, a flash-management layer over raw NAND that handles wear leveling and bad blocks.
+# Chapter 64: QSPI NOR flash
+> **UBI:** Unsorted Block Images, a flash-management layer over raw NAND that handles wear leveling and bad blocks.
 
-> **Naming convention used across Part VII.** Shell prompts shown as `[root@pa-mini:~]#` come from the reference test board — the Point Atom MINI configured with hostname `pa-mini`. Substitute your own hostname. nothing else about the lab assumes it.
+> **Naming convention used across Part VII.** Shell prompts shown as `[root@pa-mini:~]#` come from the reference test board, the Point Atom MINI configured with hostname `pa-mini`. Substitute your own hostname. Nothing else about the lab assumes it.
 
-> **What:** how a QSPI NOR flash chip actually works on the wire, how the mainline `spi-nor` driver implements it, and how to write your own minimal driver from scratch for one specific chip. Three chips compared — **Winbond W25Q128** (16 MB), **Macronix MX25L25645G** (32 MB), **Micron MT25QL256ABA** (32 MB) — but the from-scratch driver targets the W25Q128 to keep the example concrete.
+> **What:** how a QSPI NOR flash chip actually works on the wire, how the mainline `spi-nor` driver implements it, and how to write your own minimal driver from scratch for one specific chip. Three chips compared, **Winbond W25Q128** (16 MB), **Macronix MX25L25645G** (32 MB), **Micron MT25QL256ABA** (32 MB), but the from-scratch driver targets the W25Q128 to keep the example concrete.
 >
-> **Why:** the philosophy of this book is "raw — build it yourself, understand it forever." For QSPI flash that means: command bytes on the wire, status-register polling, page-program timing, JEDEC ID parsing. After this chapter you can read the mainline `spi-nor` source and know exactly what each function is hiding. If you encounter a chip that is not in the database, you can add an entry — or replace the framework with about 200 lines of your own.
+> **Why:** the philosophy of this book is "raw, build it yourself, understand it forever." For QSPI flash that means: command bytes on the wire, status-register polling, page-program timing, JEDEC ID parsing. After this chapter you can read the mainline `spi-nor` source and know exactly what each function is hiding. If you encounter a chip that is not in the database, you can add an entry, or replace the framework with about 200 lines of your own.
 >
 > **Focus:** **a NOR flash is a state machine driven by single-byte commands**. `0x9F` = read JEDEC ID. `0x06` = write-enable. `0x20` = sector erase. `0x02` = page program. `0x03` = read. Send the right bytes in the right order and you can read, erase, program, and identify any standard NOR flash with about 100 lines of code. The mainline driver wraps this in abstractions and a parameter database, but the wire protocol itself is small.
 
@@ -28,7 +28,7 @@ status: draft
 | Erase block | 4–64 KB | invisible | invisible | 128 KB |
 | Erase cycles | 100,000 | 1k–10k | varies | 10,000 |
 | XIP-capable | ✔ | ✗ | ✗ | ✗ |
-| Wear-leveling in HW | none — driver problem | yes | yes | none — UBI |
+| Wear-leveling in HW | none, driver problem | yes | yes | none, UBI |
 | Cost (volume) | $1–5 | $5–20 | $3–10 | $2–10 |
 | Best for | Small soldered boot device | Main consumer storage | Removable / dev | Mid-size industrial |
 
@@ -69,13 +69,13 @@ The minimum is six wires:
  GND          ───────────►  GND
 ```
 
-**Decoupling:** 100 nF + 4.7 µF close to VCC. Page programming draws sharp ~20 mA pulses. insufficient decoupling causes spurious resets.
+**Decoupling:** 100 nF + 4.7 µF close to VCC. Page programming draws sharp ~20 mA pulses. Insufficient decoupling causes spurious resets.
 
 **Layout:** ≤ 5 mm length-mismatch between SCLK and IO[0:3] traces at 80 MHz. Series termination 33 Ω on each line is common. Keep traces ≤ 4 cm.
 
 **Pull-ups:** 10 kΩ on IO2 and IO3. These pull-ups keep IO2 and IO3 HIGH while the chip is still in single-IO mode at boot. Quad mode is not enabled yet, so IO2 acts as /WP and IO3 as /HOLD. Both are active-low, so "HIGH" means "not asserted."
 
-## 64.4  The protocol — what's on the wire
+## 64.4  The protocol, what's on the wire
 
 NOR flash chips speak a small command set. Each transaction is the same shape:
 
@@ -92,7 +92,7 @@ NOR flash chips speak a small command set. Each transaction is the same shape:
 The host:
 1. Drives /CS low.
 2. Clocks out a 1-byte command.
-3. (Optionally) clocks out the address bytes — 3 bytes for chips ≤ 16 MB, 4 bytes for larger or when explicitly in 4-byte mode.
+3. (Optionally) clocks out the address bytes, 3 bytes for chips ≤ 16 MB, 4 bytes for larger or when explicitly in 4-byte mode.
 4. Either clocks out write data (program) or clocks in read data.
 5. Drives /CS high.
 
@@ -112,15 +112,15 @@ The host:
 | Chip erase | `0xC7` | none | none | tens of seconds |
 | 4-byte address mode | `0xB7` | none | none | switch to 4-byte addressing |
 
-That is the full interface. Some chips add quad-IO commands (`0xEB` for read, `0x32` for program). same idea but with data spread over 4 IO lanes for ~4× throughput.
+That is the full interface. Some chips add quad-IO commands (`0xEB` for read, `0x32` for program). Same idea but with data spread over 4 IO lanes for ~4× throughput.
 
 ### Three invariants that catch beginners
 
 1. **Every write/erase must be preceded by `0x06` (write-enable).** The chip silently ignores writes without it. After a successful write/erase, the chip auto-clears write-enable, so it must be re-issued each time.
-2. **The BUSY bit (status register bit 0) is set during write/erase and clears when done.** The host must poll until it clears before issuing the next command. A page program can take 700 µs–3 ms. a sector erase takes 50–250 ms.
+2. **The BUSY bit (status register bit 0) is set during write/erase and clears when done.** The host must poll until it clears before issuing the next command. A page program can take 700 µs–3 ms. A sector erase takes 50–250 ms.
 3. **You can only program 1→0.** Bits cannot be flipped 0→1 except via erase. So "writing" a byte first requires the relevant sector to have been erased to all-0xFF.
 
-## 64.5  Reading JEDEC ID — the smallest useful transaction
+## 64.5  Reading JEDEC ID, the smallest useful transaction
 
 Before anything else, identify the chip:
 
@@ -141,7 +141,7 @@ From these three bytes the chip is uniquely identified (in 99% of cases). The ma
 ## 64.6  How the mainline `spi-nor` driver works internally
 
 Source: `drivers/mtd/spi-nor/`.
-**MTD** - Memory Technology Device, Linux's raw flash subsystem for eraseblock-based storage.
+> **MTD:** Memory Technology Device, Linux's raw flash subsystem for eraseblock-based storage.
 
 ```
 drivers/mtd/spi-nor/
@@ -226,9 +226,9 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 }
 ```
 
-The `spi_mem_op` struct describes a NOR-style command in four fields (cmd, addr, dummy, data) — `spi_mem_exec_op` translates that into whatever the underlying SPI/QSPI controller wants. For a controller like i.MX QSPI that has hardware support for "command + address + data" transactions, it programs a few registers and DMA-receives the data. For a plain SPI controller, it falls back to bit-banging the same sequence through ordinary `spi_message`s.
+The `spi_mem_op` struct describes a NOR-style command in four fields (cmd, addr, dummy, data), `spi_mem_exec_op` translates that into whatever the underlying SPI/QSPI controller wants. For a controller like i.MX QSPI that has hardware support for "command + address + data" transactions, it programs a few registers and DMA-receives the data. For a plain SPI controller, it falls back to bit-banging the same sequence through ordinary `spi_message`s.
 > **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
-**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
+> **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
 
 ### How `spi_nor_write` works
 
@@ -622,8 +622,8 @@ DT to test it:
 };
 ```
 
-Note we're using ordinary SPI (`ecspi3`), not QSPI. The raw protocol works at single-IO mode up to ~50 MHz. using QSPI would require either an MMIO-driver for the i.MX QSPI controller's command-mode registers (more involved) or going through `spi_mem` (which is exactly what we said we were skipping). For this teaching example, ordinary SPI is the right choice.
-**MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
+Note we're using ordinary SPI (`ecspi3`), not QSPI. The raw protocol works at single-IO mode up to ~50 MHz. Using QSPI would require either an MMIO-driver for the i.MX QSPI controller's command-mode registers (more involved) or going through `spi_mem` (which is exactly what we said we were skipping). For this teaching example, ordinary SPI is the right choice.
+> **MMIO:** memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 
 Build, load, exercise:
 
@@ -659,7 +659,7 @@ What we got, in ~250 lines:
 What we *skipped* compared to `spi-nor`:
 - MTD integration (so no partitions, no `fw_setenv`, no boot-from-flash for U-Boot).
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 - Quad-IO mode (4× faster).
 - SFDP auto-discovery (works for any chip, not just W25Q128).
 - 4-byte address mode for > 16 MB chips.
@@ -769,14 +769,14 @@ bootcmd=sf probe; sf read ${loadaddr} 0x120000 0x600000; bootz
 
 ## 64.9  XIP from QSPI
 
-NOR's signature trick: **eXecute In Place**. The CPU reads instructions directly from QSPI without first copying them to DRAM. i.MX6ULL QSPI maps to a memory window (typically at 0x60000000) where reads transparently fetch from the flash.
+NOR's signature trick: **eXecute In Place**. The CPU reads instructions directly from QSPI without first copying them to DRAM. I.MX6ULL QSPI maps to a memory window (typically at 0x60000000) where reads transparently fetch from the flash.
 
-- **Pro**: smaller RAM footprint. faster boot (no copy).
-- **Con**: slow (max ~50 MB/s vs. DDR3's ~800 MB/s). higher power. instruction-cache misses are expensive.
+- **Pro**: smaller RAM footprint. Faster boot (no copy).
+- **Con**: slow (max ~50 MB/s vs. DDR3's ~800 MB/s). Higher power. Instruction-cache misses are expensive.
 
 In practice on i.MX6ULL, XIP is used only for U-Boot (small, fast-boot critical). The kernel and rootfs always run from DRAM. We covered XIP in detail in Ch 11.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 ## 64.10  Boot from QSPI NOR
 
@@ -795,15 +795,15 @@ bootcmd=run boot_qspi
 - `sf read <ram_addr> <flash_offset> <length>` copies from QSPI to RAM.
 - `bootz <kernel> - <dtb>` boots.
 
-For A/B updates, define `boot_qspi_a` and `boot_qspi_b` with different `<flash_offset>` values. a boot counter (`fw_setenv boot_count`) + an A/B flag selects which slot.
+For A/B updates, define `boot_qspi_a` and `boot_qspi_b` with different `<flash_offset>` values. A boot counter (`fw_setenv boot_count`) + an A/B flag selects which slot.
 
 ## 64.11  Lab
 
 1. **JEDEC ID from i2c-tools-style poke.** Without your driver loaded, use raw SPI via `/dev/spidev*` to send `0x9F` and read 3 bytes. Confirm the ID matches your chip.
-2. **Build and load `myflash.ko`.** Confirm JEDEC log in dmesg. read sector 0. erase + write + verify cycle.
+2. **Build and load `myflash.ko`.** Confirm JEDEC log in dmesg. Read sector 0. Erase + write + verify cycle.
 3. **Compare timings.** Add ktime measurement around a 4-KB read and a 256-B page program. Compare against the mainline driver via `flashcp` on an equivalent area.
-4. **Multi-page write bug demo.** Modify `myflash.c`'s `mf_fops_write` to *skip* the page-boundary split — write `count` bytes in one transfer instead. Try writing 300 bytes starting at offset 200. observe the wrap-around to offset 0 of the same page. Restore the split.
-5. **Switch to the mainline driver.** Unload `myflash`. bind the same chip with `winbond,w25q128`. verify MTD partitions appear. Run `flashcp`.
+4. **Multi-page write bug demo.** Modify `myflash.c`'s `mf_fops_write` to *skip* the page-boundary split, write `count` bytes in one transfer instead. Try writing 300 bytes starting at offset 200. Observe the wrap-around to offset 0 of the same page. Restore the split.
+5. **Switch to the mainline driver.** Unload `myflash`. Bind the same chip with `winbond,w25q128`. Verify MTD partitions appear. Run `flashcp`.
 6. **Read out the entire chip (mainline).** `nanddump -f all-flash.bin /dev/mtdblock0`. Compare expected size.
 
 ## 64.12  Pitfalls
@@ -812,19 +812,19 @@ For A/B updates, define `boot_qspi_a` and `boot_qspi_b` with different `<flash_o
 - **Writing without erasing first.** NOR can only flip 1→0. Writing 0xAA to an erased (0xFF) byte gives 0xAA. Writing 0x55 over that 0xAA gives `0xAA & 0x55 = 0x00`, not 0x55. Always erase the sector first.
 - **Page-boundary wrap.** Page program wraps within a 256-B page. The split-at-page-boundary loop is mandatory.
 - **Status-poll forgotten.** Issuing the next command before BUSY clears = silent failure or chip-state corruption. Always wait.
-- **Quad mode enable.** Some chips need their QE (Quad Enable) status bit set before quad-IO commands work. The `spi-nor` driver handles this for known chips. with `"jedec,spi-nor"` only it may not. Symptom: garbage when using quad-mode commands. Add the specific compatible.
-- **4-byte addressing for > 16 MB.** Chips > 16 MB need 4 address bytes. The third address byte (high) of a 3-byte command becomes part of the data sent to the chip — silent corruption at offsets > 16 MB. The mainline driver auto-switches via `0xB7` (enter 4-byte mode). Old U-Boots may not.
-- **Partition off the chip.** A typo in `reg = <offset size>` past the chip end. Kernel warns. verify dmesg.
+- **Quad mode enable.** Some chips need their QE (Quad Enable) status bit set before quad-IO commands work. The `spi-nor` driver handles this for known chips. With `"jedec,spi-nor"` only it may not. Symptom: garbage when using quad-mode commands. Add the specific compatible.
+- **4-byte addressing for > 16 MB.** Chips > 16 MB need 4 address bytes. The third address byte (high) of a 3-byte command becomes part of the data sent to the chip, silent corruption at offsets > 16 MB. The mainline driver auto-switches via `0xB7` (enter 4-byte mode). Old U-Boots may not.
+- **Partition off the chip.** A typo in `reg = <offset size>` past the chip end. Kernel warns. Verify dmesg.
 - **U-Boot env partition mismatch with `fw_env.config`.** Both reference the same offset. If they disagree, `fw_setenv` writes to areas U-Boot expects to be unwritten. Always cross-check.
 - **U-Boot env wear.** Each `saveenv` erases + writes the env sector (~50 ms wear cycle). NOR rated 100k cycles. If your boot script `saveenv`s every boot, you wear out in months. Use `redundant_env` (two ping-ponged copies) or avoid auto-saving.
 
 ## 64.13  Going deeper
 
-- **`drivers/mtd/spi-nor/core.c`** — read it cover to cover. ~2000 lines. Notice how `spi_nor_read`, `spi_nor_write_data`, `spi_nor_erase_sector` map to the same protocol the from-scratch driver implements.
-- **`drivers/mtd/spi-nor/winbond.c`** — the parameter table for your chip. Compare its `n_sectors`, `page_size`, `flags` against the datasheet.
-- **`drivers/spi/spi-fsl-qspi.c`** — i.MX QSPI controller driver. Note how it uses an LUT (look-up table) of pre-baked command sequences to accelerate.
-- **`Documentation/devicetree/bindings/mtd/jedec,spi-nor.yaml`** — DT binding details.
-- **JEDEC SFDP standard (JESD216)** — Serial Flash Discoverable Parameters. The runtime discovery protocol the mainline driver uses for chips not in its static database.
-- **W25Q128JV datasheet**, **MX25L25645G datasheet**, **MT25Q datasheet** — protocol reference for the three chips. The command table is on page 1 of each.
+- **`drivers/mtd/spi-nor/core.c`**: read it cover to cover. ~2000 lines. Notice how `spi_nor_read`, `spi_nor_write_data`, `spi_nor_erase_sector` map to the same protocol the from-scratch driver implements.
+- **`drivers/mtd/spi-nor/winbond.c`**: the parameter table for your chip. Compare its `n_sectors`, `page_size`, `flags` against the datasheet.
+- **`drivers/spi/spi-fsl-qspi.c`**: i.MX QSPI controller driver. Note how it uses an LUT (look-up table) of pre-baked command sequences to accelerate.
+- **`Documentation/devicetree/bindings/mtd/jedec,spi-nor.yaml`**: DT binding details.
+- **JEDEC SFDP standard (JESD216)**: Serial Flash Discoverable Parameters. The runtime discovery protocol the mainline driver uses for chips not in its static database.
+- **W25Q128JV datasheet**, **MX25L25645G datasheet**, **MT25Q datasheet**, protocol reference for the three chips. The command table is on page 1 of each.
 
-> Next chapter: **Chapter 65 — I²C / SPI EEPROM.** For when you need just a few KB of persistent storage. Same depth: protocol on the wire, the `at24` driver's internals, a from-scratch I²C-EEPROM driver, then DT enablement.
+> Next chapter: **Chapter 65: I²C / SPI EEPROM.** For when you need just a few KB of persistent storage. Same depth: protocol on the wire, the `at24` driver's internals, a from-scratch I²C-EEPROM driver, then DT enablement.

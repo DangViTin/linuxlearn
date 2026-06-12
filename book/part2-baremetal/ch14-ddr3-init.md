@@ -1,21 +1,21 @@
 ---
 chapter: 14
 title: DDR3 initialization with MMDC
-part: II — Bare-metal i.MX6ULL
+part: II - Bare-metal i.MX6ULL
 estimated_pages: 30
 status: draft
 ---
 
-# Chapter 14 — DDR3 initialization with MMDC
+# Chapter 14: DDR3 initialization with MMDC
 
 > **What:** code that takes the Point Atom MINI's DDR3 chip from "powered on but uninitialized" to "512 MiB of usable memory at `0x80000000`," by hand. Then code that copies itself from OCRAM to DRAM and continues running from DRAM.
 >
 > **Why:** until this works, your bare-metal world is 100 KB. After it works, it is 512 MiB. More fundamentally: every dev board you have ever used had someone solve this problem for you in a vendor BSP. Solving it once removes the "magic" from a layer you will otherwise trust forever.
-> **BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
+> **BSP:** Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 >
 > **Focus:** The JEDEC DDR3 init sequence is universal across vendors. The MMDC register groups are i.MX-specific. Know both, and you can port to a different DRAM part or a different SoC.
-> **MMDC** - the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
-> **DDR** - external DRAM that must be configured and trained before most software can run from it.
+> **MMDC:** the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
+> **DDR:** external DRAM that must be configured and trained before most software can run from it.
 
 
 ## 14.1  This chapter takes time
@@ -24,20 +24,20 @@ Set an afternoon aside. This is the most complex bring-up step in the book. The 
 
 We will keep the entire chapter in **OCRAM** until the very last section, where DRAM works and we relocate to it.
 
-## 14.1a  RAM/ROM/SRAM/SDRAM/DDR — the lineage
+## 14.1a  RAM/ROM/SRAM/SDRAM/DDR, the lineage
 
 Most Cortex-M parts have 64 KB to 2 MB of built-in SRAM, and many SoCs expose SDRAM through a bus controller. Here is the rest of the family tree in 60 seconds:
 
-- **SRAM** — Static RAM. Six-transistor cell per bit. Fast (~5 ns access), low-power-when-idle, but expensive per bit. A 1 MB SRAM costs more than 32 MB of SDRAM. Used for CPU caches and small on-chip memories (like the i.MX6ULL's 128 KB OCRAM).
-- **SDRAM** — Synchronous Dynamic RAM. One-capacitor cell per bit. must be **refreshed** every 64 ms or the charge bleeds away. Synchronous = clocked. Cheaper than SRAM but slower and needs refresh logic. The classic "PC100" / "PC133" memory of the late 1990s.
-- **DDR (DDR1)** — Double Data Rate. Same density as SDRAM but transfers on both clock edges, doubling bandwidth. A 200 MHz clock yields 400 MT/s ("MegaTransfers per second"). 2.5 V.
-- **DDR2** — Quadruples the prefetch (4-bit vs DDR1's 2-bit), runs at half the cell clock but double the bus clock. 1.8 V.
-- **DDR3** — 8-bit prefetch. 1.5 V at standard voltage.
-- **DDR3L** — *L* for *Low-voltage*. Same protocol as DDR3, runs at **1.35 V**. Designed for mobile / industrial / embedded. **This is what i.MX6ULL boards use.**
-- **LPDDR3** — Low Power DDR3. Different protocol, 1.2 V, more aggressive power-saving features. Used in phones, supported by i.MX6ULL but uncommon on dev boards.
-- **DDR4 / DDR5** — Successors. not supported by i.MX6ULL's MMDC controller.
+- **SRAM**: Static RAM. Six-transistor cell per bit. Fast (~5 ns access), low-power-when-idle, but expensive per bit. A 1 MB SRAM costs more than 32 MB of SDRAM. Used for CPU caches and small on-chip memories (like the i.MX6ULL's 128 KB OCRAM).
+- **SDRAM**: Synchronous Dynamic RAM. One-capacitor cell per bit. Must be **refreshed** every 64 ms or the charge bleeds away. Synchronous = clocked. Cheaper than SRAM but slower and needs refresh logic. The classic "PC100" / "PC133" memory of the late 1990s.
+- **DDR (DDR1)**: Double Data Rate. Same density as SDRAM but transfers on both clock edges, doubling bandwidth. A 200 MHz clock yields 400 MT/s ("MegaTransfers per second"). 2.5 V.
+- **DDR2**: Quadruples the prefetch (4-bit vs DDR1's 2-bit), runs at half the cell clock but double the bus clock. 1.8 V.
+- **DDR3**: 8-bit prefetch. 1.5 V at standard voltage.
+- **DDR3L**: *L* for *Low-voltage*. Same protocol as DDR3, runs at **1.35 V**. Designed for mobile / industrial / embedded. **This is what i.MX6ULL boards use.**
+- **LPDDR3**: Low Power DDR3. Different protocol, 1.2 V, more aggressive power-saving features. Used in phones, supported by i.MX6ULL but uncommon on dev boards.
+- **DDR4 / DDR5**: Successors. Not supported by i.MX6ULL's MMDC controller.
 
-The i.MX6ULL MMDC supports **DDR3, DDR3L, and LPDDR2** — at up to 400 MHz cell clock (actually 396 MHz), giving up to 800 MT/s on a 16-bit bus = 1.6 GB/s peak. The Point Atom boards always use **DDR3L** (the low-voltage variant), not standard 1.5 V DDR3.
+The i.MX6ULL MMDC supports **DDR3, DDR3L, and LPDDR2**, at up to 400 MHz cell clock (actually 396 MHz), giving up to 800 MT/s on a 16-bit bus = 1.6 GB/s peak. The Point Atom boards always use **DDR3L** (the low-voltage variant), not standard 1.5 V DDR3.
 
 ## 14.2  DDR3, in just enough detail
 
@@ -74,17 +74,17 @@ The Point Atom boards use Nanya DDR3L parts (verified):
 | **NT5CC128M16JR-EK** | 256 MiB | 2 Gb | 13.91 / 13.91 / 13.91 ns | 47.91 ns | 34 ns | NAND core board |
 | **NT5CC256M16EP-EK** | 512 MiB | 4 Gb | 13.91 / 13.91 / 13.91 ns | 47.91 ns | 34 ns | eMMC core board |
 
-Both are 16-bit-wide, 8-bank, with row × column = 14 × 10 (256 MiB part) or 15 × 10 (512 MiB part). Same pinout, same package — the board accepts either without PCB changes. The difference is in the controller's row-address-count setting.
+Both are 16-bit-wide, 8-bank, with row × column = 14 × 10 (256 MiB part) or 15 × 10 (512 MiB part). Same pinout, same package, the board accepts either without PCB changes. The difference is in the controller's row-address-count setting.
 
 For other vendors' parts in the same density and rate class (Micron MT41K, ISSI IS43TR, Samsung K4B), the timings are within ±10% and the controller config is essentially identical. Verify against your specific chip's datasheet before powering up.
 
 > **Open your DDR chip's datasheet first.** Guessed timings produce the worst class of bug: the DRAM passes a 1 MB memtest and fails at 16 MB. Look up your part. Write the timings down. They feed every register value below.
 
-## 14.3  Two chips, one bus — channels, ranks, banks
+## 14.3  Two chips, one bus, channels, ranks, banks
 
-The MMDC controller on i.MX6ULL is **16 bits wide**. The Point Atom MINI uses **two ×8 DDR3 chips in parallel** to form a 16-bit bus. (Some variants use a single ×16 chip. same idea.) Both chips receive the same address and command. One drives bus bits [7:0]. The other drives [15:8].
+The MMDC controller on i.MX6ULL is **16 bits wide**. The Point Atom MINI uses **two ×8 DDR3 chips in parallel** to form a 16-bit bus. (Some variants use a single ×16 chip. Same idea.) Both chips receive the same address and command. One drives bus bits [7:0]. The other drives [15:8].
 
-A "rank" is a set of chips that share a Chip Select. The MINI has **1 rank**. (Larger boards might have 2 ranks on the same channel. a CS0/CS1 pair selects between them.) Each chip has 8 internal banks. The controller can have up to 8 banks open at once (interleaved).
+A "rank" is a set of chips that share a Chip Select. The MINI has **1 rank**. (Larger boards might have 2 ranks on the same channel. A CS0/CS1 pair selects between them.) Each chip has 8 internal banks. The controller can have up to 8 banks open at once (interleaved).
 
 Total capacity:
 
@@ -97,7 +97,7 @@ This matches the MINI's "512 MB DDR3" spec.
 
 ## 14.4  The MMDC register groups
 
-MMDC base = `0x021B0000` (MMDC0. only one channel on i.MX6ULL). The registers fall into groups by responsibility:
+MMDC base = `0x021B0000` (MMDC0. Only one channel on i.MX6ULL). The registers fall into groups by responsibility:
 
 | Group | Address range | Purpose |
 |-------|--------------|---------|
@@ -126,7 +126,7 @@ MMDC base = `0x021B0000` (MMDC0. only one channel on i.MX6ULL). The registers fa
 | MPRDDQBY0DL..3DL | `+0x860..86C` | Per-byte read DQ delay |
 | MPMUR0 | `+0x8B8` | Calibration request |
 
-There are more. Don't memorize them. learn the *groups*.
+There are more. Don't memorize them. Learn the *groups*.
 
 The write order for most of these matters less than you'd think. The exception is **MDSCR**, the command register. We use MDSCR to send DDR3 commands (load mode register, ZQ cal, refresh, etc.), and it must be written at specific points in the init sequence.
 
@@ -143,7 +143,7 @@ Typical settings:
 | `DRAM_SDQS[1:0]_B`, `DRAM_SDQS[1:0]` | `0x00000030` | |
 | `DRAM_RESET`, `DRAM_ODT[1:0]`, `DRAM_CKE[1:0]`, `DRAM_SDCKE[1:0]` | `0x000030B0` | With keeper for stable idle |
 
-There are about 80 DRAM pin pads on i.MX6ULL. configuring them all takes ~30 register writes. Source: RM Chapter 32 → search for "DRAM" pad names.
+There are about 80 DRAM pin pads on i.MX6ULL. Configuring them all takes ~30 register writes. Source: RM Chapter 32 → search for "DRAM" pad names.
 
 > **Why pad config first?** Because the MMDC controller, once enabled, starts driving these pins. If their drive strength is wrong, the signals are weak (under-drive: ringing, EMI) or unstable (over-drive: cross-talk).
 
@@ -154,10 +154,10 @@ Independent of which controller you use, DDR3 requires this sequence after power
 1. **De-assert RESET#** after at least 200 µs (with stable clock and Vdd).
 2. **De-assert CKE** after at least 500 µs since power-on.
 3. Issue **NOPs** for at least 500 µs.
-4. **MRS — Load Mode Register 2 (MR2):** CWL, ASR (auto self-refresh).
-5. **MRS — Load Mode Register 3 (MR3):** typically 0.
-6. **MRS — Load Mode Register 1 (MR1):** ODT, DLL enable, output drive, Rtt_Nom, write leveling off.
-7. **MRS — Load Mode Register 0 (MR0):** Burst length, CL, DLL reset.
+4. **MRS, Load Mode Register 2 (MR2):** CWL, ASR (auto self-refresh).
+5. **MRS, Load Mode Register 3 (MR3):** typically 0.
+6. **MRS, Load Mode Register 1 (MR1):** ODT, DLL enable, output drive, Rtt_Nom, write leveling off.
+7. **MRS, Load Mode Register 0 (MR0):** Burst length, CL, DLL reset.
 8. **ZQ calibration long (ZQCL):** wait for completion.
 9. Optionally: **Write leveling**, **DQS gating calibration**, **Read calibration**.
 10. **Enable refresh.**
@@ -199,7 +199,7 @@ For our part with CL=11 and CWL=8:
 
 ## 14.7  A complete DDR3 init for the Point Atom MINI
 
-Below is the bring-up function. It is long. that is the nature of DDR. Read it. do not run it without first running NXP's DDR Stress Tool on your specific board and replacing the calibration values.
+Below is the bring-up function. It is long. That is the nature of DDR. Read it. Do not run it without first running NXP's DDR Stress Tool on your specific board and replacing the calibration values.
 
 `ddr.h`:
 
@@ -323,10 +323,10 @@ DDR3 chips need three calibrations beyond the standard initialization:
 - **DQS gating**: tunes when the controller looks for the chip's response DQS during reads. Without this, reads return data, but framed incorrectly.
 - **Read/write delay**: per-bit fine-tuning across the data lane.
 
-The MMDC can do this **in hardware** if you set the right bits — write 1 to `MPWLGCR` to start write leveling, poll for completion, read back the resulting delay. Or do it manually by sweeping values and running a memtest at each.
+The MMDC can do this **in hardware** if you set the right bits, write 1 to `MPWLGCR` to start write leveling, poll for completion, read back the resulting delay. Or do it manually by sweeping values and running a memtest at each.
 
-Real-world flow: NXP's DDR Stress Tool runs the hardware calibration *with diagnostics*, reports the optimal values, and emits a "DCD list" — a sequence of register writes you can drop into your code (or your DCD blob).
-**DCD** - Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
+Real-world flow: NXP's DDR Stress Tool runs the hardware calibration *with diagnostics*, reports the optimal values, and emits a "DCD list", a sequence of register writes you can drop into your code (or your DCD blob).
+> **DCD:** Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
 
 ### The six registers the stress tool updates
 
@@ -356,13 +356,13 @@ Write calibration:
   MPWRDLCTL        = 0x40403A34
 ```
 
-Plug these six values into the `mx6_mmdc_calib` struct in `ddr.c` (§14.7). **Do not** copy these specific numbers from one board to another — they reflect trace lengths, PCB stack-up, and the specific DDR3L chip. Always re-derive them on your own board.
+Plug these six values into the `mx6_mmdc_calib` struct in `ddr.c` (§14.7). **Do not** copy these specific numbers from one board to another, they reflect trace lengths, PCB stack-up, and the specific DDR3L chip. Always re-derive them on your own board.
 
-**For this book**, we copy the values the DDR Stress Tool emits. Treat them as a black box you can re-derive at any time by running the tool. If your DRAM begins to fail occasionally during DRAM workloads, re-run the tool — calibration drifts with temperature.
+**For this book**, we copy the values the DDR Stress Tool emits. Treat them as a black box you can re-derive at any time by running the tool. If your DRAM begins to fail occasionally during DRAM workloads, re-run the tool, calibration drifts with temperature.
 
 ### The 10–15 % overclock heuristic
 
-A useful design-validation trick: after calibration, the stress tool can attempt to run DRAM at increasing clock rates above the nominal 396 MHz. **If your board can sustain 10–15 % overclock** (i.e., DDR working clean at ~440–460 MHz), the PCB routing and termination are healthy. **If it fails at less than 10 % over**, the board has signal-integrity issues — likely mismatched trace lengths, missing termination, or excessive cross-talk. The fix is in hardware, not software.
+A useful design-validation trick: after calibration, the stress tool can attempt to run DRAM at increasing clock rates above the nominal 396 MHz. **If your board can sustain 10–15 % overclock** (i.e., DDR working clean at ~440–460 MHz), the PCB routing and termination are healthy. **If it fails at less than 10 % over**, the board has signal-integrity issues, likely mismatched trace lengths, missing termination, or excessive cross-talk. The fix is in hardware, not software.
 
 This is the cheapest pre-production sanity check available for embedded boards with DDR.
 
@@ -414,7 +414,7 @@ Wrote 0xcafebabe at 0x80000000, read back 0xcafebabe
 
 If the memtest is non-zero: your calibration is wrong (most likely), or your IOMUX pad settings are wrong (less common), or your timing parameters don't match the chip (third most common).
 > **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
-**IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
+> **IOMUX:** the pin multiplexer that decides which peripheral function appears on each package pin.
 
 ## 14.10  Copying ourselves to DRAM
 
@@ -471,7 +471,7 @@ int main(void)
 }
 ```
 
-The flag-in-`.data` works because we copy `.data` along with `.text`, so the DRAM copy sees `already_in_dram = 1`. The OCRAM copy still has `0` but never runs again — we jumped past it.
+The flag-in-`.data` works because we copy `.data` along with `.text`, so the DRAM copy sees `already_in_dram = 1`. The OCRAM copy still has `0` but never runs again, we jumped past it.
 
 When you run this, picocom should show:
 
@@ -487,7 +487,7 @@ My PC is somewhere near 0x80100xxx
 
 That `0x80100xxx` for `main` is the proof. We are executing instructions out of DDR3. Every later chapter in Part II (and all of Part III's U-Boot) lives here.
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ## 14.11  Sanity tests beyond the basic memtest
 
@@ -524,11 +524,11 @@ The reference open-source tool is `memtester` (a Linux user-space program in Par
 
 ## 14.12  Why the DCD is the elegant alternative
 
-In Chapter 7 we discussed how the Boot ROM walks a DCD before loading your image. A DCD that initializes DRAM is just our function above expressed as `(address, value)` pairs — no procedural logic, just writes.
+In Chapter 7 we discussed how the Boot ROM walks a DCD before loading your image. A DCD that initializes DRAM is just our function above expressed as `(address, value)` pairs, no procedural logic, just writes.
 
 In production, you ship a DCD inside your `.imx`. The ROM brings up DRAM. Then it loads U-Boot (which is multi-megabyte) *into* DRAM. U-Boot, in turn, loads the kernel.
 
-For *learning*, doing it in C (as we did) is better — you see the logic. For *deployment*, the DCD is better — it lets you load larger images.
+For *learning*, doing it in C (as we did) is better, you see the logic. For *deployment*, the DCD is better, it lets you load larger images.
 
 We will update `mkimx.py` in **Chapter 19** to support DCDs so that we can re-use our DDR init values when we want to load a >100 KB image. Until then, our bare-metal images are small enough to fit in OCRAM and bootstrap DRAM themselves.
 
@@ -571,19 +571,19 @@ This is the central lab of Part II.
 - **Wrong MR0 CAS latency.** Symptom: memtest fails immediately. The chip and the controller must agree on CL. CL=11 on chip = `MR0[6:4,2] = 0b1110_1`. CL=11 in MMDC's MDCFG1.tRL field = different encoding.
 - **MMDC clock mismatch.** Timings in MDCFG0/1/2 are converted to cycles using the *current* MMDC clock. If you change MMDC clock after MMDC init, the timings are no longer correct.
 - **Forgetting to disable MDSCR config mode.** After MR sets, write 0 to MDSCR to leave config mode. Otherwise reads/writes are interpreted as MMDC commands.
-- **Heating the chip in a way that destroys it.** A hairdryer is fine for the temperature lab. a heat gun is too hot and can destroy the chip.
+- **Heating the chip in a way that destroys it.** A hairdryer is fine for the temperature lab. A heat gun is too hot and can destroy the chip.
 - **Not power-cycling after a failed bring-up.** A partially-initialized MMDC can produce stuck states. When in doubt, power off, count to 5, power on.
 
 ## 14.16  Going deeper
 
-- **JEDEC JESD79-3F** — *DDR3 SDRAM Specification*. The original. Free download with registration.
+- **JEDEC JESD79-3F**: *DDR3 SDRAM Specification*. The original. Free download with registration.
 - Your **DRAM chip datasheet** (Micron MT41K128M16, ISSI IS43TR16128, Nanya NT5CC128M16, etc.). Authoritative for tRCD/tRP/tRAS values and MR bit fields.
-- **IMX6ULLRM Chapter 39 — MMDC**. The controller's complete register reference. Long but skimmable.
-- **AN4467** — *MX6 DDR Stress Test*. How to use the NXP tool.
-- **AN5223** — *MX6 DDR Calibration*. The theory behind the calibration the tool performs.
-- **U-Boot source: `board/freescale/mx6ul_14x14_evk/MX6UL_14x14_EVK_4x_MT41K256M16HA-125.cfg`** — a real DCD for a similar Micron DDR. Compare against your tool output.
-- **Bootlin training material on DRAM controllers** — accessible, free.
+- **IMX6ULLRM Chapter 39, MMDC**: The controller's complete register reference. Long but skimmable.
+- **AN4467**: *MX6 DDR Stress Test*. How to use the NXP tool.
+- **AN5223**: *MX6 DDR Calibration*. The theory behind the calibration the tool performs.
+- **U-Boot source: `board/freescale/mx6ul_14x14_evk/MX6UL_14x14_EVK_4x_MT41K256M16HA-125.cfg`**: a real DCD for a similar Micron DDR. Compare against your tool output.
+- **Bootlin training material on DRAM controllers**: accessible, free.
 
-> Next chapter: **Chapter 15 — Exceptions and the GIC.** We have CPU clocks, UART, and DRAM. Now we install proper exception vectors and write our first real interrupt handler.
+> Next chapter: **Chapter 15: Exceptions and the GIC.** We have CPU clocks, UART, and DRAM. Now we install proper exception vectors and write our first real interrupt handler.
 > **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
-> **GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
+> **GIC:** ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.

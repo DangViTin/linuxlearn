@@ -1,26 +1,26 @@
 ---
 chapter: 102
 title: USB 4G LTE modems (Quectel EC20/EC25, SimCom SIM7600, Telit LM940)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 18
 status: draft
 ---
 
-# Chapter 102 — USB 4G LTE modems
+# Chapter 102: USB 4G LTE modems
 
-> **What:** the **USB-attached cellular modem** — the most common cellular path on Linux. Three modules compared: **Quectel EC20/EC25** (the canonical, LTE Cat-4 / Cat-6), **SimCom SIM7600** (cheaper, more variants), **Telit LM940** (industrial Cat-11, premium pricing). We dissect the **USB composite device** the modem presents (typically 4–7 endpoints: AT, GPS, modem, QMI/MBIM data), walk the kernel's `option`/`qmi_wwan`/`cdc_mbim` drivers, write a from-scratch AT-command client + a QMI session opener using libqmi, and bring up data via **ModemManager + NetworkManager** (the modern path) or **`quectel-CM`** / `qmi-network` (manual).
+> **What:** the **USB-attached cellular modem**, the most common cellular path on Linux. Three modules compared: **Quectel EC20/EC25** (the canonical, LTE Cat-4 / Cat-6), **SimCom SIM7600** (cheaper, more variants), **Telit LM940** (industrial Cat-11, premium pricing). We dissect the **USB composite device** the modem presents (typically 4–7 endpoints: AT, GPS, modem, QMI/MBIM data), walk the kernel's `option`/`qmi_wwan`/`cdc_mbim` drivers, write a from-scratch AT-command client + a QMI session opener using libqmi, and bring up data via **ModemManager + NetworkManager** (the modern path) or **`quectel-CM`** / `qmi-network` (manual).
 >
 > **Why:** every embedded device that talks to a cellular network uses one of these. The kernel handles the USB plumbing. There are three layers to keep straight: the USB interface mode the modem advertises (RNDIS, ECM, MBIM, QMI, or PPP), the kernel driver that binds to it, and the user-space tool that activates the data session. Most "modem doesn't connect" bugs are a mismatch between these three layers. After this chapter you can read an `lsusb` line, name the driver that bound each endpoint, and trace the data path the IP packets take.
 >
-> **Focus:** **the modem is a small embedded system in a USB case. It exposes several USB interfaces at once.** AT commands on `/dev/ttyUSB2` give you SMS, signal strength, and configuration. GPS NMEA on `/dev/ttyUSB1` gives you location. The data path is a separate USB interface that becomes `wwan0` (QMI) or `cdc-wdm0`+`wwan0` (MBIM) — once activated, it's a normal network interface that `ip route` sees. The split is unusual on Linux. The diagram in §102.3 makes it concrete.
+> **Focus:** **the modem is a small embedded system in a USB case. It exposes several USB interfaces at once.** AT commands on `/dev/ttyUSB2` give you SMS, signal strength, and configuration. GPS NMEA on `/dev/ttyUSB1` gives you location. The data path is a separate USB interface that becomes `wwan0` (QMI) or `cdc-wdm0`+`wwan0` (MBIM), once activated, it's a normal network interface that `ip route` sees. The split is unusual on Linux. The diagram in §102.3 makes it concrete.
 >
 > **Tooling.** This chapter uses `ModemManager` + `NetworkManager`, `libqmi-utils` (`qmicli`), `libmbim-utils` (`mbimcli`).
 > - **Ubuntu-base (target):** `apt install modemmanager network-manager libqmi-utils libmbim-utils`
 > - **Buildroot:** `BR2_PACKAGE_MODEM_MANAGER=y BR2_PACKAGE_NETWORK_MANAGER=y BR2_PACKAGE_LIBQMI=y BR2_PACKAGE_LIBMBIM=y`
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
 ## 102.1  Module comparison
@@ -40,10 +40,10 @@ status: draft
 | Power (peak TX) | 2.5 W | 2.5 W | 2.0 W | 3.0 W |
 
 **Pick guide:**
-- **EC25** — the default for most new designs. well-supported on Linux, widely available, multi-region SKUs (EC25-E for EMEA, EC25-A for North America, EC25-AU for Asia-Pacific…).
-- **EC20** — older but cheaper. identical software.
-- **SIM7600** — slightly cheaper, supports more legacy bands (GSM-only fallback in rural areas).
-- **LM940** — when you need Cat-11 (600 Mbps DL) for video uplink or backhaul. pay the premium.
+- **EC25**: the default for most new designs. Well-supported on Linux, widely available, multi-region SKUs (EC25-E for EMEA, EC25-A for North America, EC25-AU for Asia-Pacific…).
+- **EC20**: older but cheaper. Identical software.
+- **SIM7600**: slightly cheaper, supports more legacy bands (GSM-only fallback in rural areas).
+- **LM940**: when you need Cat-11 (600 Mbps DL) for video uplink or backhaul. Pay the premium.
 
 ## 102.2  What the modem looks like to Linux
 
@@ -72,12 +72,12 @@ If in **RNDIS** mode:
 - Last interface bound by `rndis_host` → `usb0`
 
 If in **ECM** mode:
-- Last interface bound by `cdc_ether` → `usb0` (no SIM control — appears as a simple Ethernet)
+- Last interface bound by `cdc_ether` → `usb0` (no SIM control, appears as a simple Ethernet)
 
 If in **PPP** mode (legacy):
 - All interfaces are `option`. `pppd` runs `/dev/ttyUSB3` and brings up `ppp0`
 
-`lsusb` won't tell you which mode you're in — the **PID** does:
+`lsusb` won't tell you which mode you're in, the **PID** does:
 
 | PID | Mode |
 |---|---|
@@ -87,7 +87,7 @@ If in **PPP** mode (legacy):
 | 2c7c:0121 | ECM (AT+QCFG="usbnet",1) |
 | 2c7c:0123 | PPP-only (no high-speed data interface) |
 
-Switching modes is one AT command + reset. **This is the most common reason a modem appears in the wrong mode** — the modem boots in whichever mode was last configured, persisted in its NV memory.
+Switching modes is one AT command + reset. **This is the most common reason a modem appears in the wrong mode**, the modem boots in whichever mode was last configured, persisted in its NV memory.
 
 ## 102.3  The kernel drivers in detail
 
@@ -119,10 +119,10 @@ Switching modes is one AT command + reset. **This is the most common reason a mo
 
 Each kernel driver:
 
-- **`option`** (`drivers/usb/serial/option.c`) — recognizes vendor-specific USB serial interfaces from cellular modems. The driver is essentially a giant `option_ids[]` table mapping (vendor, product, interface) → "make this interface a /dev/ttyUSBN serial port." When you plug in a new modem and no `/dev/ttyUSB*` appears, **the most common cause is a missing PID in `option_ids[]`**.
-- **`qmi_wwan`** (`drivers/net/usb/qmi_wwan.c`) — handles QMI (Qualcomm MSM Interface) over USB. Creates `wwan0` (netdev for data) and `cdc-wdm0` (character device for QMI control messages). Data packets go in/out of `wwan0` once a session is opened via cdc-wdm0.
-- **`cdc_mbim`** (`drivers/net/usb/cdc_mbim.c`) — handles MBIM (Mobile Broadband Interface Model — the USB-IF standard). Same pattern as qmi_wwan but uses MBIM protocol. Preferred for new designs.
-- **`rndis_host`** (`drivers/net/usb/rndis_host.c`) — Windows RNDIS Ethernet emulation. Easy: looks like Ethernet, `dhcp`, done. But no fine-grained control (no signal strength, no roaming control).
+- **`option`** (`drivers/usb/serial/option.c`), recognizes vendor-specific USB serial interfaces from cellular modems. The driver is essentially a giant `option_ids[]` table mapping (vendor, product, interface) → "make this interface a /dev/ttyUSBN serial port." When you plug in a new modem and no `/dev/ttyUSB*` appears, **the most common cause is a missing PID in `option_ids[]`**.
+- **`qmi_wwan`** (`drivers/net/usb/qmi_wwan.c`), handles QMI (Qualcomm MSM Interface) over USB. Creates `wwan0` (netdev for data) and `cdc-wdm0` (character device for QMI control messages). Data packets go in/out of `wwan0` once a session is opened via cdc-wdm0.
+- **`cdc_mbim`** (`drivers/net/usb/cdc_mbim.c`), handles MBIM (Mobile Broadband Interface Model, the USB-IF standard). Same pattern as qmi_wwan but uses MBIM protocol. Preferred for new designs.
+- **`rndis_host`** (`drivers/net/usb/rndis_host.c`), Windows RNDIS Ethernet emulation. Easy: looks like Ethernet, `dhcp`, done. But no fine-grained control (no signal strength, no roaming control).
 
 Walk of `qmi_wwan_probe()`:
 
@@ -144,7 +144,7 @@ static int qmi_wwan_probe(struct usb_interface *intf, ...) {
 
 Once probed, the data interface waits in an IDLE state. The user-space `qmicli` or ModemManager sends QMI control messages over `cdc-wdm0` (`WDS_START_NETWORK` with APN), the modem allocates a PDP context, returns an IP+gateway+DNS via `WDS_GET_RUNTIME_SETTINGS`, the user-space tool configures `wwan0` with that IP, and traffic flows.
 
-## 102.4  Bringing up data — the modern path (ModemManager + NetworkManager)
+## 102.4  Bringing up data, the modern path (ModemManager + NetworkManager)
 
 ```sh
 apt install modemmanager network-manager libqmi-utils libmbim-utils
@@ -176,11 +176,11 @@ ip addr show wwan0
 
 ModemManager handles the entire SIM unlock → APN → PDP → DHCP-like-handshake → connection-up chain. NetworkManager adds it to the routing table. `dnsmasq` integration handles DNS.
 
-## 102.5  Bringing up data — manual, from scratch
+## 102.5  Bringing up data, manual, from scratch
 
 If you want to understand the path, do everything ModemManager would do by hand.
 
-### QMI path — `qmicli`
+### QMI path, `qmicli`
 
 ```sh
 # Check the modem is alive
@@ -212,7 +212,7 @@ ip route add default via 10.x.x.x dev wwan0
 echo "nameserver 8.8.8.8" > /etc/resolv.conf
 ```
 
-### Equivalent in one binary — `quectel-CM`
+### Equivalent in one binary, `quectel-CM`
 
 Quectel ships a reference connection manager, `quectel-CM`, that wraps the above (~3000 lines of C, open source). Read it as a worked example of the QMI protocol.
 
@@ -227,7 +227,7 @@ quectel-CM -s internet
 # Connected.
 ```
 
-### MBIM path — `mbimcli`
+### MBIM path, `mbimcli`
 
 ```sh
 mbimcli -d /dev/cdc-wdm0 --query-device-caps
@@ -236,7 +236,7 @@ mbimcli -d /dev/cdc-wdm0 --connect=apn=internet
 # IPv4 address: 10.x.x.x ...
 ```
 
-### PPP path — legacy 2G/3G
+### PPP path, legacy 2G/3G
 
 ```sh
 cat > /etc/ppp/peers/3g <<EOF
@@ -258,7 +258,7 @@ pppd call 3g
 
 PPP is universal (works on every modem ever made) but slow (max ~1–2 Mbps due to byte-stuffing overhead) and CPU-intensive. Only use for legacy 2G/3G fallback.
 
-## 102.6  From scratch — a tiny AT-command client in Python
+## 102.6  From scratch, a tiny AT-command client in Python
 
 The most important debugging tool: a script that opens the AT interface and exchanges commands. This is what tells you *why* the modem isn't connecting.
 
@@ -333,11 +333,11 @@ If your modem comes up as PPP-only (PID 2c7c:0123) but you want QMI, switch via 
 
 SimCom equivalents: `AT+CUSBPIDSWITCH=9011,1,1` for QMI mode.
 
-This is persistent — the modem will boot in QMI mode forever after. **Common mistake**: customer ships a modem in PPP mode, you flash a kernel expecting QMI, nothing works. Always check `lsusb` PID first.
+This is persistent, the modem will boot in QMI mode forever after. **Common mistake**: customer ships a modem in PPP mode, you flash a kernel expecting QMI, nothing works. Always check `lsusb` PID first.
 
 ## 102.8  Device tree (for USB modems on i.MX6ULL)
 
-USB modems are autobound — no DT needed beyond ensuring USB-OTG/Host is enabled.
+USB modems are autobound, no DT needed beyond ensuring USB-OTG/Host is enabled.
 
 ```dts
 &usbotg1 {
@@ -347,31 +347,31 @@ USB modems are autobound — no DT needed beyond ensuring USB-OTG/Host is enable
 };
 ```
 
-The 5 V supply must source ~2.5 A during TX bursts. weak USB power = brownout = modem resets mid-connection.
+The 5 V supply must source ~2.5 A during TX bursts. Weak USB power = brownout = modem resets mid-connection.
 
 ## 102.9  Lab
 
-1. **lsusb identify.** Plug in modem. `lsusb -v`. identify the mode from PID. Check `dmesg | grep -E 'option|qmi_wwan|cdc_mbim'` to see which drivers bound.
+1. **lsusb identify.** Plug in modem. `lsusb -v`. Identify the mode from PID. Check `dmesg | grep -E 'option|qmi_wwan|cdc_mbim'` to see which drivers bound.
 2. **AT bring-up checklist.** Run all 7 AT checks above. Fix at the failing step.
 3. **Switch USB mode.** Move from default mode to QMI (if not already). Reboot. Verify new PID.
-4. **ModemManager auto.** Install ModemManager. `mmcli -L`. `nmcli c add ... apn ...`. bring up. `curl ifconfig.io` to confirm public IP.
+4. **ModemManager auto.** Install ModemManager. `mmcli -L`. `nmcli c add ... apn ...`. Bring up. `curl ifconfig.io` to confirm public IP.
 5. **Manual qmicli bring-up.** Stop ModemManager. Use `qmicli` to start the network manually. Verify `wwan0` data flows.
 6. **Compare MBIM vs QMI.** Switch the modem to MBIM mode. Use `mbimcli`. Note same result, different control protocol.
-7. **PPP fallback.** Force PPP mode. run `pppd`. Note throughput cap of ~1 Mbps.
+7. **PPP fallback.** Force PPP mode. Run `pppd`. Note throughput cap of ~1 Mbps.
 8. **GPS data.** While data is up, `cat /dev/ttyUSB1` shows NMEA. Pipe to `gpsd` (Ch 107) to use as a time source.
 9. **Signal degradation.** Watch `mmcli -m 0` while moving the antenna. Note RSSI/RSRP changes.
-10. **Auto-failover.** Pair WiFi (Ch 91) + LTE. configure metric so WiFi wins when up. disconnect WiFi and watch LTE take over within 5 s (NetworkManager handles this with right metric config).
+10. **Auto-failover.** Pair WiFi (Ch 91) + LTE. Configure metric so WiFi wins when up. Disconnect WiFi and watch LTE take over within 5 s (NetworkManager handles this with right metric config).
 
 ## 102.10  Pitfalls
 
-- **USB power inadequate.** EC25 TX burst hits 2.5 A peaks. many i.MX6ULL boards source 1 A max. Result: random modem resets mid-transmission. Use a powered hub or a board with proper USB power design.
-- **Wrong PID — wrong mode.** Modem in PPP mode but you expected QMI. Check `lsusb -v` first. switch with `AT+QCFG="usbnet"`.
+- **USB power inadequate.** EC25 TX burst hits 2.5 A peaks. Many i.MX6ULL boards source 1 A max. Result: random modem resets mid-transmission. Use a powered hub or a board with proper USB power design.
+- **Wrong PID, wrong mode.** Modem in PPP mode but you expected QMI. Check `lsusb -v` first. Switch with `AT+QCFG="usbnet"`.
 - **APN typo / wrong.** Carrier-specific APNs are non-obvious (T-Mobile: `fast.t-mobile.com`. AT&T: `broadband`. Vodafone: `internet`). Wrong APN → modem registers but PDP context fails.
 - **SIM not seated / locked.** `AT+CPIN?` returns `SIM PIN` → SIM needs unlock with `AT+CPIN=1234`. Returns `NOT INSERTED` → physical contact problem.
 - **Wrong band on a regional SIM.** EC25-E for European bands. EC25-A for NA. Cross-using → registration fails or restricted.
-- **Antenna missing / SMA loose.** Cellular antennas need a real impedance-matched antenna. A stub wire gives 20 dB worse signal — barely works in dense urban, fails in rural.
-- **Multiple modems → ttyUSB renumbering.** Plug in 2 modems → ttyUSB0..7. udev rules with serial numbers are essential for predictable naming.
-**udev** - the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
+- **Antenna missing / SMA loose.** Cellular antennas need a real impedance-matched antenna. A stub wire gives 20 dB worse signal, barely works in dense urban, fails in rural.
+- **Multiple modems → ttyUSB renumbering.** Plug in 2 modems → ttyUSB0..7. Udev rules with serial numbers are essential for predictable naming.
+> **udev:** the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 - **CGEV events drop the connection unnoticed.** `AT+CGEREP=2,1` enables PDP event reporting. Without it, an `IPv6 routing advertisement` or `PDP DEACT` from the carrier silently kills your `wwan0` and you don't notice until the timeout.
 - **qmi-firmware-update needed.** Some EC25 firmware versions have known bugs. Check Quectel's release notes and use `quectel-firmware-flash` to update.
 - **ModemManager fights with manual scripts.** If you call `qmicli --start-network` while ModemManager is running, the two will race each other and the connection will drop. Stop ModemManager (`systemctl stop ModemManager`) or use only the daemon.
@@ -379,16 +379,16 @@ The 5 V supply must source ~2.5 A during TX bursts. weak USB power = brownout = 
 
 ## 102.11  Going deeper
 
-- **Quectel EC25 User Manual + AT Commands Manual** — every modem's AT extension is non-trivial. The manual is the reference.
-- **libqmi + libmbim** (`gitlab.freedesktop.org/mobile-broadband/libqmi`) — read `qmicli.c` for the full QMI protocol.
-- **`quectel-CM`** (Quectel's reference QMI connection manager) — a self-contained C reference.
-- **ModemManager + NetworkManager** — the modern integrated path.
-- **`drivers/usb/serial/option.c`** — see how the kernel decides which interface is a serial port (the `option_ids[]` table).
-- **`drivers/net/usb/qmi_wwan.c` + `cdc_mbim.c`** — the netdev wrapping the data path.
-- **3GPP TS 27.007** — the standard AT command set for cellular modems.
+- **Quectel EC25 User Manual + AT Commands Manual**: every modem's AT extension is non-trivial. The manual is the reference.
+- **libqmi + libmbim** (`gitlab.freedesktop.org/mobile-broadband/libqmi`), read `qmicli.c` for the full QMI protocol.
+- **`quectel-CM`** (Quectel's reference QMI connection manager), a self-contained C reference.
+- **ModemManager + NetworkManager**: the modern integrated path.
+- **`drivers/usb/serial/option.c`**: see how the kernel decides which interface is a serial port (the `option_ids[]` table).
+- **`drivers/net/usb/qmi_wwan.c` + `cdc_mbim.c`**: the netdev wrapping the data path.
+- **3GPP TS 27.007**: the standard AT command set for cellular modems.
 - **Ch 103** for UART-attached (not USB) modems.
 - **Ch 104** for low-power NB-IoT / Cat-M1 variants.
 
 ---
 
-> Next chapter: **Chapter 103 — UART AT-command modems** — when you have no USB and an old PPP+chat is enough.
+> Next chapter: **Chapter 103: UART AT-command modems**, when you have no USB and an old PPP+chat is enough.

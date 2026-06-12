@@ -1,21 +1,21 @@
 ---
 chapter: 35A
 title: Ubuntu-base rootfs as a peer to BusyBox/Buildroot
-part: V — Root filesystem & user space (supplementary v1.1)
+part: V - Root filesystem & user space (supplementary v1.1)
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 35A — Ubuntu-base rootfs as a peer to BusyBox/Buildroot
-**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+# Chapter 35A: Ubuntu-base rootfs as a peer to BusyBox/Buildroot
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 > **What:** an Ubuntu rootfs on the i.MX6ULL. Ubuntu-the-distro with GNOME is too heavy. We use **Ubuntu-base** instead, the same Debian-family userland your laptop has, in a 80 MB tarball that runs `apt` and `bash` natively. You unpack it, `chroot` into it via `qemu-user-static`, install packages from the host's network, then NFS-boot the target into it.
-> **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 >
-> **Why:** for projects where the developer's familiarity matters more than image footprint, Ubuntu-base wins. Glibc, full coreutils, systemd, an actual `bash` — all present, in exchange for ~80 MB on disk and ~30 MB RAM at idle vs. BusyBox's < 5 MB / < 10 MB.
+> **Why:** for projects where the developer's familiarity matters more than image footprint, Ubuntu-base wins. Glibc, full coreutils, systemd, an actual `bash`, all present, in exchange for ~80 MB on disk and ~30 MB RAM at idle vs. BusyBox's < 5 MB / < 10 MB.
 >
-> **Focus:** the **`qemu-user-static` + `chroot` trick** — installing armhf packages from x86_64 host into the armhf rootfs by transparently running ARM binaries on the host CPU through QEMU emulation. Apt-get doesn't notice and the workflow works.
+> **Focus:** the **`qemu-user-static` + `chroot` trick**, installing armhf packages from x86_64 host into the armhf rootfs by transparently running ARM binaries on the host CPU through QEMU emulation. Apt-get doesn't notice and the workflow works.
 
 
 ## 35A.1  When this is the right answer
@@ -32,10 +32,10 @@ status: draft
 | Best for prototypes / dev boards | | ✓ |
 | Best for shipping products | ✓ (usually) | |
 
-The headline feature is `apt install <anything>` — Ubuntu's ~100 000-package archive available, no recompilation. For early development this is hard to beat.
+The headline feature is `apt install <anything>`, Ubuntu's ~100 000-package archive available, no recompilation. For early development this is hard to beat.
 
 The headline cost is ~25× the disk and ~3× the RAM vs Buildroot. On i.MX6ULL with 512 MiB DRAM and an 8 GB eMMC, both are fine. On a 32 MiB device, only Buildroot fits.
-**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 
 ## 35A.2  Get the rootfs tarball
 
@@ -50,13 +50,13 @@ proc  root  run   sbin  srv    sys    tmp  usr
 var
 ```
 
-That's already a minimal Ubuntu 22.04 LTS rootfs for ARM. Total size: ~80 MB. Use `20.04` or `24.04` if you prefer — same workflow.
+That's already a minimal Ubuntu 22.04 LTS rootfs for ARM. Total size: ~80 MB. Use `20.04` or `24.04` if you prefer, same workflow.
 
 Three release tracks Ubuntu publishes:
 
-- **20.04 LTS** — supported through April 2025 (and ESM through 2030).
-- **22.04 LTS** — supported through April 2027 (ESM 2032). Current LTS recommended for new work.
-- **24.04 LTS** — supported through April 2029 (ESM 2034).
+- **20.04 LTS**: supported through April 2025 (and ESM through 2030).
+- **22.04 LTS**: supported through April 2027 (ESM 2032). Current LTS recommended for new work.
+- **24.04 LTS**: supported through April 2029 (ESM 2034).
 
 Pick the most-recent LTS unless something specific requires older.
 
@@ -71,9 +71,9 @@ $ ls /usr/bin/qemu-arm-static
 ```
 
 `qemu-user-static` runs one ARM binary at a time on your x86_64 host. `binfmt-support` registers it with the kernel via `binfmt_misc`. When the kernel sees `exec` of an ARM ELF, it transparently invokes `qemu-arm-static` to run it.
-**ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
+> **ELF:** Executable and Linkable Format, the standard Linux object and executable file format.
 
-This means: inside the `chroot`, when you type `apt install nano`, `apt` is an ARM binary, `dpkg` is an ARM binary, every `.postinst` script's binary callouts are ARM — and they *all run on your x86_64 host* via QEMU emulation. The chroot doesn't know the difference. Neither do the binaries.
+This means: inside the `chroot`, when you type `apt install nano`, `apt` is an ARM binary, `dpkg` is an ARM binary, every `.postinst` script's binary callouts are ARM, and they *all run on your x86_64 host* via QEMU emulation. The chroot doesn't know the difference. Neither do the binaries.
 
 Copy the QEMU binary into the rootfs so the chroot has it:
 
@@ -175,8 +175,8 @@ That's the minimum for: a non-root user (sudo), an editor, ssh in, kernel module
 
 For the curious, this is what runs:
 
-1. `apt update` — downloads package metadata. Runs on QEMU. HTTP calls go to the host's network.
-2. `apt install` — for each package: download `.deb`, dpkg-extract files into `/`, run pre/post-install scripts. The scripts themselves are ARM binaries running under QEMU.
+1. `apt update`, downloads package metadata. Runs on QEMU. HTTP calls go to the host's network.
+2. `apt install`, for each package: download `.deb`, dpkg-extract files into `/`, run pre/post-install scripts. The scripts themselves are ARM binaries running under QEMU.
 
 ### Set root password and create a user
 
@@ -208,9 +208,9 @@ Ubuntu uses systemd. We need a getty on `ttymxc0` for serial login:
 root@host:/# systemctl enable serial-getty@ttymxc0.service
 ```
 
-`systemctl` here just creates a symlink — it doesn't actually start anything (we're in a chroot). The symlink ensures the service is enabled on first boot of the target.
+`systemctl` here just creates a symlink, it doesn't actually start anything (we're in a chroot). The symlink ensures the service is enabled on first boot of the target.
 
-### Done — exit and unmount
+### Done, exit and unmount
 
 ```sh
 root@host:/# exit
@@ -222,7 +222,7 @@ $ ./unmount-ubuntu.sh
 
 Export `~/imx6ull/ubuntu-rootfs/` over NFS (same as Ch 31, different rootfs path). In U-Boot:
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```
 => setenv bootargs 'console=ttymxc0,115200 earlycon \
@@ -262,7 +262,7 @@ A full Ubuntu shell. `apt install` works, `python3` is there, every command you'
 
 Boot time on i.MX6ULL: ~12-15 seconds from `bootz` to login prompt (vs ~3 s for BusyBox). Most of that is systemd's startup.
 
-## 35A.7  Persistence — burning to eMMC
+## 35A.7  Persistence, burning to eMMC
 
 NFS-rooted Ubuntu is great for development but you eventually want it on the target's flash.
 
@@ -305,7 +305,7 @@ For our continuing work in this book, **Buildroot** is the default. **Ubuntu-bas
 2. **`apt install` something useful.** Try `htop`, then `python3-pip`, then `nodejs`. Verify each runs.
 3. **Time the boot.** Compare BusyBox rootfs boot time vs Ubuntu-base.
 4. **Try `systemd-analyze`.** On the Ubuntu rootfs, `systemd-analyze blame` shows which services took longest at boot. Identify the top three.
-5. **Disable a heavyweight service.** Pick one (e.g., `snapd` if present, `unattended-upgrades`). `sudo systemctl disable <name>`. Reboot. compare boot times.
+5. **Disable a heavyweight service.** Pick one (e.g., `snapd` if present, `unattended-upgrades`). `sudo systemctl disable <name>`. Reboot. Compare boot times.
 6. **Build a packaged image.** Tar the rootfs, write to a real partition, change `bootargs` to mount from disk, verify the system boots without the host. This is what you'd ship.
 
 ## 35A.10  Pitfalls
@@ -315,17 +315,17 @@ For our continuing work in this book, **Buildroot** is the default. **Ubuntu-bas
 - **Forgetting `/etc/resolv.conf`.** Inside the chroot, `apt update` will fail with "Temporary failure resolving 'ports.ubuntu.com'". Fix: copy host's `/etc/resolv.conf` into the rootfs before `chroot`.
 - **`mount --bind /dev` without `--bind /dev/pts`.** Symptom: `passwd` and other terminal-needing commands fail in the chroot. Fix: bind both.
 - **Forgetting to unmount.** If you reboot the host without `unmount-ubuntu.sh`, the host's `/dev/pts/` is still bind-mounted under the rootfs. Later operations may misbehave. Always pair mount and unmount.
-- **Choosing the wrong armhf.** Ubuntu publishes both `armhf` (32-bit, hard-float) and `arm64` (64-bit). i.MX6ULL is `armhf`. Downloading `arm64` and trying to run it on a 32-bit i.MX6ULL is a slow, confusing failure.
+- **Choosing the wrong armhf.** Ubuntu publishes both `armhf` (32-bit, hard-float) and `arm64` (64-bit). I.MX6ULL is `armhf`. Downloading `arm64` and trying to run it on a 32-bit i.MX6ULL is a slow, confusing failure.
 - **Mirror URL with HTTPS but `apt` can't validate certs.** Older Ubuntu base images may not have `ca-certificates` installed. Use `http://` mirrors initially, install `ca-certificates` first, then switch to `https://`.
 - **`systemctl enable` in chroot is harmless but `systemctl start` is not.** Inside a chroot, `start` may try to manipulate cgroups or dbus and fail. Only use `enable` / `disable` for one-shot config in the chroot.
 
 ## 35A.11  Going deeper
 
-- **`debootstrap`** — Debian's equivalent of `ubuntu-base.tar.gz`. Builds a fresh Debian rootfs from package archives. More flexible. more complex.
-- **`multistrap`** — debootstrap with support for non-Debian package sources. Used by Yocto when assembling Debian-based images.
-**Yocto** - a metadata-driven build system for producing custom Linux distributions.
-- **`schroot`** — manage chroot environments without writing your own mount scripts.
-- **`Ubuntu Core`** — Ubuntu's official "embedded" variant. Uses snaps instead of apt. immutable rootfs. Different philosophy from this chapter. worth knowing about.
-- **`Yocto-meta-ubuntu`** layer — combines Yocto-style builds with Ubuntu's package archive.
+- **`debootstrap`**: Debian's equivalent of `ubuntu-base.tar.gz`. Builds a fresh Debian rootfs from package archives. More flexible. More complex.
+- **`multistrap`**: debootstrap with support for non-Debian package sources. Used by Yocto when assembling Debian-based images.
+> **Yocto:** a metadata-driven build system for producing custom Linux distributions.
+- **`schroot`**: manage chroot environments without writing your own mount scripts.
+- **`Ubuntu Core`**: Ubuntu's official "embedded" variant. Uses snaps instead of apt. Immutable rootfs. Different philosophy from this chapter. Worth knowing about.
+- **`Yocto-meta-ubuntu`** layer, combines Yocto-style builds with Ubuntu's package archive.
 
-> Next chapter: **Chapter 35B — Read-only rootfs + overlayfs.** Whichever rootfs you chose, when you ship to the field, you want it mounted read-only. Here is how.
+> Next chapter: **Chapter 35B: Read-only rootfs + overlayfs.** Whichever rootfs you chose, when you ship to the field, you want it mounted read-only. Here is how.

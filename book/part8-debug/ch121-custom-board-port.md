@@ -1,26 +1,26 @@
 ---
 chapter: 121
-title: Capstone — custom board port
-part: VIII — Debug, production, advanced
+title: Capstone: custom board port
+part: VIII - Debug, production, advanced
 estimated_pages: 30
 status: draft
 ---
 
-# Chapter 121 — Capstone: custom board port
-**NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
+# Chapter 121: Capstone: custom board port
+> **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
 
 > **What:** a board-port exercise that uses most of what came before. Take a custom PCB (or a rework of the Point Atom MINI into a non-trivial variant) and port the entire stack to it: **U-Boot defconfig + DTS**, **kernel DTS + drivers**, **at least one new peripheral** the original board didn't have, and a **reproducible build script** that goes from clean checkout → bootable SD in one command. The deliverable is a working, customized Linux system on hardware you (or a colleague) designed.
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Why:** Each Cookbook chapter covered one piece. A real board port is where those pieces have to work together. You'll touch: pin-muxing (Ch 5), DDR initialization (Ch 14), U-Boot porting (Ch 22), kernel DT (Ch 27), each peripheral chapter that applies (whatever your board has). At the end you have a binary build script + a custom DT that any teammate can run and reproduce. That deliverable, plus the debugging experience that comes with it, is what gets you to the next level of confidence on this stack.
-> **DDR** - external DRAM that must be configured and trained before most software can run from it.
+> **DDR:** external DRAM that must be configured and trained before most software can run from it.
 >
 > **Focus:** **the bring-up sequence is U-Boot first (you need a boot loader), then kernel + DT for *each* peripheral one at a time, with verification at every step**. Don't try to boot everything at once. Bring up serial, then DDR, then SD, then Ethernet, then your custom peripheral. Probe the serial console after each step. Use Ch 118's JTAG when serial is too coarse. Keep a known-good fall-back image you can flash to recover from bricks. At the end, ask what surprised you and why. That's what makes the next port faster.
 > **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
-> **JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
+> **JTAG:** the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 
-## 121.1  Scope — what to port
+## 121.1  Scope, what to port
 
 A realistic 4-week capstone:
 
@@ -32,13 +32,13 @@ A realistic 4-week capstone:
 | Week 4 | Reproducible build | One-script flow: clean checkout → bootable image |
 
 Pick the peripheral wisely: easiest first time = an existing-driver chip (e.g., AT24 EEPROM, DS3231 RTC, BME280 sensor). Avoid for first attempt: cameras, complex graphics, anything DMA-heavy.
-**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
+> **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
 
-## 121.2  Hardware variants — what counts as "custom"
+## 121.2  Hardware variants, what counts as "custom"
 
 Three options, in order of ambition:
 
-### Option A — Pretend-port the Point Atom MINI
+### Option A, Pretend-port the Point Atom MINI
 
 Even using the standard MINI, you can do a meaningful port:
 - Different model string in U-Boot (board name in `bdinfo`)
@@ -48,7 +48,7 @@ Even using the standard MINI, you can do a meaningful port:
 
 You learn the workflow without designing a PCB.
 
-### Option B — Rework the Point Atom MINI
+### Option B, Rework the Point Atom MINI
 
 Solder/desolder peripherals on the existing board:
 - Replace the WiFi module (if any) with a different one
@@ -56,20 +56,20 @@ Solder/desolder peripherals on the existing board:
 - Add an SPI Ethernet (DM9051 from Ch 115)
 - Mod the LCD interface
 
-Real wiring, partial-board changes. tests your DT skills.
+Real wiring, partial-board changes. Tests your DT skills.
 
-### Option C — Full custom PCB
+### Option C, Full custom PCB
 
 Design your own i.MX6ULL board (KiCad / Altium):
 - Different RAM (DDR3 256 MB vs the MINI's 512 MB? Different timing).
 - Different PMIC.
 > **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
-**PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
+> **PMIC:** Power Management IC, a chip that sequences and regulates the board's voltage rails.
 - Different boot media (eMMC, QSPI flash instead of SD).
-- Different I/O complement (your specific application — sensors, motors, displays).
+- Different I/O complement (your specific application, sensors, motors, displays).
 - Different connectors / form factor.
 
-This is the real-world product workflow. Takes 4–8 weeks for the PCB alone. not for the time-constrained reader.
+This is the real-world product workflow. Takes 4–8 weeks for the PCB alone. Not for the time-constrained reader.
 
 For most readers: **Option A or B is right**. The PCB design is a different book.
 
@@ -113,7 +113,7 @@ For most readers: **Option A or B is right**. The PCB design is a different book
 
 Tick each off in order. Each failure isolates to one layer.
 
-## 121.4  U-Boot port — the steps
+## 121.4  U-Boot port, the steps
 
 ### 121.4.1  Fork the reference defconfig
 
@@ -147,9 +147,9 @@ cp arch/arm/dts/imx6ull-14x14-evk.dts arch/arm/dts/imx6ull-myboard.dts
 
 ### 121.4.4  DDR config (if you changed RAM chip)
 
-Run NXP's **DDR Stress Tool** with your DDR chip's datasheet values. export the calibration. Update `board/myvendor/myboard/mx6ullevk.c` (the C-language DDR init in U-Boot SPL) with the new register values:
+Run NXP's **DDR Stress Tool** with your DDR chip's datasheet values. Export the calibration. Update `board/myvendor/myboard/mx6ullevk.c` (the C-language DDR init in U-Boot SPL) with the new register values:
 > **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
-**SPL** - Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
+> **SPL:** Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
 
 ```c
 const struct mx6_mmdc_calibration mx6_mmcd_calib = {
@@ -162,7 +162,7 @@ const struct mx6_mmdc_calibration mx6_mmcd_calib = {
 };
 ```
 
-This is the riskiest step. If DDR config is wrong, nothing else will work. Use the DDR Stress Tool. don't hand-calculate.
+This is the riskiest step. If DDR config is wrong, nothing else will work. Use the DDR Stress Tool. Don't hand-calculate.
 
 ### 121.4.5  Build and flash
 
@@ -177,7 +177,7 @@ sudo eject /dev/sdX
 ```
 
 If you see U-Boot banner → 80 % of bring-up complete. If you see only DCD garbage → DDR config wrong, debug with JTAG.
-**DCD** - Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
+> **DCD:** Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
 
 ## 121.5  Kernel DT port
 
@@ -216,7 +216,7 @@ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- zImage imx6ull-myboard.dtb
 
 If kernel hangs early → use `earlycon` to see early printks. If kernel hangs after init → check `console=` arg matches your DT's UART.
 
-## 121.6  Custom peripheral — adding an external RTC
+## 121.6  Custom peripheral, adding an external RTC
 
 Pick something simple: DS3231 RTC on I²C2.
 
@@ -259,7 +259,7 @@ hwclock --show
 # 2026-05-31 12:34:56.123456+00:00
 ```
 
-If this works, you've taken a peripheral from "nonexistent on the EVK" to "fully driven by mainline Linux" via DT alone — the canonical pattern.
+If this works, you've taken a peripheral from "nonexistent on the EVK" to "fully driven by mainline Linux" via DT alone, the canonical pattern.
 
 ## 121.7  The reproducible build script
 
@@ -332,28 +332,28 @@ echo "Done. Eject SD and boot the target."
 
 Run: `./build.sh /dev/sdb`. 30 minutes later (mostly compile time), bootable card.
 
-**This script** is the deliverable. Hand it to a teammate. they get the same image. Reproducibility is the difference between "I shipped a product" and "I have a Linux running on my desk."
+**This script** is the deliverable. Hand it to a teammate. They get the same image. Reproducibility is the difference between "I shipped a product" and "I have a Linux running on my desk."
 
 ## 121.8  Common failures + recovery
 
 ### "U-Boot prints DCD garbage then dies"
-- DDR init failed. Use JTAG to dump MMDC registers. compare to Stress Tool output.
-**MMDC** - the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
+- DDR init failed. Use JTAG to dump MMDC registers. Compare to Stress Tool output.
+> **MMDC:** the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
 - Verify the SPL DDR init values match your DDR3 chip's datasheet.
 
 ### "U-Boot prompt but kernel hangs after 'Uncompressing Linux...'"
-- DT name mismatch — kernel can't find the DT. Verify `console=` and root= args.
+- DT name mismatch, kernel can't find the DT. Verify `console=` and root= args.
 - `earlycon` and `loglevel=8` for more info.
 
 ### "Kernel boots but no Ethernet"
 - PHY MDIO address wrong. `cat /sys/class/net/eth0/phydev/phy_id` to see. `mdio` U-Boot command to scan addresses.
-**PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
+> **PHY:** physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
 - PHY power rail not up. Verify with multimeter.
 
 ### "Driver doesn't probe"
-- Compatible string mismatch — check kernel's table vs your DT.
-- Required clock not declared — check `clocks` in DT.
-- Required regulator not declared — `dmesg | grep regulator`.
+- Compatible string mismatch, check kernel's table vs your DT.
+- Required clock not declared, check `clocks` in DT.
+- Required regulator not declared, `dmesg | grep regulator`.
 
 ### "Worked once, now bricked"
 - Boot back into recovery via USB-OTG SDP (Ch 8).
@@ -362,14 +362,14 @@ Run: `./build.sh /dev/sdb`. 30 minutes later (mostly compile time), bootable car
 ## 121.9  Lab
 
 1. **Set up workspace.** Clone u-boot, linux, buildroot at known versions. Verify each compiles.
-**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 2. **Stock build first.** Build U-Boot + kernel for the EVK (no changes). Boot the stock Point Atom MINI. Verify everything works.
-3. **Customize step by step.** Fork the EVK as your board. change only the model string. rebuild. reboot. verify `bdinfo` shows your name.
-4. **Add a peripheral.** Wire DS3231 RTC (Ch 117). add DT. enable driver. verify.
-5. **Or replace a peripheral.** Remove the stock WM8960 audio. add an SGTL5000 (Ch 89). update DT. verify `aplay` works.
-6. **Or add a new bus.** Wire a second I²C bus to spare pins. add DT. verify `i2cdetect -y 1` works.
-7. **Build script.** Write `build.sh` from scratch. test on a clean checkout. Time the full build.
-8. **CI integration (preview of Ch 121A).** Wire `build.sh` into GitHub Actions. verify it runs on every commit.
+3. **Customize step by step.** Fork the EVK as your board. Change only the model string. Rebuild. Reboot. Verify `bdinfo` shows your name.
+4. **Add a peripheral.** Wire DS3231 RTC (Ch 117). Add DT. Enable driver. Verify.
+5. **Or replace a peripheral.** Remove the stock WM8960 audio. Add an SGTL5000 (Ch 89). Update DT. Verify `aplay` works.
+6. **Or add a new bus.** Wire a second I²C bus to spare pins. Add DT. Verify `i2cdetect -y 1` works.
+7. **Build script.** Write `build.sh` from scratch. Test on a clean checkout. Time the full build.
+8. **CI integration (preview of Ch 121A).** Wire `build.sh` into GitHub Actions. Verify it runs on every commit.
 9. **Document it.** Write a 1-page README: "what hardware is needed, what software prerequisites, how to build, how to flash, how to verify." A new engineer should be able to follow it.
 10. **(Stretch) Upstream the DT.** Format-patch + send your board DT to linux-arm-kernel + linux-imx (per Ch 120A). Even if rejected, the experience is valuable.
 
@@ -388,31 +388,31 @@ These answers are gold for the next board you port. Reread them when you start.
 
 ## 121.11  Pitfalls
 
-- **Trying to bring up everything at once.** Bring up one layer at a time. verify each.
+- **Trying to bring up everything at once.** Bring up one layer at a time. Verify each.
 - **No serial console early.** UART1 with PowerView / minicom from minute zero. Other debug paths require more setup.
 - **No JTAG when needed.** When the serial output is "boots and hangs at unknown location," JTAG is the only ground truth. Don't argue.
-- **Cargo-culting EVK config.** Read every line of the defconfig and DTS. understand why each is there before changing.
+- **Cargo-culting EVK config.** Read every line of the defconfig and DTS. Understand why each is there before changing.
 - **DDR config "close enough."** No. Stress Tool every time. A 5 % timing margin difference can mean "works at 25 °C, crashes at 40 °C."
 - **DT compile errors not fatal-looking.** `dtc` gives warnings that often hide errors. Read every line.
 - **One-script build that depends on your laptop.** Test on a fresh checkout in a fresh VM. If it doesn't work, it's not reproducible.
 - **Forgetting modules.** `make modules_install` to the rootfs partition. Without it, your driver isn't actually present on the target.
-- **Wrong rootfs init.** Buildroot's default init is BusyBox. verify `/sbin/init` exists.
+- **Wrong rootfs init.** Buildroot's default init is BusyBox. Verify `/sbin/init` exists.
 - **Wrong console in bootargs.** `console=ttyS0` won't work on i.MX6ULL (it's `ttymxc0`). Verify against your DT.
 - **No fallback image.** Brick your custom board with no way to recover. Always keep a stock-EVK SD on hand for comparison.
 
 ## 121.12  Going deeper
 
-- **NXP IMX6ULL Reference Manual** — your single most important reference.
-- **NXP DDR Stress Tool** — for DDR bring-up.
-- **`U-Boot README.imx` + `doc/imx/mkimage/`** — for IMX-specific boot flow.
-- **`Documentation/devicetree/bindings/arm/fsl.yaml`** — the i.MX SoC binding.
-- **`MAINTAINERS`** — to find subsystem maintainers when upstreaming.
-- **Bootlin training materials** — http://bootlin.com/training/embedded-linux/.
-- **i.MX Solutions Catalog** — NXP's reference designs for various i.MX SoCs.
-- **Ch 120A** — for upstreaming your DT.
-- **Ch 121A** — to wire your `build.sh` into CI.
-- **Ch 22 + Ch 25** — the original U-Boot and kernel port chapters.
+- **NXP IMX6ULL Reference Manual**: your single most important reference.
+- **NXP DDR Stress Tool**: for DDR bring-up.
+- **`U-Boot README.imx` + `doc/imx/mkimage/`**: for IMX-specific boot flow.
+- **`Documentation/devicetree/bindings/arm/fsl.yaml`**: the i.MX SoC binding.
+- **`MAINTAINERS`**: to find subsystem maintainers when upstreaming.
+- **Bootlin training materials**: http://bootlin.com/training/embedded-linux/.
+- **i.MX Solutions Catalog**: NXP's reference designs for various i.MX SoCs.
+- **Ch 120A**: for upstreaming your DT.
+- **Ch 121A**: to wire your `build.sh` into CI.
+- **Ch 22 + Ch 25**: the original U-Boot and kernel port chapters.
 
 ---
 
-> Next chapter: **Chapter 121A — CI/CD for embedded Linux**.
+> Next chapter: **Chapter 121A: CI/CD for embedded Linux**.

@@ -1,23 +1,23 @@
 ---
 chapter: 125A
 title: VSCode + gdbserver remote-debug workflow
-part: VIII — Debug, production, advanced
+part: VIII - Debug, production, advanced
 estimated_pages: 12
 status: draft
 ---
 
-# Chapter 125A — VSCode + gdbserver remote-debug workflow
-**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+# Chapter 125A: VSCode + gdbserver remote-debug workflow
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 
 > **What:** the **IDE-driven cross-debug workflow** for engineers who prefer Visual Studio Code over the gdb command line. **`gdbserver`** on the target. **`gdb-multiarch`** on the host. VSCode's C/C++ extension and `launch.json` tying them together. `.vscode/c_cpp_properties.json` resolving headers from the cross-sysroot so "Go to Definition" works on both your app *and* kernel sources. Plus a short note on Source Insight, an old commercial editor that's still the fastest tool for read-only kernel-source navigation.
-> **GDB** - the debugger. in cross-debugging it runs on the host while controlling code on the target.
+> **GDB:** the debugger. In cross-debugging it runs on the host while controlling code on the target.
 >
 > **Why:** many readers come from microcontroller backgrounds where the IDE *is* the debugger (Keil, IAR, STM32CubeIDE). Forcing them to learn gdb's tui mode just to set a breakpoint is unnecessary. VSCode plus the right config gives the same click-to-set-breakpoint experience cross-debugging a remote ARM target, while leaving the underlying gdb fully scriptable for when you do want the command line. Setting up `launch.json` once pays back every debug session after.
 >
 > **Focus:** VSCode's debug UI is a wrapper around gdb. `launch.json` configures it. You set: which gdb binary, which binary to debug, where gdbserver listens, and where the source tree lives. The non-obvious part is `c_cpp_properties.json`. It must point IntelliSense at the target's sysroot headers, not the host's. Otherwise "Go to Definition" finds your laptop's `stdio.h`, not the cross-compiled one. With both files right, IDE-style debug and accurate Go-to-Definition make embedded debug feel close to desktop.
 
 
-## 125A.1  Target side — install gdbserver
+## 125A.1  Target side, install gdbserver
 
 ```sh
 # Yocto / Buildroot: enable gdbserver in image
@@ -27,9 +27,9 @@ apt install gdbserver
 # Static-linked is preferable so it works even with weird libc situations
 ```
 
-`gdbserver` is small — about 100 KB statically linked — and needs no debug info on the target.
+`gdbserver` is small, about 100 KB statically linked, and needs no debug info on the target.
 
-## 125A.2  Host side — VSCode + extensions
+## 125A.2  Host side, VSCode + extensions
 
 ```sh
 # Install VSCode (Microsoft .deb or your distro's package)
@@ -49,8 +49,8 @@ apt install gdb-multiarch
 
 VSCode reads two project-local files from `.vscode/`:
 
-- **`launch.json`** — debug-time configuration (which gdb, which binary, where to connect).
-- **`c_cpp_properties.json`** — IntelliSense / Go-to-Definition (which headers, which compiler).
+- **`launch.json`**: debug-time configuration (which gdb, which binary, where to connect).
+- **`c_cpp_properties.json`**: IntelliSense / Go-to-Definition (which headers, which compiler).
 
 ### `.vscode/launch.json`
 
@@ -88,13 +88,13 @@ VSCode reads two project-local files from `.vscode/`:
 
 Key fields:
 - **`program`**: the unstripped ELF on the host. Symbols come from here.
-**ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
+> **ELF:** Executable and Linkable Format, the standard Linux object and executable file format.
 - **`miDebuggerPath`**: cross-gdb. Must understand ARM.
 - **`miDebuggerServerAddress`**: where gdbserver listens on the target.
 - **`setupCommands`**: extra gdb commands at start (`set sysroot`, `set solib-search-path`, ...).
 - **`preLaunchTask`** (optional): a VSCode task that starts gdbserver on the target. See below.
 
-### `.vscode/tasks.json` — pre-launch gdbserver
+### `.vscode/tasks.json`, pre-launch gdbserver
 
 ```json
 {
@@ -111,7 +111,7 @@ Key fields:
 }
 ```
 
-VSCode runs this task before launching debug. gdbserver is up. The debug session connects immediately.
+VSCode runs this task before launching debug. Gdbserver is up. The debug session connects immediately.
 
 ### `.vscode/c_cpp_properties.json`
 
@@ -143,17 +143,17 @@ With this, hover-over-symbol and "Go to Definition" find the target's headers, n
 1. **Build** on host: `cd build && cmake --build .` (or your build system).
 2. **Copy binary** to target: `scp build/myapp root@target:/usr/bin/` (or NFS rootfs auto-syncs).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-**NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
-**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
-3. **F5 in VSCode**: pre-launch task starts gdbserver. gdb connects. binary loads. stops at entry (or your `main()`).
+> **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+3. **F5 in VSCode**: pre-launch task starts gdbserver. Gdb connects. Binary loads. Stops at entry (or your `main()`).
 4. **Set breakpoints** by clicking in the gutter of source files.
 5. **Continue/step/inspect** via the debug toolbar.
 6. **Watch / Locals / Call Stack** panels show variables and stack.
 7. **Debug Console** for arbitrary gdb commands (`-exec print foo`).
 
-When done: VSCode disconnects. gdbserver stops (or stays running if `--multi`).
+When done: VSCode disconnects. Gdbserver stops (or stays running if `--multi`).
 
-## 125A.5  Multi-target — connect to multiple boards
+## 125A.5  Multi-target, connect to multiple boards
 
 For a fleet:
 
@@ -197,14 +197,14 @@ The kernel-side gdb stub is **KGDB over UART** (Ch 119) on port 1234. After conn
 # Now insmod the module on the target — breakpoint hits in VSCode.
 ```
 
-## 125A.7  Source Insight — the read-only navigator
+## 125A.7  Source Insight, the read-only navigator
 
-Source Insight is a 25-year-old commercial editor (Windows. runs in Wine on Linux). For navigating *huge* code bases (Linux source is ~30 M lines) it's still fastest:
+Source Insight is a 25-year-old commercial editor (Windows. Runs in Wine on Linux). For navigating *huge* code bases (Linux source is ~30 M lines) it's still fastest:
 - 5 s to index Linux kernel.
 - Hover any symbol → instant definition + cross-references.
 - Call graph generation.
 
-It's not a debugger. not an editor for serious projects. But for "I'm reading the kernel source and want to navigate quickly," nothing beats it. License: $239 one-time.
+It's not a debugger. Not an editor for serious projects. But for "I'm reading the kernel source and want to navigate quickly," nothing beats it. License: $239 one-time.
 
 VSCode's IntelliSense on the kernel source works but is slower (~5 minutes to index). For active editing: VSCode. For pure reading: Source Insight.
 
@@ -215,22 +215,22 @@ VSCode's IntelliSense on the kernel source works but is slower (~5 minutes to in
 3. **Manual gdbserver test.** `gdbserver :2345 ./hello` on target. `gdb-multiarch ./hello` + `target remote target-ip:2345` on host. Step, print. Confirm it works before introducing VSCode.
 4. **VSCode launch.json.** Set up the config. F5. Confirm debug session connects.
 5. **Set breakpoint.** Click in gutter at a source line. Continue. Verify breakpoint hits and you can inspect locals.
-6. **Set sysroot properly.** Try without (note libc symbol errors). then set. observe they resolve.
+6. **Set sysroot properly.** Try without (note libc symbol errors). Then set. Observe they resolve.
 7. **c_cpp_properties.json.** Configure to point at target sysroot. Verify hover-over-symbol finds the target's libc, not your host's.
-8. **Multi-target.** Add 2 board configs. switch between them via dropdown.
-9. **Debug a real driver in your app** that wraps Ch 105 (RFID) or Ch 117 (RTC). Set breakpoint on init. trace through.
-10. **Source Insight evaluation (stretch).** Try the 30-day trial. index your kernel. compare navigation speed to VSCode.
+8. **Multi-target.** Add 2 board configs. Switch between them via dropdown.
+9. **Debug a real driver in your app** that wraps Ch 105 (RFID) or Ch 117 (RTC). Set breakpoint on init. Trace through.
+10. **Source Insight evaluation (stretch).** Try the 30-day trial. Index your kernel. Compare navigation speed to VSCode.
 
 ## 125A.9  Pitfalls
 
-- **Wrong gdb binary.** `/usr/bin/gdb` (host) won't debug ARM. needs `gdb-multiarch` or the cross-toolchain gdb.
+- **Wrong gdb binary.** `/usr/bin/gdb` (host) won't debug ARM. Needs `gdb-multiarch` or the cross-toolchain gdb.
 - **Sysroot path stale.** Yocto recreates `recipe-sysroot` paths each build. The hardcoded path in `launch.json` drifts. Use `${workspaceFolder}` + relative paths or update on rebuild.
-**Yocto** - a metadata-driven build system for producing custom Linux distributions.
-- **gdbserver not actually started.** preLaunchTask SSH command fails silently. debug session times out. Verify with manual SSH first.
+> **Yocto:** a metadata-driven build system for producing custom Linux distributions.
+- **gdbserver not actually started.** preLaunchTask SSH command fails silently. Debug session times out. Verify with manual SSH first.
 - **IntelliSense crashes parsing kernel source.** 30M lines exceeds VSCode's default RAM. Increase: `"C_Cpp.intelliSenseEngine": "default"`, plus 8+ GB RAM.
 - **Source paths don't match.** Binary built in `/build/...` but you opened the project in `/src/...`. GDB can't find source files. Add `substitute-path` to setupCommands.
-- **Stripped binary on target.** gdbserver opens it but no symbols. Always use unstripped on host side. target-side `strip` is fine.
-- **Breakpoints don't hit.** Often: target's libc not matching host's compile-time libc. symbols mismatch. libc functions step into stripped code. Set sysroot.
+- **Stripped binary on target.** gdbserver opens it but no symbols. Always use unstripped on host side. Target-side `strip` is fine.
+- **Breakpoints don't hit.** Often: target's libc not matching host's compile-time libc. Symbols mismatch. Libc functions step into stripped code. Set sysroot.
 - **Slow over remote SSH.** gdbserver+ssh tunnel adds ~50 ms per breakpoint. Use direct TCP (open the port in firewall) if you control the network.
 - **"Cannot find ld-linux-armhf.so.3".** sysroot wrong. Verify it points to `${YOCTO_BUILD}/.../recipe-sysroot/`, not the host's `/`.
 - **VSCode's debug console is one-liner.** Multi-line gdb commands (define, document) need to go in a separate script file loaded via `source` from setupCommands.
@@ -238,18 +238,18 @@ VSCode's IntelliSense on the kernel source works but is slower (~5 minutes to in
 
 ## 125A.10  Going deeper
 
-- **VSCode C/C++ extension documentation** — https://code.visualstudio.com/docs/cpp/cpp-debug.
-- **`launch.json` reference** — all options.
-- **GDB manual chapters on MI (Machine Interface)** — what VSCode uses to talk to gdb.
-- **`gdb-dashboard`** — terminal alternative if you decide to leave VSCode.
-- **`gef` and `pwndbg`** — gdb plugins for security research, with VSCode-like features in terminal.
-- **CLion** + remote toolchain — JetBrains commercial alternative. even smoother UX, paid.
-- **Ch 118** — JTAG with gdb (same gdb, different remote target).
+- **VSCode C/C++ extension documentation**: https://code.visualstudio.com/docs/cpp/cpp-debug.
+- **`launch.json` reference**: all options.
+- **GDB manual chapters on MI (Machine Interface)**: what VSCode uses to talk to gdb.
+- **`gdb-dashboard`**: terminal alternative if you decide to leave VSCode.
+- **`gef` and `pwndbg`**: gdb plugins for security research, with VSCode-like features in terminal.
+- **CLion** + remote toolchain, JetBrains commercial alternative. Even smoother UX, paid.
+- **Ch 118**: JTAG with gdb (same gdb, different remote target).
 > **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
-**JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
-- **Ch 120** — gdbserver + cli gdb (same workflow, manual setup).
-- **Ch 119** — KGDB for kernel-side debug.
+> **JTAG:** the hardware debug scan chain used to halt, inspect, and single-step CPUs.
+- **Ch 120**: gdbserver + cli gdb (same workflow, manual setup).
+- **Ch 119**: KGDB for kernel-side debug.
 
 ---
 
-> Next chapter: **Chapter 126 — Closing: what to read next**. End of the book.
+> Next chapter: **Chapter 126: Closing: what to read next**. End of the book.

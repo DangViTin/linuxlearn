@@ -1,21 +1,21 @@
 ---
 chapter: 67
 title: Temperature / humidity / pressure (BME280 / SHT3x / AHT20)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 26
 status: draft
 ---
 
-# Chapter 67 — Temperature / humidity / pressure
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+# Chapter 67: Temperature / humidity / pressure
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 
-> **What:** three I²C environmental sensors, dissected: **Bosch BME280** (T+H+P, the workhorse), **Sensirion SHT3x** (T+H, lab-grade accuracy), **ASAir AHT20** (T+H, cheap-and-good). For each: register map, the bytes on the wire, how the mainline IIO driver works, and — for BME280, the most complex — a from-scratch IIO driver implemented from the datasheet.
-> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **What:** three I²C environmental sensors, dissected: **Bosch BME280** (T+H+P, the workhorse), **Sensirion SHT3x** (T+H, lab-grade accuracy), **ASAir AHT20** (T+H, cheap-and-good). For each: register map, the bytes on the wire, how the mainline IIO driver works, and, for BME280, the most complex, a from-scratch IIO driver implemented from the datasheet.
+> **IIO:** Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
 > **Why:** environmental sensors are the most common I²C peripherals in IoT and HMI products. They're also the canonical sensors for understanding the IIO subsystem: a small driver, a clear data path, real compensation math that exposes why "raw" and "scale" are separate IIO attributes. Writing one from scratch teaches you both the chip and IIO at the same time.
 >
-> **Focus:** **calibration math turns raw ADC bins into engineering units**. The BME280 ships per-chip calibration coefficients in non-volatile memory. The driver reads them at probe and applies a published polynomial to each raw measurement. Understanding this — that the compensation formula lives in the *driver*, not the *chip* — is the key insight.
+> **Focus:** **calibration math turns raw ADC bins into engineering units**. The BME280 ships per-chip calibration coefficients in non-volatile memory. The driver reads them at probe and applies a published polynomial to each raw measurement. Understanding this, that the compensation formula lives in the *driver*, not the *chip*, is the key insight.
 
 
 ## 67.1  Sensor comparison
@@ -29,7 +29,7 @@ status: draft
 | Accuracy (T) | ±1.0 °C | ±0.2 °C | ±0.3 °C |
 | Resolution (H) | 0.008 %RH | 0.01 %RH | 0.024 %RH |
 | Accuracy (H) | ±3 %RH | ±1.5 %RH | ±2 %RH |
-| Resolution (P) | 0.18 Pa | — | — |
+| Resolution (P) | 0.18 Pa |, |, |
 | Calibration data | per-chip NVM (read at startup) | factory-trimmed in firmware (no NVM read needed) | factory-trimmed in firmware |
 | CRC on data | no | yes (8-bit polynomial) | no |
 | Datasheet length | 60 pp | 30 pp | 20 pp |
@@ -62,9 +62,9 @@ All three are 4–6 pin packages:
  AHT20: no straps; fixed address 0x38
 ```
 
-The classic mistake: forgetting CSB strap on the BME280 — left floating, the chip oscillates between I²C and SPI modes. Always tie CSB high explicitly.
+The classic mistake: forgetting CSB strap on the BME280, left floating, the chip oscillates between I²C and SPI modes. Always tie CSB high explicitly.
 
-## 67.3  Protocol — BME280 on the wire
+## 67.3  Protocol, BME280 on the wire
 
 BME280 has a register-bank model just like the EEPROMs in Ch 65:
 
@@ -88,7 +88,7 @@ To take a measurement:
    - Mode 0b01 = forced (take one measurement, return to sleep).
    - Mode 0b11 = normal (continuous).
 3. Wait for measurement to complete (typically 8 ms with default oversampling).
-4. Read 8 bytes from 0xF7 — the entire measurement block in one transaction.
+4. Read 8 bytes from 0xF7, the entire measurement block in one transaction.
 5. Apply compensation formulas using the calibration coefficients read at probe.
 
 The compensation formulas (~30 lines of fixed-point arithmetic per axis) are *published in the datasheet* and identical for every BME280. They convert the raw 20-bit ADC values to °C × 100, Pa × 256, and %RH × 1024.
@@ -121,9 +121,9 @@ These three integers go into the compensation functions (datasheet §4.2.3 / 8.1
 
 Source: `drivers/iio/pressure/bmp280-core.c` (~1500 lines) + `bmp280-i2c.c` (~150 lines) + `bmp280-spi.c`.
 
-The driver covers BMP180 / BMP280 / BME280 / BMP380 / BMP580 — five chips of similar lineage. The *bus* (I²C vs SPI) is decoupled via regmap. The *chip* is identified at probe via the `0xD0` ID register, and the right `chip_info` table is selected.
+The driver covers BMP180 / BMP280 / BME280 / BMP380 / BMP580, five chips of similar lineage. The *bus* (I²C vs SPI) is decoupled via regmap. The *chip* is identified at probe via the `0xD0` ID register, and the right `chip_info` table is selected.
 > **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
-**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+> **regmap:** a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 
 ### Architecture
 
@@ -183,7 +183,7 @@ static int bmp280_common_probe(struct device *dev, struct regmap *regmap,
 }
 ```
 
-The I²C glue is tiny — just creates a regmap and calls the common probe:
+The I²C glue is tiny, just creates a regmap and calls the common probe:
 
 ```c
 /* drivers/iio/pressure/bmp280-i2c.c — simplified */
@@ -195,7 +195,7 @@ static int bmp280_i2c_probe(struct i2c_client *client)
 }
 ```
 
-### read_raw — the IIO callback
+### read_raw, the IIO callback
 
 ```c
 static int bmp280_read_raw(struct iio_dev *indio_dev,
@@ -250,15 +250,15 @@ static s32 bme280_compensate_temp(struct bmp280_data *data, s32 adc_T)
 }
 ```
 
-These formulas are not approximations. They are lifted byte-for-byte from page 25 of the BME280 datasheet. The driver carries it as-published — same code in every BME280 driver across all OSes.
+These formulas are not approximations. They are lifted byte-for-byte from page 25 of the BME280 datasheet. The driver carries it as-published, same code in every BME280 driver across all OSes.
 
 `dig_T1`, `dig_T2`, `dig_T3` are the calibration coefficients read from chip NVM at probe. Each chip has slightly different ones (silicon process variation).
 
-The pressure formula is longer (~30 lines) and uses 64-bit arithmetic to avoid overflow. humidity formula uses the saved `t_fine` to compensate for temperature.
+The pressure formula is longer (~30 lines) and uses 64-bit arithmetic to avoid overflow. Humidity formula uses the saved `t_fine` to compensate for temperature.
 
 ## 67.5  Writing a BME280 IIO driver from scratch
 
-Goal: a working IIO driver that exposes temp + humidity + pressure as `in_temp_input` / `in_pressure_input` / `in_humidityrelative_input`. No regmap, no chip-family abstraction — just BME280, raw `i2c_smbus_*`, and the Bosch math.
+Goal: a working IIO driver that exposes temp + humidity + pressure as `in_temp_input` / `in_pressure_input` / `in_humidityrelative_input`. No regmap, no chip-family abstraction, just BME280, raw `i2c_smbus_*`, and the Bosch math.
 
 `mybme280.c`:
 
@@ -553,18 +553,18 @@ mybme280
 
 Values: 23.42 °C (temp = 23420 mC), 100.3 kPa (= 100327 Pa = 1003.27 mbar = local barometric pressure at sea level), 56.0 % RH.
 
-Driver is ~300 lines and reports calibrated values via IIO. The compensation math is the longest part — and that's *just the Bosch published formulas* copy-pasted from the datasheet.
+Driver is ~300 lines and reports calibrated values via IIO. The compensation math is the longest part, and that's *just the Bosch published formulas* copy-pasted from the datasheet.
 
 What we *skipped* compared to mainline:
 - Filter and standby-time configuration (we use minimums).
 - Buffered/triggered capture (we only do `INDIO_DIRECT_MODE` sysfs reads).
-**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 - Power management (`runtime_suspend` to drop to chip sleep mode).
-- Multi-chip support (we only handle BME280. mainline handles BMP180/280/380/580 too).
+- Multi-chip support (we only handle BME280. Mainline handles BMP180/280/380/580 too).
 
 Those are framework features, not chip-understanding features. The chip is what we set out to teach.
 
-## 67.6  SHT3x — a different design philosophy
+## 67.6  SHT3x, a different design philosophy
 
 SHT3x doesn't have a register map. Instead it uses **2-byte commands** sent on I²C, optionally followed by a data block with **CRC**. Sensirion's design choice: keep state in the host, not the chip.
 
@@ -596,7 +596,7 @@ T_mC  = -45000 + ((175000 * temp_raw) >> 16);
 RH_milli_pct = (100000 * hum_raw) >> 16;
 ```
 
-That's it. Two linear formulas. No per-chip calibration to read — Sensirion factory-trims each chip's coefficients into firmware before shipping, so every chip reports the same scale.
+That's it. Two linear formulas. No per-chip calibration to read, Sensirion factory-trims each chip's coefficients into firmware before shipping, so every chip reports the same scale.
 
 ### Mainline driver
 
@@ -610,7 +610,7 @@ To convert the from-scratch BME280 driver to SHT3x:
 
 We won't re-implement it. The structure is now clear.
 
-## 67.7  AHT20 — even simpler
+## 67.7  AHT20, even simpler
 
 AHT20 is the cheap-and-cheerful option: ASAir's clone of the DHT-family with proper I²C.
 
@@ -620,7 +620,7 @@ AHT20 is the cheap-and-cheerful option: ASAir's clone of the DHT-family with pro
 |---------|------|
 | `0xBE 08 00` | Initialise (write once after power-up) |
 | `0xAC 33 00` | Start measurement (trigger) |
-| (no command) | Read 7 bytes — status, H[3], T[3] |
+| (no command) | Read 7 bytes, status, H[3], T[3] |
 | `0xBA` | Soft reset |
 
 A one-shot read:
@@ -679,7 +679,7 @@ sampling_frequency_available
 bme280
 ```
 
-Notice extra knobs the mainline driver provides (oversampling ratio, sampling frequency) — these tune the chip's internal averaging.
+Notice extra knobs the mainline driver provides (oversampling ratio, sampling frequency), these tune the chip's internal averaging.
 
 ```
 [root@pa-mini:~]# echo 16 > in_temp_oversampling_ratio
@@ -705,41 +705,41 @@ while True:
     time.sleep(10)
 ```
 
-Pipe to MQTT, Grafana, SQLite — whatever the product needs.
+Pipe to MQTT, Grafana, SQLite, whatever the product needs.
 
 ## 67.10  Lab
 
-1. **Inspect with i2c-tools.** `i2cdetect -y 1` to find the BME280 (0x76 or 0x77). `i2cdump -y 1 0x76` to see the register map. verify the byte at 0xD0 is 0x60.
-2. **Build and load `mybme280.ko`.** Read all three IIO inputs. Verify physically — touch the sensor. temp should rise.
+1. **Inspect with i2c-tools.** `i2cdetect -y 1` to find the BME280 (0x76 or 0x77). `i2cdump -y 1 0x76` to see the register map. Verify the byte at 0xD0 is 0x60.
+2. **Build and load `mybme280.ko`.** Read all three IIO inputs. Verify physically, touch the sensor. Temp should rise.
 3. **Compare against a reference.** Use a known-good thermometer or another working sensor. Expected accuracy: ±1 °C at room temp.
-4. **Implement an SHT3x version.** Strip the calibration code and compensation math. substitute the SHT3x command set + linear formulas + CRC validation. ~200 lines.
+4. **Implement an SHT3x version.** Strip the calibration code and compensation math. Substitute the SHT3x command set + linear formulas + CRC validation. ~200 lines.
 5. **Switch to the mainline `bme280`.** Unload yours, change DT to `compatible = "bosch,bme280"`, reboot. Verify same readings (within sensor noise). Note the extra `oversampling_ratio` files appearing.
 6. **Mainline `read_raw` source dive.** Read `bme280_compensate_temp` in `drivers/iio/pressure/bmp280-core.c`. Verify it's the same formula you copied from the datasheet.
 7. **Power consumption.** With mainline driver, measure idle current. Compare against periodic-mode + sleep with `oversampling_ratio = 0` (chip skips a measurement type entirely).
 
 ## 67.11  Pitfalls
 
-- **CSB strap floating on BME280**. Chip oscillates between I²C and SPI modes. Tie CSB high explicitly (10 kΩ to VCC).
+- **CSB strap floating on BME280**: Chip oscillates between I²C and SPI modes. Tie CSB high explicitly (10 kΩ to VCC).
 - **Wrong I²C address.** BME280: 0x76 if SDO low, 0x77 if SDO high. Check schematic.
 - **Forgetting to set humidity oversampling** (`ctrl_hum` write). Default at power-on is 0x00 = humidity disabled. You read 0x8000 forever and wonder why.
-- **`ctrl_hum` write order**. The chip only acts on `ctrl_hum` *after* the next `ctrl_meas` write. So always write `ctrl_hum` before `ctrl_meas`.
+- **`ctrl_hum` write order**: The chip only acts on `ctrl_hum` *after* the next `ctrl_meas` write. So always write `ctrl_hum` before `ctrl_meas`.
 - **Self-heating.** Continuous-mode at 16× oversampling makes the chip's own current dissipation warm the sensor by ~0.5 °C. Use forced-mode + sleep, or accept the offset.
 - **Calibration coefficient endianness.** They're little-endian on the wire. If you mis-cast `(s16)((buf[1] << 8) | buf[0])` vs the reverse, math is garbage. Cross-check against datasheet table.
-- **CRC ignored on SHT3x**. CRC byte != 0 doesn't *break* but indicates data corruption — chip retried internally but the read got noisy. Log and retry. If persistent, bus signal-integrity issue.
-- **AHT20's "busy" bit**. If status bit 7 is set, the chip is still measuring. You got the bytes too early. Re-trigger or wait longer.
-- **Reading without the `t_fine` set first** (BME280). `compensate_P` and `compensate_H` use `t_fine` set by `compensate_T`. Call temp compensation first. otherwise pressure & humidity are wrong.
-- **All-`0x80 0x00` reads**. Forgot to write `ctrl_meas` with the forced-mode bit. Chip is asleep.
+- **CRC ignored on SHT3x**: CRC byte != 0 doesn't *break* but indicates data corruption, chip retried internally but the read got noisy. Log and retry. If persistent, bus signal-integrity issue.
+- **AHT20's "busy" bit**: If status bit 7 is set, the chip is still measuring. You got the bytes too early. Re-trigger or wait longer.
+- **Reading without the `t_fine` set first** (BME280). `compensate_P` and `compensate_H` use `t_fine` set by `compensate_T`. Call temp compensation first. Otherwise pressure & humidity are wrong.
+- **All-`0x80 0x00` reads**: Forgot to write `ctrl_meas` with the forced-mode bit. Chip is asleep.
 
 ## 67.12  Going deeper
 
-- **`drivers/iio/pressure/bmp280-core.c`** — the mainline driver in full. Compare every block to the from-scratch version.
-- **`drivers/iio/pressure/bmp280-i2c.c`** — the tiny I²C glue.
-- **`drivers/iio/humidity/sht3x.c`** — SHT3x.
-- **`drivers/iio/humidity/aht20.c`** — AHT20 (newer kernels).
-- **BME280 datasheet (Bosch BST-BME280-DS001)** — §4 register map. §8 compensation formulas. Read once, refer back forever.
-- **SHT3x datasheet** — command list with CRC polynomial.
-- **AHT20 datasheet** — short, English version sometimes hard to find. Chinese version on aosong.com has the bit-packing diagrams.
-- **`Documentation/ABI/testing/sysfs-bus-iio*`** — IIO sysfs ABI. tells you what `_processed` vs `_raw` + `_scale` mean.
-**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
+- **`drivers/iio/pressure/bmp280-core.c`**: the mainline driver in full. Compare every block to the from-scratch version.
+- **`drivers/iio/pressure/bmp280-i2c.c`**: the tiny I²C glue.
+- **`drivers/iio/humidity/sht3x.c`**: SHT3x.
+- **`drivers/iio/humidity/aht20.c`**: AHT20 (newer kernels).
+- **BME280 datasheet (Bosch BST-BME280-DS001)**: §4 register map. §8 compensation formulas. Read once, refer back forever.
+- **SHT3x datasheet**: command list with CRC polynomial.
+- **AHT20 datasheet**: short, English version sometimes hard to find. Chinese version on aosong.com has the bit-packing diagrams.
+- **`Documentation/ABI/testing/sysfs-bus-iio*`**, IIO sysfs ABI. Tells you what `_processed` vs `_raw` + `_scale` mean.
+> **ABI:** Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
 
-> Next chapter: **Chapter 68 — Light & color sensors.** Photodiodes meet I²C. BH1750 / TSL2561 / VEML7700 — three approaches to "convert photons to lux."
+> Next chapter: **Chapter 68: Light & color sensors.** Photodiodes meet I²C. BH1750 / TSL2561 / VEML7700, three approaches to "convert photons to lux."

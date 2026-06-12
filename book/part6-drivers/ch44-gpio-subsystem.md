@@ -1,20 +1,20 @@
 ---
 chapter: 44
 title: GPIO subsystem + pinctrl
-part: VI — Driver development
+part: VI - Driver development
 estimated_pages: 22
 status: draft
 ---
 
-# Chapter 44 — GPIO subsystem + pinctrl
+# Chapter 44: GPIO subsystem + pinctrl
 
-> **What:** the two halves of Linux's pin handling — **pinctrl** (which decides what *function* a pin has — GPIO vs UART vs I²C, plus electrical properties: drive strength, pull-up, slew rate) and **gpiod** (the modern descriptor-based API for the pins that *do* end up as GPIOs: direction and value). By the end you can request a GPIO from DT, configure pull-up, drive it, watch it for IRQs — all without ever touching an MMIO register.
-> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-> **MMIO** - memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
+> **What:** the two halves of Linux's pin handling, **pinctrl** (which decides what *function* a pin has, GPIO vs UART vs I²C, plus electrical properties: drive strength, pull-up, slew rate) and **gpiod** (the modern descriptor-based API for the pins that *do* end up as GPIOs: direction and value). By the end you can request a GPIO from DT, configure pull-up, drive it, watch it for IRQs, all without ever touching an MMIO register.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **MMIO:** memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 >
 > **Why:** every real driver eventually wants a GPIO. A reset pin on a peripheral chip. A power-enable on a regulator. A `data-ready` line from a sensor. Hard-coding the MMIO writes (as we did in Part II bare-metal) couples the driver to one specific SoC. The kernel's `gpiod_*` API gives you a portable, DT-described abstraction: "this driver wants the GPIO whose DT property is `reset-gpios`," and the gpiod subsystem figures out which bank, which pin, and which register to touch.
 >
-> **Focus:** **the descriptor abstraction**. `struct gpio_desc *` hides the bank, the pin offset, the polarity (`ACTIVE_LOW`), and the SoC-specific register layout behind one opaque handle. Once you accept that — and stop thinking in "GPIO numbers" — every GPIO-using driver in Linux looks the same.
+> **Focus:** **the descriptor abstraction**. `struct gpio_desc *` hides the bank, the pin offset, the polarity (`ACTIVE_LOW`), and the SoC-specific register layout behind one opaque handle. Once you accept that, and stop thinking in "GPIO numbers", every GPIO-using driver in Linux looks the same.
 
 
 ## 44.1  The two-step pin model
@@ -23,7 +23,7 @@ Almost every pin on an SoC is *multiplexed*: it can act as one of several functi
 
 | Mux value | Function |
 |-----------|----------|
-| 0 | UART1 RTS (default — the pin's name) |
+| 0 | UART1 RTS (default, the pin's name) |
 | 1 | ENET1 transmit error |
 | 2 | USDHC1 card-detect |
 | 3 | CSI camera data bit 5 |
@@ -33,7 +33,7 @@ Almost every pin on an SoC is *multiplexed*: it can act as one of several functi
 
 Picking *which* function the pin performs is **pin multiplexing** (pinmux). Setting drive strength, pull-up, slew rate, etc. is **pin configuration** (pinconf). Together they are managed by the **pinctrl subsystem**.
 
-Only *after* you've muxed a pin as GPIO does it become a GPIO. Then a separate API — the **gpiod** subsystem — handles its direction (input/output) and value (high/low).
+Only *after* you've muxed a pin as GPIO does it become a GPIO. Then a separate API, the **gpiod** subsystem, handles its direction (input/output) and value (high/low).
 
 The two-step model is fixed across Linux:
 
@@ -52,7 +52,7 @@ The two-step model is fixed across Linux:
             gpiod subsystem looks up the descriptor, configures direction
 ```
 
-If you forget step 1 — leave the pin in its default UART function — step 2 reads garbage and your driver thinks the button is always pressed. The two are coupled but managed separately. Most boards do step 1 once in DT (via a `pinctrl-0` reference), then drivers ask for descriptors as needed.
+If you forget step 1, leave the pin in its default UART function, step 2 reads garbage and your driver thinks the button is always pressed. The two are coupled but managed separately. Most boards do step 1 once in DT (via a `pinctrl-0` reference), then drivers ask for descriptors as needed.
 
 ## 44.2  pinctrl in the device tree
 
@@ -90,7 +90,7 @@ You don't compute these by hand for every pin. NXP publishes a tool called **Pin
 
 ### Multiple states
 
-A peripheral can declare *multiple* pinctrl states — typically `default` (active) and `sleep` (low-power):
+A peripheral can declare *multiple* pinctrl states, typically `default` (active) and `sleep` (low-power):
 
 ```dts
 my_uart {
@@ -117,11 +117,11 @@ my_device {
 
 Each entry is three cells:
 
-1. **The bank phandle** (`&gpio5`) — names which GPIO controller bank the pin lives on. i.MX6ULL has 5 banks (`gpio1`–`gpio5`). Most are 32-pin. **`gpio5` exposes only 12 pins (0–11)** because of package pin-count, and `gpio4` is partial on some packages too. Check the IOMUX table before assuming a pin number is wired out.
+1. **The bank phandle** (`&gpio5`), names which GPIO controller bank the pin lives on. I.MX6ULL has 5 banks (`gpio1`–`gpio5`). Most are 32-pin. **`gpio5` exposes only 12 pins (0–11)** because of package pin-count, and `gpio4` is partial on some packages too. Check the IOMUX table before assuming a pin number is wired out.
 > **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
-**IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
+> **IOMUX:** the pin multiplexer that decides which peripheral function appears on each package pin.
 2. **The pin number** within the bank (0–31).
-3. **Flags** — usually `GPIO_ACTIVE_HIGH` or `GPIO_ACTIVE_LOW`. The polarity is **part of the abstraction**. Code below operates on logical "asserted" / "deasserted". physical level is hidden.
+3. **Flags**: Usually `GPIO_ACTIVE_HIGH` or `GPIO_ACTIVE_LOW`. The polarity is **part of the abstraction**. Code below operates on logical "asserted" / "deasserted". Physical level is hidden.
 
 The property name pattern is `<purpose>-gpios`. The kernel strips the `-gpios` suffix to form the *connection ID* drivers use to fetch the descriptor.
 
@@ -139,13 +139,13 @@ if (IS_ERR(reset))
     return PTR_ERR(reset);
 ```
 
-`devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH)` says: "look up the `reset-gpios` property on this device's DT node, claim the pin, set it as an output, and initialise it to **asserted** (`GPIOD_OUT_HIGH`) or **deasserted** (`GPIOD_OUT_LOW`)." Because the DT declared `GPIO_ACTIVE_LOW`, "asserted" means physical low — the API hides that.
+`devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH)` says: "look up the `reset-gpios` property on this device's DT node, claim the pin, set it as an output, and initialise it to **asserted** (`GPIOD_OUT_HIGH`) or **deasserted** (`GPIOD_OUT_LOW`)." Because the DT declared `GPIO_ACTIVE_LOW`, "asserted" means physical low, the API hides that.
 
 Flag options:
-- `GPIOD_ASIS` — don't set direction. just acquire the descriptor.
-- `GPIOD_IN` — input.
-- `GPIOD_OUT_LOW` — output, initial value deasserted.
-- `GPIOD_OUT_HIGH` — output, initial value asserted.
+- `GPIOD_ASIS`: don't set direction. Just acquire the descriptor.
+- `GPIOD_IN`: input.
+- `GPIOD_OUT_LOW`: output, initial value deasserted.
+- `GPIOD_OUT_HIGH`: output, initial value asserted.
 
 The `devm_` prefix gives us automatic release on driver-unbind, same as Ch 39.
 
@@ -160,9 +160,9 @@ val = gpiod_get_value_cansleep(reset);
 gpiod_set_value_cansleep(reset, 0);
 ```
 
-Two variants per operation. The plain version is safe to call from atomic context (IRQ handler, spinlock held). The `_cansleep` version is required when the underlying GPIO chip is on an I²C or SPI bus (where the bus transaction itself may sleep). **Use `_cansleep` in process context** — it works for both bus-backed and direct GPIOs.
+Two variants per operation. The plain version is safe to call from atomic context (IRQ handler, spinlock held). The `_cansleep` version is required when the underlying GPIO chip is on an I²C or SPI bus (where the bus transaction itself may sleep). **Use `_cansleep` in process context**, it works for both bus-backed and direct GPIOs.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 Direction change at runtime:
 
@@ -291,9 +291,9 @@ MODULE_LICENSE("GPL");
 
 Build, load, press the button: the LED toggles. About 90 lines, zero MMIO writes, portable to any SoC with a Linux GPIO driver.
 
-## 44.6  User-space access — libgpiod
+## 44.6  User-space access, libgpiod
 
-For one-off scripting and prototyping, you can drive GPIOs from user-space *without* a kernel driver. The traditional way (`/sys/class/gpio/`) is **deprecated** since 4.8 and gone in some distros — never write new code for it. The current way is the **character-device API** at `/dev/gpiochipN`, accessed via the `libgpiod` library and its CLI tools.
+For one-off scripting and prototyping, you can drive GPIOs from user-space *without* a kernel driver. The traditional way (`/sys/class/gpio/`) is **deprecated** since 4.8 and gone in some distros, never write new code for it. The current way is the **character-device API** at `/dev/gpiochipN`, accessed via the `libgpiod` library and its CLI tools.
 
 ```
 [root@pa-mini:~]# gpiodetect
@@ -330,7 +330,7 @@ event:  RISING EDGE offset: 19 timestamp: [   1234.567890123]
 
 `libgpiod` is the same API your driver code uses, but from user-space. Great for board bring-up: confirm a GPIO works at the hardware level before writing a driver around it.
 
-## 44.7  GPIO expanders — when GPIOs come over a bus
+## 44.7  GPIO expanders, when GPIOs come over a bus
 
 What if you need more GPIOs than the SoC has? Solution: a **GPIO expander** chip on I²C or SPI. The MCP23017 (I²C, 16 GPIOs), PCA9555 (I²C, 16 GPIOs), and PCF8575 are common choices.
 
@@ -356,7 +356,7 @@ my_device {
 };
 ```
 
-The driver code is *unchanged* — `devm_gpiod_get(&pdev->dev, "reset", ...)` works the same way. The only difference is that operations like `gpiod_set_value` may now sleep (they trigger an I²C transaction), so you must use `gpiod_set_value_cansleep` when the GPIO might be on an expander. **For portable driver code, always use `_cansleep` in process context.**
+The driver code is *unchanged*, `devm_gpiod_get(&pdev->dev, "reset", ...)` works the same way. The only difference is that operations like `gpiod_set_value` may now sleep (they trigger an I²C transaction), so you must use `gpiod_set_value_cansleep` when the GPIO might be on an expander. **For portable driver code, always use `_cansleep` in process context.**
 
 ## 44.8  Lab
 
@@ -364,30 +364,30 @@ The driver code is *unchanged* — `devm_gpiod_get(&pdev->dev, "reset", ...)` wo
 2. **Use libgpiod to drive the LED instead.** `gpioset gpiochip3 14=1`. Confirm same outcome.
 3. **Monitor button events from user-space.** `gpiomon --falling-edge gpiochip0 19` while pressing the button. Compare latency against your driver's IRQ-handler latency (ftrace).
 4. **Add a sleep state.** Define `pinctrl_blinker_sleep` that pulls down the button pin and tristates the LED. In probe, set both states. Add a runtime sysfs attribute to switch states.
-**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
-5. **Wire a fake GPIO expander.** Add an `mcp23017` node to your DT (even if you don't have the chip — just to verify the binding parses). With the chip absent, the driver will fail to probe. observe `dev_err_probe` deferring and the eventual timeout.
-6. **Read pin state without a driver.** Cold-boot, then `gpioinfo` — see which pins are claimed by which drivers. Useful for debugging "is the kernel using this pin I want?"
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+5. **Wire a fake GPIO expander.** Add an `mcp23017` node to your DT (even if you don't have the chip, just to verify the binding parses). With the chip absent, the driver will fail to probe. Observe `dev_err_probe` deferring and the eventual timeout.
+6. **Read pin state without a driver.** Cold-boot, then `gpioinfo`, see which pins are claimed by which drivers. Useful for debugging "is the kernel using this pin I want?"
 
 ## 44.9  Pitfalls
 
-- **Forgetting the pinctrl group.** Pin is still in its default mux (for example, UART). `gpiod_get` succeeds — the GPIO controller has no idea the pin is muxed elsewhere. But the GPIO seems "stuck": reads and writes hit the GPIO register, while the IOMUX routes the pin to UART. Always declare a pinctrl group that muxes the pin as GPIO, and reference it from `pinctrl-0`.
+- **Forgetting the pinctrl group.** Pin is still in its default mux (for example, UART). `gpiod_get` succeeds, the GPIO controller has no idea the pin is muxed elsewhere. But the GPIO seems "stuck": reads and writes hit the GPIO register, while the IOMUX routes the pin to UART. Always declare a pinctrl group that muxes the pin as GPIO, and reference it from `pinctrl-0`.
 - **`GPIO_ACTIVE_LOW` confusion.** The kernel's logical "asserted" hides physical polarity. If you read raw via `/sys/class/gpio/`, you see physical level. If you read via `gpiod_get_value`, you see logical. Match your DT flag to your hardware schematic.
-- **Wrong bank phandle.** `<&gpio1 ...>` vs `<&gpio2 ...>` — typo costs you hours. `gpioinfo` is your friend after boot.
+- **Wrong bank phandle.** `<&gpio1 ...>` vs `<&gpio2 ...>`, typo costs you hours. `gpioinfo` is your friend after boot.
 - **Calling `gpiod_set_value` (atomic) on an I²C-backed GPIO.** Kernel BUG: "scheduling while atomic." Always use `_cansleep` unless you're 100 % sure the GPIO is direct (and even then, for new code, use `_cansleep` for portability).
 - **Hog vs driver-owned pin.** Don't hog a pin that a driver will claim. The driver's `pinctrl_select_state` will fail. Hog only ownerless pins.
 - **Using GPIO sysfs.** Old `/sys/class/gpio/export` interface is deprecated. Use `libgpiod` and `gpioset/gpioget/gpiomon` for user-space access. Sysfs may be missing entirely on newer kernels.
-- **Pin number arithmetic.** "GPIO1 IO19 = global GPIO number 19" is wrong in some places, right in others. Global numbers are legacy. The descriptor API doesn't care about numbers. just use the DT phandle + pin offset.
-- **Forgetting `MODULE_DEVICE_TABLE`.** Driver works manually, doesn't autoload. Easy to miss. always include it.
+- **Pin number arithmetic.** "GPIO1 IO19 = global GPIO number 19" is wrong in some places, right in others. Global numbers are legacy. The descriptor API doesn't care about numbers. Just use the DT phandle + pin offset.
+- **Forgetting `MODULE_DEVICE_TABLE`.** Driver works manually, doesn't autoload. Easy to miss. Always include it.
 
 ## 44.10  Going deeper
 
-- **`Documentation/driver-api/pin-control.rst`** — the pinctrl subsystem's official architecture document.
-- **`Documentation/driver-api/gpio/`** — gpiod consumer and provider APIs.
-- **`Documentation/devicetree/bindings/pinctrl/fsl,imx-pinctrl.txt`** — the i.MX-specific pinctrl binding.
-- **`arch/arm/boot/dts/imx6ul-pinfunc.h`** — all `MX6UL_PAD_*` macros defined here. Skim for an hour and you'll start to recognise the patterns.
-- **`drivers/pinctrl/freescale/pinctrl-imx6ul.c`** — the i.MX6UL pinctrl driver (and yes, it works for 6ULL too).
-- **`drivers/gpio/gpio-mxc.c`** — the i.MX GPIO controller driver. Demuxes 32 pins per bank into per-pin virqs, handles the chained IRQ.
-- **`tools/gpio/`** — small helper utilities. useful for one-off scripts.
-- **`libgpiod` source on kernel.org** — the canonical user-space API.
+- **`Documentation/driver-api/pin-control.rst`**: the pinctrl subsystem's official architecture document.
+- **`Documentation/driver-api/gpio/`**: gpiod consumer and provider APIs.
+- **`Documentation/devicetree/bindings/pinctrl/fsl,imx-pinctrl.txt`**: the i.MX-specific pinctrl binding.
+- **`arch/arm/boot/dts/imx6ul-pinfunc.h`**: all `MX6UL_PAD_*` macros defined here. Skim for an hour and you'll start to recognise the patterns.
+- **`drivers/pinctrl/freescale/pinctrl-imx6ul.c`**: the i.MX6UL pinctrl driver (and yes, it works for 6ULL too).
+- **`drivers/gpio/gpio-mxc.c`**: the i.MX GPIO controller driver. Demuxes 32 pins per bank into per-pin virqs, handles the chained IRQ.
+- **`tools/gpio/`**: small helper utilities. Useful for one-off scripts.
+- **`libgpiod` source on kernel.org**: the canonical user-space API.
 
-> Next chapter: **Chapter 45 — Input subsystem.** With GPIOs and IRQs in hand, the natural next step is "turn a button into a key-press event the OS recognises." That's the `input_dev` framework, and `gpio-keys` is its perfect canonical example.
+> Next chapter: **Chapter 45: Input subsystem.** With GPIOs and IRQs in hand, the natural next step is "turn a button into a key-press event the OS recognises." That's the `input_dev` framework, and `gpio-keys` is its perfect canonical example.

@@ -1,16 +1,16 @@
 ---
 chapter: 55D
 title: Block device drivers
-part: VI — Driver development (supplementary v1.1)
+part: VI - Driver development (supplementary v1.1)
 estimated_pages: 12
 status: draft
 ---
 
-# Chapter 55D — Block device drivers
+# Chapter 55D: Block device drivers
 
-> **What:** the **block** layer — `gendisk`, request queues, `blk-mq` (multi-queue block), bio. Most embedded systems consume block devices (eMMC, SD card via MMC subsystem. raw NAND via MTD+UBI). Occasionally you need to *write* one — typically a RAM disk, a loop-style virtual device, or a translation layer over a custom storage chip.
-> **UBI** - Unsorted Block Images, a flash-management layer over raw NAND that handles wear leveling and bad blocks.
-> **MTD** - Memory Technology Device, Linux's raw flash subsystem for eraseblock-based storage.
+> **What:** the **block** layer, `gendisk`, request queues, `blk-mq` (multi-queue block), bio. Most embedded systems consume block devices (eMMC, SD card via MMC subsystem. Raw NAND via MTD+UBI). Occasionally you need to *write* one, typically a RAM disk, a loop-style virtual device, or a translation layer over a custom storage chip.
+> **UBI:** Unsorted Block Images, a flash-management layer over raw NAND that handles wear leveling and bad blocks.
+> **MTD:** Memory Technology Device, Linux's raw flash subsystem for eraseblock-based storage.
 >
 > **Why:** less common to write than char drivers, but worth knowing because (a) the request-queue model differs significantly from "byte stream" and (b) understanding block lets you debug performance of any storage layer above (filesystem latency, fsync behavior).
 >
@@ -131,15 +131,15 @@ After `insmod`:
 [root@pa-mini:~]# mount /dev/myram0 /mnt
 ```
 
-## 55D.3  Real block drivers — what's added
+## 55D.3  Real block drivers, what's added
 
 The ramdisk above is minimal. Production block drivers add:
 
-- **DISCARD / TRIM** (`BLK_STS_OK` on `REQ_OP_DISCARD`) — letting the device free unused sectors. eMMCs and SSDs care.
-- **FLUSH** (`REQ_OP_FLUSH`) — ensure writes are durable. Critical for ACID-style apps.
-- **Zoned device support** (`REQ_OP_ZONE_*`) — SMR drives, ZNS NVMe.
-- **Read-only handling** — block O_WRONLY when device is RO.
-- **Partition table parsing** — automatic GPT/MBR scan, creating partitions as separate minors.
+- **DISCARD / TRIM** (`BLK_STS_OK` on `REQ_OP_DISCARD`), letting the device free unused sectors. EMMCs and SSDs care.
+- **FLUSH** (`REQ_OP_FLUSH`), ensure writes are durable. Critical for ACID-style apps.
+- **Zoned device support** (`REQ_OP_ZONE_*`), SMR drives, ZNS NVMe.
+- **Read-only handling**: block O_WRONLY when device is RO.
+- **Partition table parsing**: automatic GPT/MBR scan, creating partitions as separate minors.
 
 The kernel's MMC subsystem is the canonical example for SD/eMMC. Read `drivers/mmc/core/`.
 
@@ -160,11 +160,11 @@ For comparison, an eMMC HS200 hits ~120 MB/s sequential, ~10k IOPS random. NAND 
 ## 55D.5  Lab
 
 1. **Build the ramdisk.** Load, format, mount, write a file, unmount, reload, observe file persistence (RAM-backed only across reload, not reboot).
-2. **Add error injection.** Make every 100th write return `BLK_STS_IOERR`. observe filesystem behavior (ext4 remounts read-only).
-3. **Measure throughput.** dd + fio at various block sizes. build a throughput curve.
+2. **Add error injection.** Make every 100th write return `BLK_STS_IOERR`. Observe filesystem behavior (ext4 remounts read-only).
+3. **Measure throughput.** dd + fio at various block sizes. Build a throughput curve.
 4. **Inspect with `iostat -x 1`.** While running fio, watch await, %util, IOPS.
 5. **Add a sysfs attribute.** Expose stats: total reads, total writes, bytes transferred.
-**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 ## 55D.6  Pitfalls
 
@@ -172,7 +172,7 @@ For comparison, an eMMC HS200 hits ~120 MB/s sequential, ~10k IOPS random. NAND 
 > Verify the removable card by size and model, unmount its partitions, and stop if the path is not the target card. Writing the wrong /dev node can destroy the host disk.
 
 
-- **Forgetting to `blk_mq_start_request`.** Driver does work, calls `end_request`, but the request was never marked started — corrupted statistics, possible deadlock.
+- **Forgetting to `blk_mq_start_request`.** Driver does work, calls `end_request`, but the request was never marked started, corrupted statistics, possible deadlock.
 - **Block-aligned constraint violations.** Modern kernels require sector-aligned bios. Requests smaller than a sector get split. Honor `bvec` offsets.
 - **Holding spinlocks across long memcpy.** `queue_rq` is expected to return quickly. Defer long work to a workqueue.
 - **`mkfs.ext4` complaints about a tiny disk.** Some FS minimums apply (~8 MB for ext4 with default settings).
@@ -180,10 +180,10 @@ For comparison, an eMMC HS200 hits ~120 MB/s sequential, ~10k IOPS random. NAND 
 
 ## 55D.7  Going deeper
 
-- **`Documentation/block/`** — block layer documentation.
-- **`drivers/block/`** — many real block drivers, mostly readable.
-- **`drivers/block/loop.c`** — the loop driver, a good "real but simple" example.
-- **`drivers/mmc/core/block.c`** — MMC block device.
-- **LDD3 Chapter 16** — block drivers (some details outdated, but the model is the same).
+- **`Documentation/block/`**: block layer documentation.
+- **`drivers/block/`**: many real block drivers, mostly readable.
+- **`drivers/block/loop.c`**: the loop driver, a good "real but simple" example.
+- **`drivers/mmc/core/block.c`**: MMC block device.
+- **LDD3 Chapter 16**: block drivers (some details outdated, but the model is the same).
 
-> Next chapter: **Chapter 55E — WiFi + wpa_supplicant.** Bringing up an SDIO or USB WiFi module on Linux, end-to-end.
+> Next chapter: **Chapter 55E: WiFi + wpa_supplicant.** Bringing up an SDIO or USB WiFi module on Linux, end-to-end.

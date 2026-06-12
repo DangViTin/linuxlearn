@@ -1,18 +1,18 @@
 ---
 chapter: 73
 title: Magnetometer / compass (HMC5883L / QMC5883L / MMC5983MA)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 20
 status: draft
 ---
 
-# Chapter 73 — Magnetometer / compass
+# Chapter 73: Magnetometer / compass
 
-> **What:** three I²C magnetometers: **Honeywell HMC5883L** (legacy classic, EOL but ubiquitous on hobbyist boards), **QST QMC5883L** (cheap clone with quirky register-set differences), **Memsic MMC5983MA** (modern low-noise). Most of this chapter is not driver code. It is calibration: **hard-iron and soft-iron calibration** — the universal "my compass points 23° wrong" problem and how to fix it.
+> **What:** three I²C magnetometers: **Honeywell HMC5883L** (legacy classic, EOL but ubiquitous on hobbyist boards), **QST QMC5883L** (cheap clone with quirky register-set differences), **Memsic MMC5983MA** (modern low-noise). Most of this chapter is not driver code. It is calibration: **hard-iron and soft-iron calibration**, the universal "my compass points 23° wrong" problem and how to fix it.
 >
-> **Why:** any product that needs to know which way it's facing — drone, robot vacuum, AR headset, GPS-assisted navigation — needs a magnetometer. The math is simple. The *calibration* is what separates a useful compass from a useless one. Many products ship without calibration. their compass is off by 10–30°, and the IMU often gets blamed.
+> **Why:** any product that needs to know which way it's facing, drone, robot vacuum, AR headset, GPS-assisted navigation, needs a magnetometer. The math is simple. The *calibration* is what separates a useful compass from a useless one. Many products ship without calibration. Their compass is off by 10–30°, and the IMU often gets blamed.
 >
-> **Focus:** Calibration runs in user-space. The driver's job is to deliver raw X/Y/Z in stable, scaled units. The driver reports raw `µT × scale`. user-space collects samples, fits an ellipsoid model, computes hard-iron (offset) and soft-iron (skew matrix). After applying the correction, raw 3-axis readings become Earth-magnetic-field vectors with < 1° error. Without calibration: 10–30° error is typical, depending on what's mounted near the sensor.
+> **Focus:** Calibration runs in user-space. The driver's job is to deliver raw X/Y/Z in stable, scaled units. The driver reports raw `µT × scale`. User-space collects samples, fits an ellipsoid model, computes hard-iron (offset) and soft-iron (skew matrix). After applying the correction, raw 3-axis readings become Earth-magnetic-field vectors with < 1° error. Without calibration: 10–30° error is typical, depending on what's mounted near the sensor.
 
 
 ## 73.1  Chip comparison
@@ -20,9 +20,9 @@ status: draft
 | | Honeywell HMC5883L | QST QMC5883L | Memsic MMC5983MA |
 |---|---|---|---|
 | Range | ±0.88 / 1.3 / 1.9 / 2.5 / 4 / 4.7 / 5.6 / 8.1 Gauss | ±2 / 8 Gauss | ±8 Gauss |
-| Resolution | 12-bit (in ±0.88 G) — ~0.7 mG/LSB | 16-bit — ~30 µG/LSB | 18-bit — ~0.06 mG/LSB |
+| Resolution | 12-bit (in ±0.88 G), ~0.7 mG/LSB | 16-bit, ~30 µG/LSB | 18-bit, ~0.06 mG/LSB |
 | Noise floor | 2 mG RMS | 2 mG RMS | 0.4 mG RMS |
-| Update rate | 0.75 – 75 Hz | 10/50/100/200 Hz | up to 1 kHz |
+| Update rate | 0.75, 75 Hz | 10/50/100/200 Hz | up to 1 kHz |
 | I²C address | 0x1E | 0x0D | 0x30 |
 | Reg map | "real" HMC layout | shifted (different from HMC) | new |
 | Compatible? | yes mainline (`hmc5843_i2c.c`) | yes mainline (`qmc5883.c`) | yes (`mmc56x3.c`, recent kernels) |
@@ -33,15 +33,15 @@ Watch for this: every $1 eBay "HMC5883L" breakout is actually a *QMC5883L*. The 
 
 **Pick guide:**
 - **HMC5883L** for legacy maintenance only.
-- **QMC5883L** for cheap projects. understand the register-set quirk.
+- **QMC5883L** for cheap projects. Understand the register-set quirk.
 - **MMC5983MA** for serious products needing low-noise + high-rate.
 
-## 73.2  The physics — why magnetometers care so much about the environment
+## 73.2  The physics, why magnetometers care so much about the environment
 
-A magnetometer measures the **local magnetic field vector** in three orthogonal axes. The Earth produces ~50 µT (0.5 Gauss). local sources can be much stronger:
+A magnetometer measures the **local magnetic field vector** in three orthogonal axes. The Earth produces ~50 µT (0.5 Gauss). Local sources can be much stronger:
 
 - **Hard iron** (permanent magnets, magnetised steel): adds a fixed DC offset to each axis.
-- **Soft iron** (any ferromagnetic material): bends the field unevenly — different axes see different scale factors, axes may not be exactly orthogonal anymore.
+- **Soft iron** (any ferromagnetic material): bends the field unevenly, different axes see different scale factors, axes may not be exactly orthogonal anymore.
 
 If you take the chip out of the box and read raw, the data lies on a *3D ellipsoid* (not a sphere centered on origin) with the ellipsoid's center *offset* from origin. The ellipse-fitting calibration recovers two corrections:
 
@@ -52,7 +52,7 @@ Calibrated reading = A × (raw − b). The radius of the resulting sphere equals
 
 Without calibration: heading error of 10–30°, wrong enough to be useless for navigation.
 
-## 73.3  Protocol — HMC5883L
+## 73.3  Protocol, HMC5883L
 
 Register map (the "real" HMC):
 
@@ -67,16 +67,16 @@ Register map (the "real" HMC):
 
 Bring-up:
 
-1. Read identification bytes (0x0A..0x0C) — should be 'H', '4', '3'.
+1. Read identification bytes (0x0A..0x0C), should be 'H', '4', '3'.
 2. Write CONFIG_A (0x00) = 0x70: 8-sample averaging, 15 Hz output rate.
 3. Write CONFIG_B (0x01) = 0x20: gain ±1.3 Gauss, 1090 LSB/G.
 4. Write MODE (0x02) = 0x00: continuous measurement.
 5. After ~7 ms (per datasheet), data is ready. Read 6 bytes from 0x03.
 6. Apply scale: `field_uT = raw / 1090 * 100` (to get µT from 1090 LSB/Gauss).
 
-Each measurement read is 6 bytes back-to-back. note the **X/Z/Y order** (HMC's idiosyncrasy — most other chips do X/Y/Z).
+Each measurement read is 6 bytes back-to-back. Note the **X/Z/Y order** (HMC's idiosyncrasy, most other chips do X/Y/Z).
 
-## 73.4  Protocol — QMC5883L (different!)
+## 73.4  Protocol, QMC5883L (different!)
 
 QMC5883L uses a *different* register layout despite the similar-looking name and pinout. The differences that matter:
 
@@ -90,22 +90,22 @@ QMC5883L uses a *different* register layout despite the similar-looking name and
 | Period (refresh) | 0x0B | none |
 | I²C address | 0x0D | 0x1E |
 
-Mode bits in QMC's control register are also different. HMC5883L code does not work on a QMC5883L — the chip will simply not respond. This is the #1 reason "my $1 HMC5883L doesn't work" — it's not an HMC5883L.
+Mode bits in QMC's control register are also different. HMC5883L code does not work on a QMC5883L, the chip will simply not respond. This is the #1 reason "my $1 HMC5883L doesn't work", it's not an HMC5883L.
 
 QMC bring-up:
 
-1. Write 0x0B = 0x01: set the "period" register (mandatory. chip won't work without it).
+1. Write 0x0B = 0x01: set the "period" register (mandatory. Chip won't work without it).
 2. Write 0x09 = 0x1D: 200 Hz output rate, ±8 G range, 512 oversampling, continuous mode.
-3. Read 6 bytes from 0x00 — X / Y / Z order, *little-endian* per axis (vs HMC's big-endian).
+3. Read 6 bytes from 0x00, X / Y / Z order, *little-endian* per axis (vs HMC's big-endian).
 
 ## 73.5  How the mainline drivers work
 
 `drivers/iio/magnetometer/hmc5843_i2c.c` + `hmc5843_core.c` covers HMC5843 + HMC5883 + HMC5883L. Standard regmap-based pattern: read ID, configure, register IIO channels for `IIO_MAGN` with X/Y/Z modifiers.
 > **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
-**IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
-**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+> **IIO:** Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **regmap:** a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 
-`drivers/iio/magnetometer/qmc5883.c` is its own driver. can't share with HMC due to the register-set incompatibility.
+`drivers/iio/magnetometer/qmc5883.c` is its own driver. Can't share with HMC due to the register-set incompatibility.
 
 `drivers/iio/magnetometer/mmc56x3.c` covers MMC5983MA and MMC56x3 family.
 
@@ -120,7 +120,7 @@ sampling_frequency
 sampling_frequency_available
 ```
 
-User-space reads `raw × scale` to get the field in physical units. The driver doesn't do calibration — that's user-space's job.
+User-space reads `raw × scale` to get the field in physical units. The driver doesn't do calibration, that's user-space's job.
 
 ## 73.6  Writing a QMC5883L driver from scratch
 
@@ -309,12 +309,12 @@ Test:
 -38.6      ← "compass says 38.6° west of north"... but it's wrong because no calibration
 ```
 
-## 73.7  Calibration — the part most products skip
+## 73.7  Calibration, the part most products skip
 
 A user-space calibration script collects samples while you slowly rotate the sensor in all 3D orientations (cover an imaginary sphere). The samples fall on an ellipsoid. From the ellipsoid you compute two things:
 
-1. The **offset** (center of the ellipsoid) — hard-iron correction.
-2. The **3x3 matrix** to rotate-and-scale the ellipsoid into a sphere — soft-iron correction.
+1. The **offset** (center of the ellipsoid), hard-iron correction.
+2. The **3x3 matrix** to rotate-and-scale the ellipsoid into a sphere, soft-iron correction.
 
 A simple Python sketch:
 
@@ -362,7 +362,7 @@ if heading_deg < 0: heading_deg += 360
 print(f"Heading: {heading_deg:.1f}°")
 ```
 
-This is the *simplified* calibration. The proper version fits a full ellipsoid model (10 parameters: center 3 + axes 3 + rotation 3 + radius 1) using least-squares. see `Calibration of triaxial magnetometers` literature for the math. Libraries like **MotionCal** (Adafruit's GUI tool) do this. The resulting offset + 3x3 matrix is portable.
+This is the *simplified* calibration. The proper version fits a full ellipsoid model (10 parameters: center 3 + axes 3 + rotation 3 + radius 1) using least-squares. See `Calibration of triaxial magnetometers` literature for the math. Libraries like **MotionCal** (Adafruit's GUI tool) do this. The resulting offset + 3x3 matrix is portable.
 
 After proper calibration: heading error < 1°, indoor or out.
 
@@ -379,12 +379,12 @@ DT for QMC5883L:
 };
 ```
 
-For HMC5883L: `compatible = "honeywell,hmc5883l". reg = <0x1e>;`.
+For HMC5883L: `compatible = "honeywell,hmc5883l"; reg = <0x1e>;`.
 
-For MMC5983MA: `compatible = "memsic,mmc5983ma". reg = <0x30>;`.
+For MMC5983MA: `compatible = "memsic,mmc5983ma"; reg = <0x30>;`.
 
 The mainline drivers expose richer sysfs:
-**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 ```
 [root@pa-mini:~]# ls /sys/bus/iio/devices/iio:device0/
@@ -402,12 +402,12 @@ Plus buffered capture via trigger (Ch 70) for high-rate logging.
 ## 73.9  Lab
 
 1. **Probe.** `i2cdetect -y 1`. Check 0x0D and 0x1E. Whichever responds tells you what chip you have.
-2. **Build and load `myqmc5883.ko`.** Read X/Y/Z while moving the sensor. verify values change.
-3. **Compute uncalibrated heading.** Use atan2(Y, X) in radians, convert to degrees. Compare to a real compass. note the error.
+2. **Build and load `myqmc5883.ko`.** Read X/Y/Z while moving the sensor. Verify values change.
+3. **Compute uncalibrated heading.** Use atan2(Y, X) in radians, convert to degrees. Compare to a real compass. Note the error.
 4. **Run the calibration script.** Rotate the sensor for 30 seconds in all directions. Save offset + scale.
-5. **Apply calibration.** Compute heading again. Compare to real compass. should now be within 5°.
-6. **Move near a steel object.** Watch the heading change abruptly. Calibration done on the bench doesn't help if the in-product environment has different ferromagnetics — recalibrate in-place.
-7. **Switch to mainline driver.** Verify same data flows. verify sampling_frequency_available works.
+5. **Apply calibration.** Compute heading again. Compare to real compass. Should now be within 5°.
+6. **Move near a steel object.** Watch the heading change abruptly. Calibration done on the bench doesn't help if the in-product environment has different ferromagnetics, recalibrate in-place.
+7. **Switch to mainline driver.** Verify same data flows. Verify sampling_frequency_available works.
 
 ## 73.10  Pitfalls
 
@@ -418,19 +418,19 @@ Plus buffered capture via trigger (Ch 70) for high-rate logging.
 - **Buck converters within 5 cm.** Switching power supplies emit strong RF magnetic noise. Magnetometer reads garbage. Layout: keep mag far from switchers, or filter heavily.
 - **Iron rich PCB substrate.** Cheap PCBs sometimes have ferromagnetic impurities. Affects calibration repeatability across boards.
 - **Phone case magnets.** A 30-cm gap to a magnet still measures 100s of µT. Test your product in its real-world envelope.
-- **Sensor saturation.** A strong nearby field (relay coil during switch) can saturate the magnetometer. readings stick at ±MAX for a while afterward. Verify range is wide enough.
+- **Sensor saturation.** A strong nearby field (relay coil during switch) can saturate the magnetometer. Readings stick at ±MAX for a while afterward. Verify range is wide enough.
 - **Slow rotation during calibration.** Need to rotate slowly enough that samples cover the sphere uniformly. Too fast = patches uncovered = poor ellipsoid fit.
 
 ## 73.11  Going deeper
 
-- **`drivers/iio/magnetometer/hmc5843_core.c`** + `hmc5843_i2c.c` — HMC family.
-- **`drivers/iio/magnetometer/qmc5883.c`** — QMC.
-- **`drivers/iio/magnetometer/mmc56x3.c`** — MMC.
-- **HMC5883L datasheet (Honeywell)** — register layout.
-- **QMC5883L datasheet (QST)** — for comparison with HMC. note the differences.
-- **MMC5983MA datasheet (Memsic)** — set-reset cycle (a calibration improvement specific to MMC).
-- **"Markovsky-Van Huffel ellipsoid fitting"** — the math behind proper soft-iron calibration.
-- **MotionCal tool** by Adafruit — interactive calibration capture + analysis.
-- **NOAA WMM (World Magnetic Model)** — for converting magnetic-north to true-north (declination varies by location and year).
+- **`drivers/iio/magnetometer/hmc5843_core.c`** + `hmc5843_i2c.c`, HMC family.
+- **`drivers/iio/magnetometer/qmc5883.c`**: QMC.
+- **`drivers/iio/magnetometer/mmc56x3.c`**: MMC.
+- **HMC5883L datasheet (Honeywell)**: register layout.
+- **QMC5883L datasheet (QST)**: for comparison with HMC. Note the differences.
+- **MMC5983MA datasheet (Memsic)**: set-reset cycle (a calibration improvement specific to MMC).
+- **"Markovsky-Van Huffel ellipsoid fitting"**: the math behind proper soft-iron calibration.
+- **MotionCal tool** by Adafruit, interactive calibration capture + analysis.
+- **NOAA WMM (World Magnetic Model)**: for converting magnetic-north to true-north (declination varies by location and year).
 
-> Next chapter: **Chapter 74 — Hall-effect & rotary position sensors.** Magnetic sensing applied to mechanical position — AS5048 (absolute rotary), A1324 (linear Hall), TLE5012 (high-rate angular).
+> Next chapter: **Chapter 74: Hall-effect & rotary position sensors.** Magnetic sensing applied to mechanical position, AS5048 (absolute rotary), A1324 (linear Hall), TLE5012 (high-rate angular).

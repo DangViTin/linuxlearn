@@ -1,15 +1,15 @@
 ---
 chapter: 12
 title: UART driver and printf
-part: II — Bare-metal i.MX6ULL
+part: II - Bare-metal i.MX6ULL
 estimated_pages: 18
 status: draft
 ---
 
-# Chapter 12 — UART driver and `printf`
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+# Chapter 12: UART driver and `printf`
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
+> **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
 > **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 
 > **What:** a polled UART1 driver and a tiny `printf` clone that uses it. By the end of the chapter your bare-metal program can say `Hello, world!` instead of blink.
@@ -30,11 +30,11 @@ For our purposes:
 - Pad IOMUXC registers: `IOMUXC_SW_MUX_CTL_PAD_UART1_TX_DATA` at `0x020E0084`, RX at `0x020E0088`. (Verify against your RM.)
 - Daisy-chain register: `IOMUXC_UART1_RX_DATA_SELECT_INPUT` at `0x020E0624`, telling UART1 which pad to listen on for RX (usually `0` for the matching `UART1_RX_DATA` pad).
 
-The UART1 controller is on AIPS-1. its clock gate is in **CCM_CCGR5**, bits 24-25 (CG12). UART1's input clock — `uart_clk_root` — has a default of **80 MHz** (PLL3 / 6, with the post-divider set to 1). We'll use that.
+The UART1 controller is on AIPS-1. Its clock gate is in **CCM_CCGR5**, bits 24-25 (CG12). UART1's input clock, `uart_clk_root`, has a default of **80 MHz** (PLL3 / 6, with the post-divider set to 1). We'll use that.
 
 ## 12.2  Baud rate, the i.MX way
 
-Most UART chips compute baud as `f_in / (16 × divisor)`. i.MX is the same shape but with two divisor stages, so it can hit awkward baud rates:
+Most UART chips compute baud as `f_in / (16 × divisor)`. I.MX is the same shape but with two divisor stages, so it can hit awkward baud rates:
 
 ```
    baud = (f_uart_clk / 16) × (UBIR + 1) / (UBMR + 1)
@@ -56,7 +56,7 @@ The simplest values that yield this ratio cleanly are `(UBIR+1) = 71`, `(UBMR+1)
 - `UBIR = 70`
 - `UBMR = 3082`
 
-If exact match is impossible, the chip rounds. up to ~3% baud error is tolerated by most receivers. A mismatched baud rate shows up as garbage characters that look like ASCII but are not.
+If exact match is impossible, the chip rounds. Up to ~3% baud error is tolerated by most receivers. A mismatched baud rate shows up as garbage characters that look like ASCII but are not.
 
 ## 12.3  Register map (the ones we actually use)
 
@@ -83,11 +83,11 @@ The full list is RM Table 55-3. We will not visit most of them.
 
 Three bits we will touch by name:
 
-- **`UCR1.UARTEN`** (bit 0) — overall UART enable.
-- **`UCR2.SRST`** (bit 0) — software reset, **active-low**. Clear the bit to *assert* reset. set it to release. (Yes, the polarity is unusual. That is what the RM says.)
-- **`UCR2.TXEN | UCR2.RXEN`** (bits 1 and 2) — TX and RX enables.
-- **`USR1.TRDY`** (bit 13) — TX FIFO has space for at least one byte.
-- **`USR2.RDR`** (bit 0) — receive data ready.
+- **`UCR1.UARTEN`** (bit 0), overall UART enable.
+- **`UCR2.SRST`** (bit 0), software reset, **active-low**. Clear the bit to *assert* reset. Set it to release. (Yes, the polarity is unusual. That is what the RM says.)
+- **`UCR2.TXEN | UCR2.RXEN`** (bits 1 and 2), TX and RX enables.
+- **`USR1.TRDY`** (bit 13), TX FIFO has space for at least one byte.
+- **`USR2.RDR`** (bit 0), receive data ready.
 
 ## 12.4  The driver, top to bottom
 
@@ -342,19 +342,19 @@ We are deliberately using polling. Reasons:
 
 - **No interrupt controller yet.** The GIC will be set up properly in Chapter 15.
 > **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
-**GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
-- **Polling is enough for `printf`.** Even at 115200 baud, transmitting one character takes 87 µs. Worst case we spin 87 µs per character. For diagnostic output that's fine. in a high-throughput application it wouldn't be.
+> **GIC:** ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
+- **Polling is enough for `printf`.** Even at 115200 baud, transmitting one character takes 87 µs. Worst case we spin 87 µs per character. For diagnostic output that's fine. In a high-throughput application it wouldn't be.
 - **Simplicity reveals more.** Polling shows you the status-bit pattern in full. After you do it once, the interrupt version is just "the same thing, but the FIFO threshold triggers an ISR."
 
 We will write an interrupt-driven echo as a lab in Chapter 15.
 
 ## 12.8  Lab
 
-1. **Build, push via SDP, observe `Hello, world`.** Confirm baud rate by typing fast and slow. characters should echo back at any speed.
-2. **Measure the baud error.** Insert a `for` loop that emits `'U'` (0x55, the canonical alternating-bit-pattern character) 1 million times. Capture on a scope. measure one bit period. compute actual baud. compare to 115200. Should be within 1%.
-3. **Add `%b`** to `mini_printf` — binary representation, for register dumps. Use it to dump `UCR1`, `UCR2`, `USR1`, `USR2` at startup.
+1. **Build, push via SDP, observe `Hello, world`.** Confirm baud rate by typing fast and slow. Characters should echo back at any speed.
+2. **Measure the baud error.** Insert a `for` loop that emits `'U'` (0x55, the canonical alternating-bit-pattern character) 1 million times. Capture on a scope. Measure one bit period. Compute actual baud. Compare to 115200. Should be within 1%.
+3. **Add `%b`** to `mini_printf`, binary representation, for register dumps. Use it to dump `UCR1`, `UCR2`, `USR1`, `USR2` at startup.
 4. **Print system info.** Read OCOTP_CFG0 and OCOTP_CFG1 (RM Chapter 37) and print the chip's unique ID.
-5. **Stress test.** Connect picocom and a script on the host that types 10 KB of text. Confirm none is lost. (We don't have flow control. at 115200 with a polled receiver, 10 KB should still be safe.)
+5. **Stress test.** Connect picocom and a script on the host that types 10 KB of text. Confirm none is lost. (We don't have flow control. At 115200 with a polled receiver, 10 KB should still be safe.)
 
 ## 12.9  Pitfalls
 
@@ -368,11 +368,11 @@ We will write an interrupt-driven echo as a lab in Chapter 15.
 
 ## 12.10  Going deeper
 
-- **IMX6ULLRM Chapter 55** — UART. Read once cover-to-cover. You'll come back.
-- **AN3956** — *Configuring the i.MX UART Module*. Concise. useful.
-- **`mpaland/printf`** at `<https://github.com/mpaland/printf>` — a production-quality tiny printf, MIT-licensed.
-- **The 16550 UART datasheet** — every embedded engineer should read this once. It's the platonic UART.
-- **Linux source: `drivers/tty/serial/imx.c`** — the same hardware, the same registers, vastly more sophisticated driver. Read it after Chapter 12 here. You'll recognize every bit.
+- **IMX6ULLRM Chapter 55**: UART. Read once cover-to-cover. You'll come back.
+- **AN3956**: *Configuring the i.MX UART Module*. Concise. Useful.
+- **`mpaland/printf`** at `<https://github.com/mpaland/printf>`, a production-quality tiny printf, MIT-licensed.
+- **The 16550 UART datasheet**: every embedded engineer should read this once. It's the platonic UART.
+- **Linux source: `drivers/tty/serial/imx.c`**: the same hardware, the same registers, vastly more sophisticated driver. Read it after Chapter 12 here. You'll recognize every bit.
 
-> Next chapter: **Chapter 13 — CCM clock tree bring-up.** So far we've been running on whatever clock the ROM left us. Time to take ownership.
-> **CCM** - Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
+> Next chapter: **Chapter 13: CCM clock tree bring-up.** So far we've been running on whatever clock the ROM left us. Time to take ownership.
+> **CCM:** Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.

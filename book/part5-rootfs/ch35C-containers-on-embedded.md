@@ -1,20 +1,20 @@
 ---
 chapter: 35C
 title: Container runtimes on embedded (Podman + OCI)
-part: V — Root filesystem & user space (supplementary v1.2)
+part: V - Root filesystem & user space (supplementary v1.2)
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 35C — Container runtimes on embedded
+# Chapter 35C: Container runtimes on embedded
 
 > **What:** running OCI containers on an i.MX6ULL with Podman. By the end you'll have an Alpine Linux container running a small Python web server, accessing the host's GPIO from inside the container.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
 > **Why:** modern embedded products separate "the base system" (kernel + bootloader + minimal rootfs, updated rarely) from "the application" (one or more containers, updated whenever a customer-facing change is needed). Containers give you reproducible app deployment, image-based updates, and the ability to roll back in seconds. The cost is some RAM and some complexity. The benefit is a deployment story that scales from one device or a fleet of a million.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 >
 > **Focus:** Three kernel features make containers work: namespaces (process isolation), cgroups (resource limits), and overlayfs (storage). All three have been in mainline Linux for years. You just need them turned on in `.config`.
 
@@ -39,15 +39,15 @@ The i.MX6ULL is on the small side for containers, but it's tractable: a single A
 
 A "container" is just a Linux process group with three things layered on:
 
-1. **Namespaces** — the kernel maintains separate "views" per namespace type: PID, network, mount, UTS (hostname), IPC, user, cgroup. A process in a PID namespace sees only processes in that namespace. It thinks it's PID 1.
-2. **Cgroups (control groups)** — resource limits per group: CPU, memory, IO. Enforced by the kernel.
-3. **Overlay filesystem** — the container's root is an overlayfs over the image's read-only layers + a writable upper. Same `overlayfs` from Chapter 35B.
+1. **Namespaces**: The kernel maintains separate "views" per namespace type: PID, network, mount, UTS (hostname), IPC, user, cgroup. A process in a PID namespace sees only processes in that namespace. It thinks it's PID 1.
+2. **Cgroups (control groups)**: Resource limits per group: CPU, memory, IO. Enforced by the kernel.
+3. **Overlay filesystem**: The container's root is an overlayfs over the image's read-only layers + a writable upper. Same `overlayfs` from Chapter 35B.
 
 There is no container-runtime magic. A container is a process with namespaces, cgroups, and a careful mount setup. Docker, Podman, containerd, and CRI-O all do the same thing. They differ in UI, daemons, and ecosystem.
 
 For embedded, **Podman** wins:
 
-- **Daemonless.** Docker has a privileged daemon that runs as root and listens on a socket. Podman has no daemon — `podman run` directly spawns the container process. One less moving part.
+- **Daemonless.** Docker has a privileged daemon that runs as root and listens on a socket. Podman has no daemon, `podman run` directly spawns the container process. One less moving part.
 - **Rootless mode.** Containers can run as a normal user, using user namespaces. Better security story than Docker.
 - **Drop-in CLI-compatible with Docker.** `podman pull`, `podman run`, `podman ps` all work like `docker pull`, etc.
 
@@ -96,7 +96,7 @@ CONFIG_OVERLAY_FS=y
 ## 35C.4  Install Podman
 
 On a Buildroot rootfs, enable `BR2_PACKAGE_PODMAN`. On Ubuntu-base:
-**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 
 ```sh
 $ ./mount-ubuntu.sh   # chroot in
@@ -144,7 +144,7 @@ abcdefabcdef...
 hello from armv7l
 ```
 
-A real Alpine Linux 3.x container, pulled, run, exited, cleaned up — in roughly 30 seconds plus download time. Alpine images for armv7 are ~3-5 MB compressed, ~10 MB on disk.
+A real Alpine Linux 3.x container, pulled, run, exited, cleaned up, in roughly 30 seconds plus download time. Alpine images for armv7 are ~3-5 MB compressed, ~10 MB on disk.
 
 Run it interactively:
 
@@ -210,8 +210,8 @@ Run, with `/sys/class/leds/` bind-mounted into the container:
 [root@pa-mini:~]# podman run --rm -v /sys/class/leds:/sys/class/leds:rw led-blinker
 ```
 
-The LED blinks. Inside the container, the Python script writes to `/sys/class/leds/led0/brightness`. thanks to the bind mount, those writes hit the host's actual sysfs.
-**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+The LED blinks. Inside the container, the Python script writes to `/sys/class/leds/led0/brightness`. Thanks to the bind mount, those writes hit the host's actual sysfs.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 A more careful invocation passes only the *specific* device, not the entire sysfs hierarchy:
 
@@ -248,7 +248,7 @@ EOF
 
 Be honest about the costs:
 
-- **RAM.** Each container adds ~10-20 MB at minimum. On 512 MB i.MX6ULL with three containers, that's 50 MB just to *be* in containers. Not always a problem. sometimes prohibitive.
+- **RAM.** Each container adds ~10-20 MB at minimum. On 512 MB i.MX6ULL with three containers, that's 50 MB just to *be* in containers. Not always a problem. Sometimes prohibitive.
 - **Boot time.** `podman.service` plus container-pull-and-start adds 2-5 seconds.
 - **Complexity.** "Why isn't my hardware working?" answers gain a layer: "Is it the device driver? The bind mount? The cgroup device controller? The user-namespace mapping?"
 - **Determinism.** A pulled container's exact bytes depend on the registry server. For a closed-supply-chain product, you'd mirror the registry or build images locally and bake them into the rootfs.
@@ -261,7 +261,7 @@ A few real-world patterns:
 
 ### Pre-loaded image, no registry pulls
 
-For products without reliable internet, you don't `podman pull` on every boot — you bake the image into the rootfs at build time:
+For products without reliable internet, you don't `podman pull` on every boot, you bake the image into the rootfs at build time:
 
 ```sh
 # At build time on the host:
@@ -308,9 +308,9 @@ Image swap is atomic at the container level: either the new image is running or 
 2. **Pull and run Alpine.** Confirm it works.
 3. **Build a custom image.** Write a `Dockerfile` for a tiny Python script. `podman build` it. `podman run` it.
 4. **Bind-mount sysfs.** Build the LED blinker container and run it with `--v` mounting `/sys/class/leds/`. Verify LED toggles.
-5. **Measure overhead.** `podman info` reports memory. do a `free -h` before and after `podman run`. Quantify the cost.
+5. **Measure overhead.** `podman info` reports memory. Do a `free -h` before and after `podman run`. Quantify the cost.
 6. **Pre-bake an image.** `podman save` on the host, copy to the target, `podman load` on first boot. Verify no network calls happen.
-7. **Systemd integration.** Generate a unit file via `podman generate systemd`. enable it. reboot. verify the container starts.
+7. **Systemd integration.** Generate a unit file via `podman generate systemd`. Enable it. Reboot. Verify the container starts.
 
 ## 35C.11  Pitfalls
 
@@ -324,16 +324,16 @@ Image swap is atomic at the container level: either the new image is running or 
 
 ## 35C.12  Going deeper
 
-- **Podman documentation** at `docs.podman.io/` — comprehensive and well-organised.
+- **Podman documentation** at `docs.podman.io/`, comprehensive and well-organised.
 - **`man podman-run`** for the full set of options.
-- **`runc`** — the lower-level container runtime that Podman invokes. Smaller, fewer dependencies. sometimes used directly on resource-constrained systems.
-- **`containerd` and `nerdctl`** — alternative runtime + CLI, slightly closer to "what Kubernetes uses." Heavier than Podman but ecosystem-richer.
-- **`Buildah`** — image-building companion to Podman without needing a daemon.
-- **OCI Image Specification** at `github.com/opencontainers/image-spec` — the standard image format Podman, Docker, and friends all consume.
-- **`balenaEngine`** — a stripped-down Docker variant specifically for embedded. Used by balena.io's commercial fleet-management platform.
+- **`runc`**: the lower-level container runtime that Podman invokes. Smaller, fewer dependencies. Sometimes used directly on resource-constrained systems.
+- **`containerd` and `nerdctl`**: alternative runtime + CLI, slightly closer to "what Kubernetes uses." Heavier than Podman but ecosystem-richer.
+- **`Buildah`**: image-building companion to Podman without needing a daemon.
+- **OCI Image Specification** at `github.com/opencontainers/image-spec`, the standard image format Podman, Docker, and friends all consume.
+- **`balenaEngine`**: a stripped-down Docker variant specifically for embedded. Used by balena.io's commercial fleet-management platform.
 
 ---
 
 **End of Part V.** You can now build a rootfs three ways (by hand, Buildroot, Ubuntu-base), harden it for production (RO + overlayfs), and ship containerised applications on top.
 
-> Next chapter: **Chapter 36 — Your first kernel module.** With the user-space picture complete, we turn back to the kernel to write the driver that gives `/sys/class/leds/led0/brightness` its behavior.
+> Next chapter: **Chapter 36: Your first kernel module.** With the user-space picture complete, we turn back to the kernel to write the driver that gives `/sys/class/leds/led0/brightness` its behavior.

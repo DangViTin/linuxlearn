@@ -1,26 +1,26 @@
 ---
 chapter: 94
 title: WiFi+BT combo modules (AP6212 / RTL8723BS)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 94 — WiFi+BT combo modules
+# Chapter 94: WiFi+BT combo modules
 
-> **What:** modules that combine WiFi and Bluetooth on one chip, sharing one 2.4 GHz antenna: **AP6212** (Broadcom BCM43438 — WiFi over SDIO + BT over UART), **RTL8723BS** (Realtek — WiFi over SDIO + BT over UART). Two challenges define the topic. First, you must bring up two radios on one chip over two different buses. Second, the coexistence problem: both radios share the same 2.4 GHz band and the same antenna.
+> **What:** modules that combine WiFi and Bluetooth on one chip, sharing one 2.4 GHz antenna: **AP6212** (Broadcom BCM43438, WiFi over SDIO + BT over UART), **RTL8723BS** (Realtek, WiFi over SDIO + BT over UART). Two challenges define the topic. First, you must bring up two radios on one chip over two different buses. Second, the coexistence problem: both radios share the same 2.4 GHz band and the same antenna.
 >
-> **Why:** most embedded products that want WiFi *also* want Bluetooth (BLE for phone-app provisioning, classic BT for audio). A combo module is cheaper and smaller than two separate chips, and it solves the coexistence problem in hardware (the chip arbitrates between its own radios). Bringing up both halves takes more than twice the effort of either alone — WiFi on SDIO (Ch 91), BT on UART, then making them coexist.
+> **Why:** most embedded products that want WiFi *also* want Bluetooth (BLE for phone-app provisioning, classic BT for audio). A combo module is cheaper and smaller than two separate chips, and it solves the coexistence problem in hardware (the chip arbitrates between its own radios). Bringing up both halves takes more than twice the effort of either alone, WiFi on SDIO (Ch 91), BT on UART, then making them coexist.
 >
-> **Focus:** one chip carries two radios on two buses. They share one antenna and are managed by two independent kernel subsystems. The WiFi half is SDIO + brcmfmac (Ch 91). The BT half is UART + the Bluetooth HCI subsystem + `btattach`/`hciattach`. The two stacks are independent. They share silicon, but nothing else in software. The coexistence (PTA — Packet Traffic Arbitration) is internal to the chip but you must enable it and wire the BT_WAKE/WL_WAKE signals.
+> **Focus:** one chip carries two radios on two buses. They share one antenna and are managed by two independent kernel subsystems. The WiFi half is SDIO + brcmfmac (Ch 91). The BT half is UART + the Bluetooth HCI subsystem + `btattach`/`hciattach`. The two stacks are independent. They share silicon, but nothing else in software. The coexistence (PTA, Packet Traffic Arbitration) is internal to the chip but you must enable it and wire the BT_WAKE/WL_WAKE signals.
 >
 > **Tooling.** This chapter uses `wpa_supplicant`, `iw`, `bluez` (`bluetoothctl`, `hciattach`), combo firmware.
 > - **Ubuntu-base (target):** `apt install wpasupplicant iw bluez bluez-tools`
 > - **Buildroot:** `BR2_PACKAGE_WPA_SUPPLICANT=y BR2_PACKAGE_IW=y BR2_PACKAGE_BLUEZ5_UTILS=y`
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
 ## 94.1  Module comparison
@@ -71,11 +71,11 @@ These are independent driver stacks. WiFi working doesn't mean BT works, and vic
 
 ## 94.3  The WiFi half (recap of Ch 91)
 
-Identical to Ch 91 — SDIO bring-up, pwrseq, 32 kHz clock, firmware + NVRAM, `brcmfmac`, `wlan0`. Nothing new — the combo module's WiFi is exactly the AP6212 case from Ch 91.
+Identical to Ch 91, SDIO bring-up, pwrseq, 32 kHz clock, firmware + NVRAM, `brcmfmac`, `wlan0`. Nothing new, the combo module's WiFi is exactly the AP6212 case from Ch 91.
 
-## 94.4  The BT half — Bluetooth over UART
+## 94.4  The BT half, Bluetooth over UART
 
-The BT radio connects via UART, speaking the **HCI** (Host Controller Interface) protocol — the standard host↔BT-controller protocol. The UART variant is "H4" (3-wire: TX/RX/no flow) or "H5"/"3-wire" (with software flow control) or H4 with hardware RTS/CTS.
+The BT radio connects via UART, speaking the **HCI** (Host Controller Interface) protocol, the standard host↔BT-controller protocol. The UART variant is "H4" (3-wire: TX/RX/no flow) or "H5"/"3-wire" (with software flow control) or H4 with hardware RTS/CTS.
 
 Linux's Bluetooth stack:
 
@@ -164,44 +164,44 @@ For older / non-serdev setups, you attach manually:
 [root@pa-mini:~]# hciattach /dev/ttymxc2 bcm43xx 3000000 flow
 ```
 
-But the serdev DT approach (above) is preferred — the BT comes up automatically at boot.
+But the serdev DT approach (above) is preferred, the BT comes up automatically at boot.
 
-## 94.5  Coexistence — the shared-antenna problem
+## 94.5  Coexistence, the shared-antenna problem
 
 WiFi and BT both use 2.4 GHz, and the combo module has *one* antenna. If both radios transmit simultaneously, they interfere. WiFi throughput collapses and BT audio stutters.
 
 The chip solves this internally with **PTA** (Packet Traffic Arbitration, also called coexistence or "coex"). PTA is a hardware arbiter that time-slices the radio between WiFi and BT, prioritising by packet type. BT audio is latency-sensitive and gets high priority. WiFi bulk data can wait a few ms.
 
-For the combo module (WiFi + BT on the *same* chip), PTA is internal — both radios are on one die, the arbiter is built in, and it "just works" once both halves are up. You don't wire external coex signals.
+For the combo module (WiFi + BT on the *same* chip), PTA is internal, both radios are on one die, the arbiter is built in, and it "just works" once both halves are up. You don't wire external coex signals.
 
-For *separate* WiFi and BT chips (two dies), you'd wire 3-wire coex signals (BT_PRIORITY, BT_ACTIVE, WLAN_ACTIVE) between them — but combo modules avoid this by integrating.
+For *separate* WiFi and BT chips (two dies), you'd wire 3-wire coex signals (BT_PRIORITY, BT_ACTIVE, WLAN_ACTIVE) between them, but combo modules avoid this by integrating.
 
 What you *do* manage:
-- **BT_WAKE / HOST_WAKE** (declared in DT) — power-management handshakes letting BT wake the host and vice versa.
+- **BT_WAKE / HOST_WAKE** (declared in DT), power-management handshakes letting BT wake the host and vice versa.
 - Enabling coex in firmware (usually default-on for combo modules).
 - Antenna design: one antenna, one matching network, shared by both radios. The module datasheet specifies the antenna requirements.
 
-Observable effect: run iperf3 over WiFi while streaming BT audio. Without coex, both break. With coex (combo module), WiFi throughput drops modestly (the radio is time-shared) but both function. This drop is the cost of coexistence — typically 10 to 30 percent less WiFi throughput while BT is active.
+Observable effect: run iperf3 over WiFi while streaming BT audio. Without coex, both break. With coex (combo module), WiFi throughput drops modestly (the radio is time-shared) but both function. This drop is the cost of coexistence, typically 10 to 30 percent less WiFi throughput while BT is active.
 
-## 94.6  Bringing up both — the order
+## 94.6  Bringing up both, the order
 
 1. **WiFi first** (Ch 91): SDIO + pwrseq + 32 kHz clock + firmware + NVRAM → `wlan0`. Verify it works alone.
 2. **BT second**: UART + serdev BT node + BT firmware patch → `hci0`. Verify it works alone.
-3. **Shared resources**: both halves share the 32 kHz LPO clock (declare it once, reference from both pwrseq and the BT node) and often share power rails. The WL_REG_ON and BT_REG_ON are usually *separate* GPIOs — power each half independently.
-4. **Coexistence test**: run both simultaneously. confirm acceptable performance.
+3. **Shared resources**: both halves share the 32 kHz LPO clock (declare it once, reference from both pwrseq and the BT node) and often share power rails. The WL_REG_ON and BT_REG_ON are usually *separate* GPIOs, power each half independently.
+4. **Coexistence test**: run both simultaneously. Confirm acceptable performance.
 
 A common mistake is to get WiFi working and assume the job is done. Then a field unit fails because the BT side was never wired correctly. Test both, separately and together.
 
 ## 94.7  Lab
 
 1. **WiFi half.** Bring up the AP6212 WiFi per Ch 91. Confirm `wlan0` + connect.
-2. **BT half.** Add the serdev `bluetooth` node under your UART. Copy the BT firmware patch. Boot. verify `hci0` via `hciconfig`.
+2. **BT half.** Add the serdev `bluetooth` node under your UART. Copy the BT firmware patch. Boot. Verify `hci0` via `hciconfig`.
 3. **BLE scan.** `bluetoothctl` → `scan on`. Discover nearby BLE devices (your phone, a fitness tracker).
-4. **Classic BT.** Pair with a BT speaker or keyboard. verify it connects.
-5. **Coexistence test.** Stream A2DP audio to a BT speaker *while* running iperf3 over WiFi. Measure WiFi throughput with and without BT active. quantify the coex cost.
-6. **Shared LPO clock.** Verify both halves reference the same 32 kHz clock in DT. Remove it from one. observe that half fail.
-7. **Power management.** Suspend. verify both WiFi and BT survive resume (with the wake GPIOs configured).
-8. **BD address.** Note the BT controller's BD_ADDR. For production, program a unique one (from your EEPROM, Ch 65) — many modules ship with a default/duplicate address.
+4. **Classic BT.** Pair with a BT speaker or keyboard. Verify it connects.
+5. **Coexistence test.** Stream A2DP audio to a BT speaker *while* running iperf3 over WiFi. Measure WiFi throughput with and without BT active. Quantify the coex cost.
+6. **Shared LPO clock.** Verify both halves reference the same 32 kHz clock in DT. Remove it from one. Observe that half fail.
+7. **Power management.** Suspend. Verify both WiFi and BT survive resume (with the wake GPIOs configured).
+8. **BD address.** Note the BT controller's BD_ADDR. For production, program a unique one (from your EEPROM, Ch 65), many modules ship with a default/duplicate address.
 
 ## 94.8  Pitfalls
 
@@ -217,18 +217,18 @@ A common mistake is to get WiFi working and assume the job is done. Then a field
 
 ## 94.9  Going deeper
 
-- **`drivers/bluetooth/hci_bcm.c`** — the Broadcom BT-over-UART driver (AP6212).
-- **`drivers/bluetooth/btrtl.c`** + `hci_h5.c` — Realtek BT (RTL8723BS).
-- **`drivers/bluetooth/hci_serdev.c`** — the serdev attachment glue.
-- **`net/bluetooth/`** — the BlueZ kernel Bluetooth subsystem.
-- **`drivers/net/wireless/broadcom/brcm80211/brcmfmac/`** — the WiFi half (Ch 91).
-- **`Documentation/devicetree/bindings/net/broadcom-bluetooth.yaml`** — the BT DT binding.
-- **AP6212 datasheet + reference schematic** — the canonical combo wiring, coex, antenna.
-- **Bluetooth Core Specification (HCI section)** — the host-controller protocol.
-- **`btattach` / `hciattach` man pages** — manual BT-UART attachment.
+- **`drivers/bluetooth/hci_bcm.c`**: the Broadcom BT-over-UART driver (AP6212).
+- **`drivers/bluetooth/btrtl.c`** + `hci_h5.c`, Realtek BT (RTL8723BS).
+- **`drivers/bluetooth/hci_serdev.c`**: the serdev attachment glue.
+- **`net/bluetooth/`**: the BlueZ kernel Bluetooth subsystem.
+- **`drivers/net/wireless/broadcom/brcm80211/brcmfmac/`**: the WiFi half (Ch 91).
+- **`Documentation/devicetree/bindings/net/broadcom-bluetooth.yaml`**: the BT DT binding.
+- **AP6212 datasheet + reference schematic**: the canonical combo wiring, coex, antenna.
+- **Bluetooth Core Specification (HCI section)**: the host-controller protocol.
+- **`btattach` / `hciattach` man pages**: manual BT-UART attachment.
 
 ---
 
-> **End of Group K — WiFi (Ch 91–94).** SDIO WiFi (soldered, in-tree, Ch 91), USB WiFi (swappable, watch the driver, Ch 92), hosted WiFi (ESP co-processor, Ch 93), and WiFi+BT combo (one chip, two radios, coexistence, Ch 94). Together they cover every practical way to get a 2.4 GHz radio onto an i.MX6ULL.
+> **End of Group K, WiFi (Ch 91–94).** SDIO WiFi (soldered, in-tree, Ch 91), USB WiFi (swappable, watch the driver, Ch 92), hosted WiFi (ESP co-processor, Ch 93), and WiFi+BT combo (one chip, two radios, coexistence, Ch 94). Together they cover every practical way to get a 2.4 GHz radio onto an i.MX6ULL.
 
-> Next chapter: **Chapter 95 — HCI Bluetooth over UART/USB.** Group L (Bluetooth) — the dedicated BT controllers (nRF52, BCM4343, CSR), the HCI protocol in depth, and the BlueZ stack for GATT/BLE.
+> Next chapter: **Chapter 95: HCI Bluetooth over UART/USB.** Group L (Bluetooth), the dedicated BT controllers (nRF52, BCM4343, CSR), the HCI protocol in depth, and the BlueZ stack for GATT/BLE.

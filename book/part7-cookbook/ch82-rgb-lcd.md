@@ -1,14 +1,14 @@
 ---
 chapter: 82
 title: RGB parallel LCD on LCDIF (ATK4384 / ATK7016 / ATK10261)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 22
 status: draft
 ---
 
-# Chapter 82 — RGB parallel LCD on LCDIF
+# Chapter 82: RGB parallel LCD on LCDIF
 
-> **What:** "dumb" RGB-parallel TFT panels driven by the i.MX6ULL's **LCDIF** controller. Three panels compared: **ATK4384** (4.3" 480×272), **ATK7016** (7" 1024×600), **ATK10261** (10.1" 1280×800). The panel has no controller — it just accepts pixel clock + sync + 24 data lines. The "driver" is therefore a *timing description* + the DRM panel framework. We cover panel timings deeply, how `panel-simple` works internally, and how to add a custom panel (two ways: DT-only via `panel-dpi`, or a real `drm_panel` driver from scratch).
+> **What:** "dumb" RGB-parallel TFT panels driven by the i.MX6ULL's **LCDIF** controller. Three panels compared: **ATK4384** (4.3" 480×272), **ATK7016** (7" 1024×600), **ATK10261** (10.1" 1280×800). The panel has no controller, it just accepts pixel clock + sync + 24 data lines. The "driver" is therefore a *timing description* + the DRM panel framework. We cover panel timings deeply, how `panel-simple` works internally, and how to add a custom panel (two ways: DT-only via `panel-dpi`, or a real `drm_panel` driver from scratch).
 >
 > **Why:** parallel-RGB is the standard HMI display interface for i.MX6ULL. A parallel panel has no frame buffer of its own. The SoC streams pixels at the pixel clock and refreshes the glass 60 times a second. Get the timings right and the panel works. Get one porch wrong and the image rolls, tears, or stays blank. This chapter is mostly about *reading a panel datasheet's timing table and translating it to DT*.
 >
@@ -55,7 +55,7 @@ The signals:
 - **DE** (data enable): high during the visible region. The panel only shows pixels when DE is high.
 - **R/G/B[7:0]**: 24 data lines (18 for RGB666 panels).
 
-The "porches" are blanking intervals. They are a CRT legacy — the electron beam needed time to fly back. LCDs kept the timing model. The panel datasheet specifies exact porch widths.
+The "porches" are blanking intervals. They are a CRT legacy, the electron beam needed time to fly back. LCDs kept the timing model. The panel datasheet specifies exact porch widths.
 
 ### The timing math
 
@@ -75,7 +75,7 @@ pclk = 1281 × 646 × 60 ≈ 49.6 MHz
 
 Close to the datasheet's 51.2 MHz (the difference is the exact refresh rate they spec). The point: **the porches and pixel clock are interdependent**, and the panel datasheet gives the authoritative numbers.
 
-## 82.3  Device tree — the timing description
+## 82.3  Device tree, the timing description
 
 The LCDIF side:
 
@@ -112,7 +112,7 @@ The LCDIF side:
 };
 ```
 
-For ATK4384 substitute: `clock-frequency = <9000000>. hactive = <480>. vactive = <272>. hfront-porch = <5>. hback-porch = <40>. hsync-len = <1>. vback-porch = <8>. vfront-porch = <8>. vsync-len = <1>;`.
+For ATK4384 substitute: `clock-frequency = <9000000>; hactive = <480>; vactive = <272>; hfront-porch = <5>; hback-porch = <40>; hsync-len = <1>; vback-porch = <8>; vfront-porch = <8>; vsync-len = <1>;`.
 
 These numbers come directly from the panel datasheet's "AC Timing Characteristics" / "Display Timing" table. Transcribing them is the entire job.
 
@@ -175,7 +175,7 @@ The driver is a **`drm_panel`** provider. It has:
 2. A generic `panel-dpi` / `panel-lvds` path that reads timings from DT.
 3. Power-sequencing logic: enable regulator, wait, assert enable-gpio, wait, turn on backlight.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ```c
 /* Simplified */
@@ -230,7 +230,7 @@ The LCDIF DRM driver (`mxsfb`) is the **CRTC + encoder**. The panel is the **con
 4. Calls `panel->enable` (backlight on).
 5. Streams pixels.
 
-## 82.5  Adding a custom panel — three approaches
+## 82.5  Adding a custom panel, three approaches
 
 ### Approach 1: DT-only via panel-dpi (no code)
 
@@ -398,18 +398,18 @@ panel {
 };
 ```
 
-About 120 lines. It registers a `drm_panel` with the timing and power sequencing. The LCDIF DRM driver finds the panel through the of_graph link and uses its mode. For a *dumb* panel this is overkill (use panel-dpi), but for a panel that needs an init sequence (e.g., a panel with an embedded controller requiring SPI commands before it accepts RGB — covered in Ch 83), this is the structure you extend.
+About 120 lines. It registers a `drm_panel` with the timing and power sequencing. The LCDIF DRM driver finds the panel through the of_graph link and uses its mode. For a *dumb* panel this is overkill (use panel-dpi), but for a panel that needs an init sequence (e.g., a panel with an embedded controller requiring SPI commands before it accepts RGB, covered in Ch 83), this is the structure you extend.
 
 ## 82.6  Backlight + power sequencing
 
 A panel needs:
-1. Logic power (3.3 V) — `power-supply`.
-2. An enable/standby GPIO — `enable-gpios`.
-3. Backlight (LED, PWM-dimmed) — `backlight` phandle to a `pwm-backlight` node (Ch 48).
+1. Logic power (3.3 V), `power-supply`.
+2. An enable/standby GPIO, `enable-gpios`.
+3. Backlight (LED, PWM-dimmed), `backlight` phandle to a `pwm-backlight` node (Ch 48).
 > **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
-**PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+> **PWM:** Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 
-The power sequence matters: most panels want logic power *before* enabling, and the backlight *last* (so you don't show garbage during init). The `prepare`/`enable` split in `drm_panel_funcs` enforces this — `prepare` powers logic, `enable` turns on backlight.
+The power sequence matters: most panels want logic power *before* enabling, and the backlight *last* (so you don't show garbage during init). The `prepare`/`enable` split in `drm_panel_funcs` enforces this, `prepare` powers logic, `enable` turns on backlight.
 
 ```dts
 backlight: backlight {
@@ -447,13 +447,13 @@ For a Qt app: `./app -platform linuxfb`. For backlight: `echo 4 > /sys/class/bac
 
 ## 82.8  Lab
 
-1. **Bring up the ATK7016.** Transcribe its datasheet timings into a `panel-dpi` DT node. Boot. verify `/dev/fb0` exists with the right geometry.
-2. **Paint the screen.** `cat /dev/urandom > /dev/fb0` — noise. `cat /dev/zero > /dev/fb0` — black. Confirm the panel responds.
-3. **Backlight.** Wire `pwm-backlight`. Sweep `/sys/class/backlight/backlight/brightness` 0→255. verify dimming.
-4. **Deliberately wrong porch.** Change `hfront-porch` by 100. reboot. Observe the image shift / tear. Restore.
+1. **Bring up the ATK7016.** Transcribe its datasheet timings into a `panel-dpi` DT node. Boot. Verify `/dev/fb0` exists with the right geometry.
+2. **Paint the screen.** `cat /dev/urandom > /dev/fb0`, noise. `cat /dev/zero > /dev/fb0`, black. Confirm the panel responds.
+3. **Backlight.** Wire `pwm-backlight`. Sweep `/sys/class/backlight/backlight/brightness` 0→255. Verify dimming.
+4. **Deliberately wrong porch.** Change `hfront-porch` by 100. Reboot. Observe the image shift / tear. Restore.
 5. **Custom drm_panel driver.** Build `mypanel.ko` from §82.5 approach 3. Verify it registers and the LCDIF picks up its mode.
 6. **modetest.** Run a DRM-only kernel. Use `modetest` to list connectors and set the mode.
-7. **Qt app.** Run a simple Qt `-platform linuxfb` app. verify it renders.
+7. **Qt app.** Run a simple Qt `-platform linuxfb` app. Verify it renders.
 8. **Pixel-clock limit.** Try the ATK10261 (71 MHz pclk). Note if it works or glitches. If it glitches, reduce to a 50 Hz refresh timing (lower pclk) and retest.
 
 ## 82.9  Pitfalls
@@ -461,7 +461,7 @@ For a Qt app: `./app -platform linuxfb`. For backlight: `echo 4 > /sys/class/bac
 - **One porch wrong = rolling/torn image.** The classic symptom. Re-check every porch value against the datasheet.
 - **Polarity wrong.** `hsync-active`, `vsync-active`, `de-active`, `pixelclk-active` must match the panel. Inverted DE = black screen. Inverted pixelclk = data latched on wrong edge = garbled.
 - **Pixel clock exceeds LCDIF max.** ~70 MHz ceiling on i.MX6ULL. Above this, the LCDIF can't generate stable timing. Use a lower-resolution or lower-refresh mode.
-- **Backlight forgotten.** "Display broken!" — backlight off. Always test in daylight first. The LCD content is there even with backlight off (faintly visible).
+- **Backlight forgotten.** "Display broken!", backlight off. Always test in daylight first. The LCD content is there even with backlight off (faintly visible).
 - **Pinmux clash.** LCDIF uses 24 data + 4 control = 28 pins. Conflicts with other peripherals muxed onto those pins → garbled or no output. Audit pinmux.
 - **bits-per-pixel vs bus-width.** A 24-bit framebuffer on an 18-bit (RGB666) bus needs dithering or truncation. Set `bus-width = <18>` for RGB666 panels.
 - **enable-gpio polarity.** Active-high vs active-low. Wrong → panel stays in standby, blank.
@@ -470,12 +470,12 @@ For a Qt app: `./app -platform linuxfb`. For backlight: `echo 4 > /sys/class/bac
 
 ## 82.10  Going deeper
 
-- **`drivers/gpu/drm/mxsfb/`** — the i.MX LCDIF DRM driver.
-- **`drivers/gpu/drm/panel/panel-simple.c`** — the panel database + panel-dpi/lvds generic paths.
-- **`Documentation/devicetree/bindings/display/panel/`** — panel bindings. `panel-dpi.yaml`, `simple-panel.yaml`.
-- **`include/drm/drm_panel.h`** — the drm_panel API.
-- **`Documentation/gpu/drm-kms.rst`** — CRTC/encoder/connector/panel model.
-- **ATK7016 / ATK4384 datasheets** — the timing tables.
-- **`drivers/video/of_display_timing.c`** — how DT `display-timings` are parsed.
+- **`drivers/gpu/drm/mxsfb/`**: the i.MX LCDIF DRM driver.
+- **`drivers/gpu/drm/panel/panel-simple.c`**: the panel database + panel-dpi/lvds generic paths.
+- **`Documentation/devicetree/bindings/display/panel/`**: panel bindings. `panel-dpi.yaml`, `simple-panel.yaml`.
+- **`include/drm/drm_panel.h`**: the drm_panel API.
+- **`Documentation/gpu/drm-kms.rst`**: CRTC/encoder/connector/panel model.
+- **ATK7016 / ATK4384 datasheets**: the timing tables.
+- **`drivers/video/of_display_timing.c`**: how DT `display-timings` are parsed.
 
-> Next chapter: **Chapter 83 — SPI LCD.** Smart panels (ST7789, ILI9341) with an embedded controller and frame buffer — driven over SPI with command/data framing. The DRM "tiny" driver framework and `mipi-dbi`.
+> Next chapter: **Chapter 83: SPI LCD.** Smart panels (ST7789, ILI9341) with an embedded controller and frame buffer, driven over SPI with command/data framing. The DRM "tiny" driver framework and `mipi-dbi`.

@@ -1,22 +1,22 @@
 ---
 chapter: 112
 title: Stepper & DC motor drivers (DRV8825, A4988, TMC2209, BTS7960, DRV8302)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 112 — Stepper & DC motor drivers
+# Chapter 112: Stepper & DC motor drivers
 
-> **What:** the four motor-driver families: **stepper** (DRV8825, A4988 — basic step/dir. TMC2209 — silent stallGuard UART config), **DC brush** (BTS7960 — 43 A H-bridge), **BLDC** (DRV8302 — trapezoidal / sinusoidal / FOC), and **servo** (PWM-controlled hobby servos). On the i.MX6ULL we drive a stepper via PWM-step + GPIO-dir, configure TMC2209's RMS current and microstepping over UART, run a closed-loop velocity on a brushed motor with PWM + encoder feedback (Ch 111), and drive a BLDC with trapezoidal commutation. Emphasis on the **electrical safety + thermal limits** that are easy to overlook and fatal to ignore.
+> **What:** the four motor-driver families: **stepper** (DRV8825, A4988, basic step/dir. TMC2209, silent stallGuard UART config), **DC brush** (BTS7960, 43 A H-bridge), **BLDC** (DRV8302, trapezoidal / sinusoidal / FOC), and **servo** (PWM-controlled hobby servos). On the i.MX6ULL we drive a stepper via PWM-step + GPIO-dir, configure TMC2209's RMS current and microstepping over UART, run a closed-loop velocity on a brushed motor with PWM + encoder feedback (Ch 111), and drive a BLDC with trapezoidal commutation. Emphasis on the **electrical safety + thermal limits** that are easy to overlook and fatal to ignore.
 > **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
-> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **PWM:** Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
-> **Why:** any product that *moves* needs one of these. 3D printers (steppers), automated blinds (DC), drone ESCs (BLDC), CNC mills (everything), conveyor belts, robotic arms, automated valves — motor control is its own discipline. Linux makes the *control* easy (Cortex-A7 has plenty of MIPS for PID). The hard parts are the silicon-protection details, the EMI from chopping inductive currents, and the mechanical resonance of the load. Get these wrong and the result ranges from an audible whine to a destroyed MOSFET.
+> **Why:** any product that *moves* needs one of these. 3D printers (steppers), automated blinds (DC), drone ESCs (BLDC), CNC mills (everything), conveyor belts, robotic arms, automated valves, motor control is its own discipline. Linux makes the *control* easy (Cortex-A7 has plenty of MIPS for PID). The hard parts are the silicon-protection details, the EMI from chopping inductive currents, and the mechanical resonance of the load. Get these wrong and the result ranges from an audible whine to a destroyed MOSFET.
 >
-> **Focus:** Steppers need precise step-rate generation, usually from a PWM. DC motors need a PWM and an H-bridge, with current feedback for control. BLDC motors need commutation — switching three half-bridges in sync with rotor position. The kernel's PWM framework (Ch 48) handles step generation for steppers. For DC/BLDC closed-loop, you'll bolt together: encoder (Ch 111) + PID + PWM + current sense (INA226 from Ch 75). For absolute torque control or smooth low-RPM behaviour, you need FOC (Field-Oriented Control). The current loop runs at 10 kHz or higher, which exceeds Linux's scheduling jitter. Most engineers offload FOC to a dedicated MCU — SimpleFOC on STM32 is the open-source standard.
+> **Focus:** Steppers need precise step-rate generation, usually from a PWM. DC motors need a PWM and an H-bridge, with current feedback for control. BLDC motors need commutation, switching three half-bridges in sync with rotor position. The kernel's PWM framework (Ch 48) handles step generation for steppers. For DC/BLDC closed-loop, you'll bolt together: encoder (Ch 111) + PID + PWM + current sense (INA226 from Ch 75). For absolute torque control or smooth low-RPM behaviour, you need FOC (Field-Oriented Control). The current loop runs at 10 kHz or higher, which exceeds Linux's scheduling jitter. Most engineers offload FOC to a dedicated MCU, SimpleFOC on STM32 is the open-source standard.
 
 
 ## 112.1  Driver type pick-guide
@@ -29,18 +29,18 @@ status: draft
 | Small DC brush motor, ≤ 1 A | TB6612FNG | simple bidirectional control |
 | Large DC brush motor, 5–40 A | BTS7960 | electric scooters, automation actuators |
 | BLDC outrunner (drone motor) | DRV8302 / ODrive ESC | low-RPM torque, smooth |
-| RC servo (positioning) | (no driver — PWM direct) | hobby pan-tilt, robotic joints |
+| RC servo (positioning) | (no driver, PWM direct) | hobby pan-tilt, robotic joints |
 
-## 112.2  Steppers — step/dir interface
+## 112.2  Steppers, step/dir interface
 
 A stepper rotates 1.8° (200 steps) or 0.9° (400 steps) per full step. Microstepping (1/2, 1/4, ..., 1/256) interpolates between full steps for smoother motion and finer resolution (at lower torque per microstep).
 
 Driver interface (DRV8825, A4988):
-- **STEP** pin — rising edge advances one (micro)step.
-- **DIR** pin — 0 = CW, 1 = CCW.
-- **ENABLE** pin (active low) — disables the outputs (motor freewheels).
-- **M0, M1, M2** pins — microstep configuration (000 = full, 001 = 1/2, …, 101 = 1/32).
-- **SLEEP, RESET** — typically tied high.
+- **STEP** pin, rising edge advances one (micro)step.
+- **DIR** pin, 0 = CW, 1 = CCW.
+- **ENABLE** pin (active low), disables the outputs (motor freewheels).
+- **M0, M1, M2** pins, microstep configuration (000 = full, 001 = 1/2, …, 101 = 1/32).
+- **SLEEP, RESET**: typically tied high.
 
 Wiring:
 
@@ -55,9 +55,9 @@ Wiring:
 
 The PWM generates step pulses. The driver chops the current. Current is set by a trimpot (or in TMC2209 via UART).
 
-**Critical**: every driver has a "current limit" you set with a trimpot (sense resistor + reference voltage). Set too high → driver overheats and shuts down. Set too low → motor stalls. For NEMA17 + DRV8825 + 0.1 Ω sense → Vref = Imax × 5 × 0.1 = ~0.4 V for 0.8 A current. Measure with multimeter on the trimpot wiper. adjust slowly.
+**Critical**: every driver has a "current limit" you set with a trimpot (sense resistor + reference voltage). Set too high → driver overheats and shuts down. Set too low → motor stalls. For NEMA17 + DRV8825 + 0.1 Ω sense → Vref = Imax × 5 × 0.1 = ~0.4 V for 0.8 A current. Measure with multimeter on the trimpot wiper. Adjust slowly.
 
-## 112.3  Stepper from Linux — PWM step generation
+## 112.3  Stepper from Linux, PWM step generation
 
 Use the kernel PWM (Ch 48) to generate steps:
 
@@ -87,18 +87,18 @@ for (int hz = 100; hz <= 5000; hz += 100) {
 }
 ```
 
-For coordinated multi-axis motion (CNC, 3D printer) this isn't enough — you need a lookahead planner (Marlin, Klipper architecture). Klipper runs the motion planner on Linux and offloads step generation to an STM32 over USB serial. This split is the dominant pattern for high-end CNC and 3D printing.
+For coordinated multi-axis motion (CNC, 3D printer) this isn't enough, you need a lookahead planner (Marlin, Klipper architecture). Klipper runs the motion planner on Linux and offloads step generation to an STM32 over USB serial. This split is the dominant pattern for high-end CNC and 3D printing.
 
-## 112.4  TMC2209 — UART configuration for silent stepping
+## 112.4  TMC2209, UART configuration for silent stepping
 
 TMC2209 (Trinamic) is the current common choice for silent stepper drivers. Same step/dir interface as DRV8825, but a **UART configuration interface** lets you set:
 - Microstepping (up to 1/256, smooth interpolation)
 - RMS current (in mA, very precise)
 - stealthChop (silent voltage-mode chop) vs spreadCycle (fast current-mode chop)
-- stallGuard (sensorless homing — detects when motor stalls into an end-stop)
+- stallGuard (sensorless homing, detects when motor stalls into an end-stop)
 - CoolStep (auto-reduce current when load is low)
 
-The UART is single-wire (TX and RX share). driver auto-direction-switches:
+The UART is single-wire (TX and RX share). Driver auto-direction-switches:
 
 ```
    i.MX UART TX ───┬─── TMC2209 PDN_UART
@@ -123,7 +123,7 @@ tmc_write(addr=0, IHOLD_IRUN, (HOLD_CURRENT << 0) | (RUN_CURRENT << 8) | (IHOLDD
 
 The TMC2209 datasheet (1MB PDF, very readable) walks every register. Once configured, the motor is near-silent. A 3D printer with TMC2209 drivers is roughly the volume of a fridge fan.
 
-## 112.5  DC brushed motor — H-bridge + PWM
+## 112.5  DC brushed motor, H-bridge + PWM
 
 ```
                      Vbat
@@ -161,11 +161,11 @@ echo 50% > /sys/class/pwm/pwmchip1/pwm0/duty_cycle  # forward PWM
 echo 0   > /sys/class/pwm/pwmchip1/pwm1/duty_cycle  # reverse off
 ```
 
-To brake: set both PWMs to 0 and assert enable. both low-sides switch on → motor terminals shorted → fast brake.
+To brake: set both PWMs to 0 and assert enable. Both low-sides switch on → motor terminals shorted → fast brake.
 
-**Critical**: never assert both high-sides (forward + reverse) simultaneously — that's a shoot-through short across Vbat. The BTS7960 has internal cross-conduction protection but external H-bridges from discrete MOSFETs need software interlock + dead-time.
+**Critical**: never assert both high-sides (forward + reverse) simultaneously, that's a shoot-through short across Vbat. The BTS7960 has internal cross-conduction protection but external H-bridges from discrete MOSFETs need software interlock + dead-time.
 
-## 112.6  BLDC — commutation 101
+## 112.6  BLDC, commutation 101
 
 A BLDC motor has 3 stator coils and a permanent-magnet rotor. To spin, you cycle current through pairs of coils in synchronism with the rotor position:
 
@@ -176,9 +176,9 @@ A BLDC motor has 3 stator coils and a permanent-magnet rotor. To spin, you cycle
 ```
 
 To know rotor position:
-- **Hall sensors** (3 of them, integrated on the motor) — gives 60° resolution → trapezoidal commutation.
-- **Encoder** — finer resolution → sinusoidal commutation.
-- **Sensorless back-EMF detection** — measure the un-energized coil's voltage. zero-crossing tells you where you are. Works above ~10 % nominal speed.
+- **Hall sensors** (3 of them, integrated on the motor), gives 60° resolution → trapezoidal commutation.
+- **Encoder**: finer resolution → sinusoidal commutation.
+- **Sensorless back-EMF detection**: measure the un-energized coil's voltage. Zero-crossing tells you where you are. Works above ~10 % nominal speed.
 
 DRV8302 (TI) is the gate driver for 3 half-bridges + provides current-sense amplifiers. You add 6 N-FETs and you have a BLDC ESC. The MCU (or Linux) runs commutation logic.
 
@@ -203,16 +203,16 @@ apply_gates(pattern, pwm_duty);
 
 This runs on hall-IRQ → at 1000 RPM × 14 poles = 234 IRQ/s. Linux can handle that.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ## 112.7  Lab
 
 1. **Stepper basic.** Wire DRV8825 + a NEMA17. Vref to 0.4 V (~0.8 A). PWM 1 kHz on STEP. Confirm motor turns at 0.625 rev/s.
 2. **Microstepping.** Set M0/M1/M2 = 1/16. Spin at same step rate → 1/8 the angular velocity but smoother.
 3. **Acceleration profile.** Linear ramp from 100 Hz to 5 kHz over 1 second. Test for missed steps (motor stalls under acceleration).
-4. **TMC2209 silent mode.** Wire UART. Write IHOLD_IRUN to set 800 mA RUN, 400 mA HOLD. Compare noise vs DRV8825 — TMC should be near-silent.
-5. **stallGuard homing.** Send a slow move. monitor TMC2209's DIAG pin. when motor hits an end-stop, DIAG asserts → use as a sensor-less home switch.
-6. **DC motor open loop.** Wire BTS7960 + a 12 V motor. PWM duty 50 %. motor spins. Reverse direction by swapping which PWM is active.
+4. **TMC2209 silent mode.** Wire UART. Write IHOLD_IRUN to set 800 mA RUN, 400 mA HOLD. Compare noise vs DRV8825, TMC should be near-silent.
+5. **stallGuard homing.** Send a slow move. Monitor TMC2209's DIAG pin. When motor hits an end-stop, DIAG asserts → use as a sensor-less home switch.
+6. **DC motor open loop.** Wire BTS7960 + a 12 V motor. PWM duty 50 %. Motor spins. Reverse direction by swapping which PWM is active.
 7. **DC motor closed-loop velocity.** Add encoder (Ch 111). PID loop targets 1000 RPM regardless of load. Tune Kp/Ki.
 8. **BLDC trapezoidal.** Wire DRV8302 + 6 MOSFETs + a sensored BLDC. Implement 6-step commutation in user-space. Spin at low RPM.
 9. **BLDC FOC offload (stretch).** Buy an ODrive or BL-MGN board. Linux sends UART commands. The dedicated MCU does FOC. Compare torque smoothness.
@@ -224,30 +224,30 @@ This runs on hall-IRQ → at 1000 RPM × 14 poles = 234 IRQ/s. Linux can handle 
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
-- **Stepper current too high.** DRV8825 / A4988 overheat and thermally shut down. Set Vref carefully. add heat sink + airflow.
+- **Stepper current too high.** DRV8825 / A4988 overheat and thermally shut down. Set Vref carefully. Add heat sink + airflow.
 - **Stepper missed steps.** Acceleration too aggressive or current too low. Add longer ramp or increase current.
-- **No back-EMF clamp diodes.** Switching off an inductive load (motor coil) generates voltage spikes that destroy MOSFETs. Drivers like BTS7960 have internal clamps. discrete designs need flyback diodes.
+- **No back-EMF clamp diodes.** Switching off an inductive load (motor coil) generates voltage spikes that destroy MOSFETs. Drivers like BTS7960 have internal clamps. Discrete designs need flyback diodes.
 - **PWM frequency in motor's audible range.** 1–10 kHz PWM makes motors whine. Bump to >20 kHz (ultrasonic) or use stealthChop (TMC).
 - **H-bridge shoot-through.** Never enable both high and low side of the same leg simultaneously. Use a driver IC with dead-time, or software interlock.
 - **Powering driver Vmot before logic Vcc.** Some drivers latch up. Check the datasheet sequence. BTS7960 is tolerant. A4988 is sensitive.
-- **Insufficient bulk capacitance on Vmot.** Motor inrush sags the rail. logic supply brown-outs. Add 470 µF+ low-ESR cap per driver.
+- **Insufficient bulk capacitance on Vmot.** Motor inrush sags the rail. Logic supply brown-outs. Add 470 µF+ low-ESR cap per driver.
 - **EMI from motor brushes.** A DC brushed motor radiates broadband RF. Add ceramic caps (100 nF) across motor terminals + an LC filter on the supply line. WiFi and CAN buses near unfiltered motors fail intermittently.
 - **TMC2209 UART CRC mismatch.** Easy to compute wrong. Use the official polynomial table or copy from the TMC library.
-- **BLDC wrong phase order.** If the motor spins backward when you command forward, swap any two motor phases (e.g., A ↔ B). Don't rely on coil-color conventions — they're not standard.
+- **BLDC wrong phase order.** If the motor spins backward when you command forward, swap any two motor phases (e.g., A ↔ B). Don't rely on coil-color conventions, they're not standard.
 - **No current limit on the supply.** A stalled motor draws stall current = Vbat / Rcoil. NEMA17 stalled: 12 V / 3 Ω = 4 A. Without a current-limited supply or a fuse, the wiring smokes.
 
 ## 112.9  Going deeper
 
-- **TI DRV8825 datasheet + application notes** — the canonical stepper-driver tutorial.
-- **Trinamic TMC2209 datasheet + datagram structure** — for UART config.
-- **Infineon BTS7960 datasheet** — H-bridge integration.
-- **TI DRV8302 datasheet** — BLDC gate driver.
-- **SimpleFOC project (Arduino-based)** — readable FOC implementation. runs on STM32 or ESP32.
-- **ODrive project** — open-source BLDC controller for high-performance robotics.
-- **Klipper firmware** — Linux + MCU split architecture for 3D printers. great reference for "Linux as motion planner."
-- **Ch 48** — PWM kernel framework.
-- **Ch 111** — encoder feedback (essential for closed-loop control).
+- **TI DRV8825 datasheet + application notes**: the canonical stepper-driver tutorial.
+- **Trinamic TMC2209 datasheet + datagram structure**: for UART config.
+- **Infineon BTS7960 datasheet**: H-bridge integration.
+- **TI DRV8302 datasheet**: BLDC gate driver.
+- **SimpleFOC project (Arduino-based)**: readable FOC implementation. Runs on STM32 or ESP32.
+- **ODrive project**: open-source BLDC controller for high-performance robotics.
+- **Klipper firmware**: Linux + MCU split architecture for 3D printers. Great reference for "Linux as motion planner."
+- **Ch 48**: PWM kernel framework.
+- **Ch 111**: encoder feedback (essential for closed-loop control).
 
 ---
 
-> Next chapter: **Chapter 113 — WS2812 / SK6812 / APA102 addressable LEDs** — Group S (Indicators & smart LEDs).
+> Next chapter: **Chapter 113: WS2812 / SK6812 / APA102 addressable LEDs**, Group S (Indicators & smart LEDs).

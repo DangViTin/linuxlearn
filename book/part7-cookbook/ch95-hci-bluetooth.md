@@ -1,26 +1,26 @@
 ---
 chapter: 95
 title: HCI Bluetooth over UART/USB (nRF52 / BCM4343 / CSR8510)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 22
 status: draft
 ---
 
-# Chapter 95 — HCI Bluetooth over UART/USB
+# Chapter 95: HCI Bluetooth over UART/USB
 
-> **What:** dedicated Bluetooth controllers and the Linux Bluetooth stack (**BlueZ**). Three controllers compared: **Nordic nRF52** (with Zephyr HCI firmware, UART), **Broadcom BCM4343** (UART), **CSR8510/Realtek RTL8761** (USB dongle). We cover the **HCI protocol** in depth and the BlueZ architecture. You will not write the HCI controller — that lives in the chip's firmware. What you do build is a **BLE GATT peripheral**, in user-space, through BlueZ's D-Bus API.
+> **What:** dedicated Bluetooth controllers and the Linux Bluetooth stack (**BlueZ**). Three controllers compared: **Nordic nRF52** (with Zephyr HCI firmware, UART), **Broadcom BCM4343** (UART), **CSR8510/Realtek RTL8761** (USB dongle). We cover the **HCI protocol** in depth and the BlueZ architecture. You will not write the HCI controller, that lives in the chip's firmware. What you do build is a **BLE GATT peripheral**, in user-space, through BlueZ's D-Bus API.
 >
-> **Why:** Bluetooth is how embedded products talk to phones — BLE for "configure-my-device-from-an-app" provisioning, GATT for sensor data, classic BT for audio. Ch 94 brought up the combo-module BT half. This chapter goes deep on the protocol and on *building a GATT service* — the part you actually write. Understanding HCI makes the rest of the stack feel less magical. Building a GATT peripheral is the practical skill.
+> **Why:** Bluetooth is how embedded products talk to phones, BLE for "configure-my-device-from-an-app" provisioning, GATT for sensor data, classic BT for audio. Ch 94 brought up the combo-module BT half. This chapter goes deep on the protocol and on *building a GATT service*, the part you actually write. Understanding HCI makes the rest of the stack feel less magical. Building a GATT peripheral is the practical skill.
 >
 > **Focus:** the controller (chip firmware) runs the BT link layer. You build the GATT application on top. The chip's firmware is the "controller" (radio, link layer, encryption). BlueZ is the "host" (L2CAP, GATT, SMP). Your code is the "application" layer. It is a GATT server that exposes characteristics. You do not touch HCI directly. You define services, and BlueZ handles the rest. The from-scratch deliverable is a GATT peripheral, written against BlueZ's D-Bus API.
 >
 > **Tooling.** This chapter uses `bluez` (`bluetoothctl`, `btmon`, `btmgmt`, `hciattach`), Python `dbus` for the GATT-server example.
 > - **Ubuntu-base (target):** `apt install bluez bluez-tools python3-dbus`
 > - **Buildroot:** `BR2_PACKAGE_BLUEZ5_UTILS=y BR2_PACKAGE_BLUEZ5_UTILS_DEPRECATED=y BR2_PACKAGE_PYTHON3_DBUS=y`
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
 ## 95.1  Controller comparison
@@ -38,8 +38,8 @@ status: draft
 
 **Pick guide:**
 - **nRF52840**: best BLE. Zephyr HCI firmware turns it into a clean HCI controller. BLE-only.
-- **BCM4343 / AP6212-BT** (Ch 94): classic BT + BLE. combo with WiFi.
-- **CSR8510/RTL8761 USB dongle**: zero-effort dev — plug into USB, `btusb` handles it.
+- **BCM4343 / AP6212-BT** (Ch 94): classic BT + BLE. Combo with WiFi.
+- **CSR8510/RTL8761 USB dongle**: zero-effort dev, plug into USB, `btusb` handles it.
 
 ## 95.2  The HCI protocol
 
@@ -69,7 +69,7 @@ An event packet:
    e.g., LE Advertising Report (a scan found a device)
 ```
 
-Over UART, these packets are framed with the **H4** protocol (just the type byte prefix, no checksum — relies on UART reliability) or **H5/3-wire** (adds sequence numbers + CRC + retransmission for unreliable UARTs).
+Over UART, these packets are framed with the **H4** protocol (just the type byte prefix, no checksum, relies on UART reliability) or **H5/3-wire** (adds sequence numbers + CRC + retransmission for unreliable UARTs).
 
 You rarely send raw HCI yourself. BlueZ does it for you. Knowing the format lets you read `btmon` traces and debug.
 
@@ -134,7 +134,7 @@ hci0:   Type: Primary  Bus: UART  ...  UP RUNNING
 
 ### BCM4343 (UART)
 
-As Ch 94 — `hci_bcm` + the `.hcd` firmware patch, serdev DT node.
+As Ch 94, `hci_bcm` + the `.hcd` firmware patch, serdev DT node.
 
 ### USB dongle (CSR8510 / RTL8761)
 
@@ -148,9 +148,9 @@ Bluetooth: hci0: BCM: chip ...   (or CSR/RTL)
 [root@pa-mini:~]# hciconfig hci0 up
 ```
 
-`btusb` handles USB BT dongles class-compliantly — plug in, `hci0` appears.
+`btusb` handles USB BT dongles class-compliantly, plug in, `hci0` appears.
 
-## 95.5  bluetoothctl — the interactive tool
+## 95.5  bluetoothctl, the interactive tool
 
 ```
 [root@pa-mini:~]# bluetoothctl
@@ -164,7 +164,7 @@ Bluetooth: hci0: BCM: chip ...   (or CSR/RTL)
 [bluetooth]# list-attributes   ← shows the connected device's GATT services
 ```
 
-`btmon` decodes the HCI traffic live — invaluable for debugging:
+`btmon` decodes the HCI traffic live, invaluable for debugging:
 
 ```
 [root@pa-mini:~]# btmon
@@ -180,10 +180,10 @@ The meaningful "build it yourself" deliverable: a **GATT server** that advertise
 
 GATT structure:
 - A **service** (a UUID) groups related data.
-- **Characteristics** (each a UUID) are the data points — readable, writable, or notifiable.
+- **Characteristics** (each a UUID) are the data points, readable, writable, or notifiable.
 - A phone app discovers the service, reads/writes characteristics, subscribes to notifications.
 
-Example: a temperature sensor peripheral. Service = "Environmental Sensing". characteristic = "Temperature" (notify the phone when it changes).
+Example: a temperature sensor peripheral. Service = "Environmental Sensing". Characteristic = "Temperature" (notify the phone when it changes).
 
 Here's a minimal GATT server using Python + `dbus` (the most readable. C with GLib/sd-bus is the production path):
 
@@ -253,9 +253,9 @@ if __name__ == '__main__':
     GLib.MainLoop().run()
 ```
 
-The full example needs the service-object and advertisement-object registration boilerplate — about 250 lines in total. BlueZ ships `example-gatt-server` in `test/` and most production code starts from that.
+The full example needs the service-object and advertisement-object registration boilerplate, about 250 lines in total. BlueZ ships `example-gatt-server` in `test/` and most production code starts from that.
 
-What this gives you: a phone running the **nRF Connect** app (or your own app) discovers "Environmental Sensing," reads the temperature, and subscribes to notifications — getting a push every 2 seconds. This is the standard pattern: a BLE sensor talking to a phone app.
+What this gives you: a phone running the **nRF Connect** app (or your own app) discovers "Environmental Sensing," reads the temperature, and subscribes to notifications, getting a push every 2 seconds. This is the standard pattern: a BLE sensor talking to a phone app.
 
 Wire the `update_temp()` to a real BME280 (Ch 67) and you have a working BLE environmental sensor.
 
@@ -263,7 +263,7 @@ Wire the `update_temp()` to a real BME280 (Ch 67) and you have a working BLE env
 
 For a real product, write the GATT server in C against **sd-bus** (systemd) or **GDBus** (GLib), or use BlueZ's `gdbus` C helpers. The structure mirrors the Python: define the service + characteristics as D-Bus objects, register with `org.bluez`, handle ReadValue/WriteValue/StartNotify. More code, but no Python runtime and better performance.
 
-## 95.7  GAP — advertising + the connection flow
+## 95.7  GAP, advertising + the connection flow
 
 Before GATT, a BLE peripheral **advertises**: it broadcasts small packets ("I exist, here's my name + service UUIDs") on the 3 advertising channels. A central (phone) scans, sees the advert, connects.
 
@@ -279,12 +279,12 @@ BlueZ exposes a `LEAdvertisingManager1` D-Bus interface that controls advertisin
 
 1. **Bring up a controller.** nRF52 with Zephyr HCI (UART), or a USB dongle (`btusb`). Verify `hciconfig` shows `hci0 UP RUNNING`.
 2. **Scan + pair.** `bluetoothctl` → scan for your phone → pair.
-3. **btmon trace.** Run `btmon` during a scan. watch the HCI LE Advertising Report events decode.
+3. **btmon trace.** Run `btmon` during a scan. Watch the HCI LE Advertising Report events decode.
 4. **GATT server.** Adapt BlueZ's `test/example-gatt-server` (or the Python above) to expose a temperature characteristic. Run it.
-5. **Connect from a phone.** Install nRF Connect. scan. connect to your i.MX6ULL. read the temperature. subscribe to notifications. watch them push every 2 s.
+5. **Connect from a phone.** Install nRF Connect. Scan. Connect to your i.MX6ULL. Read the temperature. Subscribe to notifications. Watch them push every 2 s.
 6. **Real sensor.** Wire `update_temp()` to a BME280 (Ch 67). Now it's a real BLE thermometer.
-7. **Provisioning use case.** Add a writable "WiFi credentials" characteristic. a phone app writes SSID+password. The i.MX6ULL then joins WiFi (Ch 91). This is the canonical "configure my headless device from a phone" flow.
-8. **Range + RSSI.** Move the phone away. observe RSSI drop in `bluetoothctl`. Note BLE's ~10–30 m practical range.
+7. **Provisioning use case.** Add a writable "WiFi credentials" characteristic. A phone app writes SSID+password. The i.MX6ULL then joins WiFi (Ch 91). This is the canonical "configure my headless device from a phone" flow.
+8. **Range + RSSI.** Move the phone away. Observe RSSI drop in `bluetoothctl`. Note BLE's ~10–30 m practical range.
 
 ## 95.9  Pitfalls
 
@@ -292,21 +292,21 @@ BlueZ exposes a `LEAdvertisingManager1` D-Bus interface that controls advertisin
 - **Firmware patch missing.** BCM controllers need the `.hcd`. Without it, reduced functionality or a default BD address.
 - **bluetoothd not running.** `bluetoothctl` and the D-Bus API need the `bluetoothd` daemon. `systemctl start bluetooth` (or run `bluetoothd` manually).
 - **D-Bus permission denied.** Your GATT server needs permission to talk to `org.bluez`. Run as root, or add a D-Bus policy file granting access.
-- **Advertising not enabled.** A GATT server with no advertisement is invisible — the phone can't find it. Register an `LEAdvertisement1` object.
+- **Advertising not enabled.** A GATT server with no advertisement is invisible, the phone can't find it. Register an `LEAdvertisement1` object.
 - **Characteristic flags wrong.** A "read" characteristic the app tries to subscribe to fails. Match flags (`read`/`write`/`notify`) to intended use.
 - **BD address duplicate.** Two devices with the same BD_ADDR confuse a phone. Program unique addresses (Ch 65 EEPROM).
-- **Classic BT on a BLE-only controller.** nRF52 is BLE-only. trying classic BT (A2DP, etc.) fails. Use a BCM/CSR for classic.
-- **MTU too small.** Default BLE ATT MTU is 23 bytes (20 usable). Large characteristic values need MTU negotiation. otherwise they're truncated. Negotiate a larger MTU.
+- **Classic BT on a BLE-only controller.** nRF52 is BLE-only. Trying classic BT (A2DP, etc.) fails. Use a BCM/CSR for classic.
+- **MTU too small.** Default BLE ATT MTU is 23 bytes (20 usable). Large characteristic values need MTU negotiation. Otherwise they're truncated. Negotiate a larger MTU.
 
 ## 95.10  Going deeper
 
-- **`net/bluetooth/`** — the kernel Bluetooth subsystem (HCI core, L2CAP, sockets).
-- **`drivers/bluetooth/`** — `hci_uart.c`, `hci_bcm.c`, `btusb.c`, `btnordic`/Zephyr-HCI support.
-- **BlueZ `test/example-gatt-server`** + `example-advertisement` — adapt these for your GATT peripheral.
-- **BlueZ D-Bus API docs** (`doc/gatt-api.txt`, `doc/advertising-api.txt`) — the interfaces your app calls.
-- **`btmon`, `btmgmt`, `bluetoothctl`** — the BlueZ tools.
-- **Bluetooth Core Specification** — HCI (Vol 4 Part E), GATT (Vol 3 Part G), GAP (Vol 3 Part C).
-- **Nordic nRF Connect app** — the indispensable BLE-peripheral test tool (phone-side).
-- **`Documentation/devicetree/bindings/net/` (bluetooth bindings)** — the DT for UART controllers.
+- **`net/bluetooth/`**: the kernel Bluetooth subsystem (HCI core, L2CAP, sockets).
+- **`drivers/bluetooth/`**: `hci_uart.c`, `hci_bcm.c`, `btusb.c`, `btnordic`/Zephyr-HCI support.
+- **BlueZ `test/example-gatt-server`** + `example-advertisement`, adapt these for your GATT peripheral.
+- **BlueZ D-Bus API docs** (`doc/gatt-api.txt`, `doc/advertising-api.txt`), the interfaces your app calls.
+- **`btmon`, `btmgmt`, `bluetoothctl`**: the BlueZ tools.
+- **Bluetooth Core Specification**: HCI (Vol 4 Part E), GATT (Vol 3 Part G), GAP (Vol 3 Part C).
+- **Nordic nRF Connect app**: the indispensable BLE-peripheral test tool (phone-side).
+- **`Documentation/devicetree/bindings/net/` (bluetooth bindings)**: the DT for UART controllers.
 
-> Next chapter: **Chapter 96 — AT-command BLE modules.** The easy path — HM-10, HC-08 — BLE without a kernel stack, just UART AT commands. When simplicity beats integration.
+> Next chapter: **Chapter 96: AT-command BLE modules.** The easy path, HM-10, HC-08, BLE without a kernel stack, just UART AT commands. When simplicity beats integration.

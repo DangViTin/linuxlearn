@@ -1,20 +1,20 @@
 ---
 chapter: 23A
 title: Multi-variant FIT images and DT overlays
-part: III — U-Boot, deeply (inserted v1.2)
+part: III - U-Boot, deeply (inserted v1.2)
 estimated_pages: 14
 status: draft
 ---
 
-# Chapter 23A — Multi-variant FIT images and DT overlays
+# Chapter 23A: Multi-variant FIT images and DT overlays
 
-> **What:** one FIT image that boots correctly on three different board variants — same kernel, different DTBs — with the variant selected at boot time from a strap pin or an EEPROM ID.
-> **FIT** - Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
+> **What:** one FIT image that boots correctly on three different board variants, same kernel, different DTBs, with the variant selected at boot time from a strap pin or an EEPROM ID.
+> **FIT:** Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
 >
 > **Why:** Real products ship in revisions. Rev A has a 4.3-inch display, Rev B has a 7-inch display and a fan, Rev C drops the display and adds Wi-Fi. Three separate images means three OTA targets and three release pipelines. One image means one OTA stream and one QA artifact set.
 >
-> **Focus:** the **runtime-selection mechanism** — strap pin or EEPROM ID read by U-Boot before `bootm` selects which `configurations` entry to apply. Plus DT overlays, which let you patch one base DTB with small fragments rather than maintaining N full DTBs.
-> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **Focus:** the **runtime-selection mechanism**, strap pin or EEPROM ID read by U-Boot before `bootm` selects which `configurations` entry to apply. Plus DT overlays, which let you patch one base DTB with small fragments rather than maintaining N full DTBs.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 
 ## 23A.1  The scenario
@@ -152,7 +152,7 @@ The whole thing is one command.
 
 The interesting part is *automating* the selection. Three common patterns.
 
-### Pattern A — Strap pin
+### Pattern A, Strap pin
 
 A GPIO is tied high or low by a populating resistor that differs by rev. U-Boot reads it in `board_late_init`:
 
@@ -183,7 +183,7 @@ bootcmd=load mmc 0:1 0x82000000 multi.itb; bootm 0x82000000#${variant}
 
 The `${variant}` is shell-substituted before `bootm` runs.
 
-### Pattern B — EEPROM ID
+### Pattern B, EEPROM ID
 
 A small I²C EEPROM (e.g., 24C04) has a board-ID byte written at manufacture. U-Boot reads it:
 
@@ -211,9 +211,9 @@ int board_late_init(void)
 ```
 
 Advantages over strap pins: 256 possible IDs, you can reprogram in the field, and no extra pads if you already have an EEPROM for serial number or MAC address.
-**MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
+> **MAC:** Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
 
-### Pattern C — eFuse
+### Pattern C, eFuse
 
 > **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
@@ -230,7 +230,7 @@ One-time programmable, hard to copy, tamper-resistant. Used in security-critical
 
 For dev work, strap pins or EEPROM. For shipping security-critical products, eFuse.
 
-## 23A.5  DT overlays — the alternative
+## 23A.5  DT overlays, the alternative
 
 Instead of N full DTBs, you can have **one base DTB** and **N overlay files** that patch it. An overlay is a small DTS fragment that says "add this node, modify this property, delete this other thing." U-Boot applies the overlay before passing the DT to the kernel.
 
@@ -305,7 +305,7 @@ For a dev board with ~5 variants, separate DTBs are simpler. For a product line 
 
 For a dev board, you can usually ship one image per board model and call it done. This chapter exists because real product lines outgrow that approach: once you have three or more variants, the per-variant build matrix and OTA-channel overhead push you toward the multi-DTB or overlay model described above.
 
-## 23A.6  Putting it together — the full multi-variant boot script
+## 23A.6  Putting it together, the full multi-variant boot script
 
 ```
 # In U-Boot environment, set once:
@@ -335,14 +335,14 @@ When you receive a unit, you don't have to ask which rev it is. The unit identif
 ## 23A.7  Lab
 
 1. **Build a multi-config FIT** with two configurations differing only in a model-string change in the DT. Verify both boot.
-2. **Add a strap-pin reader** in your custom `board_late_init`. Tie a GPIO high or low on the board. verify U-Boot reads it correctly and `env_set`s the right `variant`.
-3. **Author a DT overlay.** Pick something small — add a new I²C node — and verify `fdt apply` succeeds. Confirm the kernel sees the added device (`/sys/bus/i2c/devices/...`).
+2. **Add a strap-pin reader** in your custom `board_late_init`. Tie a GPIO high or low on the board. Verify U-Boot reads it correctly and `env_set`s the right `variant`.
+3. **Author a DT overlay.** Pick something small, add a new I²C node, and verify `fdt apply` succeeds. Confirm the kernel sees the added device (`/sys/bus/i2c/devices/...`).
 4. **Make a deliberately broken overlay** (reference a label that doesn't exist in the base). Observe the `fdt apply` failure and the fallback to the base DT.
 5. **Read U-Boot's `fdt apply` source.** `cmd/fdt.c` and `common/fdt_support.c`. Trace what happens when an overlay references a symbol that doesn't exist.
 
 ## 23A.8  Pitfalls
 
-- **Hash mismatch in FIT.** If you forget `hash-1 { algo = "sha256". };` on an image, `bootm` may print a warning and proceed (depending on config). For production, *always* hash. For signed FIT (Chapter 124), hashes are mandatory.
+- **Hash mismatch in FIT.** If you forget `hash-1 { algo = "sha256"; };` on an image, `bootm` may print a warning and proceed (depending on config). For production, *always* hash. For signed FIT (Chapter 124), hashes are mandatory.
 - **Strap pin floats.** If your strap GPIO has no pull resistor and your board mounting position can leave it floating, you may read a different rev on every boot. Always pull explicitly.
 - **EEPROM I²C address collision.** Many boards have multiple I²C devices at `0x50`-`0x57`. Verify your ID byte location vs sensor addresses.
 - **Overlay `dtc` without `-@`.** Without `-@`, no symbol table is emitted, and overlays can't reference labels in the base. Always `dtc -@`.
@@ -351,11 +351,11 @@ When you receive a unit, you don't have to ask which rev it is. The unit identif
 
 ## 23A.9  Going deeper
 
-- **`doc/usage/fit/` and `doc/uImage.FIT/`** in U-Boot source — FIT spec, signing, multi-config.
-- **Linux Documentation `Documentation/devicetree/overlay-notes.txt`** — what overlays can and cannot do.
-- **DENX FIT guide** — concise + practical.
+- **`doc/usage/fit/` and `doc/uImage.FIT/`** in U-Boot source, FIT spec, signing, multi-config.
+- **Linux Documentation `Documentation/devicetree/overlay-notes.txt`**: what overlays can and cannot do.
+- **DENX FIT guide**: concise + practical.
 - **`tools/mkimage.c`** for FIT details. Particularly the `-r` (required) and `-K` (key) flags for signed-FIT prep.
 
-> Next chapter: **Chapter 24 — Workflows: TFTP, NFS, USB-OTG.** With U-Boot fully under our control, we wire it into a fast development loop — edit on host, network-boot on target, no SD-card reflashing.
-> **NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
-> **TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
+> Next chapter: **Chapter 24: Workflows: TFTP, NFS, USB-OTG.** With U-Boot fully under our control, we wire it into a fast development loop, edit on host, network-boot on target, no SD-card reflashing.
+> **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
+> **TFTP:** Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.

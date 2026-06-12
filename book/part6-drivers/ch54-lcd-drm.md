@@ -1,16 +1,16 @@
 ---
 chapter: 54
 title: LCD framebuffer and DRM/KMS
-part: VI — Driver development
+part: VI - Driver development
 estimated_pages: 18
 status: draft
 ---
 
-# Chapter 54 — LCD framebuffer and DRM/KMS
+# Chapter 54: LCD framebuffer and DRM/KMS
 
-> **What:** the kernel's display stack — the legacy **fbdev** (`/dev/fb0`) API and the modern **DRM/KMS** (Direct Rendering Manager / Kernel Mode Setting) framework. Both still ship. new drivers target DRM. We cover the i.MX6ULL **LCDIF** controller, the `panel-simple` driver that handles dozens of RGB-parallel panels, and how mainline kernels expose displays to user-space.
+> **What:** the kernel's display stack, the legacy **fbdev** (`/dev/fb0`) API and the modern **DRM/KMS** (Direct Rendering Manager / Kernel Mode Setting) framework. Both still ship. New drivers target DRM. We cover the i.MX6ULL **LCDIF** controller, the `panel-simple` driver that handles dozens of RGB-parallel panels, and how mainline kernels expose displays to user-space.
 >
-> **Why:** LCDIF + RGB parallel LCDs are the bread and butter of i.MX6ULL HMI products. The framework has shifted significantly in the last 5 years (away from fbdev, toward DRM) and being current matters — DRM brings page-flipping, atomic mode-setting, fence-based synchronisation, and Wayland compatibility.
+> **Why:** LCDIF + RGB parallel LCDs are the bread and butter of i.MX6ULL HMI products. The framework has shifted significantly in the last 5 years (away from fbdev, toward DRM) and being current matters, DRM brings page-flipping, atomic mode-setting, fence-based synchronisation, and Wayland compatibility.
 >
 > **Focus:** For most boards, panel-simple plus correct DT timings is enough. For 90 % of products you don't write a panel driver. You describe panel timings in DT, point at `panel-simple`, and the LCDIF driver handles the rest. The remaining 10 % is custom panels needing a chip-specific init sequence, covered in Ch 80–84 of the cookbook.
 
@@ -27,7 +27,7 @@ status: draft
 | Wayland | No | Yes |
 | User-space typical client | direct mmap | libdrm + Mesa / Cairo / GTK / Qt |
 
-For embedded HMI with one panel and a single fullscreen Qt app, fbdev still works. For anything with multiple outputs, GPU acceleration, or Wayland, DRM is the only option. Both APIs are present on modern kernels. fbdev is emulated on top of DRM (`fbdev_emulation`). A fullscreen Qt app opens `/dev/fb0`, but DRM is doing the work underneath.
+For embedded HMI with one panel and a single fullscreen Qt app, fbdev still works. For anything with multiple outputs, GPU acceleration, or Wayland, DRM is the only option. Both APIs are present on modern kernels. Fbdev is emulated on top of DRM (`fbdev_emulation`). A fullscreen Qt app opens `/dev/fb0`, but DRM is doing the work underneath.
 
 ## 54.2  i.MX6ULL LCDIF
 
@@ -37,18 +37,18 @@ The LCDIF is a DPI / RGB-parallel controller. It outputs:
 - **HSYNC** (horizontal sync).
 - **VSYNC** (vertical sync).
 - **DE** (data enable).
-- **24 data lines** (R[7:0], G[7:0], B[7:0]) — typically wired as 18-bit RGB666 or 24-bit RGB888.
+- **24 data lines** (R[7:0], G[7:0], B[7:0]), typically wired as 18-bit RGB666 or 24-bit RGB888.
 
-The driver is `drivers/gpu/drm/mxsfb/`. It's a DRM driver. fbdev users get `/dev/fb0` via emulation.
+The driver is `drivers/gpu/drm/mxsfb/`. It's a DRM driver. Fbdev users get `/dev/fb0` via emulation.
 
 ## 54.3  RGB-parallel panel timings
 
 Every RGB-parallel panel has:
-- **Resolution** — e.g., 800 × 480.
-- **Pixel clock frequency** — e.g., 33 MHz.
-- **Horizontal porches** — `hsync-len`, `hback-porch`, `hfront-porch`.
-- **Vertical porches** — `vsync-len`, `vback-porch`, `vfront-porch`.
-- **Polarity bits** — HS, VS, DE, PCLK active edges.
+- **Resolution**: e.g., 800 × 480.
+- **Pixel clock frequency**: e.g., 33 MHz.
+- **Horizontal porches**: `hsync-len`, `hback-porch`, `hfront-porch`.
+- **Vertical porches**: `vsync-len`, `vback-porch`, `vfront-porch`.
+- **Polarity bits**: HS, VS, DE, PCLK active edges.
 
 In DT, these go in a `panel-timing` subnode:
 
@@ -83,7 +83,7 @@ panel {
 };
 ```
 
-These numbers come from the panel datasheet's *AC characteristics* page. Get them right. get them slightly wrong and you get a "rolling" image or no image at all.
+These numbers come from the panel datasheet's *AC characteristics* page. Get them right. Get them slightly wrong and you get a "rolling" image or no image at all.
 
 The LCDIF side:
 
@@ -102,7 +102,7 @@ The LCDIF side:
 };
 ```
 
-The `port`/`endpoint` graph wires LCDIF's output to panel's input. This is the `of_graph` binding — used throughout DRM for "this output goes to that input."
+The `port`/`endpoint` graph wires LCDIF's output to panel's input. This is the `of_graph` binding, used throughout DRM for "this output goes to that input."
 
 ## 54.4  panel-simple
 
@@ -153,7 +153,7 @@ id      encoder status          name            size (mm)       modes   encoders
 [root@pa-mini:~]# modetest -M mxsfb -s 36:800x480   # set 800x480 mode
 ```
 
-For user-space drawing: libdrm + GBM (Generic Buffer Management) + a 2D library like Cairo. For Qt: `-platform eglfs` (full GPU, not on i.MX6ULL — no GPU) or `-platform linuxfb` (falls through to fbdev emulation).
+For user-space drawing: libdrm + GBM (Generic Buffer Management) + a 2D library like Cairo. For Qt: `-platform eglfs` (full GPU, not on i.MX6ULL, no GPU) or `-platform linuxfb` (falls through to fbdev emulation).
 
 ## 54.6  Backlight
 
@@ -161,7 +161,7 @@ A typical RGB panel needs:
 - VLED rail (12 V or boosted).
 - PWM dimming via a transistor driver.
 > **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
-**PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+> **PWM:** Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 
 DT:
 
@@ -181,12 +181,12 @@ Ch 48 covered pwm-backlight. The LCDIF driver references it via `backlight = <&b
 
 When a new panel doesn't display:
 
-1. **Verify the pixel clock is generated.** Scope PCLK. should be at the rate in DT.
+1. **Verify the pixel clock is generated.** Scope PCLK. Should be at the rate in DT.
 2. **Verify HSYNC and VSYNC.** Polarity matches DT (`hsync-active = <0>` = active-low).
 3. **Verify data lines** with a scope. Pattern depends on what's in `/dev/fb0`. `cat /dev/zero > /dev/fb0` gives all-zero data.
 4. **Verify enable pin.** Some panels need a "panel-on" GPIO held high.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 5. **Verify backlight.** Even if the panel is showing correctly, with backlight off you see nothing.
 6. **Verify timings against the datasheet.** Off-by-one in front-porch is the most common error.
 
@@ -194,32 +194,32 @@ When a new panel doesn't display:
 
 ## 54.8  Lab
 
-1. **Bring up a panel.** Use a known-good panel (Ampire, ATK7016) with mainline timings. Boot. confirm `/dev/fb0` and `modetest` output. `cat /dev/urandom > /dev/fb0` shows pixels.
+1. **Bring up a panel.** Use a known-good panel (Ampire, ATK7016) with mainline timings. Boot. Confirm `/dev/fb0` and `modetest` output. `cat /dev/urandom > /dev/fb0` shows pixels.
 2. **Custom panel timings.** Add timings for a panel that isn't in panel-simple's database. Iterate until display is stable.
 3. **Backlight.** Verify `/sys/class/backlight/backlight/brightness` adjusts visibly.
-4. **modetest.** Run on a kernel with DRM-only. see the modes. pick one. observe modeset.
-5. **A Qt app.** Compile a simple Qt app with `-platform linuxfb`. run. verify it draws.
+4. **modetest.** Run on a kernel with DRM-only. See the modes. Pick one. Observe modeset.
+5. **A Qt app.** Compile a simple Qt app with `-platform linuxfb`. Run. Verify it draws.
 6. **DRM client.** Write a small libdrm program that creates a dumb buffer, fills it red, and presents it. Useful for understanding DRM bring-up.
 
 ## 54.9  Pitfalls
 
 - **Pixel clock too high.** Above about 80 MHz the LCDIF gives no output. Use lower pixel clock or smaller resolution.
-- **Wrong polarity.** Image inverted vertically or shifted. classic "porch off by one" symptom.
-- **Backlight forgot.** "Display broken!" — backlight is off. Always check in good ambient light first.
+- **Wrong polarity.** Image inverted vertically or shifted. Classic "porch off by one" symptom.
+- **Backlight forgot.** "Display broken!", backlight is off. Always check in good ambient light first.
 - **Pinmux clash.** LCDIF uses many pins (24 data + 4 control). Conflict with another peripheral muxed onto the same pin → garbled output.
 - **DT enable-gpios missing or wrong polarity.** Panel power-up sequence broken.
-- **Wrong DRM mode.** modetest's "preferred" mode may not be what you want. specify explicitly.
+- **Wrong DRM mode.** modetest's "preferred" mode may not be what you want. Specify explicitly.
 - **`fbcon` console** drawing on top of your Qt app. Disable: `vt.global_cursor_default=0` + `fbcon=null`.
 
 ## 54.10  Going deeper
 
-- **`Documentation/gpu/drm-internals.rst`** — DRM architecture.
-- **`Documentation/gpu/drm-kms.rst`** — KMS (Kernel Mode Setting) detailed.
-- **`drivers/gpu/drm/mxsfb/`** — i.MX LCDIF DRM driver.
-- **`drivers/gpu/drm/panel/panel-simple.c`** — panel database.
-- **`Documentation/devicetree/bindings/display/panel/`** — panel bindings.
-- **`libdrm`** at `kernel.org` — user-space DRM library and `modetest` source.
+- **`Documentation/gpu/drm-internals.rst`**: DRM architecture.
+- **`Documentation/gpu/drm-kms.rst`**: KMS (Kernel Mode Setting) detailed.
+- **`drivers/gpu/drm/mxsfb/`**: i.MX LCDIF DRM driver.
+- **`drivers/gpu/drm/panel/panel-simple.c`**: panel database.
+- **`Documentation/devicetree/bindings/display/panel/`**: panel bindings.
+- **`libdrm`** at `kernel.org`, user-space DRM library and `modetest` source.
 
-> Next chapter: **Chapter 54A — MTD/UBI for raw NAND.** When your storage isn't an eMMC/SD card but raw NAND, MTD partitions it and UBI manages wear levelling above MTD.
-> **UBI** - Unsorted Block Images, a flash-management layer over raw NAND that handles wear leveling and bad blocks.
-> **MTD** - Memory Technology Device, Linux's raw flash subsystem for eraseblock-based storage.
+> Next chapter: **Chapter 54A: MTD/UBI for raw NAND.** When your storage isn't an eMMC/SD card but raw NAND, MTD partitions it and UBI manages wear levelling above MTD.
+> **UBI:** Unsorted Block Images, a flash-management layer over raw NAND that handles wear leveling and bad blocks.
+> **MTD:** Memory Technology Device, Linux's raw flash subsystem for eraseblock-based storage.

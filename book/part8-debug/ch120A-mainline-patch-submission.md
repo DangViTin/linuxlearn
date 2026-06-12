@@ -1,22 +1,22 @@
 ---
 chapter: 120A
 title: Mainline patch submission workflow
-part: VIII — Debug, production, advanced
+part: VIII - Debug, production, advanced
 estimated_pages: 18
 status: draft
 ---
 
-# Chapter 120A — Mainline patch submission workflow
+# Chapter 120A: Mainline patch submission workflow
 
 > **Driver choice:** Use the in-tree, maintained driver first.
 > Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
 
 
-> **What:** the **end-to-end workflow** for submitting a patch to the Linux kernel: `git format-patch`, `scripts/checkpatch.pl`, `scripts/get_maintainer.pl`, `git send-email`, the `b4` tool for series management, response etiquette (`Reviewed-by`, `Acked-by`, v2/v3 iteration), and the **Lore** archive for finding similar prior work. Worked on a real candidate patch — e.g., a YAML binding addition for a sensor used in your Cookbook chapter, or a one-line bug fix in the FEC driver.
+> **What:** the **end-to-end workflow** for submitting a patch to the Linux kernel: `git format-patch`, `scripts/checkpatch.pl`, `scripts/get_maintainer.pl`, `git send-email`, the `b4` tool for series management, response etiquette (`Reviewed-by`, `Acked-by`, v2/v3 iteration), and the **Lore** archive for finding similar prior work. Worked on a real candidate patch, e.g., a YAML binding addition for a sensor used in your Cookbook chapter, or a one-line bug fix in the FEC driver.
 >
-> **Why:** If you write a driver that's useful, it can go upstream. Upstream-merged code gets security backports and API migrations for free. an out-of-tree fork is yours to maintain. The kernel community has strict and partly unwritten rules. A wrong commit-message format, an untested patch, a hostile reply to review, or a top-posted email is enough to get a patch silently dropped, no matter how good the code is.
+> **Why:** If you write a driver that's useful, it can go upstream. Upstream-merged code gets security backports and API migrations for free. An out-of-tree fork is yours to maintain. The kernel community has strict and partly unwritten rules. A wrong commit-message format, an untested patch, a hostile reply to review, or a top-posted email is enough to get a patch silently dropped, no matter how good the code is.
 >
-> **Focus:** **the workflow is git-format-patch → checkpatch → get_maintainer → send-email → respond to review → v2 → repeat**. The cultural part is harder: be concise. one fix per patch. explain *why* not just *what*. never ignore review feedback (even if you disagree, respond). CC the right people but no spammy CC. subject lines are `[PATCH] subsystem/file: short summary`. Lore.kernel.org is the public archive of every mailing-list discussion since ~1998. Always search it before sending. A "novel" fix may have been tried and rejected three times already, and the rejection threads tell you why.
+> **Focus:** **the workflow is git-format-patch → checkpatch → get_maintainer → send-email → respond to review → v2 → repeat**. The cultural part is harder: be concise. One fix per patch. Explain *why* not just *what*. Never ignore review feedback (even if you disagree, respond). CC the right people but no spammy CC. Subject lines are `[PATCH] subsystem/file: short summary`. Lore.kernel.org is the public archive of every mailing-list discussion since ~1998. Always search it before sending. A "novel" fix may have been tried and rejected three times already, and the rejection threads tell you why.
 
 ## 120A.1  Decide what you're submitting
 
@@ -31,15 +31,15 @@ Categories, in order of acceptance ease:
 | New subsystem | very low | huge (the whole community) |
 | Performance optimization | medium | high (must have benchmarks) |
 | Cleanup / refactor | medium | medium (must justify churn) |
-| Feature already done another way | very low | (rejected — see Lore) |
+| Feature already done another way | very low | (rejected, see Lore) |
 
 For your first patch: **trivial typo, bug fix with reproducer, or YAML binding** is the sweet spot.
 
-## 120A.2  Prerequisites — clone the right tree
+## 120A.2  Prerequisites, clone the right tree
 
 For most subsystems, patch against either:
-- **mainline** (`linux/torvalds.git`) — for very recent code.
-- The **subsystem maintainer's tree** — listed in `MAINTAINERS`. E.g., for NXP i.MX changes: Shawn Guo's `linux/arm/imx`. For networking: `netdev`. For staging: `staging-next`.
+- **mainline** (`linux/torvalds.git`), for very recent code.
+- The **subsystem maintainer's tree**, listed in `MAINTAINERS`. E.g., for NXP i.MX changes: Shawn Guo's `linux/arm/imx`. For networking: `netdev`. For staging: `staging-next`.
 
 ```sh
 git clone https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
@@ -53,7 +53,7 @@ git checkout -b my-patch
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
-Same tools as any kernel patch — Edit, build, test:
+Same tools as any kernel patch, Edit, build, test:
 
 ```sh
 make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- imx_v7_defconfig
@@ -83,9 +83,9 @@ Fixes: 0123456789abcdef ("original subject line")
 Signed-off-by: Your Name <your@email.com>
 ```
 
-The `Signed-off-by` is the **Developer Certificate of Origin** — you certify you have the right to submit this code under the kernel's license. `git commit -s` adds it automatically. Without it, the patch is rejected.
+The `Signed-off-by` is the **Developer Certificate of Origin**, you certify you have the right to submit this code under the kernel's license. `git commit -s` adds it automatically. Without it, the patch is rejected.
 
-## 120A.4  checkpatch.pl — the style validator
+## 120A.4  checkpatch.pl, the style validator
 
 ```sh
 git format-patch -1
@@ -99,15 +99,15 @@ git format-patch -1
 checkpatch enforces:
 - Line length ≤ 100 chars
 - Tabs for indentation, not spaces
-- C89 declarations (declare-at-top-of-block — modern kernels relaxed)
+- C89 declarations (declare-at-top-of-block, modern kernels relaxed)
 - No trailing whitespace
 - `if (cond)` not `if( cond )`
 - `goto out_unlock;` style for cleanup
 - Many other things
 
-`--strict` catches more (e.g., long lines that aren't strictly forbidden but discouraged). For your first patch: fix everything checkpatch reports, even warnings. Maintainers run checkpatch themselves. clean output is professional.
+`--strict` catches more (e.g., long lines that aren't strictly forbidden but discouraged). For your first patch: fix everything checkpatch reports, even warnings. Maintainers run checkpatch themselves. Clean output is professional.
 
-## 120A.5  get_maintainer.pl — who to send to
+## 120A.5  get_maintainer.pl, who to send to
 
 ```sh
 ./scripts/get_maintainer.pl 0001-*.patch
@@ -149,7 +149,7 @@ Or to-from-file:
 git send-email --to-cmd='./scripts/get_maintainer.pl --no-rolestats' --cc-cmd ... 0001-*.patch
 ```
 
-`git send-email` is finicky to set up the first time (SMTP auth, App Passwords for Gmail/Outlook). allow an hour for first-time setup.
+`git send-email` is finicky to set up the first time (SMTP auth, App Passwords for Gmail/Outlook). Allow an hour for first-time setup.
 
 ## 120A.7  Multi-patch series + cover letter
 
@@ -195,7 +195,7 @@ git send-email --to ... 0000-cover-letter.patch 0001-*.patch 0002-*.patch 0003-*
 git send-email --to ... 00*.patch
 ```
 
-## 120A.8  v2 / v3 — revising based on feedback
+## 120A.8  v2 / v3, revising based on feedback
 
 When a maintainer responds with feedback, address each point. If you disagree, say so politely and explain why.
 
@@ -218,7 +218,7 @@ The `---` separator in the commit body means "this text goes under the patch as 
 
 ## 120A.9  Reviewed-by, Acked-by, Tested-by, Reported-by
 
-In reply to your patch, others may say "Reviewed-by: …" — that means they read it carefully and approve. Include their tag in your v2:
+In reply to your patch, others may say "Reviewed-by: …", that means they read it carefully and approve. Include their tag in your v2:
 
 ```
 Reviewed-by: Reviewer Name <reviewer@example.com>
@@ -226,7 +226,7 @@ Signed-off-by: Your Name <you@example.com>
 ```
 
 Tags:
-- **Signed-off-by**: required. certifies origin.
+- **Signed-off-by**: required. Certifies origin.
 - **Reviewed-by**: reviewer carefully read and approved.
 - **Acked-by**: subsystem maintainer or expert agrees (lower bar than Reviewed-by).
 - **Tested-by**: someone other than you tested it on hardware.
@@ -234,9 +234,9 @@ Tags:
 - **Suggested-by**: someone suggested this approach.
 - **Co-developed-by**: pairs with Signed-off-by for joint authorship.
 
-Tags accumulate over revisions. carry forward all relevant ones.
+Tags accumulate over revisions. Carry forward all relevant ones.
 
-## 120A.10  Replying to reviews — etiquette
+## 120A.10  Replying to reviews, etiquette
 
 ```
 On Mon, Mar 5, 2026 at 10:00 AM, Foo Maintainer wrote:
@@ -255,14 +255,14 @@ Thanks for the review.
 
 Rules:
 - **Reply inline, below the quoted text** (not top-posted).
-- **Trim quoted context** — don't quote the whole patch back.
-- **Plain text email** — no HTML, no signatures with images.
+- **Trim quoted context**: don't quote the whole patch back.
+- **Plain text email**: no HTML, no signatures with images.
 - **Address every comment**: either "fixed in v2," "I disagree because …," or "this is out of scope for this patch."
-- **Don't take feedback personally**. Code review is the kernel's quality bar. criticism is professional, not personal.
+- **Don't take feedback personally**: Code review is the kernel's quality bar. Criticism is professional, not personal.
 
 If you go silent for more than two weeks after a review, your patch will be dropped from the maintainer's queue. Stay engaged.
 
-## 120A.11  Lore — search before you send
+## 120A.11  Lore, search before you send
 
 Lore.kernel.org is the public archive of every kernel mailing-list post since ~1998.
 
@@ -275,7 +275,7 @@ Lore.kernel.org is the public archive of every kernel mailing-list post since ~1
 https://lore.kernel.org/search?q=fec_main.c+phy+probe
 ```
 
-You may discover: someone already proposed your fix and it was rejected for a reason. or there's a parallel discussion you should join. or the maintainer is mid-rework that supersedes your patch. Discovering this *before* sending saves embarrassment.
+You may discover: someone already proposed your fix and it was rejected for a reason. Or there's a parallel discussion you should join. Or the maintainer is mid-rework that supersedes your patch. Discovering this *before* sending saves embarrassment.
 
 **`b4`** is a tool that simplifies series management:
 
@@ -289,7 +289,7 @@ b4 trailers                                          # collect Reviewed-by/Teste
 
 `b4` is increasingly standard in newer kernel work. Use it once you've sent your first patch the manual way.
 
-## 120A.12  A worked example — adding a YAML binding for an existing chip
+## 120A.12  A worked example, adding a YAML binding for an existing chip
 
 Suppose you wrote Ch 99's nRF24L01 user-space driver and want to upstream the *DT binding* (the actual kernel driver is out-of-tree but the binding is reusable):
 
@@ -392,23 +392,23 @@ git send-email --to "Rob Herring <robh@kernel.org>" \
                0001-*.patch
 ```
 
-DT bindings are one of the easiest categories to get merged — they're additive (don't break anything) and self-contained, which makes them a good first-patch target.
+DT bindings are one of the easiest categories to get merged, they're additive (don't break anything) and self-contained, which makes them a good first-patch target.
 
 ## 120A.13  Lab
 
-1. **Find a typo.** Read a Documentation/ file (e.g., `Documentation/devicetree/bindings/`). find a real typo or grammatical fix. format-patch + checkpatch + send. Even 1-letter fixes get accepted (and add your name to git log).
-2. **YAML binding.** Pick a chip from Part VII that doesn't have a binding yet (check `Documentation/devicetree/bindings/`). write + validate one. submit.
-3. **b4 explorer.** Use `b4 am` to download a recent merged series from Lore. rebuild it locally. understand each patch.
-4. **Lore search.** Search for a function name you're considering changing. read 5+ years of discussion. report what you learn.
+1. **Find a typo.** Read a Documentation/ file (e.g., `Documentation/devicetree/bindings/`). Find a real typo or grammatical fix. Format-patch + checkpatch + send. Even 1-letter fixes get accepted (and add your name to git log).
+2. **YAML binding.** Pick a chip from Part VII that doesn't have a binding yet (check `Documentation/devicetree/bindings/`). Write + validate one. Submit.
+3. **b4 explorer.** Use `b4 am` to download a recent merged series from Lore. Rebuild it locally. Understand each patch.
+4. **Lore search.** Search for a function name you're considering changing. Read 5+ years of discussion. Report what you learn.
 5. **Send a bug report (not yet a patch).** If you found a real bug while reading Part VI/VII drivers, send a clear bug report to the maintainer + linux-* list. Maintainers love good bug reports.
-6. **Set up git send-email.** Configure Gmail App Password. test-send a patch to yourself first to verify formatting.
-7. **Read the responses.** Wait a week. read every reply on the list (subscribe via lore RSS). even if no one responds to your patch, watch how others handle review.
-8. **v2 cycle.** Take a maintainer's feedback. produce v2 with a clear changelog. Carry forward Reviewed-by tags.
-9. **Watch a merge.** Find an `Applied to` reply from a maintainer. Check `git log` in the maintainer's tree for your patch's commit hash. trace it from there to Linus's mainline.
+6. **Set up git send-email.** Configure Gmail App Password. Test-send a patch to yourself first to verify formatting.
+7. **Read the responses.** Wait a week. Read every reply on the list (subscribe via lore RSS). Even if no one responds to your patch, watch how others handle review.
+8. **v2 cycle.** Take a maintainer's feedback. Produce v2 with a clear changelog. Carry forward Reviewed-by tags.
+9. **Watch a merge.** Find an `Applied to` reply from a maintainer. Check `git log` in the maintainer's tree for your patch's commit hash. Trace it from there to Linus's mainline.
 
 ## 120A.14  Pitfalls
 
-- **HTML email.** Gmail's web UI sends HTML by default. mailing lists silently drop HTML patches. Use `git send-email` or plain-text mode.
+- **HTML email.** Gmail's web UI sends HTML by default. Mailing lists silently drop HTML patches. Use `git send-email` or plain-text mode.
 - **Tabs vs spaces.** Some MUAs (Outlook, Thunderbird) helpfully convert tabs to spaces, mangling the patch. `git send-email` avoids this.
 - **Reply-all to mailing lists.** When replying, hit Reply-all to keep the list CC'd. Off-list replies lose the discussion context.
 - **Top-posting.** "I disagree, here's why" *above* the quoted message reverses reading order. Reply inline.
@@ -420,21 +420,21 @@ DT bindings are one of the easiest categories to get merged — they're additive
 - **Multi-changes in one patch.** "Fix bug + cleanup + add feature" → maintainer asks you to split. Always one logical change per patch.
 - **Sending and disappearing.** Patch sent, maintainer asks question, you don't respond for a month → patch is dropped. Stay engaged.
 - **Ignoring DCO.** Every patch must be `Signed-off-by` your real legal name. Pseudonyms or company aliases without legal-real-name are usually rejected.
-- **Wrong tree.** Submitting a USB patch against the staging tree → maintainer redirects you to `usb` tree. Get_maintainer.pl tells you the right tree. respect it.
+- **Wrong tree.** Submitting a USB patch against the staging tree → maintainer redirects you to `usb` tree. Get_maintainer.pl tells you the right tree. Respect it.
 
 ## 120A.15  Going deeper
 
-- **`Documentation/process/submitting-patches.rst`** — the canonical reference.
-- **`Documentation/process/coding-style.rst`** — kernel C style.
-- **`Documentation/process/email-clients.rst`** — how to configure every common MUA for kernel work.
-- **`scripts/checkpatch.pl`, `scripts/get_maintainer.pl`** — read them. they're shell-helpers.
-- **`b4` documentation** — https://b4.docs.kernel.org/.
-- **Lore archive** — https://lore.kernel.org/.
-- **LWN.net** — the periodical of kernel development. read weekly to absorb culture.
-- **Kernel Mentees / Outreachy** — community programs for first-time contributors.
-- **Greg Kroah-Hartman's "How to send patches to the Linux kernel"** — old but still essential.
-- **Ch 121** — capstone custom-board port (your most-likely upstreamable contribution).
+- **`Documentation/process/submitting-patches.rst`**: the canonical reference.
+- **`Documentation/process/coding-style.rst`**: kernel C style.
+- **`Documentation/process/email-clients.rst`**: how to configure every common MUA for kernel work.
+- **`scripts/checkpatch.pl`, `scripts/get_maintainer.pl`**: read them. They're shell-helpers.
+- **`b4` documentation**: https://b4.docs.kernel.org/.
+- **Lore archive**: https://lore.kernel.org/.
+- **LWN.net**: the periodical of kernel development. Read weekly to absorb culture.
+- **Kernel Mentees / Outreachy**: community programs for first-time contributors.
+- **Greg Kroah-Hartman's "How to send patches to the Linux kernel"**: old but still essential.
+- **Ch 121**: capstone custom-board port (your most-likely upstreamable contribution).
 
 ---
 
-> Next chapter: **Chapter 121 — Capstone: custom board port**.
+> Next chapter: **Chapter 121: Capstone: custom board port**.

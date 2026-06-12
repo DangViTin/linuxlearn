@@ -1,37 +1,37 @@
 ---
 chapter: 29
 title: Initramfs from scratch
-part: IV — The Kernel
+part: IV - The Kernel
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 29 — Initramfs from scratch
+# Chapter 29: Initramfs from scratch
 
-> **What:** the absolute minimum user space that a Linux kernel can hand off to — a single statically-linked binary in a cpio archive, ~30 KB, that prints "hello" and reboots. Then a BusyBox-based initramfs with a real shell. Both reachable in under an hour.
+> **What:** the absolute minimum user space that a Linux kernel can hand off to, a single statically-linked binary in a cpio archive, ~30 KB, that prints "hello" and reboots. Then a BusyBox-based initramfs with a real shell. Both reachable in under an hour.
 >
 > **Why:** the standard rootfs path (`root=/dev/mmcblk0p2`) hides a lot. Building an initramfs by hand surfaces the actual kernel-to-userspace handoff: what kernel_init's `kernel_execve` does, what `/init` must look like, how cpio archives become a populated filesystem at boot. Once you have done it once, Buildroot and Ubuntu-base in Part V build on the same idea, just with more pieces.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 >
 > **Focus:** the **cpio archive as a filesystem image** that the kernel unpacks into the initial tmpfs. Once that model is clear, the rest is just commands.
 
 
 ## 29.1  What an initramfs is
 
-An **initramfs** is a small filesystem image that the kernel loads into RAM before any "real" disk filesystem is mounted. The kernel mounts the initramfs as `/`, runs `/init`, and from there `/init` can do whatever it wants — usually pivot to a real rootfs on disk, but for embedded systems the initramfs *is* the rootfs.
+An **initramfs** is a small filesystem image that the kernel loads into RAM before any "real" disk filesystem is mounted. The kernel mounts the initramfs as `/`, runs `/init`, and from there `/init` can do whatever it wants, usually pivot to a real rootfs on disk, but for embedded systems the initramfs *is* the rootfs.
 
 The image format is **cpio** (the venerable Unix archive format), optionally compressed with gzip/bzip2/xz/zstd. The kernel has a built-in cpio extractor that runs very early in boot.
 
 Two ways to get the cpio archive into kernel memory:
 
-1. **Built into the kernel image.** The kernel's `usr/initramfs_data.cpio.gz` gets linked into `vmlinux` (and therefore into `zImage`). The kernel knows the archive's location. on boot it extracts it.
+1. **Built into the kernel image.** The kernel's `usr/initramfs_data.cpio.gz` gets linked into `vmlinux` (and therefore into `zImage`). The kernel knows the archive's location. On boot it extracts it.
 2. **Loaded separately by the bootloader.** U-Boot reads `initramfs.cpio.gz` into RAM at some address, passes that address via the DT's `/chosen/linux,initrd-start` and `linux,initrd-end` properties (or the legacy ATAGS), and the kernel extracts from there.
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 
-Option 1 is simpler for tiny images. Option 2 is more flexible — you can change the rootfs without rebuilding the kernel — and is the standard choice for anything bigger. We'll do both.
+Option 1 is simpler for tiny images. Option 2 is more flexible, you can change the rootfs without rebuilding the kernel, and is the standard choice for anything bigger. We'll do both.
 
 ## 29.2  The smallest possible initramfs
 
@@ -75,7 +75,7 @@ $ ls -lh init
 -rwxr-xr-x 1 you you 480K Jan 22 init
 ```
 
-480 KB statically linked against glibc. That's ten times the size of the program itself. glibc is fat. With **musl** instead:
+480 KB statically linked against glibc. That's ten times the size of the program itself. Glibc is fat. With **musl** instead:
 
 ```sh
 $ musl-gcc -static -Os -o init hello.c   # or use arm-linux-musleabihf-gcc
@@ -102,7 +102,7 @@ $ ls -lh ../initramfs.cpio.gz
 ## 29.3  Booting it from U-Boot
 
 Drop `initramfs.cpio.gz` into your TFTP server, then:
-**TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
+> **TFTP:** Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
 
 ```
 => tftp 0x82000000 zImage
@@ -114,9 +114,9 @@ Drop `initramfs.cpio.gz` into your TFTP server, then:
 
 Notice the new things:
 
-- **`tftp 0x84000000 initramfs.cpio.gz`** — load the initramfs at a third DRAM address.
-- **`rdinit=/init`** — tells `kernel_init` to run `/init` from the initramfs (instead of `/sbin/init` from a disk rootfs).
-- **`bootz 0x82000000 0x84000000 0x83000000`** — the second argument is now the initrd address (no longer `-`). U-Boot writes both `linux,initrd-start` and `linux,initrd-end` into the DT.
+- **`tftp 0x84000000 initramfs.cpio.gz`**: load the initramfs at a third DRAM address.
+- **`rdinit=/init`**: tells `kernel_init` to run `/init` from the initramfs (instead of `/sbin/init` from a disk rootfs).
+- **`bootz 0x82000000 0x84000000 0x83000000`**: the second argument is now the initrd address (no longer `-`). U-Boot writes both `linux,initrd-start` and `linux,initrd-end` into the DT.
 
 You should see:
 
@@ -138,7 +138,7 @@ That is the smallest user space that boots Linux on this board: 30 KB compiled.
 
 ## 29.4  A BusyBox-based initramfs (real shell)
 
-`hello` is just a demo. A practical initramfs has a shell and some utilities, plus an init system. **BusyBox** packs all of these into one statically-linked binary of about 600 KB. It exposes hundreds of applets — most of the common Unix utilities.
+`hello` is just a demo. A practical initramfs has a shell and some utilities, plus an init system. **BusyBox** packs all of these into one statically-linked binary of about 600 KB. It exposes hundreds of applets, most of the common Unix utilities.
 
 ```sh
 $ cd ~/imx6ull/src
@@ -205,7 +205,7 @@ $ ls -lh ../initramfs.cpio.gz
 -rw-r--r-- 1 you you 250K Jan 22 ../initramfs.cpio.gz
 ```
 
-250 KB compressed. Load and boot as before, but **drop `rdinit=/init`** from bootargs — busybox-init wants to run as `/sbin/init`, which is the default search order:
+250 KB compressed. Load and boot as before, but **drop `rdinit=/init`** from bootargs, busybox-init wants to run as `/sbin/init`, which is the default search order:
 
 ```
 => setenv bootargs 'console=ttymxc0,115200 earlycon'
@@ -228,7 +228,7 @@ model name : ARMv7 Processor rev 5 (v7l)
 ...
 ```
 
-You have a real Unix shell on the i.MX6ULL. From here you can `cd`, `ls`, `mount`, `vi`, `ifconfig` — every common Unix command, supplied by BusyBox.
+You have a real Unix shell on the i.MX6ULL. From here you can `cd`, `ls`, `mount`, `vi`, `ifconfig`, every common Unix command, supplied by BusyBox.
 
 ## 29.5  Embedded vs separate
 
@@ -243,7 +243,7 @@ CONFIG_INITRAMFS_SOURCE="/home/you/imx6ull/initramfs.cpio.gz"
 $ make ARCH=arm zImage     # zImage now includes initramfs internally
 ```
 
-The `zImage` grows by the initramfs size. no separate bootloader step. Convenient for a *fixed* initramfs that's part of the kernel's release artifact. Used by single-purpose appliances and by recovery kernels.
+The `zImage` grows by the initramfs size. No separate bootloader step. Convenient for a *fixed* initramfs that's part of the kernel's release artifact. Used by single-purpose appliances and by recovery kernels.
 
 ### Separate file loaded by bootloader
 
@@ -270,7 +270,7 @@ For embedded, **BusyBox init** is the default. We use it in this book through Ch
 3. **Build and run the BusyBox initramfs** from §29.4. Get to a shell. Run `ls /proc`, `cat /proc/meminfo`, `dmesg | tail`.
 4. **Embed the initramfs.** Add `CONFIG_INITRAMFS_SOURCE` to your kernel's `.config`, rebuild, boot with `bootz <kernel> - <dtb>` (no separate initrd address). Verify the kernel boots to the same shell.
 5. **Mount sysfs.** From the BusyBox shell, `ls /sys/class/gpio/`. Confirm devtmpfs and sysfs are populated. Echo a value to `/sys/class/leds/<your-led>/brightness` and observe the LED change.
-**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
 ## 29.8  Pitfalls
 
@@ -284,10 +284,10 @@ For embedded, **BusyBox init** is the default. We use it in this book through Ch
 
 ## 29.9  Going deeper
 
-- **`Documentation/filesystems/ramfs-rootfs-initramfs.rst`** — canonical kernel doc on the initramfs mechanism.
-- **`Documentation/admin-guide/initrd.rst`** — older initrd mechanism (predecessor to initramfs). useful context.
+- **`Documentation/filesystems/ramfs-rootfs-initramfs.rst`**: canonical kernel doc on the initramfs mechanism.
+- **`Documentation/admin-guide/initrd.rst`**: older initrd mechanism (predecessor to initramfs). Useful context.
 - **BusyBox manual** at `busybox.net/about.html` and the per-applet `--help`.
-- **`init/initramfs.c`** — the kernel's cpio extractor. Short and readable.
-- **`klibc`** — an even smaller libc-replacement than musl, designed specifically for in-kernel-cpio-initramfs static binaries.
+- **`init/initramfs.c`**: the kernel's cpio extractor. Short and readable.
+- **`klibc`**: an even smaller libc-replacement than musl, designed specifically for in-kernel-cpio-initramfs static binaries.
 
-> Next chapter: **Chapter 30 — Kernel configuration deep-dive.** We've used `imx_v6_v7_defconfig` blindly through Part IV. Now we open `make menuconfig` and learn the major knobs that decide what's compiled in.
+> Next chapter: **Chapter 30: Kernel configuration deep-dive.** We've used `imx_v6_v7_defconfig` blindly through Part IV. Now we open `make menuconfig` and learn the major knobs that decide what's compiled in.

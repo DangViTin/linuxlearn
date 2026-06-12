@@ -1,27 +1,27 @@
 ---
 chapter: 23
 title: bootcmd, bootargs, FIT images
-part: III — U-Boot, deeply
+part: III - U-Boot, deeply
 estimated_pages: 18
 status: draft
 ---
 
-# Chapter 23 — `bootcmd`, `bootargs`, FIT images
-**BSP** - Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
+# Chapter 23: `bootcmd`, `bootargs`, FIT images
+> **BSP:** Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 
 > **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
 > **What:** the *contract* between U-Boot and the Linux kernel. `bootcmd` is what U-Boot runs to load and start the kernel. `bootargs` is what U-Boot tells the kernel about the system. FIT (Flattened Image Tree) is the modern signed-bundle format that carries kernel + DTB + initramfs in one file.
-> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Why:** These three things sit between "U-Boot works" and "Linux boots." Most "the kernel won't start" bugs live here. Once you understand them, you can diagnose boot failures from the boot log alone.
 >
 > **Focus:** the **cmdline as a contract**. The kernel's behavior depends entirely on what it finds in `chosen.bootargs` of the DT (which `bootargs` writes to). Know which knobs are kernel-side and which are U-Boot-side, and you stop chasing the wrong file.
 
 
-## 23.1  `bootcmd` — U-Boot's autoboot
+## 23.1  `bootcmd`, U-Boot's autoboot
 
 `bootcmd` is one environment variable whose value is treated as a sequence of U-Boot commands, evaluated automatically after `CONFIG_BOOTDELAY` seconds if no key is pressed.
 
@@ -62,10 +62,10 @@ The script is verbose, but the pattern is common to most boards:
 
 1. Find the appropriate DT (`findfdt` runs `setenv fdtfile imx6ull-pa-mini.dtb` based on board detection).
 2. Initialize MMC.
-3. Try to load a "boot script" — a small text file the user can drop on the SD card to override boot behavior without touching the env.
+3. Try to load a "boot script", a small text file the user can drop on the SD card to override boot behavior without touching the env.
 4. If no script, try to load `zImage` from MMC.
 5. If no MMC, try TFTP.
-**TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
+> **TFTP:** Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
 
 Each `loadbootscript`, `bootscript`, `loadimage`, `mmcboot`, `netboot` is another env variable. The structure is a small embedded DSL.
 
@@ -79,9 +79,9 @@ nfsboot=setenv bootargs console=ttymxc0,115200 root=/dev/nfs nfsroot=${serverip}
          bootz 0x82000000 - 0x83000000
 ```
 
-One `setenv bootcmd '...'. saveenv` and the board network-boots on every power-up. Chapter 24 builds on this.
+One `setenv bootcmd '...'; saveenv` and the board network-boots on every power-up. Chapter 24 builds on this.
 
-## 23.2  `bootargs` — the kernel command line
+## 23.2  `bootargs`, the kernel command line
 
 `bootargs` is *the* kernel cmdline. U-Boot writes it into the DT's `chosen.bootargs` node before transferring control. The kernel parses it during `start_kernel()` (Chapter 28).
 
@@ -138,7 +138,7 @@ When U-Boot is about to `bootz`, it calls `do_bootm_states` which calls `fixup_c
 
 This is the channel through which the kernel learns the cmdline. There is also a fallback: if the kernel finds no `chosen.bootargs`, it uses `CONFIG_CMDLINE` (built-in default). Embedded systems almost always use the DT path.
 
-## 23.3  `bootm`, `bootz`, `booti` — what's the difference
+## 23.3  `bootm`, `bootz`, `booti`, what's the difference
 
 Three commands with similar names but different jobs.
 
@@ -156,7 +156,7 @@ If your kernel build is **arm64**, use **`booti`**.
 
 All three take the same arguments after the address: `[initrd-addr] [dtb-addr]`. The `-` in `bootz 0x82000000 - 0x83000000` means "no initrd. DTB is at the next argument."
 
-## 23.4  Boot scripts — a slightly nicer layer
+## 23.4  Boot scripts, a slightly nicer layer
 
 A "boot script" is a small file the user drops on the SD card that overrides `bootcmd` without touching the env. Useful for distributing a board image where each user has their own customization.
 
@@ -179,7 +179,7 @@ Copy `boot.scr` onto the SD card's FAT partition. If U-Boot's default `bootcmd` 
 
 Boot scripts are mostly for distros. For development work, just edit `bootcmd`.
 
-## 23.5  FIT — Flattened Image Tree
+## 23.5  FIT, Flattened Image Tree
 
 FIT is a single binary container that holds one or more *images* (kernel, DTB, initramfs, microcode, firmware), grouped into named *configurations*. It supersedes the legacy uImage format and is the recommended format for new designs.
 
@@ -188,7 +188,7 @@ Why FIT:
 - **Multiple images in one file.** Kernel + DTB + initramfs in a single SD-card sector range. Much easier to deploy atomically.
 - **Multiple configurations.** One FIT can hold "boot config for rev A board" + "boot config for rev B board" with different DTBs. Selecting which is a U-Boot command-line argument.
 - **Signed boot.** The FIT can have an attached signature. U-Boot's HAB- or FIT-signature-verifying boot path is what `bootm` invokes for `-c` (signed configs).
-**HAB** - High Assurance Boot, NXP's ROM-enforced secure boot mechanism on i.MX SoCs.
+> **HAB:** High Assurance Boot, NXP's ROM-enforced secure boot mechanism on i.MX SoCs.
 
 ### A FIT image source file (.its)
 
@@ -267,7 +267,7 @@ The `#conf-mini` selects the configuration. With no `#`, the default applies.
 
 ### Why this matters in Chapter 23A
 
-A FIT can hold several DTBs and several configurations. That is what we use in Chapter 23A to ship one image for several board variants — strap pins or an EEPROM ID pick which `conf-xxx` to invoke at boot time.
+A FIT can hold several DTBs and several configurations. That is what we use in Chapter 23A to ship one image for several board variants, strap pins or an EEPROM ID pick which `conf-xxx` to invoke at boot time.
 
 For now, get one config working.
 
@@ -297,8 +297,8 @@ If `/sbin/init` is corrupt, `/bin/sh` runs as PID 1 and you get a root shell. Fr
 
 Everything on the host. Edit a file in `/srv/nfs/rootfs/`. The board sees it on next access. `make modules_install INSTALL_MOD_PATH=/srv/nfs/rootfs` puts new kernel modules into the running target. No reflashing.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-**NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
-**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 ### Boot from a USB stick
 
@@ -329,7 +329,7 @@ The kernel doesn't care. It accepts whichever DTB it's handed. Trade-off: two DT
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| Boot hangs after "Uncompressing Linux... done, booting the kernel." | `console=` token wrong or missing | Add `console=ttymxc0,115200 earlycon` |
+| Boot hangs after "Uncompressing Linux... Done, booting the kernel." | `console=` token wrong or missing | Add `console=ttymxc0,115200 earlycon` |
 | "VFS: Cannot open root device 'mmcblk0p2'" | `root=` points at a device that isn't ready or doesn't exist | Add `rootwait`; verify partition number; check `dmesg` for mmc init |
 | "Kernel panic: VFS: Unable to mount root fs" | rootfs filesystem type unsupported by kernel | Add `rootfstype=ext4` (or build the right FS into the kernel) |
 | Boots, then immediately freezes | Wrong DTB; clocks misconfigured | Verify the DTB matches the board; check `console=` is on the right UART |
@@ -339,7 +339,7 @@ The kernel doesn't care. It accepts whichever DTB it's handed. Trade-off: two DT
 
 ## 23.8  Lab
 
-1. **Print and parse the EVK's default `bootcmd`.** Read each variable it references. trace the full chain.
+1. **Print and parse the EVK's default `bootcmd`.** Read each variable it references. Trace the full chain.
 2. **Write three different `bootcmd`s**: SD-root, NFS-root, ramdisk-root. Switch between them with `setenv bootcmd '$nfsboot'. run bootcmd`.
 3. **Build a `boot.scr`** that does the same as one of your `bootcmd`s. Verify it loads.
 4. **Build a FIT** containing your kernel + DTB. Boot it.
@@ -359,9 +359,9 @@ The kernel doesn't care. It accepts whichever DTB it's handed. Trade-off: two DT
 ## 23.10  Going deeper
 
 - **U-Boot docs `doc/usage/cmd/bootm.rst`, `bootz.rst`, `bootargs.rst`.**
-- **Linux Documentation: `Documentation/admin-guide/kernel-parameters.txt`** — the canonical list of every cmdline token the kernel understands. ~1000 entries. skim once for the categories you might need.
-- **FIT docs at `doc/uImage.FIT/`** in U-Boot — the FIT spec and examples.
-- **Bootlin training: "Boot Time Reduction"** — practical techniques for shaving seconds off boot via cmdline and FIT tuning.
-- **AN5096** — *Configuring U-Boot for the i.MX 6/7 Series* (NXP). Procedural. good cross-check.
+- **Linux Documentation: `Documentation/admin-guide/kernel-parameters.txt`**: the canonical list of every cmdline token the kernel understands. ~1000 entries. Skim once for the categories you might need.
+- **FIT docs at `doc/uImage.FIT/`** in U-Boot, the FIT spec and examples.
+- **Bootlin training: "Boot Time Reduction"**: practical techniques for shaving seconds off boot via cmdline and FIT tuning.
+- **AN5096**: *Configuring U-Boot for the i.MX 6/7 Series* (NXP). Procedural. Good cross-check.
 
-> Next chapter: **Chapter 23A — Multi-variant FIT images and DT overlays.** Now that one FIT works, we extend it to carry several DTBs for several board revisions and switch between them at runtime.
+> Next chapter: **Chapter 23A: Multi-variant FIT images and DT overlays.** Now that one FIT works, we extend it to carry several DTBs for several board revisions and switch between them at runtime.

@@ -1,23 +1,23 @@
 ---
 chapter: 26
 title: Booting the kernel from U-Boot
-part: IV — The Kernel
+part: IV - The Kernel
 estimated_pages: 14
 status: draft
 ---
 
-# Chapter 26 — Booting the kernel from U-Boot
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
-**Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+# Chapter 26: Booting the kernel from U-Boot
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 
 > **What:** transfer the `zImage` + `imx6ull-14x14-evk.dtb` we built in Chapter 25 to the board over TFTP, run `bootz` in U-Boot, and watch the first 30 lines of kernel output appear on the UART. Decode each line.
-> **TFTP** - Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
-> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **TFTP:** Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Why:** From here on, Linux is running. Your job changes from writing the boot code to reading what the kernel prints.
 >
-> **Focus:** the **kernel boot log** as a diagnostic instrument. Every line means something specific. every successful boot prints predictable lines in predictable order. If you can recognise the first 30 lines, you can recognise which of them is missing or wrong on a board that's not booting.
+> **Focus:** the **kernel boot log** as a diagnostic instrument. Every line means something specific. Every successful boot prints predictable lines in predictable order. If you can recognise the first 30 lines, you can recognise which of them is missing or wrong on a board that's not booting.
 
 
 ## 26.1  The pre-boot contract
@@ -31,7 +31,7 @@ The kernel expects three things at the moment U-Boot transfers control:
 | **`r1`** | "Machine number" for legacy ATAGS path; ignored on DT systems | `bootz` sets |
 | **`r2`** | **Physical address of the DTB** | `bootz` sets to the DTB load address |
 
-The first instruction the kernel executes is `stext` (in `arch/arm/kernel/head.S`). It begins by reading `r2` to find the DTB. If `r2` is wrong, the kernel cannot parse its hardware description and dies silently (no UART, no output, no diagnostic — because UART has not been initialised yet).
+The first instruction the kernel executes is `stext` (in `arch/arm/kernel/head.S`). It begins by reading `r2` to find the DTB. If `r2` is wrong, the kernel cannot parse its hardware description and dies silently (no UART, no output, no diagnostic, because UART has not been initialised yet).
 
 This is the *one* hardware contract every ARM Linux boot relies on. If `r2` is correct, the kernel almost always boots. If `r2` is wrong, you see nothing on the UART.
 
@@ -47,9 +47,9 @@ From the U-Boot prompt:
 
 What each does:
 
-1. `tftp 0x82000000 zImage` — pulls the kernel from your TFTP server into DRAM at `0x82000000`. The address was chosen for two reasons: it's far enough above the DRAM base (`0x80000000`) that U-Boot's image (currently relocated near the top of DRAM) doesn't conflict, and it's far enough below that the kernel has room to decompress upward into.
-2. `tftp 0x83000000 imx6ull.dtb` — pulls the DT blob to a second location. ~50 KB.
-3. `bootz 0x82000000 - 0x83000000` — start a zImage at `0x82000000`, no initrd (`-`), DTB at `0x83000000`. This is the key step. U-Boot sets `r2 = 0x83000000`, jumps to the kernel, and is done.
+1. `tftp 0x82000000 zImage`, pulls the kernel from your TFTP server into DRAM at `0x82000000`. The address was chosen for two reasons: it's far enough above the DRAM base (`0x80000000`) that U-Boot's image (currently relocated near the top of DRAM) doesn't conflict, and it's far enough below that the kernel has room to decompress upward into.
+2. `tftp 0x83000000 imx6ull.dtb`, pulls the DT blob to a second location. ~50 KB.
+3. `bootz 0x82000000 - 0x83000000`, start a zImage at `0x82000000`, no initrd (`-`), DTB at `0x83000000`. This is the key step. U-Boot sets `r2 = 0x83000000`, jumps to the kernel, and is done.
 
 You can save these as an env one-shot:
 
@@ -72,16 +72,16 @@ Before `bootz`, set `bootargs`:
 
 Token by token:
 
-- **`console=ttymxc0,115200`** — once the i.MX UART driver loads, route `printk` to UART1 at 115200 baud. *If this token is wrong, you see no kernel output.* The driver name `ttymxc0` is the i.MX-specific convention. other SoCs use `ttyS0`, `ttyAMA0`, etc.
-- **`earlycon`** — very early UART printk *before* the full driver loads. Reads the DT's `chosen.stdout-path` to find which UART. Without `earlycon`, the first ~10 boot lines stay in a buffer. You see them only when the regular console driver loads.
-- **`root=/dev/mmcblk0p2`** — what device holds the rootfs. We will return to this in Part V. For the first boot we may not have a usable rootfs yet, in which case the kernel panics. That's fine for *this* chapter — we're verifying kernel boot, not full system boot.
+- **`console=ttymxc0,115200`**: once the i.MX UART driver loads, route `printk` to UART1 at 115200 baud. *If this token is wrong, you see no kernel output.* The driver name `ttymxc0` is the i.MX-specific convention. Other SoCs use `ttyS0`, `ttyAMA0`, etc.
+- **`earlycon`**: very early UART printk *before* the full driver loads. Reads the DT's `chosen.stdout-path` to find which UART. Without `earlycon`, the first ~10 boot lines stay in a buffer. You see them only when the regular console driver loads.
+- **`root=/dev/mmcblk0p2`**: what device holds the rootfs. We will return to this in Part V. For the first boot we may not have a usable rootfs yet, in which case the kernel panics. That's fine for *this* chapter, we're verifying kernel boot, not full system boot.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
-- **`rw`** — mount the root read-write.
-- **`rootwait`** — don't panic if `root=` isn't immediately ready. wait. Always safe to include.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+- **`rw`**: mount the root read-write.
+- **`rootwait`**: don't panic if `root=` isn't immediately ready. Wait. Always safe to include.
 
 A development cmdline, with NFS root, looks like:
-**NFS** - Network File System, which lets the target mount a host directory over Ethernet during development.
+> **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
 
 ```
 console=ttymxc0,115200 earlycon
@@ -173,21 +173,21 @@ buildroot login:
 
 That last "Mounted root" line is the threshold: the kernel has finished its own initialisation and is now executing user-space. From here, Part V takes over.
 
-## 26.5  When it doesn't boot — what to look for
+## 26.5  When it doesn't boot, what to look for
 
 If you see *nothing at all* after `Starting kernel ...`:
 
 - **The DTB address in `r2` is wrong.** Usually `bootz 0x82000000 - 0x83000000` is correct. If you type `bootz 0x82000000 0x83000000` (no `-`), U-Boot reads `0x83000000` as the initrd address. The kernel then gets no DTB. Symptom: silence.
 - **Wrong DTB for the board.** Kernel finds *a* DTB but it describes hardware the actual board doesn't have. Symptom: silence after `Starting kernel ...`. Cross-check the DT model line by trying earlycon (see below).
-- **`console=` token wrong.** Kernel boots fine. UART driver loads. but printk is redirected somewhere else. Symptom: nothing after `Starting kernel ...`. Add `earlycon` to bootargs to see *very* early printk before the driver loads — if those appear, the regular console is the problem.
+- **`console=` token wrong.** Kernel boots fine. UART driver loads. But printk is redirected somewhere else. Symptom: nothing after `Starting kernel ...`. Add `earlycon` to bootargs to see *very* early printk before the driver loads, if those appear, the regular console is the problem.
 - **DDR not all working.** The kernel does an early memtest of sorts. If DRAM has bit errors it usually panics early but the panic might not reach the UART. Rerun the U-Boot `mtest` first.
-**DDR** - external DRAM that must be configured and trained before most software can run from it.
+> **DDR:** external DRAM that must be configured and trained before most software can run from it.
 
 If you see *some output then silence*:
 
 - **Driver hang.** Look at the *last* line printed. The next subsystem to probe is likely hanging. A common cause is the PMIC on I²C. If I²C is broken, the regulators stay off. Devices fail to enumerate, and the kernel hangs.
 > **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
-**PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
+> **PMIC:** Power Management IC, a chip that sequences and regulates the board's voltage rails.
 - **VFS panic** ("Cannot open root device 'mmcblkXpY'"): rootfs not found. The panic message is clear. Fix the `root=` argument.
 - **`Kernel panic - not syncing: VFS: Unable to mount root fs`**: same as above. The kernel says exactly what's wrong.
 
@@ -209,33 +209,33 @@ earlycon=ec_imx6q,0x02020000
 
 The first form reads the UART address from the DT's `chosen.stdout-path` (an i.MX6ULL DTB already sets this). The second form pins it explicitly to the UART1 register base.
 
-With earlycon active, you'll see ~5 extra lines printed *before* the normal "Booting Linux on physical CPU 0x0" — these are emitted by setup_arch() before the regular console driver loads.
+With earlycon active, you'll see ~5 extra lines printed *before* the normal "Booting Linux on physical CPU 0x0", these are emitted by setup_arch() before the regular console driver loads.
 
 ## 26.7  Lab
 
-1. **Boot the kernel.** Confirm you see the boot log. If the kernel panics on rootfs (you don't have one yet), that's fine — the goal is "kernel ran and reached the rootfs-mount step."
+1. **Boot the kernel.** Confirm you see the boot log. If the kernel panics on rootfs (you don't have one yet), that's fine, the goal is "kernel ran and reached the rootfs-mount step."
 2. **Save the boot log.** `picocom`'s capture mode (`-L log.txt`) writes the serial stream to a file. Save your first successful boot. You will diff against it later when something changes.
-3. **Mismatch the DT.** Try `bootz 0x82000000 - 0x83000000` with `imx6ull-9x9-evk.dtb` instead of `imx6ull-14x14-evk.dtb`. Observe what changes in the boot log (probably the model line. maybe other things if pin assignments differ enough that drivers panic).
-4. **Bad cmdline.** Set `bootargs` to omit `console=`. Boot. observe silence. Add `earlycon`. observe partial output. Restore.
-5. **Bad DTB address.** Forget the `-` in `bootz <kernel> - <dtb>` and use `bootz <kernel> <dtb>`. Observe silence (kernel believes `<dtb>` is an initrd. there is no DTB at `r2`).
+3. **Mismatch the DT.** Try `bootz 0x82000000 - 0x83000000` with `imx6ull-9x9-evk.dtb` instead of `imx6ull-14x14-evk.dtb`. Observe what changes in the boot log (probably the model line. Maybe other things if pin assignments differ enough that drivers panic).
+4. **Bad cmdline.** Set `bootargs` to omit `console=`. Boot. Observe silence. Add `earlycon`. Observe partial output. Restore.
+5. **Bad DTB address.** Forget the `-` in `bootz <kernel> - <dtb>` and use `bootz <kernel> <dtb>`. Observe silence (kernel believes `<dtb>` is an initrd. There is no DTB at `r2`).
 
 ## 26.8  Pitfalls
 
 - **DT load address conflicts with kernel decompression area.** If the kernel decompresses to a region that overlaps where you loaded the DTB, the DT gets corrupted partway through boot and the kernel hangs at a random point. The address `0x83000000` for DTB is safe because the kernel decompresses from `0x82000000` upward but stops well before 16 MiB (the kernel is < 16 MiB). For *very* large kernels (CONFIG_DEBUG_INFO, huge configs), use `0x88000000` for DTB instead.
 - **Forgetting `cleanup_before_linux()`.** U-Boot's `bootz` does this automatically. If you wrote your own jump-to-kernel code (don't), you need to flush caches and disable MMU before transferring.
-**MMU** - Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
-- **Kernel built for a different ARM revision.** A `zImage` built with `CONFIG_ARCH_MULTI_V6_V7` or `CONFIG_ARCH_MULTI_V7` runs on Cortex-A7. (`CONFIG_ARCH_MULTI_V7_ONLY` is *not* a mainline symbol — earlier drafts of this chapter listed it. ignore.) A 64-bit kernel (`CONFIG_ARM64`) will not run on Cortex-A7. Symptom: undefined instruction at `stext`. A Thumb-2-only kernel (`CONFIG_THUMB2_KERNEL=y`) requires the bootloader to enter in Thumb state. If your bootloader hands off in ARM state to a Thumb kernel, you fault on the very first instruction.
+> **MMU:** Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
+- **Kernel built for a different ARM revision.** A `zImage` built with `CONFIG_ARCH_MULTI_V6_V7` or `CONFIG_ARCH_MULTI_V7` runs on Cortex-A7. (`CONFIG_ARCH_MULTI_V7_ONLY` is *not* a mainline symbol, earlier drafts of this chapter listed it. Ignore.) A 64-bit kernel (`CONFIG_ARM64`) will not run on Cortex-A7. Symptom: undefined instruction at `stext`. A Thumb-2-only kernel (`CONFIG_THUMB2_KERNEL=y`) requires the bootloader to enter in Thumb state. If your bootloader hands off in ARM state to a Thumb kernel, you fault on the very first instruction.
 - **Wrong board's DTB.** Loading the i.MX8MP EVK DTB on an i.MX6ULL board: the kernel reads the DT's `compatible` root property, looks for `fsl,imx6ull` (or the matching SoC), doesn't find it, and panics in `setup_machine_fdt()`. Sometimes silently.
-- **`root=` pointing at something not ready by the time VFS mounts root.** USB-stick root devices need `rootwait` because USB enumeration is slow. SD cards are usually fast enough that you can skip `rootwait` — but always safe to add.
+- **`root=` pointing at something not ready by the time VFS mounts root.** USB-stick root devices need `rootwait` because USB enumeration is slow. SD cards are usually fast enough that you can skip `rootwait`, but always safe to add.
 
 ## 26.9  Going deeper
 
-- **`arch/arm/boot/compressed/head.S`** — read the decompressor stub. It is short and educational.
-- **`init/main.c`** — the file `start_kernel()` lives in. We trace it line-by-line in Chapter 28.
-- **`Documentation/admin-guide/kernel-parameters.txt`** — every cmdline parameter the kernel understands. ~1500 lines. Skim the headers. You'll come back for specific tokens.
-- **`Documentation/arch/arm/booting.rst`** — the boot contract (`r0`/`r1`/`r2`) in the canonical place.
-- **The kernel's `printk` format** — `<5>` (KERN_NOTICE), `<6>` (KERN_INFO), `<7>` (KERN_DEBUG) prefix codes. Mostly invisible at boot. visible when you use `dmesg --level=info` etc.
+- **`arch/arm/boot/compressed/head.S`**: read the decompressor stub. It is short and educational.
+- **`init/main.c`**: the file `start_kernel()` lives in. We trace it line-by-line in Chapter 28.
+- **`Documentation/admin-guide/kernel-parameters.txt`**: every cmdline parameter the kernel understands. ~1500 lines. Skim the headers. You'll come back for specific tokens.
+- **`Documentation/arch/arm/booting.rst`**: the boot contract (`r0`/`r1`/`r2`) in the canonical place.
+- **The kernel's `printk` format**: `<5>` (KERN_NOTICE), `<6>` (KERN_INFO), `<7>` (KERN_DEBUG) prefix codes. Mostly invisible at boot. Visible when you use `dmesg --level=info` etc.
 
-> Next chapter: **Chapter 27 — Device Tree: the contract between firmware and kernel.** We open `imx6ull-14x14-evk.dts` and walk every node from the root down. The DT is the single biggest mental shift for an MCU engineer. We spend extra time here.
+> Next chapter: **Chapter 27: Device Tree: the contract between firmware and kernel.** We open `imx6ull-14x14-evk.dts` and walk every node from the root down. The DT is the single biggest mental shift for an MCU engineer. We spend extra time here.
 > **MCU bridge:** Think of Device Tree like a board-level hardware description table that replaces hard-coded #define LED_PORT GPIOA decisions. Unlike an MCU header, the kernel parses it at boot and matches it to drivers.
-> **Device Tree** - a data file that describes board hardware to the Linux kernel instead of hard-coding it in C.
+> **Device Tree:** a data file that describes board hardware to the Linux kernel instead of hard-coding it in C.

@@ -1,22 +1,22 @@
 ---
 chapter: 83
 title: SPI LCD (ST7789 / ILI9341)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 22
 status: draft
 ---
 
-# Chapter 83 — SPI LCD
-**PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+# Chapter 83: SPI LCD
+> **PWM:** Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 > **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 
 > **What:** "smart" TFT panels with an embedded controller and frame buffer, driven over SPI. Two controllers compared: **Sitronix ST7789** (240×240 / 240×320), **Ilitek ILI9341** (240×320). Unlike the dumb parallel panels in Ch 82, these have their own RAM. You send an init sequence and pixel data over SPI. The controller refreshes the glass on its own. We cover the MIPI-DBI command model, the DRM **tiny** driver framework (`mipi-dbi`), and a from-scratch DRM tiny driver for ST7789.
 >
-> **Why:** SPI LCDs are cheap and small. They need 4–5 wires versus 28 for parallel, and they appear in smartwatches, thermostats, handheld instruments, and hobby gadgets. The trade-off is bandwidth. A 240×240 16-bit frame is 115 KB. At 40 MHz SPI that takes ~23 ms — about 40 fps for a full refresh. For static or partial-update UIs, that is plenty.
+> **Why:** SPI LCDs are cheap and small. They need 4–5 wires versus 28 for parallel, and they appear in smartwatches, thermostats, handheld instruments, and hobby gadgets. The trade-off is bandwidth. A 240×240 16-bit frame is 115 KB. At 40 MHz SPI that takes ~23 ms, about 40 fps for a full refresh. For static or partial-update UIs, that is plenty.
 >
 > **Focus:** the MIPI-DBI command/data model and partial updates. The controller speaks a standardized command set (MIPI Display Bus Interface): `0x2A` set column range, `0x2B` set row range, `0x2C` write pixels. A D/C (data/command) GPIO distinguishes command bytes from data bytes. Send only the changed rectangle. That keeps refresh fast enough.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 
 ## 83.1  Controller comparison
@@ -33,8 +33,8 @@ status: draft
 | Mainline driver | `drm/tiny/st7789v` (via panel-mipi-dbi) | `drm/tiny/ili9341.c` | `drm/tiny/st7735r.c` |
 
 **Pick guide:**
-- **ST7789**: modern default. common on 1.3"–2" round and square modules.
-- **ILI9341**: classic 2.4"–2.8" modules. slightly slower SPI.
+- **ST7789**: modern default. Common on 1.3"–2" round and square modules.
+- **ILI9341**: classic 2.4"–2.8" modules. Slightly slower SPI.
 - **ST7735**: tiny 0.96"–1.8" displays.
 
 ## 83.2  The MIPI-DBI command model
@@ -91,7 +91,7 @@ The controller auto-increments its internal address pointer as you stream pixels
 
 ## 83.3  The DRM "tiny" framework
 
-For these small SPI displays, DRM has a dedicated lightweight subsystem: `drivers/gpu/drm/tiny/`. It provides `mipi_dbi` — a helper library that implements the CASET/RASET/RAMWR dance, dirty-rectangle tracking, and the DRM plumbing (CRTC, connector, framebuffer). A tiny driver only needs to provide the chip's init sequence.
+For these small SPI displays, DRM has a dedicated lightweight subsystem: `drivers/gpu/drm/tiny/`. It provides `mipi_dbi`, a helper library that implements the CASET/RASET/RAMWR dance, dirty-rectangle tracking, and the DRM plumbing (CRTC, connector, framebuffer). A tiny driver only needs to provide the chip's init sequence.
 
 ```
 drivers/gpu/drm/tiny/
@@ -108,10 +108,10 @@ drivers/gpu/drm/drm_mipi_dbi.c    ← the shared mipi_dbi helper
 
 The `mipi_dbi` helper exposes:
 
-- `mipi_dbi_spi_init()` — set up the SPI + DC-GPIO transport.
-- `mipi_dbi_command(dbi, cmd, params...)` — send a command + parameters.
-- `mipi_dbi_buf_copy()` + the `fb_dirty` callback — the partial-update path that sends only changed pixels.
-- `mipi_dbi_dev_init()` — register the DRM device with a given mode.
+- `mipi_dbi_spi_init()`: set up the SPI + DC-GPIO transport.
+- `mipi_dbi_command(dbi, cmd, params...)`: send a command + parameters.
+- `mipi_dbi_buf_copy()` + the `fb_dirty` callback, the partial-update path that sends only changed pixels.
+- `mipi_dbi_dev_init()`: register the DRM device with a given mode.
 
 ## 83.4  Writing an ST7789 DRM tiny driver from scratch
 
@@ -314,7 +314,7 @@ DT:
 };
 ```
 
-Build (needs the kernel's DRM headers — build against your kernel tree). Load:
+Build (needs the kernel's DRM headers, build against your kernel tree). Load:
 
 ```
 [root@pa-mini:~]# insmod myst7789.ko
@@ -377,11 +377,11 @@ The init sequence lives in `/lib/firmware/mydisplay.bin`, compiled from a human-
 
 For most production: **use panel-mipi-dbi with a firmware init blob**. Write a custom DRM driver only if the panel needs runtime logic the firmware-blob can't express.
 
-## 83.6  Performance — partial updates
+## 83.6  Performance, partial updates
 
 A full 240×240 RGB565 frame = 115200 bytes. At 40 MHz SPI: ~23 ms = ~43 fps theoretical max for full refresh. In practice, ~30 fps with overhead.
 
-The trick: **only send what changed**. The `mipi_dbi` helper tracks dirty rectangles. If your UI updates a small clock digit, only that rectangle is sent — a few KB, sub-millisecond. This is why SPI LCDs feel snappy for typical UIs (mostly static with small dynamic regions) even though full-screen video would be a slideshow.
+The trick: **only send what changed**. The `mipi_dbi` helper tracks dirty rectangles. If your UI updates a small clock digit, only that rectangle is sent, a few KB, sub-millisecond. This is why SPI LCDs feel snappy for typical UIs (mostly static with small dynamic regions) even though full-screen video would be a slideshow.
 
 For a Qt or LVGL app, the toolkit reports dirty regions to DRM. The helper sends only those. No tearing if you respect the vblank.
 
@@ -392,17 +392,17 @@ For a Qt or LVGL app, the toolkit reports dirty regions to DRM. The helper sends
 3. **Paint.** `cat /dev/urandom > /dev/fb0` (noise), `cat /dev/zero > /dev/fb0` (black or white depending on INVON).
 4. **Fix colors.** If colors are wrong (red shows blue), toggle the BGR bit in MADCTL (0x36 param) or INVON/INVOFF.
 5. **Rotation.** Change MADCTL to rotate 90°/180°/270°. Verify the image orientation.
-6. **Performance.** Measure full-frame update time: time `cat /dev/zero > /dev/fb0`. Then a partial update (write a small region). confirm it's much faster.
+6. **Performance.** Measure full-frame update time: time `cat /dev/zero > /dev/fb0`. Then a partial update (write a small region). Confirm it's much faster.
 7. **panel-mipi-dbi.** Switch to the generic driver with a firmware init blob. Compile the blob with `mipi-dbi-cmd`. Verify same result, no custom C.
-8. **LVGL or Qt.** Run a GUI toolkit on `/dev/fb0`. verify a real UI renders and updates smoothly.
+8. **LVGL or Qt.** Run a GUI toolkit on `/dev/fb0`. Verify a real UI renders and updates smoothly.
 
 ## 83.8  Pitfalls
 
-- **Missing DC GPIO toggle.** Commands and data get confused. controller does nothing or garbage. The `mipi_dbi` helper handles DC. a hand-rolled driver must toggle it correctly (low for command byte, high for parameters/pixels).
+- **Missing DC GPIO toggle.** Commands and data get confused. Controller does nothing or garbage. The `mipi_dbi` helper handles DC. A hand-rolled driver must toggle it correctly (low for command byte, high for parameters/pixels).
 - **Wrong init sequence.** Each module vendor tweaks the gamma/voltage commands. A generic ST7789 init may give washed-out or dark colors. Use the vendor's recommended sequence.
-- **INVON vs INVOFF.** Many cheap ST7789 modules have inverted pixels — black shows as white. Toggle MIPI_DCS_ENTER_INVERT_MODE.
+- **INVON vs INVOFF.** Many cheap ST7789 modules have inverted pixels, black shows as white. Toggle MIPI_DCS_ENTER_INVERT_MODE.
 - **BGR vs RGB.** MADCTL bit 3 swaps red and blue. If red text shows as blue, flip it.
-- **Column/row offset.** Some 240×240 ST7789 modules are actually 240×320 panels with the display window offset — you must add an x/y offset in CASET/RASET or the image is shifted. Vendor-specific.
+- **Column/row offset.** Some 240×240 ST7789 modules are actually 240×320 panels with the display window offset, you must add an x/y offset in CASET/RASET or the image is shifted. Vendor-specific.
 - **SPI too fast.** ST7789 tolerates ~62 MHz. ILI9341 writes at ~30 MHz reliably. Above the limit: corrupt pixels. Start at 20 MHz, ramp up.
 - **No reset pulse.** Without a hardware reset at probe, the controller may be in an undefined state. Always pulse RESET low for ~10 µs at init.
 - **Backlight not handled.** Display "works" (data flows) but screen dark. Wire and enable the backlight.
@@ -410,13 +410,13 @@ For a Qt or LVGL app, the toolkit reports dirty regions to DRM. The helper sends
 
 ## 83.9  Going deeper
 
-- **`drivers/gpu/drm/drm_mipi_dbi.c`** — the shared mipi_dbi helper. Read `mipi_dbi_fb_dirty` for the partial-update path.
-- **`drivers/gpu/drm/tiny/ili9341.c`** — a complete tiny driver. compare to the from-scratch version.
-- **`drivers/gpu/drm/tiny/panel-mipi-dbi.c`** — the generic firmware-blob driver.
-- **`Documentation/gpu/drm-kms-helpers.rst`** — the simple-display-pipe + mipi_dbi helpers.
-- **`tools/` → `mipi-dbi-cmd`** — the firmware-blob compiler.
-- **ST7789 datasheet (Sitronix)** — command list. init recommendations.
-- **ILI9341 datasheet (Ilitek)** — command list.
-- **MIPI DBI specification** — the standard these controllers descend from.
+- **`drivers/gpu/drm/drm_mipi_dbi.c`**: the shared mipi_dbi helper. Read `mipi_dbi_fb_dirty` for the partial-update path.
+- **`drivers/gpu/drm/tiny/ili9341.c`**: a complete tiny driver. Compare to the from-scratch version.
+- **`drivers/gpu/drm/tiny/panel-mipi-dbi.c`**: the generic firmware-blob driver.
+- **`Documentation/gpu/drm-kms-helpers.rst`**: the simple-display-pipe + mipi_dbi helpers.
+- **`tools/` → `mipi-dbi-cmd`**: the firmware-blob compiler.
+- **ST7789 datasheet (Sitronix)**: command list. Init recommendations.
+- **ILI9341 datasheet (Ilitek)**: command list.
+- **MIPI DBI specification**: the standard these controllers descend from.
 
-> Next chapter: **Chapter 84 — QSPI LCD.** When SPI bandwidth isn't enough — quad-SPI displays for higher frame rates and the round LCDs popular in smartwatches.
+> Next chapter: **Chapter 84: QSPI LCD.** When SPI bandwidth isn't enough, quad-SPI displays for higher frame rates and the round LCDs popular in smartwatches.

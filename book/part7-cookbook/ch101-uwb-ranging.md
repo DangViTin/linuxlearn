@@ -1,25 +1,25 @@
 ---
 chapter: 101
 title: UWB ranging (DWM1000, DWM3000, NCJ29D5)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 101 — UWB ranging
+# Chapter 101: UWB ranging
 
 > **What:** **Ultra-wideband** (UWB) two-way ranging for centimetre-accuracy indoor positioning. Three radios: **Qorvo (Decawave) DWM1000** (the classic, IEEE 802.15.4-2011 UWB), **DWM3000** (newer, FiRa/Apple-AirTag-compatible, lower power, 802.15.4-2020), **NXP NCJ29D5** (automotive-grade UWB for car access). On the i.MX6ULL we wire DWM3000 over SPI, dissect the IEEE 802.15.4 UWB frame, walk the Qorvo "DW3xxx Software API" reference driver, write a 300-line user-space two-way-ranging (TWR) client from scratch, and demonstrate 3-anchor TDoA for 2-D position.
 >
-> **Why:** every modern phone (iPhone 11+, Galaxy S21+ Ultra, Pixel 6 Pro+) has UWB. Logistics warehouses are deploying UWB for forklift / asset tracking. Car keys (Apple Car Key, Tesla 3) use UWB to defeat relay attacks. Indoor venues use it for "blue-dot" navigation. None of this is BLE — BLE RSSI ranging is ±2 m on a good day. UWB ToF is ±10 cm. For sub-metre indoor positioning, UWB is the only practical choice.
+> **Why:** every modern phone (iPhone 11+, Galaxy S21+ Ultra, Pixel 6 Pro+) has UWB. Logistics warehouses are deploying UWB for forklift / asset tracking. Car keys (Apple Car Key, Tesla 3) use UWB to defeat relay attacks. Indoor venues use it for "blue-dot" navigation. None of this is BLE, BLE RSSI ranging is ±2 m on a good day. UWB ToF is ±10 cm. For sub-metre indoor positioning, UWB is the only practical choice.
 >
-> **Focus:** UWB ranging is a time-of-flight measurement. ToF accuracy depends on how cleanly the radio captures the first arriving signal. Multipath (the signal bouncing off walls and arriving second) corrupts the measurement if the demodulator latches the wrong peak. The DW3000 has hardware-supported leading-edge detection and per-receive antenna-delay calibration. Calibration is most of the engineering. The protocol on top — SS-TWR, DS-TWR, TDoA — is the smaller piece.
+> **Focus:** UWB ranging is a time-of-flight measurement. ToF accuracy depends on how cleanly the radio captures the first arriving signal. Multipath (the signal bouncing off walls and arriving second) corrupts the measurement if the demodulator latches the wrong peak. The DW3000 has hardware-supported leading-edge detection and per-receive antenna-delay calibration. Calibration is most of the engineering. The protocol on top, SS-TWR, DS-TWR, TDoA, is the smaller piece.
 
 
 ## 101.1  How UWB measures distance
 
 UWB transmits very short (~2 ns) pulses spread over 500 MHz (or 1 GHz) of bandwidth at 6.5/8.0 GHz. Each pulse is a marker the receiver can timestamp with sub-nanosecond precision. Because radio waves travel ~30 cm/ns, **1 ns of timing error = 30 cm of range error**. UWB hardware achieves ~100 ps timestamp precision → ~3 cm range precision in theory. ~10 cm in practice after multipath.
 
-The simplest protocol — **Single-Sided Two-Way Ranging (SS-TWR)**:
+The simplest protocol, **Single-Sided Two-Way Ranging (SS-TWR)**:
 
 ```
 Initiator                Responder
@@ -56,7 +56,7 @@ Initiator               Responder
 
 DS-TWR achieves the ~10 cm accuracy spec. Most commercial UWB anchor systems use it.
 
-**TDoA (Time Difference of Arrival)** is the multilateration alternative: anchors are time-synced (wired or via a "sync anchor" broadcast). a tag broadcasts one packet. each anchor records the receive timestamp. differences yield position. Better for crowded tag populations (one TX, N anchors RX) but requires anchor time-sync infrastructure.
+**TDoA (Time Difference of Arrival)** is the multilateration alternative: anchors are time-synced (wired or via a "sync anchor" broadcast). A tag broadcasts one packet. Each anchor records the receive timestamp. Differences yield position. Better for crowded tag populations (one TX, N anchors RX) but requires anchor time-sync infrastructure.
 
 ## 101.2  DW3000 register and command summary
 
@@ -95,7 +95,7 @@ TX: 0x00              <- read REG=0
 RX: 0x00 0x32 0x03 0xCA 0xDE  <- 4 bytes back, little-endian
 ```
 
-That's the chip identification — if you don't get 0xDECA0302 (DW3000) or 0xDECA0130 (DW1000), nothing works downstream.
+That's the chip identification, if you don't get 0xDECA0302 (DW3000) or 0xDECA0130 (DW1000), nothing works downstream.
 
 ## 101.3  Wiring DWM3000 to the i.MX6ULL
 
@@ -114,7 +114,7 @@ GPIO  ┤ RESETn ├────────────────────
       └────────┘                              └─────────┘
 ```
 
-Critical: the antenna is on the module. **do not put metal within 5 cm** of it. UWB pulses are sensitive to nearfield ground planes. even a bench multimeter clip nearby skews ToF.
+Critical: the antenna is on the module. **do not put metal within 5 cm** of it. UWB pulses are sensitive to nearfield ground planes. Even a bench multimeter clip nearby skews ToF.
 
 ## 101.4  How the Qorvo driver actually works
 
@@ -174,9 +174,9 @@ if (status & RX_FRAME_VALID) {
 
 The trick: scheduling TX at a *future* exact DWT time (the chip has its own 40-bit timestamp counter at 64 GHz / 16 µs wraparound). This lets the responder reply at a deterministic Treply for the math to work.
 
-## 101.5  From scratch — DS-TWR initiator in user space
+## 101.5  From scratch, DS-TWR initiator in user space
 
-twr_init.c (abbreviated. full ~400 lines):
+twr_init.c (abbreviated. Full ~400 lines):
 
 ```c
 /* DS-TWR initiator. Reads DEV_ID, configures channel/PRF/preamble,
@@ -313,10 +313,10 @@ int main(void) {
 The driver above is intentionally compressed. The full lab version includes:
 
 - A complete responder counterpart (`twr_resp.c`) that builds the response with embedded RX/TX timestamps.
-- Antenna-delay calibration (the chip-to-antenna trace + matching network adds ~16 ns of delay that must be subtracted from every ToF measurement. calibrated once per board).
+- Antenna-delay calibration (the chip-to-antenna trace + matching network adds ~16 ns of delay that must be subtracted from every ToF measurement. Calibrated once per board).
 - Proper IRQ-driven polling using libgpiod's `gpiod_line_event_wait`.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 - The 5-byte timestamp arithmetic with the DWT 40-bit rollover handling.
 
 Even this skeleton reveals the protocol: ToF = (response-time at initiator − reply-time at responder) / 2.
@@ -349,7 +349,7 @@ A Kalman filter on top smooths the trajectory between updates and rejects outlie
 > **Template warning:** This block contains placeholder values.
 > Replace compatible strings, GPIO numbers, addresses, and paths with values from your board before using it.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 
 DT (same as any spidev radio):
@@ -372,52 +372,52 @@ DT (same as any spidev radio):
 ```
 
 
-> *Production note: `rohm,dh2228fv` is a development-time spidev placeholder. modern kernels print a warning when it appears in DT. See Chapter 47's `spidev` warning for the proper DT overlay path or a real-chip compatible swap.*
+> *Production note: `rohm,dh2228fv` is a development-time spidev placeholder. Modern kernels print a warning when it appears in DT. See Chapter 47's `spidev` warning for the proper DT overlay path or a real-chip compatible swap.*
 There *is* an in-tree `drivers/net/ieee802154/mcr20a.c` for one Freescale UWB chip and out-of-tree drivers for DW1000 (`thotro/dw1000-driver`), but the dominant pattern remains user-space + spidev for DW3000.
 
 ## 101.8  Apple Find My / FiRa interop
 
 DW3000 supports the **FiRa Consortium**'s "MAC and PHY for UWB" interop spec, which is what iPhones use for "Find My" UWB. With the right firmware and OPS framework, your DW3000-based tag is detectable by an iPhone. Practical caveat: Apple's "Find My Network Accessory Program" requires hardware certification and a license, so DIY tags can only be ranged peer-to-peer with your own app, not by random nearby iPhones.
-**MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
-**PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
+> **MAC:** Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
+> **PHY:** physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
 
-Apple's UWB chip (U1 / U2) is a black-box DW3000 derivative. reverse-engineering work (e.g., `nfc-tools/proxmark3`-adjacent UWB research) has documented enough for hobbyist interop with caveats.
+Apple's UWB chip (U1 / U2) is a black-box DW3000 derivative. Reverse-engineering work (e.g., `nfc-tools/proxmark3`-adjacent UWB research) has documented enough for hobbyist interop with caveats.
 
 ## 101.9  Lab
 
 1. **DW3000 identify.** Wire DWM3000 to ECSPI. Read DEV_ID → must be `0xDECA0302`. If wrong: SPI mode (mode 0), wiring, or fake module from Aliexpress.
-2. **DS-TWR initiator + responder.** Flash one i.MX6ULL board as initiator, one as responder. Run the lab code. Place 1 m apart. expect a reading of ~1.0–1.1 m (the +10 cm is uncalibrated antenna delay).
+2. **DS-TWR initiator + responder.** Flash one i.MX6ULL board as initiator, one as responder. Run the lab code. Place 1 m apart. Expect a reading of ~1.0–1.1 m (the +10 cm is uncalibrated antenna delay).
 3. **Antenna-delay calibration.** Place at known 1.000 m. Measured 1.10 m? Subtract 0.10 m's worth of DWT ticks from `tof_dtu`. Persist this calibration in a config file per board.
-4. **Distance vs. range.** Walk the responder out to 5 m, 10 m, 20 m. Note when packets stop arriving (typically ~30 m line-of-sight at 6.8 Mbps. more at lower data rates).
-5. **Multipath test.** Place the boards 2 m apart in a small room with metal furniture. Note distance noise. Move to open space. noise drops dramatically.
-6. **3-anchor 2-D position.** Place 3 responder anchors in a triangle. The initiator's app does 3 TWR cycles and computes trilateration. Print (x, y) every second. Walk around. verify position tracks within ±20 cm.
-7. **Kalman smoothing.** Add a 2-D constant-velocity Kalman filter. visualize raw vs. filtered trajectory in matplotlib.
+4. **Distance vs. range.** Walk the responder out to 5 m, 10 m, 20 m. Note when packets stop arriving (typically ~30 m line-of-sight at 6.8 Mbps. More at lower data rates).
+5. **Multipath test.** Place the boards 2 m apart in a small room with metal furniture. Note distance noise. Move to open space. Noise drops dramatically.
+6. **3-anchor 2-D position.** Place 3 responder anchors in a triangle. The initiator's app does 3 TWR cycles and computes trilateration. Print (x, y) every second. Walk around. Verify position tracks within ±20 cm.
+7. **Kalman smoothing.** Add a 2-D constant-velocity Kalman filter. Visualize raw vs. filtered trajectory in matplotlib.
 8. **Throughput-vs-rate test.** Try 110 kbps, 850 kbps, 6.8 Mbps data rates. Higher rate = shorter air time = more TWR cycles/second but slightly worse range. Measure cycles/sec at each.
 
 ## 101.10  Pitfalls
 
-- **Fake DWM3000 modules.** Common on Aliexpress. chip reads 0xDECA0130 (DW1000) instead. The register maps and command set are different. Buy from Qorvo distributors or Makerfabs.
+- **Fake DWM3000 modules.** Common on Aliexpress. Chip reads 0xDECA0130 (DW1000) instead. The register maps and command set are different. Buy from Qorvo distributors or Makerfabs.
 - **Antenna-delay uncalibrated.** Out of the box, distances read 10–30 cm long. Always calibrate at a known distance first.
-- **Metal nearby.** The UWB antenna is omnidirectional in free space. a metal plate within 5 cm distorts the pattern → multipath errors. Mount the module away from PCB ground planes, batteries, USB shields.
+- **Metal nearby.** The UWB antenna is omnidirectional in free space. A metal plate within 5 cm distorts the pattern → multipath errors. Mount the module away from PCB ground planes, batteries, USB shields.
 - **Clock drift in SS-TWR.** With cheap ±20 ppm crystals, Treply of 240 µs gives ±10 ns drift error = ±3 m. Always use DS-TWR for production accuracy. SS-TWR is for quick demos only.
 - **Treply too short.** The responder needs time to process the poll and schedule its TX. <200 µs and the chip TX-fail. Spec values are 200–500 µs.
-- **TX time exceeds 40-bit DWT counter wrap.** The 40-bit counter at 64 GHz wraps every ~17 s. scheduled TX times that cross the wrap go to the wrong epoch. Mask to 40 bits before scheduling.
+- **TX time exceeds 40-bit DWT counter wrap.** The 40-bit counter at 64 GHz wraps every ~17 s. Scheduled TX times that cross the wrap go to the wrong epoch. Mask to 40 bits before scheduling.
 - **Channel licensing.** Channel 5 (6.5 GHz) is allowed worldwide. Channel 9 (8 GHz) has regional restrictions (US OK, EU OK under power limits, Japan stricter). Ship the right channel for the market.
-- **Tag battery life with many anchors.** Each TWR cycle is ~1.5 ms of RX+TX = ~50 mA*1.5 ms = 75 µAs. 10 Hz update = 750 µAh per second = ~10 hours on a 250 mAh coin cell. Plan accordingly. lower update rate when stationary.
-- **Outdoor weather.** UWB is line-of-sight sensitive. heavy rain attenuates noticeably at 6.5 GHz. Indoor or sheltered deployments only.
+- **Tag battery life with many anchors.** Each TWR cycle is ~1.5 ms of RX+TX = ~50 mA*1.5 ms = 75 µAs. 10 Hz update = 750 µAh per second = ~10 hours on a 250 mAh coin cell. Plan accordingly. Lower update rate when stationary.
+- **Outdoor weather.** UWB is line-of-sight sensitive. Heavy rain attenuates noticeably at 6.5 GHz. Indoor or sheltered deployments only.
 - **No mainline kernel driver for DW3000.** If you want one, you write it. Most projects accept user-space + spidev as the pattern.
 
 ## 101.11  Going deeper
 
-- **Qorvo DW3000 User Manual + DW3000 Datasheet** — the canonical reference for registers and commands.
-- **Qorvo "DW3xxx Software API"** (downloadable from Qorvo's site) — the reference C driver.
-- **`Makerfabs/DW3000` and `Makerfabs/DW3000_DS_TWR`** — community ports of the above, Arduino-derived but readable.
-- **`thotro/dw1000-driver`** — for the legacy DW1000 chip (still common on $30 modules).
-- **`uwb-research/uwb-positioning` (university research repos)** — Kalman + multilateration implementations.
-- **FiRa Consortium specifications** — the interop standard for "phone-compatible" UWB.
-- **IEEE 802.15.4-2020 + 4z amendment** — the standardized UWB PHY/MAC the DW3000 implements.
-- **Ch 99 / Ch 100** for non-UWB alternatives (FSK, ZigBee — neither does sub-metre).
+- **Qorvo DW3000 User Manual + DW3000 Datasheet**: the canonical reference for registers and commands.
+- **Qorvo "DW3xxx Software API"** (downloadable from Qorvo's site), the reference C driver.
+- **`Makerfabs/DW3000` and `Makerfabs/DW3000_DS_TWR`**: community ports of the above, Arduino-derived but readable.
+- **`thotro/dw1000-driver`**: for the legacy DW1000 chip (still common on $30 modules).
+- **`uwb-research/uwb-positioning` (university research repos)**: Kalman + multilateration implementations.
+- **FiRa Consortium specifications**: the interop standard for "phone-compatible" UWB.
+- **IEEE 802.15.4-2020 + 4z amendment**: the standardized UWB PHY/MAC the DW3000 implements.
+- **Ch 99 / Ch 100** for non-UWB alternatives (FSK, ZigBee, neither does sub-metre).
 
 ---
 
-> Next chapter: **Chapter 102 — USB 4G LTE modems** — beginning Group N (Cellular).
+> Next chapter: **Chapter 102: USB 4G LTE modems**, beginning Group N (Cellular).

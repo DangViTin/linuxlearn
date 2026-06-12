@@ -1,18 +1,18 @@
 ---
 chapter: 19
-title: U-Boot from source — first boot
-part: III — U-Boot, deeply
+title: U-Boot from source: first boot
+part: III - U-Boot, deeply
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 19 — U-Boot from source, first boot
-**PMIC** - Power Management IC, a chip that sequences and regulates the board's voltage rails.
-**rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+# Chapter 19: U-Boot from source, first boot
+> **PMIC:** Power Management IC, a chip that sequences and regulates the board's voltage rails.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 
 > **What:** clone mainline U-Boot, build it for the i.MX6ULL, `dd` the result to an SD card, boot it, get a `=>` prompt. Then run a few commands and recognize, in U-Boot's output, every step we did by hand in Chapters 9–17.
-> **U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
 > **Why:** Part II proved we can boot the chip ourselves. From here on the question is what the professional version looks like. U-Boot is that version. Its source is one of the best embedded-Linux codebases to read.
 >
@@ -34,8 +34,8 @@ We use mainline. Three reasons:
 
 We use mainline's `mx6ull_14x14_evk_defconfig` (NXP's reference EVK) and port it to the Point Atom MINI in Chapter 22. The boards are close enough that the EVK config boots on the MINI with only minor DT changes for IOMUX and DDR timings.
 > **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
-**DDR** - external DRAM that must be configured and trained before most software can run from it.
-**IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
+> **DDR:** external DRAM that must be configured and trained before most software can run from it.
+> **IOMUX:** the pin multiplexer that decides which peripheral function appears on each package pin.
 
 ## 19.2  Clone and look around
 
@@ -110,13 +110,13 @@ $ make -j$(nproc)
 
 The first build takes 1–2 minutes on a modern host. A few interesting lines scroll past:
 
-- `HOSTCC scripts/...` — building host-side helpers (tools, dtc, mkimage) with the *host's* compiler.
-- `CC arch/arm/cpu/armv7/start.o` — that file is the bare-metal startup. You just compiled the i.MX6ULL equivalent of your Chapter 10 `startup.S`. **Open it. Read it.**
-- `LD spl/u-boot-spl` — building the SPL (Chapter 20).
-- `LD u-boot` — building the main U-Boot ELF.
-**ELF** - Executable and Linkable Format, the standard Linux object and executable file format.
-- `OBJCOPY u-boot.bin` — the raw binary (Chapter 6).
-- `MKIMAGE u-boot.imx` — wrapping with an IVT + BootData (Chapter 7), the same operation our `mkimx.py` performs.
+- `HOSTCC scripts/...`: building host-side helpers (tools, dtc, mkimage) with the *host's* compiler.
+- `CC arch/arm/cpu/armv7/start.o`: that file is the bare-metal startup. You just compiled the i.MX6ULL equivalent of your Chapter 10 `startup.S`. **Open it. Read it.**
+- `LD spl/u-boot-spl`: building the SPL (Chapter 20).
+- `LD u-boot`: building the main U-Boot ELF.
+> **ELF:** Executable and Linkable Format, the standard Linux object and executable file format.
+- `OBJCOPY u-boot.bin`: the raw binary (Chapter 6).
+- `MKIMAGE u-boot.imx`: wrapping with an IVT + BootData (Chapter 7), the same operation our `mkimx.py` performs.
 
 When `make` finishes without errors, the build produces these files:
 
@@ -124,19 +124,19 @@ When `make` finishes without errors, the build produces these files:
 |------|------------|
 | `u-boot` | The main U-Boot ELF (with symbols, useful for `gdb`) |
 | `u-boot.bin` | The same, stripped to raw binary |
-| `u-boot.imx` | The above wrapped with an IVT — **the file to flash for SD-boot** when no SPL is needed |
+| `u-boot.imx` | The above wrapped with an IVT, **the file to flash for SD-boot** when no SPL is needed |
 | `SPL` | The SPL ELF |
 | `u-boot.img` | A U-Boot-formatted image of `u-boot.bin` (legacy, used by some flow paths) |
-| `u-boot-dtb.imx` | U-Boot binary + DT blob, wrapped — current preferred form |
+| `u-boot-dtb.imx` | U-Boot binary + DT blob, wrapped, current preferred form |
 | `MLO` | Symbolic link / copy of the SPL image used by some SoCs (TI / OMAP heritage) |
 | `arch/arm/dts/imx6ull-14x14-evk.dtb` | Compiled device tree for the EVK |
 
 Two of these are what we will actually use:
 
-- **`SPL`** — the first stage, gets `dd`'d to the SD card at offset `0x400` (LBA 2). This is what the i.MX6ULL Boot ROM finds and runs.
-- **`u-boot-dtb.imx`** — the second stage, gets `dd`'d to the SD card at offset `69 KiB` (the location SPL's defconfig is built to look for).
+- **`SPL`**: the first stage, gets `dd`'d to the SD card at offset `0x400` (LBA 2). This is what the i.MX6ULL Boot ROM finds and runs.
+- **`u-boot-dtb.imx`**: the second stage, gets `dd`'d to the SD card at offset `69 KiB` (the location SPL's defconfig is built to look for).
 
-For the SD-boot case, SPL carries the IVT. SPL then loads `u-boot-dtb.imx` (or `u-boot.img`) from a later offset on the card. There is also a simpler **no-SPL** flow where `u-boot-dtb.imx` itself is what the ROM loads — used when U-Boot fits in OCRAM (rarely true these days). We will use the SPL flow throughout this book.
+For the SD-boot case, SPL carries the IVT. SPL then loads `u-boot-dtb.imx` (or `u-boot.img`) from a later offset on the card. There is also a simpler **no-SPL** flow where `u-boot-dtb.imx` itself is what the ROM loads, used when U-Boot fits in OCRAM (rarely true these days). We will use the SPL flow throughout this book.
 
 ## 19.4  Flash to SD
 
@@ -145,7 +145,7 @@ The mainline `mx6ull_14x14_evk` SD-boot layout is:
 | Offset (KiB) | Content |
 |--------------|---------|
 | 0 | (untouched / partition table) |
-| 1 (= LBA 2) | SPL — contains the IVT |
+| 1 (= LBA 2) | SPL, contains the IVT |
 | 69 | `u-boot-dtb.imx` (the second-stage image) |
 | 8192 | Reserved for partitions (the rootfs partition begins around here) |
 
@@ -157,7 +157,7 @@ $ sudo dd if=u-boot-dtb.imx of=/dev/sdX bs=1k seek=69 conv=fsync
 $ sync
 ```
 
-(Or use the helper from Chapter 3 with two invocations. or write a small wrapper.)
+(Or use the helper from Chapter 3 with two invocations. Or write a small wrapper.)
 
 A nicer alternative: `uuu` does the whole thing over USB-OTG, no SD card needed. We will use that in Chapter 24. For now, SD is concrete and the steps are the most explicit.
 
@@ -194,14 +194,14 @@ If you press a key during autoboot, you land at the `=>` prompt.
 Read the boot log again, slowly. Notice:
 
 - "U-Boot SPL" prints first. That's a small program, loaded by ROM, that initialized DDR. **The exact responsibilities you wrote in Chapter 14.**
-- "Trying to boot from MMC1" — SPL is reading `u-boot-dtb.imx` from the SD card and loading it into DRAM.
-- "U-Boot 2025.01" — the second stage has taken over, running from DRAM, with full peripheral support.
-- "CPU: i.MX6ULL rev1.1 at 396 MHz" — the boot-default ARM clock. Notice it didn't go to 696 MHz. The EVK config is conservative. Chapter 13's PLL config can apply here too.
-**PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
-- "DRAM: 512 MiB" — SPL's DDR setup worked. The production version of your Chapter 14 MMDC bring-up. Mainline's `arch/arm/mach-imx/mx6/ddr.c` is a ~1500-line table-driven driver that wraps the same MMDC sequence, hardened across thousands of boards. We dissect it in Ch 20 §20.7.
-**MMDC** - the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
-- "Loading Environment from MMC..." — U-Boot tries to read its persistent env from the SD card. There isn't one yet. It falls back to defaults. `*** Warning - bad CRC` is normal on first boot.
-- "Hit any key to stop autoboot" — without intervention, U-Boot would run `bootcmd` (Chapter 23) which on the EVK config tries to find a kernel and chain-boot Linux.
+- "Trying to boot from MMC1", SPL is reading `u-boot-dtb.imx` from the SD card and loading it into DRAM.
+- "U-Boot 2025.01", the second stage has taken over, running from DRAM, with full peripheral support.
+- "CPU: i.MX6ULL rev1.1 at 396 MHz", the boot-default ARM clock. Notice it didn't go to 696 MHz. The EVK config is conservative. Chapter 13's PLL config can apply here too.
+> **PLL:** Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
+- "DRAM: 512 MiB", SPL's DDR setup worked. The production version of your Chapter 14 MMDC bring-up. Mainline's `arch/arm/mach-imx/mx6/ddr.c` is a ~1500-line table-driven driver that wraps the same MMDC sequence, hardened across thousands of boards. We dissect it in Ch 20 §20.7.
+> **MMDC:** the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
+- "Loading Environment from MMC...", U-Boot tries to read its persistent env from the SD card. There isn't one yet. It falls back to defaults. `*** Warning - bad CRC` is normal on first boot.
+- "Hit any key to stop autoboot", without intervention, U-Boot would run `bootcmd` (Chapter 23) which on the EVK config tries to find a kernel and chain-boot Linux.
 
 ## 19.6  First commands
 
@@ -253,10 +253,10 @@ Several things to notice:
 
 - `DRAM start = 0x80000000`, `size = 0x20000000` (512 MiB). Same map we used in Chapter 14.
 - `relocaddr = 0x9ff37000`. **This is the actual address U-Boot is running from right now**, near the top of DRAM. U-Boot started executing somewhere lower in DRAM, then *relocated itself* to high DRAM to free the low addresses for the kernel. We'll trace that in Chapter 21.
-- `reloc off = 0x1f737000` — the offset between the linker's idea of where U-Boot lives and where it actually lives. Pointer fixups everywhere use this.
-- `fdt_blob = 0x9ed3d2c0` — U-Boot loaded its own copy of the device tree into DRAM. It will pass this address to the kernel via `r2` when it eventually `bootz`'s Linux.
+- `reloc off = 0x1f737000`: the offset between the linker's idea of where U-Boot lives and where it actually lives. Pointer fixups everywhere use this.
+- `fdt_blob = 0x9ed3d2c0`: U-Boot loaded its own copy of the device tree into DRAM. It will pass this address to the kernel via `r2` when it eventually `bootz`'s Linux.
 
-### `md` — memory display
+### `md`, memory display
 
 The Chapter 14 memtest equivalent:
 
@@ -289,7 +289,7 @@ Bus Width: 4-bit
 Erase Group Size: 512 Bytes
 ```
 
-The SD card U-Boot booted from is also enumerated for runtime use — we'll read kernel images from it shortly.
+The SD card U-Boot booted from is also enumerated for runtime use, we'll read kernel images from it shortly.
 
 ### `mtest`
 
@@ -317,7 +317,7 @@ base      - print or set address offset
 
 About 80 commands ship with the EVK defconfig. We will use perhaps 15 of them in this book. The rest are board-specific or for use cases we don't reach (USB host, JTAG, fuse programming, etc.).
 > **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
-**JTAG** - the hardware debug scan chain used to halt, inspect, and single-step CPUs.
+> **JTAG:** the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 
 ## 19.7  Recognizing Chapter 14 in SPL
 
@@ -346,9 +346,9 @@ Read it. After Chapter 14, none of it should look magical. That is the point.
 
 1. **Clone, build, flash, boot.** Confirm `=>` appears.
 2. **Hit a key to stop autoboot.** Explore: `printenv`, `bdinfo`, `mmc info`, `md`, `mw`, `help`.
-3. **Run `mtest 0x80000000 0x90000000 0xa5a5a5a5 1`** — a 256 MB memtest. Should report 0 errors.
+3. **Run `mtest 0x80000000 0x90000000 0xa5a5a5a5 1`**: A 256 MB memtest. Should report 0 errors.
 4. **Open `board/freescale/mx6ull_14x14_evk/spl.c`** and find the DDR struct definitions. Cross-reference each field against your Chapter 14 register values. Annotate.
-5. **Open `arch/arm/mach-imx/mx6/ddr.c`** and find the DDR3 init flow. Match it section-by-section to your Chapter 14 code. Note where it does more (e.g., periodic recalibration) and where it does less (e.g., it does not run the stress tool inline. values are precomputed).
+5. **Open `arch/arm/mach-imx/mx6/ddr.c`** and find the DDR3 init flow. Match it section-by-section to your Chapter 14 code. Note where it does more (e.g., periodic recalibration) and where it does less (e.g., it does not run the stress tool inline. Values are precomputed).
 
 ## 19.9  Pitfalls
 
@@ -356,15 +356,15 @@ Read it. After Chapter 14, none of it should look magical. That is the point.
 - **Reusing a build dir between defconfigs.** `make foo_defconfig && make bar_defconfig` does not fully reset state. Always `make distclean` between configs.
 - **Wrong SD-card offsets.** SPL goes to LBA 2 (`bs=1k seek=1`). The second stage goes to `seek=69`. If you swap them or use a different offset, the ROM either finds nothing or loads garbage. The exact offsets are SoC-family-specific and controlled by `CONFIG_SPL_PAD_TO` and similar. The EVK defaults are what we used above.
 - **Build artefacts left over from a previous board.** `make clean` keeps the `.config`. `make distclean` resets everything. When in doubt, distclean.
-- **Bad CRC env warning** — *not* an error. Means the SD card has no saved env yet. `saveenv` once and the warning disappears on future boots.
+- **Bad CRC env warning**: *not* an error. Means the SD card has no saved env yet. `saveenv` once and the warning disappears on future boots.
 - **`make -j` with not enough RAM.** U-Boot is small enough to build single-threaded if your host is constrained, but `-j$(nproc)` is fine on anything with ≥4 GB RAM.
 
 ## 19.10  Going deeper
 
 - **U-Boot documentation** at `https://docs.u-boot.org/`. Specifically `arch/arm/cpu/armv7/Kconfig` and `doc/README.imx`.
-- **`doc/board/freescale/`** in the source tree — the board-specific docs. Often the answer to "why this defconfig?"
-- The **U-Boot mailing list** at `u-boot@lists.denx.de`. Read-only for weeks. learn how patches flow.
+- **`doc/board/freescale/`** in the source tree, the board-specific docs. Often the answer to "why this defconfig?"
+- The **U-Boot mailing list** at `u-boot@lists.denx.de`. Read-only for weeks. Learn how patches flow.
 - **DENX's `Bootloader_with_U-Boot`** article series (free). The clearest single intro.
-- The **U-Boot README** at the top of the source tree. Skim section by section. bookmark the parts that surprise you.
+- The **U-Boot README** at the top of the source tree. Skim section by section. Bookmark the parts that surprise you.
 
-> Next chapter: **Chapter 20 — U-Boot SPL: the missing link.** We zoom into the SPL specifically — what makes it different from full U-Boot, what fits in 64 KB of OCRAM, and how it loads its successor.
+> Next chapter: **Chapter 20: U-Boot SPL: the missing link.** We zoom into the SPL specifically, what makes it different from full U-Boot, what fits in 64 KB of OCRAM, and how it loads its successor.

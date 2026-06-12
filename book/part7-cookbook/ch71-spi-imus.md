@@ -1,16 +1,16 @@
 ---
 chapter: 71
 title: SPI IMUs (LSM6DSO / ICM-42688 / ADXL345)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 22
 status: draft
 ---
 
-# Chapter 71 — SPI IMUs
+# Chapter 71: SPI IMUs
 
 > **What:** three SPI inertial sensors at increasing complexity: **Analog Devices ADXL345** (3-axis accel only, the textbook case), **STMicro LSM6DSO** (6-axis with internal FIFO and finite-state-machine), **InvenSense ICM-42688** (6-axis, low-noise, large FIFO). For each: SPI command framing (R/W bit + register address), FIFO+watermark IRQ patterns, and a from-scratch ADXL345 SPI driver with FIFO support.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 >
 > **Why:** beyond ~400 Hz per axis, you run out of I²C bandwidth: 400 kHz divided by ~10 bits per byte does not leave room for many channels. SPI runs at 10+ MHz, so an ICM-42688 streaming all 6 axes at 8 kHz fits comfortably. SPI also gives **per-CS configuration** (different IMUs on the same bus with different speeds and CPOL/CPHA), which makes multi-IMU systems straightforward to wire.
 >
@@ -31,8 +31,8 @@ status: draft
 | Mainline driver | `adxl345_core.c` + `adxl345_spi.c` | `st_lsm6dsx_*` | `inv_icm42600_*` |
 
 **Pick guide:**
-- **ADXL345**: cheap accel-only. tap detection. legacy.
-- **LSM6DSO**: machine-learning core (FSM + MLC) — useful for "detect a specific motion" without CPU involvement.
+- **ADXL345**: cheap accel-only. Tap detection. Legacy.
+- **LSM6DSO**: machine-learning core (FSM + MLC), useful for "detect a specific motion" without CPU involvement.
 - **ICM-42688**: when noise floor matters (industrial vibration, audio-rate sampling).
 
 For most new designs: **ICM-42688 if 6-axis SPI**, ADXL345 if 3-axis accel is enough.
@@ -78,7 +78,7 @@ A *write* of value 0x08 to register 0x2D (POWER_CTL):
    /CS↑
 ```
 
-The "MB" (multi-byte) flag tells the chip to auto-increment the register pointer between bytes — efficient way to dump consecutive registers.
+The "MB" (multi-byte) flag tells the chip to auto-increment the register pointer between bytes, efficient way to dump consecutive registers.
 
 Key registers:
 
@@ -97,21 +97,21 @@ Key registers:
 
 Bring-up:
 
-1. Read DEVID (0x00). verify 0xE5.
+1. Read DEVID (0x00). Verify 0xE5.
 2. Write DATA_FORMAT (0x31) = 0x08 (full-res ±2g. +0x01 for ±4g, etc.).
-3. Write BW_RATE (0x2C) = 0x0A (100 Hz default. see datasheet table for other rates).
+3. Write BW_RATE (0x2C) = 0x0A (100 Hz default. See datasheet table for other rates).
 4. Write FIFO_CTL (0x38) = (mode << 6) | (trigger << 5) | watermark.
    - Mode 1 = FIFO mode, 2 = Stream mode, 3 = Trigger mode.
    - Watermark = number of samples (0..31).
 5. Write INT_ENABLE (0x2E) = 0x02 (watermark interrupt).
 6. Write POWER_CTL (0x2D) = 0x08 (measure mode).
 
-The chip now samples at 100 Hz. The FIFO accumulates samples. when level reaches watermark, INT1 asserts. Host drains, level resets, repeat.
+The chip now samples at 100 Hz. The FIFO accumulates samples. When level reaches watermark, INT1 asserts. Host drains, level resets, repeat.
 
 ## 71.4  How the mainline `adxl345` driver works
 
 Source: `drivers/iio/accel/adxl345_core.c` (~600 lines) + `adxl345_spi.c` (~80 lines).
-**IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **IIO:** Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 
 ```c
 /* drivers/iio/accel/adxl345_spi.c — simplified */
@@ -133,9 +133,9 @@ static const struct regmap_config adxl345_spi_regmap_config = {
 };
 ```
 
-The regmap layer takes care of OR'ing 0xC0 into addresses for reads. The core code just calls `regmap_read(regmap, reg, &val)` — same code that worked for I²C now works for SPI, courtesy of regmap.
+The regmap layer takes care of OR'ing 0xC0 into addresses for reads. The core code just calls `regmap_read(regmap, reg, &val)`, same code that worked for I²C now works for SPI, courtesy of regmap.
 > **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
-**regmap** - a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
+> **regmap:** a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 
 ### Probe flow
 
@@ -486,12 +486,12 @@ Test:
 0.039226
 ```
 
-Then enable buffered capture — same workflow as Ch 70 (`scan_elements/*_en`, `buffer/enable`). At 100 Hz with watermark 16, IRQs fire ~6×/sec, draining 16 samples each. CPU overhead negligible.
+Then enable buffered capture, same workflow as Ch 70 (`scan_elements/*_en`, `buffer/enable`). At 100 Hz with watermark 16, IRQs fire ~6×/sec, draining 16 samples each. CPU overhead negligible.
 
 What we got, ~280 lines:
 - SPI command framing with R/W + MB bits.
 - IIO INFO_RAW sysfs.
-**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 - Triggered buffered capture *driven by the chip's own watermark IRQ*.
 
 What we skipped:
@@ -499,24 +499,24 @@ What we skipped:
 - Tap / double-tap / activity / inactivity detection (ADXL345's interesting features).
 - Self-test.
 
-## 71.6  LSM6DSO — the FSM and MLC
+## 71.6  LSM6DSO, the FSM and MLC
 
-LSM6DSO contains a **finite-state-machine engine** (FSM) and a **machine-learning core** (MLC) — runtime-programmable accelerators that detect specific motion patterns *without CPU involvement*:
+LSM6DSO contains a **finite-state-machine engine** (FSM) and a **machine-learning core** (MLC), runtime-programmable accelerators that detect specific motion patterns *without CPU involvement*:
 
 - **FSM**: a small bytecode language (~256 instructions, configurable). You write a state machine ("if x_accel > 0.5 g for 100 ms then z_accel > -0.5 g for 200 ms then trigger"). The chip runs it at the IMU sample rate and emits an IRQ on match. Detect "doorbell pressed" or "drone has crashed" with zero CPU.
 - **MLC**: a decision-tree classifier (8 trees, depth 8). Compiled from a Python tool with sample-labeled training data. Detect "walking vs running vs cycling" with ~90 % accuracy at < 1 % CPU.
 
-These are special. when you need FSM or MLC, no other current-production part offers the same. Mainline support: `drivers/iio/imu/st_lsm6dsx/` includes FSM and MLC firmware-loading via the IIO config interface.
+These are special. When you need FSM or MLC, no other current-production part offers the same. Mainline support: `drivers/iio/imu/st_lsm6dsx/` includes FSM and MLC firmware-loading via the IIO config interface.
 
-For ordinary use (just sample at 1 kHz), LSM6DSO is a normal SPI IMU — same model as ADXL345 with more channels and a bigger FIFO.
+For ordinary use (just sample at 1 kHz), LSM6DSO is a normal SPI IMU, same model as ADXL345 with more channels and a bigger FIFO.
 
-## 71.7  ICM-42688 — the noise winner
+## 71.7  ICM-42688, the noise winner
 
-ICM-42688 has the lowest accel noise floor in this category (60 µg/√Hz) — meaningful for vibration analysis where you want to see micro-g signals. Its 2 KB FIFO supports streaming at 8 kHz with sane IRQ rates.
+ICM-42688 has the lowest accel noise floor in this category (60 µg/√Hz), meaningful for vibration analysis where you want to see micro-g signals. Its 2 KB FIFO supports streaming at 8 kHz with sane IRQ rates.
 
 Register-set is bank-organised (like ICM-20948). Mainline driver: `drivers/iio/imu/inv_icm42600/`.
 
-Its distinguishing feature is two SPI ports — UI (Userspace Interface) for normal samples, AUX for an external magnetometer pass-through. The MPU9250's aux-bus idea but cleaner.
+Its distinguishing feature is two SPI ports, UI (Userspace Interface) for normal samples, AUX for an external magnetometer pass-through. The MPU9250's aux-bus idea but cleaner.
 
 ## 71.8  Now: the mainline drivers
 
@@ -539,47 +539,47 @@ For LSM6DSO: `compatible = "st,lsm6dso";`. For ICM-42688: `compatible = "invense
 
 Mainline drivers expose richer attributes than our from-scratch:
 
-- `in_accel_sampling_frequency_available` — full ODR list.
-- `in_accel_scale_available` — full range list.
-- `events/in_accel_thresh_rising_value` — tap/threshold events.
+- `in_accel_sampling_frequency_available`: full ODR list.
+- `in_accel_scale_available`: full range list.
+- `events/in_accel_thresh_rising_value`: tap/threshold events.
 - FIFO-watermark configurable via `buffer/watermark`.
 
 ## 71.9  Lab
 
-1. **DEVID poke.** Use `spi_test` or any user-space SPI tool to read register 0x00. verify 0xE5.
-2. **Build and load `myadxl345.ko`.** Read accel via sysfs. verify ~+1 g on Z when flat.
-3. **Configure watermark IRQ.** Set up triggered buffer. capture 1000 samples at 100 Hz. Watch `cat /proc/interrupts` — IRQ should fire ~6 times per second, not 100.
+1. **DEVID poke.** Use `spi_test` or any user-space SPI tool to read register 0x00. Verify 0xE5.
+2. **Build and load `myadxl345.ko`.** Read accel via sysfs. Verify ~+1 g on Z when flat.
+3. **Configure watermark IRQ.** Set up triggered buffer. Capture 1000 samples at 100 Hz. Watch `cat /proc/interrupts`, IRQ should fire ~6 times per second, not 100.
 4. **Compare against per-sample-IRQ.** Modify the driver to assert IRQ on every sample (mode 0). Measure CPU usage: `top` while streaming. Watermark mode should be much lower.
 5. **Increase ODR.** Change `BW_RATE` to 0x0D (800 Hz). Verify samples land at 800 Hz with timestamps. The watermark IRQ now fires 50×/sec.
-6. **Switch to mainline.** Substitute `compatible = "adi,adxl345"`. verify same data, plus extra runtime configurability.
-7. **Tap detection.** Configure ADXL345's tap interrupt (different from watermark). verify a tap on the table triggers an event in user-space.
-8. **LSM6DSO MLC** (if available). Use ST's online tool to compile a "walking detector" from sample data. flash to chip. verify the chip emits walking-detected events with zero CPU.
+6. **Switch to mainline.** Substitute `compatible = "adi,adxl345"`. Verify same data, plus extra runtime configurability.
+7. **Tap detection.** Configure ADXL345's tap interrupt (different from watermark). Verify a tap on the table triggers an event in user-space.
+8. **LSM6DSO MLC** (if available). Use ST's online tool to compile a "walking detector" from sample data. Flash to chip. Verify the chip emits walking-detected events with zero CPU.
 
 ## 71.10  Pitfalls
 
 - **SPI mode wrong.** ADXL345 is mode 3 (CPOL=1, CPHA=1). LSM6DSO is mode 0 or 3. ICM-42688 is mode 0. Each datasheet's "SPI timing" diagram tells you. Wrong mode → garbage reads.
 - **CS asserted across the wrong byte count.** Reading 6 bytes but the SPI controller deasserts CS after byte 1 → chip resets pointer and you re-read register 0x32 six times. Use a single `spi_message` with all transfers chained.
-- **R/W bit position.** Bit 7. MB bit at 6. Different per chip — ICM-42688 uses different bits. Read the datasheet's "SPI protocol" section.
+- **R/W bit position.** Bit 7. MB bit at 6. Different per chip, ICM-42688 uses different bits. Read the datasheet's "SPI protocol" section.
 - **Endianness mismatch.** ADXL345 puts data out little-endian. MPU6050 puts it out big-endian. Easy to swap by accident.
 - **FIFO overrun.** If user-space drains too slowly, the FIFO overflows and you lose samples silently. Detect via the OVERRUN bit in INT_SOURCE (FIFO_STATUS for some chips).
-- **Self-test forgotten.** Each chip has a self-test mode (forces internal mechanical stimulation). Run on power-up to verify the chip is functional. ship products with this in startup self-check.
-- **Pull-ups on /CS during reset.** Some boards leave /CS floating during SoC reset. chip enters undefined state. Tie /CS HIGH at idle (10 kΩ to VCC or controller-default).
-- **Multi-chip SPI with shared GPIO IRQ.** Multiple IMUs sharing a watermark-IRQ GPIO. Decode in handler by reading each chip's INT_SOURCE. only the one with bit set wants service.
+- **Self-test forgotten.** Each chip has a self-test mode (forces internal mechanical stimulation). Run on power-up to verify the chip is functional. Ship products with this in startup self-check.
+- **Pull-ups on /CS during reset.** Some boards leave /CS floating during SoC reset. Chip enters undefined state. Tie /CS HIGH at idle (10 kΩ to VCC or controller-default).
+- **Multi-chip SPI with shared GPIO IRQ.** Multiple IMUs sharing a watermark-IRQ GPIO. Decode in handler by reading each chip's INT_SOURCE. Only the one with bit set wants service.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 71.11  Going deeper
 
-- **`drivers/iio/accel/adxl345_core.c`** + `adxl345_spi.c` — production ADXL345.
-- **`drivers/iio/imu/st_lsm6dsx/`** — LSM6DSO + family. FSM/MLC firmware loading.
-- **`drivers/iio/imu/inv_icm42600/`** — ICM-42688.
-- **ADXL345 datasheet (Analog Devices Rev G)** — register map + FIFO modes.
-- **LSM6DSO datasheet (STMicro DS12140)** — FSM/MLC sections.
-- **ICM-42688-P datasheet (InvenSense DS-000347)** — anti-aliasing filter design.
-- **`Documentation/iio/iio_devbuf.rst`** — buffered IIO model.
+- **`drivers/iio/accel/adxl345_core.c`** + `adxl345_spi.c`, production ADXL345.
+- **`drivers/iio/imu/st_lsm6dsx/`**: LSM6DSO + family. FSM/MLC firmware loading.
+- **`drivers/iio/imu/inv_icm42600/`**: ICM-42688.
+- **ADXL345 datasheet (Analog Devices Rev G)**: register map + FIFO modes.
+- **LSM6DSO datasheet (STMicro DS12140)**: FSM/MLC sections.
+- **ICM-42688-P datasheet (InvenSense DS-000347)**: anti-aliasing filter design.
+- **`Documentation/iio/iio_devbuf.rst`**: buffered IIO model.
 
 ---
 
-> **End of Group C — Motion sensors (Ch 70–71).** I²C IMUs cover up to ~1 kHz, SPI IMUs the rest of the way to ~10 kHz. both use IIO triggered buffers, both support watermark-IRQ patterns when ODR is high.
+> **End of Group C, Motion sensors (Ch 70–71).** I²C IMUs cover up to ~1 kHz, SPI IMUs the rest of the way to ~10 kHz. Both use IIO triggered buffers, both support watermark-IRQ patterns when ODR is high.
 
-> Next chapter: **Chapter 72 — Distance & proximity sensors (VL53L0X / HC-SR04 / GP2Y0A).** Three approaches to "how far away is that object?" Each with different physics and very different drivers.
+> Next chapter: **Chapter 72: Distance & proximity sensors (VL53L0X / HC-SR04 / GP2Y0A).** Three approaches to "how far away is that object?" Each with different physics and very different drivers.

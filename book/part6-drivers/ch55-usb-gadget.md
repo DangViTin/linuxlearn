@@ -1,14 +1,14 @@
 ---
 chapter: 55
 title: USB gadget
-part: VI — Driver development
+part: VI - Driver development
 estimated_pages: 16
 status: draft
 ---
 
-# Chapter 55 — USB gadget
+# Chapter 55: USB gadget
 
-> **What:** the **USB gadget** framework — turning the i.MX6ULL's USB OTG controller into a USB *device* (instead of a host). The mainline **ConfigFS** gadget interface lets user-space compose USB devices from "functions" (mass storage, serial, Ethernet, HID) without writing kernel code.
+> **What:** the **USB gadget** framework, turning the i.MX6ULL's USB OTG controller into a USB *device* (instead of a host). The mainline **ConfigFS** gadget interface lets user-space compose USB devices from "functions" (mass storage, serial, Ethernet, HID) without writing kernel code.
 >
 > **Why:** USB gadget runs on Android phones, Raspberry Pi Zero in USB-Pi mode, smart meters that expose data over USB-serial, and many other devices. For embedded products: USB-as-device is how your board talks to a PC for debug, firmware update, or as a remote sensor.
 >
@@ -18,9 +18,9 @@ status: draft
 ## 55.1  USB roles on i.MX6ULL
 
 i.MX6ULL has 2× USB OTG controllers. Each can be:
-- **Host** — Linux runs the USB host stack. devices plug into it.
-- **Device** (gadget) — the SoC *is* a USB device that gets plugged into something else.
-- **OTG** — auto-detect host/device via the ID pin.
+- **Host**: Linux runs the USB host stack. Devices plug into it.
+- **Device** (gadget), the SoC *is* a USB device that gets plugged into something else.
+- **OTG**: auto-detect host/device via the ID pin.
 
 Configure in DT:
 
@@ -37,7 +37,7 @@ Configure in DT:
 
 For "otg" mode you also wire the ID pin to a GPIO.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
 ## 55.2  ConfigFS gadget overview
 
@@ -167,16 +167,16 @@ The host PC sees a 64 MB USB stick.
 
 ## 55.5  Writing a custom function
 
-For specialised use cases (e.g., a custom protocol over USB), you can write a kernel function driver. But before doing so, check whether **FunctionFS** (a userspace-driven generic function) fits your needs. With FunctionFS, your gadget function lives in user space — the kernel just relays bytes between endpoints and your daemon. Much less work than a kernel function.
+For specialised use cases (e.g., a custom protocol over USB), you can write a kernel function driver. But before doing so, check whether **FunctionFS** (a userspace-driven generic function) fits your needs. With FunctionFS, your gadget function lives in user space, the kernel just relays bytes between endpoints and your daemon. Much less work than a kernel function.
 
 ## 55.6  Lab
 
 1. **Compose a USB serial gadget.** Use ConfigFS as in §55.4. Plug into a host PC, see `/dev/ttyACM0`.
 2. **USB Ethernet over OTG.** Set up `ecm` function, assign IPs both sides, SSH into the i.MX6ULL.
-3. **Mass storage from a backing file.** Expose a virtual disk. mount it on the host. copy files.
+3. **Mass storage from a backing file.** Expose a virtual disk. Mount it on the host. Copy files.
 4. **HID keyboard.** Use `g_hid` to make the i.MX6ULL appear as a USB keyboard. "type" characters by writing report descriptors.
-5. **Hot re-bind.** Write to `UDC` with empty string to disconnect. then re-bind. Useful for changing config without reboot.
-6. **Composite gadget.** Stack ACM + ECM + mass storage in one configuration. verify all three function on the host.
+5. **Hot re-bind.** Write to `UDC` with empty string to disconnect. Then re-bind. Useful for changing config without reboot.
+6. **Composite gadget.** Stack ACM + ECM + mass storage in one configuration. Verify all three function on the host.
 
 ## 55.7  Pitfalls
 
@@ -189,10 +189,10 @@ For specialised use cases (e.g., a custom protocol over USB), you can write a ke
 
 ## 55.8  Going deeper
 
-- **`Documentation/usb/gadget_configfs.rst`** — the canonical ConfigFS gadget doc.
-- **`drivers/usb/gadget/`** — gadget framework and functions.
-- **`drivers/usb/gadget/function/`** — individual function drivers (one per `.c` file).
-- **`Documentation/usb/functionfs.rst`** — FunctionFS for user-space-driven gadgets.
-- **`Documentation/devicetree/bindings/usb/`** — USB controller bindings.
+- **`Documentation/usb/gadget_configfs.rst`**: the canonical ConfigFS gadget doc.
+- **`drivers/usb/gadget/`**: gadget framework and functions.
+- **`drivers/usb/gadget/function/`**: individual function drivers (one per `.c` file).
+- **`Documentation/usb/functionfs.rst`**: FunctionFS for user-space-driven gadgets.
+- **`Documentation/devicetree/bindings/usb/`**: USB controller bindings.
 
-> Next chapter: **Chapter 55A — Kernel timers + hrtimers.** Beyond `mdelay` / `msleep`, the kernel offers precise timers for scheduling delayed work and periodic actions.
+> Next chapter: **Chapter 55A: Kernel timers + hrtimers.** Beyond `mdelay` / `msleep`, the kernel offers precise timers for scheduling delayed work and periodic actions.

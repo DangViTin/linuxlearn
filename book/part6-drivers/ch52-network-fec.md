@@ -1,21 +1,21 @@
 ---
 chapter: 52
 title: Network driver (FEC + KSZ8081)
-part: VI — Driver development
+part: VI - Driver development
 estimated_pages: 20
 status: draft
 ---
 
-# Chapter 52 — Network driver: FEC + KSZ8081
-**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
+# Chapter 52: Network driver: FEC + KSZ8081
+> **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
 > **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
-**DDR** - external DRAM that must be configured and trained before most software can run from it.
+> **DDR:** external DRAM that must be configured and trained before most software can run from it.
 
-> **What:** the i.MX6ULL's **FEC** (Fast Ethernet Controller) and the **KSZ8081** RMII PHY that nearly every Point Atom board uses. The kernel's network-device framework (`netdev`), the PHY library (`phylib`), MDIO bus operations, RMII vs MII timing — the full path from MAC to `eth0`.
-> **MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
-> **PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
+> **What:** the i.MX6ULL's **FEC** (Fast Ethernet Controller) and the **KSZ8081** RMII PHY that nearly every Point Atom board uses. The kernel's network-device framework (`netdev`), the PHY library (`phylib`), MDIO bus operations, RMII vs MII timing, the full path from MAC to `eth0`.
+> **MAC:** Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
+> **PHY:** physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
 >
-> **Why:** Ethernet is one of the most-debugged peripherals on any embedded board. Wrong PHY ID, wrong RMII clock direction, wrong delay-line settings — and you spend a week wondering why your `ping` drops every fifth packet. The mainline `fec_main.c` + `phylib` + `kszphy.c` stack is mature. understanding what it expects from DT and how to verify timing turns a one-week bug-hunt into a one-hour bring-up.
+> **Why:** Ethernet is one of the most-debugged peripherals on any embedded board. Wrong PHY ID, wrong RMII clock direction, wrong delay-line settings, and you spend a week wondering why your `ping` drops every fifth packet. The mainline `fec_main.c` + `phylib` + `kszphy.c` stack is mature. Understanding what it expects from DT and how to verify timing turns a one-week bug-hunt into a one-hour bring-up.
 >
 > **Focus:** **the FEC ↔ PHY ↔ Linux pipeline**. The FEC is the MAC (Media Access Controller). The PHY is the SerDes that turns digital frames into wire signals. The MDIO bus is the management interface between them. Linux's `netdev` exposes the result as `eth0`.
 
@@ -85,13 +85,13 @@ The FEC node:
 
 Critical fields:
 
-- **`phy-mode = "rmii"`** — the data interface between MAC and PHY. RMII (2-pair, 50 MHz) is what i.MX6ULL boards use. RGMII is for gigabit. not on i.MX6ULL.
-- **`phy-handle`** — points to the PHY node. The MAC driver uses phylib to talk to it.
-- **`reg = <2>` (in the PHY node)** — the PHY's MDIO address. Set by board strapping (PHYAD pins).
-- **`micrel,led-mode = <1>`** — Micrel/Microchip-specific tweak (link-on-bicolor vs blink-on-activity).
-- **`clocks` and `clock-names = "rmii-ref"`** on the PHY — tell the PHY driver which clock provides the 50 MHz RMII reference. This is the most common bring-up bug on i.MX6ULL boards. see §52.5.
+- **`phy-mode = "rmii"`**: the data interface between MAC and PHY. RMII (2-pair, 50 MHz) is what i.MX6ULL boards use. RGMII is for gigabit. Not on i.MX6ULL.
+- **`phy-handle`**: points to the PHY node. The MAC driver uses phylib to talk to it.
+- **`reg = <2>` (in the PHY node)**: the PHY's MDIO address. Set by board strapping (PHYAD pins).
+- **`micrel,led-mode = <1>`**: Micrel/Microchip-specific tweak (link-on-bicolor vs blink-on-activity).
+- **`clocks` and `clock-names = "rmii-ref"`** on the PHY, tell the PHY driver which clock provides the 50 MHz RMII reference. This is the most common bring-up bug on i.MX6ULL boards. See §52.5.
 
-## 52.3  netdev framework — what the driver provides
+## 52.3  netdev framework, what the driver provides
 
 A network driver implements `net_device_ops`:
 
@@ -119,9 +119,9 @@ register_netdev(ndev);
 
 The driver receives packets in `napi_poll` (NAPI: New API. The polled receive model used since Linux 2.6) and transmits in `ndo_start_xmit`. NAPI batches RX interrupts. The driver gets one IRQ, then polls until the RX queue is empty, then re-arms the IRQ. This avoids one IRQ per packet at high rates.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
-## 52.4  phylib — the PHY library
+## 52.4  phylib, the PHY library
 
 PHYs all speak (mostly) the same management protocol: **MDIO/MDC clauses 22 and 45** define a small register space (32 registers in C22, 65536 in C45) accessed over a 2-wire bus.
 
@@ -133,9 +133,9 @@ phydev = of_phy_connect(ndev, phy_handle, fec_link_state_change_cb,
 ```
 
 The PHY's per-chip quirks live in a vendor PHY driver (`drivers/net/phy/micrel.c` for Microchip KSZ). The MAC driver just calls phylib functions:
-- `phy_start(phydev)` — start autonegotiation.
-- `phy_stop(phydev)` — halt.
-- `phy_print_status(phydev)` — print link state.
+- `phy_start(phydev)`: start autonegotiation.
+- `phy_stop(phydev)`: halt.
+- `phy_print_status(phydev)`: print link state.
 
 The kernel autoloads the right PHY driver based on the PHY's identification registers (read via MDIO at boot).
 
@@ -161,7 +161,7 @@ Which? **Depends on the board.** Point Atom boards historically use *MAC-supplie
 If the clock direction is wrong, you get no link, no MDIO communication, and confusing symptoms. The DT must declare:
 
 - The PHY's `clocks = <&clks IMX6UL_CLK_ENET_REF>;` if MAC supplies clock.
-- Omit the `clocks` and instead have the PHY's `clock-names = "rmii-ref";` if PHY supplies clock — but the PHY chip itself must be ordered with the "RNB" or "RND" variant.
+- Omit the `clocks` and instead have the PHY's `clock-names = "rmii-ref";` if PHY supplies clock, but the PHY chip itself must be ordered with the "RNB" or "RND" variant.
 
 Cross-check schematic ↔ DT ↔ PHY chip ordering code. Mismatch is the #1 cause of "Ethernet doesn't work" on new i.MX6ULL boards.
 
@@ -196,7 +196,7 @@ pinctrl_enet1: enet1grp {
 };
 ```
 
-The last line's `0x4001b031` is the conf_reg value for the RMII reference clock — it sets the SION (Software Input ON) bit, which is required for the clock to be both an input and output. Forgetting this is a classic bug.
+The last line's `0x4001b031` is the conf_reg value for the RMII reference clock, it sets the SION (Software Input ON) bit, which is required for the clock to be both an input and output. Forgetting this is a classic bug.
 
 ## 52.7  MAC address sources
 
@@ -207,13 +207,13 @@ The last line's `0x4001b031` is the conf_reg value for the RMII reference clock 
 Where does `eth0`'s MAC address come from?
 
 1. **FEC's MAC register** (preserved across warm reset, set by bootloader).
-2. **OCOTP fuses** (i.MX6ULL has MAC fuses. written once at factory).
+2. **OCOTP fuses** (i.MX6ULL has MAC fuses. Written once at factory).
 3. **DT property `mac-address`**.
-4. **Random** (last resort. address with locally-administered bit).
+4. **Random** (last resort. Address with locally-administered bit).
 
 The mainline `fec_main.c` checks in this order: DT mac-address → OCOTP fuse → MAC register → random. For production: program the OCOTP at factory test (one-time, indelible). For development: pass via U-Boot's `bootargs` (`eth0=...`).
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
+> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ## 52.8  Bringing it up
 
@@ -270,9 +270,9 @@ We'll go deeper on dual FEC in Part VII Ch 115 (Device Cookbook: Dual FEC + W550
 1. **Verify Ethernet on Point Atom.** Boot a mainline-FEC-enabled kernel, plug Ethernet cable, observe link-up in dmesg, ping the gateway.
 2. **Inspect the PHY.** `mii-diag eth0` or `ethtool eth0` to confirm PHY ID and link mode.
 3. **Read MDIO directly.** `mii-tool -v eth0` shows raw PHY registers (status, control, ID).
-4. **Set a custom MAC.** Via DT `mac-address` property. reboot. verify `ip link show eth0`.
+4. **Set a custom MAC.** Via DT `mac-address` property. Reboot. Verify `ip link show eth0`.
 5. **Throughput test.** `iperf3 -s` on the host, `iperf3 -c <host>` on the target. Expect ~94 Mbps (line-rate 100). Below 50 Mbps → debug.
-6. **Recover from cable unplug.** Pull and replug. watch dmesg for the link-state transition. Confirm `eth0` recovers cleanly.
+6. **Recover from cable unplug.** Pull and replug. Watch dmesg for the link-state transition. Confirm `eth0` recovers cleanly.
 
 ## 52.11  Pitfalls
 
@@ -282,19 +282,19 @@ We'll go deeper on dual FEC in Part VII Ch 115 (Device Cookbook: Dual FEC + W550
 - **Missing PHY supply.** PHY needs ~100 mA from a 3.3V rail. If reg_enet_3v3 isn't enabled at the right time, MDIO reads return 0xFFFF.
 - **MII vs RMII pinmux swap.** Pads with similar names but different signals. Cross-check `imx6ul-pinfunc.h` macros.
 - **MAC address all zeros.** Set OCOTP at factory, or pass via bootargs. Linux's "random" fallback won't survive reboots, breaking DHCP-leased systems.
-- **Forgot phy-mode.** Without `phy-mode = "rmii"`, default may be MII (different signals). link won't come up.
-- **NAPI weight too low** for high-rate traffic. Default 64 is fine for 100 Mbps. bump higher for gigabit (not on i.MX6ULL).
+- **Forgot phy-mode.** Without `phy-mode = "rmii"`, default may be MII (different signals). Link won't come up.
+- **NAPI weight too low** for high-rate traffic. Default 64 is fine for 100 Mbps. Bump higher for gigabit (not on i.MX6ULL).
 - **Cable issue.** Half the "FEC not working" reports turn out to be a bent CAT5e or a dead RJ45 jack. Try a different cable before debugging software.
 
 ## 52.12  Going deeper
 
-- **`drivers/net/ethernet/freescale/fec_main.c`** — the mainline FEC driver. Important read.
-- **`drivers/net/phy/micrel.c`** — KSZ8081 / KSZ9031 / etc. PHY drivers.
-- **`Documentation/networking/`** — kernel networking documentation.
-- **`Documentation/devicetree/bindings/net/ethernet-controller.yaml`** — generic Ethernet binding.
-- **`Documentation/devicetree/bindings/net/fsl-fec.yaml`** — FEC-specific binding.
-- **`Documentation/networking/phy.rst`** — phylib internals.
-- **`tools/testing/selftests/net/`** — kernel's network self-tests. useful templates for your own.
+- **`drivers/net/ethernet/freescale/fec_main.c`**: the mainline FEC driver. Important read.
+- **`drivers/net/phy/micrel.c`**: KSZ8081 / KSZ9031 / etc. PHY drivers.
+- **`Documentation/networking/`**: kernel networking documentation.
+- **`Documentation/devicetree/bindings/net/ethernet-controller.yaml`**: generic Ethernet binding.
+- **`Documentation/devicetree/bindings/net/fsl-fec.yaml`**: FEC-specific binding.
+- **`Documentation/networking/phy.rst`**: phylib internals.
+- **`tools/testing/selftests/net/`**: kernel's network self-tests. Useful templates for your own.
 
-> Next chapter: **Chapter 52A — PREEMPT_RT.** When latency matters more than throughput, the real-time kernel patches turn Linux into a viable hard-real-time platform. We cover what they do, how to measure, and the trade-offs.
-> **PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
+> Next chapter: **Chapter 52A: PREEMPT_RT.** When latency matters more than throughput, the real-time kernel patches turn Linux into a viable hard-real-time platform. We cover what they do, how to measure, and the trade-offs.
+> **PREEMPT_RT:** the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.

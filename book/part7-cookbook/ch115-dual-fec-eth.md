@@ -1,41 +1,41 @@
 ---
 chapter: 115
 title: Dual FEC + hosted Ethernet (W5500, ENC28J60)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 14
 status: draft
 ---
 
-# Chapter 115 — Dual FEC + hosted Ethernet
+# Chapter 115: Dual FEC + hosted Ethernet
 
 > **What:** putting **multiple Ethernet interfaces** on an i.MX6ULL. The SoC has two on-chip **FEC (Fast Ethernet Controller)** instances at 100 Mbps. We bring both up simultaneously as `eth0` and `eth1` with separate PHYs. For a third (or fourth) interface, we add **WIZnet W5500** (SPI Ethernet with hardware TCP/IP) or **Microchip ENC28J60** (older, slower, mainline-supported) as `spi-ethernet` chips. We then build typical multi-NIC scenarios: a **router** (eth0 WAN, eth1 LAN), a **bridge** (eth0+eth1 transparent L2), and an **isolated subnet** for industrial bus traffic (eth1 talks only to PLCs, eth0 to corporate network).
 >
-> **Why:** any "edge gateway" product has 2+ Ethernet ports — one to the internet, one to a local industrial network — because mixing the two on a single physical port creates security and reliability problems. The i.MX6ULL is unusual in having two on-chip FECs (most SoCs in this class have one). This is a feature you should exploit. When you need a third interface (e.g., a separate management LAN, or a Modbus-TCP island), SPI Ethernet chips are the only way without an external switch — and they're easy on Linux thanks to mainline drivers.
+> **Why:** any "edge gateway" product has 2+ Ethernet ports, one to the internet, one to a local industrial network, because mixing the two on a single physical port creates security and reliability problems. The i.MX6ULL is unusual in having two on-chip FECs (most SoCs in this class have one). This is a feature you should exploit. When you need a third interface (e.g., a separate management LAN, or a Modbus-TCP island), SPI Ethernet chips are the only way without an external switch, and they're easy on Linux thanks to mainline drivers.
 >
-> **Focus:** Dual-MAC on one SoC means two PHYs. Each needs its own pinmux, reference clock, and IRQ. The kernel netdev model already isolates the two MACs — they look like two NICs. The hard part is the bring-up: pinmux conflicts (FEC1 shares many pins with FEC2 + UART), separate PHY addresses on MDIO, and per-PHY interrupt routing. The W5500 implements TCP/IP in hardware. You talk to it at the socket layer over SPI, not as a netdev. This does not fit the Linux netdev model. Mainline-friendly choices are ENC28J60 (slow, netdev-presenting) and TI's KSZ8851 / Davicom DM9051 (10/100, netdev, faster). We cover all three patterns.
+> **Focus:** Dual-MAC on one SoC means two PHYs. Each needs its own pinmux, reference clock, and IRQ. The kernel netdev model already isolates the two MACs, they look like two NICs. The hard part is the bring-up: pinmux conflicts (FEC1 shares many pins with FEC2 + UART), separate PHY addresses on MDIO, and per-PHY interrupt routing. The W5500 implements TCP/IP in hardware. You talk to it at the socket layer over SPI, not as a netdev. This does not fit the Linux netdev model. Mainline-friendly choices are ENC28J60 (slow, netdev-presenting) and TI's KSZ8851 / Davicom DM9051 (10/100, netdev, faster). We cover all three patterns.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> **MAC** - Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
-> **PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
-> **IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **MAC:** Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
+> **PHY:** physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 >
 > **Tooling.** This chapter uses `iproute2`, `iperf3`, `tcpdump`, `ethtool`, optional `bridge-utils`.
 > - **Ubuntu-base (target):** `apt install iproute2 iperf3 tcpdump ethtool bridge-utils`
 > - **Buildroot:** `BR2_PACKAGE_IPROUTE2=y BR2_PACKAGE_IPERF3=y BR2_PACKAGE_TCPDUMP=y BR2_PACKAGE_ETHTOOL=y BR2_PACKAGE_BRIDGE_UTILS=y`
-> **Buildroot** - a configuration-driven build system that produces a complete root filesystem and related images.
+> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 > - Full per-tool reference: [Userspace tooling appendix](../part5-rootfs/appendix-tooling.md).
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs** - root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
 
 ## 115.1  i.MX6ULL FEC overview
 
 The i.MX6ULL has **2× FEC** (FEC1 and FEC2 in the reference manual), each:
 - 10/100 Mbps MAC
-- RMII PHY interface (4 wires for data + 1 clock vs 8+ for MII. cheaper, fewer pins)
+- RMII PHY interface (4 wires for data + 1 clock vs 8+ for MII. Cheaper, fewer pins)
 - IEEE 1588 PTP timestamp support
 - Separate DMA channel
 > **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
-**DMA** - Direct Memory Access. hardware moves data to or from memory without the CPU copying each byte.
+> **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
 - Separate IRQ
 
 Each FEC needs:
@@ -46,7 +46,7 @@ Each FEC needs:
 
 ## 115.2  Wiring two PHYs
 
-The reference Point Atom MINI board has only FEC1 wired (single Ethernet). to bring up FEC2 you must either choose a board with both routed (some i.MX6ULL devkits have it), or wire FEC2 to a second PHY breakout. Pinout (RMII):
+The reference Point Atom MINI board has only FEC1 wired (single Ethernet). To bring up FEC2 you must either choose a board with both routed (some i.MX6ULL devkits have it), or wire FEC2 to a second PHY breakout. Pinout (RMII):
 
 ```
    FEC1                       PHY 1 (KSZ8081)
@@ -116,7 +116,7 @@ ip link
 
 `ethtool eth0` and `ethtool eth1` should show "Link detected: yes" when cables are plugged.
 
-## 115.3  Router pattern — WAN on eth0, LAN on eth1
+## 115.3  Router pattern, WAN on eth0, LAN on eth1
 
 ```sh
 # Bring up
@@ -144,7 +144,7 @@ systemctl restart dnsmasq
 
 That is the full router setup. Add `nftables` for modern filtering, or stick with `iptables` for familiarity.
 
-## 115.4  Bridge pattern — transparent L2 between eth0 + eth1
+## 115.4  Bridge pattern, transparent L2 between eth0 + eth1
 
 For when you want the i.MX6ULL to be invisible to upstream traffic but still observe / log it:
 
@@ -158,9 +158,9 @@ ip addr add 192.168.1.5/24 dev br0    # optional, for management
 
 Traffic flows transparently between eth0 and eth1. The i.MX6ULL can sniff via `tcpdump -i br0`, optionally filter / mirror via `tc` qdiscs. Useful for inline industrial-traffic monitoring.
 
-## 115.5  Isolated subnet pattern — eth1 for industrial bus
+## 115.5  Isolated subnet pattern, eth1 for industrial bus
 
-For security + reliability: eth0 is the corporate network (with internet). eth1 is a dedicated subnet to PLCs / sensors. No bridge, no routing — packets do not cross.
+For security + reliability: eth0 is the corporate network (with internet). Eth1 is a dedicated subnet to PLCs / sensors. No bridge, no routing, packets do not cross.
 
 ```sh
 ip addr add 192.168.2.1/24 dev eth1     # private industrial subnet
@@ -173,19 +173,19 @@ ip link set eth1 up
 
 Compromise of corporate side doesn't expose PLCs. Compromise of PLC subnet doesn't pivot to cloud. This is the industrial-IoT best practice and a major reason for needing dual-NIC.
 
-## 115.6  Adding a third NIC via SPI — the W5500 (hardware TCP/IP)
+## 115.6  Adding a third NIC via SPI, the W5500 (hardware TCP/IP)
 
 > **Driver choice:** Use the in-tree, maintained driver first.
 > Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
 
 
-W5500 is unusual: it's not a netdev. It's a **hardware TCP/IP stack** with 8 sockets, accessed over SPI. You don't talk Ethernet frames to it — you `OPEN`, `CONNECT`, `SEND`, `RECV` at the TCP/UDP level.
+W5500 is unusual: it's not a netdev. It's a **hardware TCP/IP stack** with 8 sockets, accessed over SPI. You don't talk Ethernet frames to it, you `OPEN`, `CONNECT`, `SEND`, `RECV` at the TCP/UDP level.
 
 This makes W5500 awkward to use on Linux. The mainline kernel does not have a W5500 driver in `drivers/net/`. There are out-of-tree drivers that wrap W5500 sockets as Linux `AF_INET` sockets, but they're niche.
 
 The practical Linux approach: use W5500's sockets directly from user-space via SPI, or choose a different chip (DM9051, ENC28J60) that presents as a netdev.
 
-## 115.7  Adding a third NIC via SPI — ENC28J60 / DM9051 (mainline netdev)
+## 115.7  Adding a third NIC via SPI, ENC28J60 / DM9051 (mainline netdev)
 
 For a third netdev, use ENC28J60 (slow but ubiquitous) or DM9051 (faster, both mainline). DM9051 is 10/100. ENC28J60 is 10 Mbps only.
 
@@ -225,7 +225,7 @@ DM9051 is adequate for a management interface or a low-rate Modbus-TCP island. I
 
 ## 115.8  How the FEC driver works
 
-`drivers/net/ethernet/freescale/fec_main.c` — the mainline FEC driver, ~3500 lines. Key points:
+`drivers/net/ethernet/freescale/fec_main.c`, the mainline FEC driver, ~3500 lines. Key points:
 
 - One netdev per `&fecN` DT node.
 - Setup at probe: enable clocks, reset MAC, attach PHY via `of_phy_connect`, allocate BD ring buffers.
@@ -277,40 +277,40 @@ This is canonical NAPI: process up to `budget` packets per call. If fewer, compl
 1. **Single FEC up.** Default config: confirm eth0 works (`ping`, `curl`).
 2. **Add second PHY.** Wire up FEC2 + a second PHY (KSZ8081 on a breakout). Configure DT. Verify eth1 appears + carrier detects when cable plugged.
 3. **MAC address uniqueness.** Confirm eth0 and eth1 have different MAC addresses (the kernel auto-generates from the chip UID if DT doesn't specify). Set explicit MACs in DT via `local-mac-address` if needed.
-4. **Router scenario.** Configure eth0 as WAN + DHCP client. eth1 as LAN + DHCP server. Plug a laptop into eth1. It should DHCP an IP and route to internet via eth0.
-5. **Bridge scenario.** Same boards as a transparent L2 bridge. tcpdump traffic on br0. verify no MAC NAT.
-6. **Industrial isolation.** eth1 in 192.168.2.0/24 (no route to/from eth0). attach 5 simulated Modbus-TCP devices. verify your collector reads them and forwards summaries via eth0 with strict iptables rules.
+4. **Router scenario.** Configure eth0 as WAN + DHCP client. Eth1 as LAN + DHCP server. Plug a laptop into eth1. It should DHCP an IP and route to internet via eth0.
+5. **Bridge scenario.** Same boards as a transparent L2 bridge. Tcpdump traffic on br0. Verify no MAC NAT.
+6. **Industrial isolation.** eth1 in 192.168.2.0/24 (no route to/from eth0). Attach 5 simulated Modbus-TCP devices. Verify your collector reads them and forwards summaries via eth0 with strict iptables rules.
 7. **Add DM9051 SPI Ethernet.** Wire DM9051 to ECSPI3 + IRQ + RESET GPIOs. DT update. `modprobe dm9051`. Confirm eth2 appears.
 8. **Throughput test.** `iperf3` between two i.MX6ULLs via FEC (95 Mbps), then via DM9051 (8 Mbps). Quantify.
 9. **PTP timestamping.** Enable `ethtool -T eth0` PTP HW timestamping. Run `ptp4l` to discipline the clock via PTP. Measure offset over time.
-10. **Mixed routing.** Three interfaces. routing rules send VLAN 1 → eth0, VLAN 2 → eth1, mgmt → eth2.
+10. **Mixed routing.** Three interfaces. Routing rules send VLAN 1 → eth0, VLAN 2 → eth1, mgmt → eth2.
 
 ## 115.10  Pitfalls
 
 - **MDIO address conflict.** Both PHYs configured to address 0 → only one responds. The other looks like "not present." Verify PHY strap pins.
-- **Pinmux conflict.** FEC2 pins overlap UART2 + I²C on some i.MX6ULL packages. Check `pinctrl-imx6ull.h` carefully. some functions are mutually exclusive.
+- **Pinmux conflict.** FEC2 pins overlap UART2 + I²C on some i.MX6ULL packages. Check `pinctrl-imx6ull.h` carefully. Some functions are mutually exclusive.
 - **RMII REF_CLK direction.** Either the SoC supplies REF_CLK to the PHY, or the PHY's crystal does, and the PHY supplies it back to the SoC. Wrong direction = no link. Configurable in DT via `clocks` property + PHY strap pins.
-- **EMC noise.** Two RMII interfaces close together radiate similarly. common-mode chokes on each Ethernet jack help.
-- **No explicit MAC address.** Kernel generates from chip UID. random reboots can yield different MACs if UID isn't read correctly. Set `local-mac-address` in DT for production.
-- **Setting MAC after `ip link up`.** Some PHYs latch the MAC at link-up. changes after may not take effect. Set before `up`.
-- **DM9051 IRQ level vs edge.** DM9051 datasheet specifies active-low level-triggered IRQ. misconfigured edge-triggered loses interrupts and the interface hangs.
+- **EMC noise.** Two RMII interfaces close together radiate similarly. Common-mode chokes on each Ethernet jack help.
+- **No explicit MAC address.** Kernel generates from chip UID. Random reboots can yield different MACs if UID isn't read correctly. Set `local-mac-address` in DT for production.
+- **Setting MAC after `ip link up`.** Some PHYs latch the MAC at link-up. Changes after may not take effect. Set before `up`.
+- **DM9051 IRQ level vs edge.** DM9051 datasheet specifies active-low level-triggered IRQ. Misconfigured edge-triggered loses interrupts and the interface hangs.
 - **SPI Ethernet under load.** Even DM9051 caps at ~10 Mbps. If you try to use it as a primary interface, performance suffers. Use it as a management or low-bandwidth interface only.
 - **W5500 expectation mismatch.** W5500 is not a netdev. If you ordered "SPI Ethernet" thinking it would integrate with `ip link`, you'll be surprised. Order DM9051 or ENC28J60 for true netdev.
 - **Bridge + ip address on members.** Once an interface is enslaved to a bridge, only the bridge gets an IP. The slave interfaces don't participate in L3.
 
 ## 115.11  Going deeper
 
-- **`drivers/net/ethernet/freescale/fec_main.c`** — read it. canonical mainline NIC driver.
-- **`drivers/net/ethernet/davicom/dm9051.c`** — SPI Ethernet driver.
-- **`Documentation/networking/`** kernel docs — NAPI, bridging, VLAN, bonding.
-- **`iproute2` manuals** — `ip link`, `ip addr`, `ip route`.
-- **`nftables` wiki** — modern firewall/NAT.
-- **NXP IMX6ULL Reference Manual ch. 22 (ENET)** — register-level FEC details.
-- **KSZ8081 datasheet** — most-used PHY, strap-pin docs are critical.
-- **IEEE 1588 / PTP** — for clock distribution over Ethernet (extends Ch 107's GPS-time use case).
-- **Ch 52** — the original FEC driver chapter.
-- **Ch 91** — for WiFi as an alternative network interface.
+- **`drivers/net/ethernet/freescale/fec_main.c`**: read it. Canonical mainline NIC driver.
+- **`drivers/net/ethernet/davicom/dm9051.c`**: SPI Ethernet driver.
+- **`Documentation/networking/`** kernel docs, NAPI, bridging, VLAN, bonding.
+- **`iproute2` manuals**: `ip link`, `ip addr`, `ip route`.
+- **`nftables` wiki**: modern firewall/NAT.
+- **NXP IMX6ULL Reference Manual ch. 22 (ENET)**: register-level FEC details.
+- **KSZ8081 datasheet**: most-used PHY, strap-pin docs are critical.
+- **IEEE 1588 / PTP**: for clock distribution over Ethernet (extends Ch 107's GPS-time use case).
+- **Ch 52**: the original FEC driver chapter.
+- **Ch 91**: for WiFi as an alternative network interface.
 
 ---
 
-> Next chapter: **Chapter 116 — PMICs and the regulator framework** — power-management ICs (PCA9450, PF8200).
+> Next chapter: **Chapter 116: PMICs and the regulator framework**, power-management ICs (PCA9450, PF8200).

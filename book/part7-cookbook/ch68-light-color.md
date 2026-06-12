@@ -1,19 +1,19 @@
 ---
 chapter: 68
 title: Light & color sensors (BH1750 / TSL2561 / VEML7700 / TCS34725)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 22
 status: draft
 ---
 
-# Chapter 68 — Light & color sensors
+# Chapter 68: Light & color sensors
 
 > **What:** four I²C ambient-light sensors, dissected: **Rohm BH1750** (the simplest), **AMS TSL2561** (dual-channel for IR rejection), **Vishay VEML7700** (low-power, modern). Plus the bonus **AMS TCS34725** (RGB+clear color sensor). For each: protocol on the wire, the mainline IIO driver internals, and a from-scratch IIO driver for BH1750.
-> **IIO** - Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
+> **IIO:** Industrial I/O, Linux's subsystem for sensors, ADCs, DACs, and buffered sampled data.
 >
 > **Why:** measuring light is harder than it looks. A photodiode's current is roughly proportional to incident photon flux, but the human eye's "lux" response is wavelength-weighted (CIE photopic curve). Different sensors solve this differently. BH1750 uses an analog filter. TSL2561 measures a broadband channel and an IR channel and subtracts. VEML7700 uses an integrated correction. After this chapter you can pick a sensor by its trade-offs, and write a driver for any of them.
 >
-> **Focus:** **integration time controls both noise floor and saturation point**. Light sensors are integrators — current × time → digital count. Long integration: low-light accuracy. Short integration: high-light range. Pick integration time for the range you care about. The IIO `integration_time` attribute exposes this directly.
+> **Focus:** **integration time controls both noise floor and saturation point**. Light sensors are integrators, current × time → digital count. Long integration: low-light accuracy. Short integration: high-light range. Pick integration time for the range you care about. The IIO `integration_time` attribute exposes this directly.
 
 
 ## 68.1  Sensor comparison
@@ -25,7 +25,7 @@ status: draft
 | Range | 1–65535 lx | 0.1–40000 lx (auto-gain) | 0.05–120 klx | 0.04–1000 klx (gain-dep) |
 | I²C address | 0x23 / 0x5C | 0x29 / 0x39 / 0x49 | 0x10 | 0x29 |
 | Max bus clock | 400 kHz | 400 kHz | 400 kHz | 400 kHz |
-| Integration time | 120 ms (high-res) / 16 ms (low-res) — fixed | 13.7 / 101 / 402 ms | 25 / 50 / 100 / 200 / 400 / 800 ms | 2.4 ms × 1..256 |
+| Integration time | 120 ms (high-res) / 16 ms (low-res), fixed | 13.7 / 101 / 402 ms | 25 / 50 / 100 / 200 / 400 / 800 ms | 2.4 ms × 1..256 |
 | Has IR rejection | analog filter (built-in) | computed (broad − IR) | analog filter | analog filter |
 | Idle current | 1 µA | 0.6 µA | 0.5 µA | 0.5 µA |
 | Volume price | $0.80–1.50 | $1.50–2.50 | $1.50–2.50 | $2.50–4.00 |
@@ -37,19 +37,19 @@ status: draft
 - **VEML7700**: low-power product, or when you need wide dynamic range (klx + dark room).
 - **TCS34725**: RGB color sensing (color matching, white-balance, paper-color detection).
 
-## 68.2  Why lux is hard — the photometric response
+## 68.2  Why lux is hard, the photometric response
 
-Light meters claim "lux" — but a photodiode just produces current proportional to total photon flux. To convert photon flux to lux, you must weight by the eye's wavelength sensitivity (peaks at 555 nm green, drops to near-zero at 400 nm violet and 700 nm red, dead-zero in IR/UV).
+Light meters claim "lux", but a photodiode just produces current proportional to total photon flux. To convert photon flux to lux, you must weight by the eye's wavelength sensitivity (peaks at 555 nm green, drops to near-zero at 400 nm violet and 700 nm red, dead-zero in IR/UV).
 
 Three sensor strategies:
 
 1. **Optical filter** (BH1750, VEML7700, TCS34725 clear channel): a colored glass cover on the die that approximates the photopic curve. Cheap, fixed.
 2. **Multi-channel + math** (TSL2561): one broadband channel (visible + IR) + one IR-only channel. Compute lux = `(broad − IR) × calibrated_curve`. More accurate, more software.
-3. **R+G+B sensors** (TCS34725): measure each band. can compute lux *and* report color.
+3. **R+G+B sensors** (TCS34725): measure each band. Can compute lux *and* report color.
 
 The mainline driver does whichever math the chip needs, and presents user-space with `in_illuminance_input` in lux. The user never sees the wavelength weighting. The driver does it. Just `cat in_illuminance_input` gives lux.
 
-## 68.3  Protocol — BH1750 on the wire
+## 68.3  Protocol, BH1750 on the wire
 
 BH1750 is unusual: it has no register map. You send single-byte **opcodes**, and the chip either acts or starts returning data.
 
@@ -84,7 +84,7 @@ lux = count / 1.2   (datasheet typo-prone; check §"How to Calculate lx")
 
 For the high-resolution mode 2 (0x11): `lux = count / (1.2 * 2)`.
 
-Two bytes on the wire and one division — that is the whole protocol. It fits on a page.
+Two bytes on the wire and one division, that is the whole protocol. It fits on a page.
 
 ## 68.4  How the mainline `bh1750` driver works
 
@@ -161,7 +161,7 @@ out:
 
 User-space reads `in_illuminance_raw` (the raw 16-bit count) and `in_illuminance_scale` (the conversion factor). The actual lux = `raw * scale`.
 
-Some mainline drivers add a third attribute `_processed` that returns the result already converted to lux × 1000 — saving user-space the math. BH1750's driver opts for the raw+scale pattern (more flexible).
+Some mainline drivers add a third attribute `_processed` that returns the result already converted to lux × 1000, saving user-space the math. BH1750's driver opts for the raw+scale pattern (more flexible).
 
 ## 68.5  Writing a BH1750 driver from scratch
 
@@ -333,7 +333,7 @@ Build, load, test:
 
 Driver is ~120 lines. Bottom-up: opcode write, sleep, read 2 bytes, divide. The whole protocol fit in a paragraph in the datasheet.
 
-## 68.6  TSL2561 — two channels, software fusion
+## 68.6  TSL2561, two channels, software fusion
 
 TSL2561 has two photodiodes:
 - **Channel 0**: broadband (visible + IR).
@@ -351,11 +351,11 @@ elif ratio < 1.30:  lux = 0.00146 * Ch0 - 0.00112 * Ch1
 else:               lux = 0
 ```
 
-Piecewise polynomial. The coefficients come from chip characterisation across a range of light sources (incandescent, fluorescent, daylight) — the chip vendor has done the empirical work.
+Piecewise polynomial. The coefficients come from chip characterisation across a range of light sources (incandescent, fluorescent, daylight), the chip vendor has done the empirical work.
 
 Mainline driver: `drivers/staging/iio/light/tsl2x7x.c` covers TSL2561, TSL2563, TSL2x7x family. Reads both channels, applies the formula, exposes `in_illuminance_input`.
 
-## 68.7  VEML7700 — auto-ranging done right
+## 68.7  VEML7700, auto-ranging done right
 
 VEML7700 has one channel with **6 integration times** (25 / 50 / 100 / 200 / 400 / 800 ms) and **4 gains** (1x, 2x, 1/4x, 1/8x). The driver can auto-range: start at low gain + short integration. If count saturates, reduce gain. If count is too low, increase integration time.
 
@@ -381,11 +381,11 @@ static int veml7700_read_lux(struct veml7700_data *data, int *lux)
 }
 ```
 
-Why this matters: with auto-ranging, the chip covers 0.05 lx (dark hallway) to 120 klx (direct sunlight) — six decades — without saturating. Without auto-ranging, you'd have to pick a tradeoff at design time.
+Why this matters: with auto-ranging, the chip covers 0.05 lx (dark hallway) to 120 klx (direct sunlight), six decades, without saturating. Without auto-ranging, you'd have to pick a tradeoff at design time.
 
-## 68.8  TCS34725 — RGB + clear
+## 68.8  TCS34725, RGB + clear
 
-The bonus chip: color sensing. Four channels — R, G, B, and clear (broadband, similar to TSL2561 Ch0). Each is a 16-bit count over a programmable integration time.
+The bonus chip: color sensing. Four channels, R, G, B, and clear (broadband, similar to TSL2561 Ch0). Each is a 16-bit count over a programmable integration time.
 
 ```c
 /* IIO channels for TCS34725 */
@@ -445,30 +445,30 @@ tcs34725@29 { compatible = "amstaos,tcs34725"; reg = <0x29>; };
 3. **Compare against a phone app.** Most smartphone light-meter apps are accurate to ±20 %. Cross-check.
 4. **Add gain control.** Modify `mybh1750.c` to expose `_integration_time` as a writable IIO attribute. Verify writing 1 / 0.5 / 2 changes the effective integration time.
 5. **Switch to mainline.** Unload yours, use `rohm,bh1750`. Verify same scale + raw.
-6. **TSL2561 (if available).** Configure the chip. read both channels. implement the piecewise formula in user-space. cross-check against BH1750 under fluorescent light (where TSL2561's IR rejection should give a tighter lux number).
-7. **TCS34725 color match.** With the bonus chip, hold a red object, a green object, a blue object in front. verify the R/G/B counts respond correspondingly.
+6. **TSL2561 (if available).** Configure the chip. Read both channels. Implement the piecewise formula in user-space. Cross-check against BH1750 under fluorescent light (where TSL2561's IR rejection should give a tighter lux number).
+7. **TCS34725 color match.** With the bonus chip, hold a red object, a green object, a blue object in front. Verify the R/G/B counts respond correspondingly.
 
 ## 68.11  Pitfalls
 
-- **BH1750 reading times wrong.** Datasheet says 120 ms typical, 180 ms max for high-res. Use 180 ms to be safe. or check the busy-flag (chip will NACK reads during measurement).
-- **TSL2561 saturated**. If Ch0 or Ch1 is 0xFFFF, the chip is saturated. Either drop the gain (HIGH → LOW) or reduce integration time. Auto-range or the user will report "lux = 0" in bright sun.
+- **BH1750 reading times wrong.** Datasheet says 120 ms typical, 180 ms max for high-res. Use 180 ms to be safe. Or check the busy-flag (chip will NACK reads during measurement).
+- **TSL2561 saturated**: If Ch0 or Ch1 is 0xFFFF, the chip is saturated. Either drop the gain (HIGH → LOW) or reduce integration time. Auto-range or the user will report "lux = 0" in bright sun.
 - **Sensor cover material.** Glass with strong IR-cut coating distorts readings. Use clear glass or a known-spec optical window.
 - **Tinted enclosures.** Dark-tinted plastic over the sensor cuts visible light unevenly. Calibrate against a known reference *with the enclosure in place*.
 - **Direct light vs reflected.** A sensor pointed at the sky reads sky brightness, not ambient. For "what's the light on my desk?" point at the desk, or use a diffuser cover.
-- **VEML7700 auto-range hysteresis.** Switching back and forth between integration times causes flicker in the reported lux. The mainline driver hysteresis suppresses this. rolling your own, leave deadbands.
-- **TCS34725 IR contamination.** Even with IR-rejection filter, sunlight's high R-channel reading isn't pure red — there's IR leak. For color-match work, use indoor LED light.
+- **VEML7700 auto-range hysteresis.** Switching back and forth between integration times causes flicker in the reported lux. The mainline driver hysteresis suppresses this. Rolling your own, leave deadbands.
+- **TCS34725 IR contamination.** Even with IR-rejection filter, sunlight's high R-channel reading isn't pure red, there's IR leak. For color-match work, use indoor LED light.
 - **Integration time ≠ sampling rate.** If you read every 100 ms but integration is 800 ms, you get the same value four times in a row. Match the cadence.
 
 ## 68.12  Going deeper
 
-- **`drivers/iio/light/bh1750.c`** — the production driver.
-- **`drivers/staging/iio/light/tsl2x7x.c`** — TSL2561/2563/2x7x family.
-- **`drivers/iio/light/veml7700.c`** — auto-ranging.
-- **`drivers/iio/light/tcs3472.c`** — RGB + clear.
-- **BH1750 datasheet (Rohm)** — opcode table on p.5.
-- **TSL2561 datasheet (AMS)** — lux formula on p.16.
-- **VEML7700 datasheet (Vishay)** — page on gain/integration trade-offs.
-- **TCS34725 datasheet (AMS)** — color-temperature derivation formula in app note AN1078.
-- **CIE photopic luminosity function** — the eye-response curve all these sensors approximate.
+- **`drivers/iio/light/bh1750.c`**: the production driver.
+- **`drivers/staging/iio/light/tsl2x7x.c`**: TSL2561/2563/2x7x family.
+- **`drivers/iio/light/veml7700.c`**: auto-ranging.
+- **`drivers/iio/light/tcs3472.c`**: RGB + clear.
+- **BH1750 datasheet (Rohm)**: opcode table on p.5.
+- **TSL2561 datasheet (AMS)**: lux formula on p.16.
+- **VEML7700 datasheet (Vishay)**: page on gain/integration trade-offs.
+- **TCS34725 datasheet (AMS)**: color-temperature derivation formula in app note AN1078.
+- **CIE photopic luminosity function**: the eye-response curve all these sensors approximate.
 
-> Next chapter: **Chapter 69 — Air quality, gas, particulate matter.** Three classes of "what's in the air" sensor: NDIR CO₂ (SCD30), metal-oxide eCO₂/TVOC (CCS811), and laser-scattering PM (PMS5003). Different bus, different protocol, different physics, different accuracy stories.
+> Next chapter: **Chapter 69: Air quality, gas, particulate matter.** Three classes of "what's in the air" sensor: NDIR CO₂ (SCD30), metal-oxide eCO₂/TVOC (CCS811), and laser-scattering PM (PMS5003). Different bus, different protocol, different physics, different accuracy stories.

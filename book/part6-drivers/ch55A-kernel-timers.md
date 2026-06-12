@@ -1,16 +1,16 @@
 ---
 chapter: 55A
 title: Kernel timers and hrtimers
-part: VI — Driver development (supplementary v1.1)
+part: VI - Driver development (supplementary v1.1)
 estimated_pages: 12
 status: draft
 ---
 
-# Chapter 55A — Kernel timers and hrtimers
+# Chapter 55A: Kernel timers and hrtimers
 
-> **What:** the kernel's two timer families — **timer_list** (jiffies-granular, ~1 ms on i.MX6ULL with HZ=1000) and **hrtimer** (high-resolution, nanosecond-granular). Used for "do X in N ms" patterns inside drivers — debouncing buttons, polling status, scheduling periodic samples.
+> **What:** the kernel's two timer families, **timer_list** (jiffies-granular, ~1 ms on i.MX6ULL with HZ=1000) and **hrtimer** (high-resolution, nanosecond-granular). Used for "do X in N ms" patterns inside drivers, debouncing buttons, polling status, scheduling periodic samples.
 >
-> **Why:** `msleep` and `mdelay` block the calling thread. Sometimes you need "fire a callback in 50 ms without blocking" — that's what these timers are for. Common driver patterns use them: timeouts, periodic polling, rate limiting, deferred work.
+> **Why:** `msleep` and `mdelay` block the calling thread. Sometimes you need "fire a callback in 50 ms without blocking", that's what these timers are for. Common driver patterns use them: timeouts, periodic polling, rate limiting, deferred work.
 >
 > **Focus:** **timer_list for ms granularity, hrtimer for µs/ns**.
 
@@ -45,7 +45,7 @@ del_timer_sync(&my_timer);
 - **`mod_timer`**: re-schedules a running timer to a new expiry. If the timer is not active, it arms it.
 - **`del_timer_sync`**: deletes and waits for any in-flight callback to finish. Use in `remove`.
 
-Typical pattern — button debounce (Ch 45 lab):
+Typical pattern, button debounce (Ch 45 lab):
 
 ```c
 static void debounce_cb(struct timer_list *t)
@@ -66,7 +66,7 @@ static irqreturn_t button_irq(int irq, void *dev_id)
 
 Each press triggers an IRQ that re-arms the timer. If the button bounces, every bounce resets the timer. Only after 20 ms of silence does the timer fire and report the press.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ## 55A.2  hrtimer
 
@@ -99,10 +99,10 @@ hrtimer_cancel(&my_hrtimer);
 ```
 
 - **Granularity**: nanoseconds, limited by hardware (i.MX6ULL's GPT has ~30 ns resolution).
-- **Context**: same — softirq, no sleeping.
+- **Context**: same, softirq, no sleeping.
 - **Periodic loops**: return `HRTIMER_RESTART` after `hrtimer_forward_now`. It drifts less than recomputing `now + 1ms` each time.
 
-Common pattern — periodic sampling at 1 kHz:
+Common pattern, periodic sampling at 1 kHz:
 
 ```c
 hrtimer_init(&p->hr, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
@@ -110,7 +110,7 @@ p->hr.function = sample_cb;
 hrtimer_start(&p->hr, ms_to_ktime(1), HRTIMER_MODE_REL);
 ```
 
-Each callback: do the work, then `hrtimer_forward_now(t, ms_to_ktime(1)). return HRTIMER_RESTART;`. The forwarding (vs. recomputing now+1ms) keeps the schedule cumulative without drift.
+Each callback: do the work, then `hrtimer_forward_now(t, ms_to_ktime(1)); return HRTIMER_RESTART;`. The forwarding (vs. recomputing now+1ms) keeps the schedule cumulative without drift.
 
 ## 55A.3  Workqueue vs timer
 
@@ -139,7 +139,7 @@ static void my_work_fn(struct work_struct *w)
 }
 ```
 
-## 55A.4  Delayed work — a workqueue with built-in timer
+## 55A.4  Delayed work, a workqueue with built-in timer
 
 For the common "do this in N ms, in process context" pattern:
 
@@ -165,27 +165,27 @@ cancel_delayed_work_sync(&my_dwork);
 
 1. **Add a software heartbeat.** A `timer_list` that prints `dmesg` every 5 seconds. Verify it fires regularly.
 2. **Hrtimer for jitter measurement.** Fire an hrtimer every 1 ms. In the callback, log the actual time delta. With PREEMPT_RT, compare jitter against standard kernel.
-**PREEMPT_RT** - the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
+> **PREEMPT_RT:** the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 3. **Debounce button.** Use `timer_list` for 20 ms debounce on a GPIO key.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-4. **Periodic GPIO toggle.** Use hrtimer + GPIO output to generate a 1 kHz square wave. scope it. observe jitter.
-5. **Combine timer + workqueue.** A timer that schedules work. The work does `msleep(50)`. verify the system stays responsive.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+4. **Periodic GPIO toggle.** Use hrtimer + GPIO output to generate a 1 kHz square wave. Scope it. Observe jitter.
+5. **Combine timer + workqueue.** A timer that schedules work. The work does `msleep(50)`. Verify the system stays responsive.
 
 ## 55A.6  Pitfalls
 
-- **Sleeping in a timer callback.** Softirq context — `kmalloc(GFP_KERNEL)`, `mutex_lock` are forbidden. Use workqueue if you need to sleep.
+- **Sleeping in a timer callback.** Softirq context, `kmalloc(GFP_KERNEL)`, `mutex_lock` are forbidden. Use workqueue if you need to sleep.
 - **`del_timer` without `_sync` in remove.** Race: timer fires during cleanup. Always use `del_timer_sync`.
 - **Forgetting to re-arm a periodic timer.** It fires once and stops. Either `mod_timer` in the callback or use `delayed_work`.
 - **hrtimer drift with manual re-arming.** `hrtimer_start(t, now + 1ms)` drifts because of callback latency. `hrtimer_forward_now(t, 1ms)` doesn't.
 - **Timer fires after device is unregistered.** Without `del_timer_sync`, the callback can run after probe-cleanup, touching freed memory. Synchronize cleanup.
-- **Too many timers in flight.** Each adds to the kernel timer wheel. thousands cost CPU. For mass-scheduled events, consider a single timer + a list of work items.
+- **Too many timers in flight.** Each adds to the kernel timer wheel. Thousands cost CPU. For mass-scheduled events, consider a single timer + a list of work items.
 
 ## 55A.7  Going deeper
 
-- **`Documentation/timers/`** — kernel timer documentation.
-- **`include/linux/timer.h`** and **`hrtimer.h`** — APIs.
-- **`kernel/time/`** — implementation. `hrtimer.c`, `timer.c`.
-- **LDD3 Chapter 7** — timers and workqueues in depth.
+- **`Documentation/timers/`**: kernel timer documentation.
+- **`include/linux/timer.h`** and **`hrtimer.h`**, APIs.
+- **`kernel/time/`**: implementation. `hrtimer.c`, `timer.c`.
+- **LDD3 Chapter 7**: timers and workqueues in depth.
 
-> Next chapter: **Chapter 55B — Async notification via SIGIO.** A "signal me when data is ready" mechanism that's useful for legacy POSIX-style apps that don't use poll/epoll.
+> Next chapter: **Chapter 55B: Async notification via SIGIO.** A "signal me when data is ready" mechanism that's useful for legacy POSIX-style apps that don't use poll/epoll.

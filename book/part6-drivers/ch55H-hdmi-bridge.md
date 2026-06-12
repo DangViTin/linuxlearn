@@ -1,14 +1,14 @@
 ---
 chapter: 55H
 title: RGB-to-HDMI bridge (sii902x)
-part: VI — Driver development (supplementary v1.1)
+part: VI - Driver development (supplementary v1.1)
 estimated_pages: 10
 status: draft
 ---
 
-# Chapter 55H — RGB-to-HDMI bridge (sii902x)
+# Chapter 55H: RGB-to-HDMI bridge (sii902x)
 
-> **What:** the **Silicon Image SiI902x** family of RGB-parallel-to-HDMI transmitter chips, and the kernel's **DRM bridge** subsystem. The i.MX6ULL has no native HDMI. an SiI9022/SiI9024 chip on the LCDIF parallel output gives you HDMI. The mainline `sii902x.c` DRM bridge driver handles config and EDID parsing.
+> **What:** the **Silicon Image SiI902x** family of RGB-parallel-to-HDMI transmitter chips, and the kernel's **DRM bridge** subsystem. The i.MX6ULL has no native HDMI. An SiI9022/SiI9024 chip on the LCDIF parallel output gives you HDMI. The mainline `sii902x.c` DRM bridge driver handles config and EDID parsing.
 >
 > **Why:** any product that needs an external display (HMI, kiosk, signage) usually wants HDMI compatibility. SiI902x is a small, low-cost (~$2) chip that takes 24-bit RGB + HSYNC/VSYNC/PCLK and outputs HDMI 1.4 at up to 1080p60. It works on any i.MX6ULL board with LCDIF pinmux available.
 >
@@ -25,7 +25,7 @@ SiI902x has:
 
 Connect LCDIF parallel out → SiI902x in, HDMI cable → SiI902x out, I²C2 + HPD-IRQ → host. The bridge handles EDID negotiation with the sink (TV/monitor).
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
 ## 55H.2  Device tree
 
@@ -110,12 +110,12 @@ Set a mode:
 [root@pa-mini:~]# modetest -M mxsfb -s 42:1920x1080
 ```
 
-However, the i.MX6ULL LCDIF tops out at about 80 MHz pixel clock. 1080p60 is 148.5 MHz. doesn't work. Practical max on i.MX6ULL via SiI902x is 720p (74.25 MHz). 480p, 576p, 720p all work.
+However, the i.MX6ULL LCDIF tops out at about 80 MHz pixel clock. 1080p60 is 148.5 MHz. Doesn't work. Practical max on i.MX6ULL via SiI902x is 720p (74.25 MHz). 480p, 576p, 720p all work.
 
 ## 55H.4  Audio over HDMI
 
-SiI902x also carries audio. With `#sound-dai-cells = <0>;`, the chip exposes an audio DAI. build an ASoC machine driver (Ch 53) that connects SAI → SiI902x → HDMI. Most products skip this and use HDMI for video only.
-**ASoC** - ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
+SiI902x also carries audio. With `#sound-dai-cells = <0>;`, the chip exposes an audio DAI. Build an ASoC machine driver (Ch 53) that connects SAI → SiI902x → HDMI. Most products skip this and use HDMI for video only.
+> **ASoC:** ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
 
 ## 55H.5  Lab
 
@@ -123,22 +123,22 @@ SiI902x also carries audio. With `#sound-dai-cells = <0>;`, the chip exposes an 
 2. **Plug an HDMI monitor.** `modetest -M mxsfb -c` lists connected outputs. HDMI-A-1 should be `connected` with valid modes.
 3. **Set 720p.** `modetest -M mxsfb -s <id>:1280x720`. Verify monitor displays.
 4. **`/dev/fb0` painting.** Default fbdev emulation shows it. `cat /dev/urandom > /dev/fb0` paints noise on the HDMI output.
-5. **HPD detection.** Unplug cable. observe disconnected event in dmesg / `modetest -c`.
+5. **HPD detection.** Unplug cable. Observe disconnected event in dmesg / `modetest -c`.
 6. **Try 1080p.** Confirm it fails (LCDIF pixel clock limit). Read drm.debug=15 dmesg for the rejection.
 
 ## 55H.6  Pitfalls
 
-- **No HPD wiring.** Bridge thinks nothing connected. mode list is empty.
+- **No HPD wiring.** Bridge thinks nothing connected. Mode list is empty.
 - **Reset-gpios polarity wrong.** Chip held in reset forever.
 - **DDC pull-ups missing.** EDID read fails. Schematic check.
 - **Pixel clock > 80 MHz.** LCDIF chokes. Stay ≤ 720p on i.MX6ULL.
 - **No frame-rate match.** Some monitors require specific timings. The EDID list filters out invalid ones but check the kernel debug output.
-- **Modeset reports OK but the screen stays blank.** Often the HDMI sink is expecting a different pixel format than the bridge sends. SiI902x defaults to RGB. some old TVs want YCbCr. Force RGB via property if needed.
+- **Modeset reports OK but the screen stays blank.** Often the HDMI sink is expecting a different pixel format than the bridge sends. SiI902x defaults to RGB. Some old TVs want YCbCr. Force RGB via property if needed.
 
 ## 55H.7  Going deeper
 
-- **`drivers/gpu/drm/bridge/sii902x.c`** — the SiI902x DRM bridge driver.
-- **`Documentation/gpu/drm-kms.rst`** — KMS bridge chain.
-- **SiI9022 datasheet** — register map, EDID handling, audio config.
+- **`drivers/gpu/drm/bridge/sii902x.c`**: the SiI902x DRM bridge driver.
+- **`Documentation/gpu/drm-kms.rst`**: KMS bridge chain.
+- **SiI9022 datasheet**: register map, EDID handling, audio config.
 
-> Next chapter: **Chapter 55I — Rust-for-Linux.** A small kernel-module written in Rust, demonstrating the upcoming second kernel language.
+> Next chapter: **Chapter 55I: Rust-for-Linux.** A small kernel-module written in Rust, demonstrating the upcoming second kernel language.

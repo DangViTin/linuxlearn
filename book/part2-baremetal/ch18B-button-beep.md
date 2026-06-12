@@ -1,20 +1,20 @@
 ---
 chapter: 18B
 title: Button input and beep (passive buzzer)
-part: II — Bare-metal i.MX6ULL (inserted v1.1)
+part: II - Bare-metal i.MX6ULL (inserted v1.1)
 estimated_pages: 12
 status: draft
 ---
 
-# Chapter 18B — Button input and beep
-**IOMUX** - the pin multiplexer that decides which peripheral function appears on each package pin.
+# Chapter 18B: Button input and beep
+> **IOMUX:** the pin multiplexer that decides which peripheral function appears on each package pin.
 > **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
 
-> **What:** read a GPIO input with software debouncing, then drive a passive buzzer at an audible frequency from a polled GPIO toggle loop. Two new peripherals. both built on the GPIO and timer primitives we already own.
+> **What:** read a GPIO input with software debouncing, then drive a passive buzzer at an audible frequency from a polled GPIO toggle loop. Two new peripherals. Both built on the GPIO and timer primitives we already own.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
-> **Why:** every product accepts input and emits feedback. Until now, our only input was UART and our only output was an LED. Adding a button and a buzzer completes the minimal HMI vocabulary, and forces us to handle **debouncing** — a topic every embedded engineer should learn once and then trust.
+> **Why:** every product accepts input and emits feedback. Until now, our only input was UART and our only output was an LED. Adding a button and a buzzer completes the minimal HMI vocabulary, and forces us to handle **debouncing**, a topic every embedded engineer should learn once and then trust.
 >
 > **Focus:** the debounce decision: spin-debounce, timer-debounce, or hardware-debounce. The right one depends on what else the CPU has to do. We will see all three.
 
@@ -23,8 +23,8 @@ status: draft
 
 From the Point Atom MINI / ALPHA schematics (the wiring is identical between the two boards on these three signals):
 
-- **KEY0** — a normally-open momentary tactile switch wired between the **UART1_CTS_B** pad (which in ALT5 becomes **GPIO1_IO18**) and **GND**. The pin sits high through an external 10 kΩ pull-up. Pressed: low. released: high. **Active-low.**
-- **BEEP** — a passive piezo buzzer driven through a **PNP transistor (Q1, 8550-class)** whose base is controlled by the **SNVS_TAMPER1** pad (ALT5 = **GPIO5_IO01**). When GPIO5_IO01 = **0**, the PNP turns on, the buzzer's positive terminal sees 3V3, and the buzzer beeps. When GPIO5_IO01 = **1**, the PNP is off and the buzzer is silent. **Active-low** at the GPIO. The buzzer itself is *passive* (no internal oscillator) — you must toggle GPIO5_IO01 at the audible frequency to produce a tone.
+- **KEY0**: a normally-open momentary tactile switch wired between the **UART1_CTS_B** pad (which in ALT5 becomes **GPIO1_IO18**) and **GND**. The pin sits high through an external 10 kΩ pull-up. Pressed: low. Released: high. **Active-low.**
+- **BEEP**: a passive piezo buzzer driven through a **PNP transistor (Q1, 8550-class)** whose base is controlled by the **SNVS_TAMPER1** pad (ALT5 = **GPIO5_IO01**). When GPIO5_IO01 = **0**, the PNP turns on, the buzzer's positive terminal sees 3V3, and the buzzer beeps. When GPIO5_IO01 = **1**, the PNP is off and the buzzer is silent. **Active-low** at the GPIO. The buzzer itself is *passive* (no internal oscillator), you must toggle GPIO5_IO01 at the audible frequency to produce a tone.
 
 Why active-low via a transistor? A piezo buzzer needs more current than a bare GPIO is rated to drive. The PNP sources the load current from 3V3, and the GPIO only sinks the small base current needed to switch the PNP on.
 
@@ -37,12 +37,12 @@ Pad addresses (from RM IOMUXC chapter):
 
 - `IOMUXC_SW_MUX_CTL_PAD_UART1_CTS_B` (for KEY0)
 - `IOMUXC_SW_PAD_CTL_PAD_UART1_CTS_B`
-- `IOMUXC_SNVS_SW_MUX_CTL_PAD_SNVS_TAMPER1` (for BEEP — note the `SNVS_` prefix. SNVS-domain pads live in a separate IOMUXC bank)
+- `IOMUXC_SNVS_SW_MUX_CTL_PAD_SNVS_TAMPER1` (for BEEP, note the `SNVS_` prefix. SNVS-domain pads live in a separate IOMUXC bank)
 - `IOMUXC_SNVS_SW_PAD_CTL_PAD_SNVS_TAMPER1`
 
-GPIO5 sits in the SNVS power domain, with base `0x020AC000`. Its clock gate is in a different CCGR bit than GPIO1's. Cross-check the RM table when you bring it up — clocking the wrong GPIO bank is the classic i.MX6ULL bug.
+GPIO5 sits in the SNVS power domain, with base `0x020AC000`. Its clock gate is in a different CCGR bit than GPIO1's. Cross-check the RM table when you bring it up, clocking the wrong GPIO bank is the classic i.MX6ULL bug.
 
-## 18B.2  Button driver — polled with software debounce
+## 18B.2  Button driver, polled with software debounce
 
 The naive read-and-act:
 
@@ -52,7 +52,7 @@ if ((GPIO_DR(GPIO1_BASE) & (1 << 18)) == 0) {
 }
 ```
 
-works once. Then bounce ruins it. When the mechanical contacts close, they bounce — make-break-make-break for typically 1–10 ms. A polled read can sample mid-bounce and report "pressed → released → pressed" several times for a single physical press.
+works once. Then bounce ruins it. When the mechanical contacts close, they bounce, make-break-make-break for typically 1–10 ms. A polled read can sample mid-bounce and report "pressed → released → pressed" several times for a single physical press.
 
 The classical fix in 1980s firmware was a 20 ms hardware RC filter on the input. We do it in software instead:
 
@@ -67,7 +67,7 @@ int key_read_debounced(void)
 }
 ```
 
-This works for slow UI buttons but blocks the caller for 20 ms — unacceptable if the CPU has anything else to do.
+This works for slow UI buttons but blocks the caller for 20 ms, unacceptable if the CPU has anything else to do.
 
 ### Better: integrate, then decide
 
@@ -95,18 +95,18 @@ void key_tick(void)
 }
 ```
 
-This pattern is the basis of most modern keypad-scan implementations. The 80 ms validation window is conservative. tune to 30 ms (3 ticks) for snappier response if your switch is good quality.
+This pattern is the basis of most modern keypad-scan implementations. The 80 ms validation window is conservative. Tune to 30 ms (3 ticks) for snappier response if your switch is good quality.
 
 ### Best (for production): hardware debouncing + interrupt
 
-A Schmitt-trigger gate + RC filter on the input gives clean edges and lets you use a GPIO IRQ instead of polling. Point Atom MINI does not include this. many production boards do. We will see the kernel-level analog in Part VI Chapter 45 — the input subsystem includes a `gpio-keys` driver that ties this all together.
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+A Schmitt-trigger gate + RC filter on the input gives clean edges and lets you use a GPIO IRQ instead of polling. Point Atom MINI does not include this. Many production boards do. We will see the kernel-level analog in Part VI Chapter 45, the input subsystem includes a `gpio-keys` driver that ties this all together.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
-## 18B.3  Buzzer — a square wave on GPIO5_IO01 (active-low via PNP)
+## 18B.3  Buzzer, a square wave on GPIO5_IO01 (active-low via PNP)
 
 A passive piezo emits sound at the frequency of the applied square wave. A 1 kHz tone is comfortable, 4 kHz is shrill, 200 Hz is a low buzz.
 
-Because BEEP is driven through an active-low PNP transistor, the polarities below look "inverted" — but a square wave is symmetric, so the *toggling* still produces sound at the right frequency. The only place polarity matters is at idle (the buzzer must be **silent** when we are not playing a tone, which means GPIO5_IO01 = **1**).
+Because BEEP is driven through an active-low PNP transistor, the polarities below look "inverted", but a square wave is symmetric, so the *toggling* still produces sound at the right frequency. The only place polarity matters is at idle (the buzzer must be **silent** when we are not playing a tone, which means GPIO5_IO01 = **1**).
 
 ```c
 void beep_init(void)
@@ -138,15 +138,15 @@ void beep_tone(uint32_t hz, uint32_t ms)
 }
 ```
 
-`beep_tone(1000, 200)` — a 1 kHz tone for 200 ms. Loud enough to verify by ear.
+`beep_tone(1000, 200)`, a 1 kHz tone for 200 ms. Loud enough to verify by ear.
 
 A small but real bug to watch for: if you forget the final `GPIO_DR |= bit`, you may exit `beep_tone` with the PNP on and the buzzer stuck mid-cycle, drawing power and emitting a click. Without that final write, the PNP can stay on and the buzzer clicks.
 
 ### Why not just a GPIO toggle in a tight loop?
 
-That works for tones in the multi-kHz range when nothing else is happening. It does *not* work the moment you want to play the tone *while* doing anything else. The right answer for production: drive BEEP from a **PWM peripheral** (i.MX6ULL has eight PWM channels), which generates the square wave in hardware. Chapter 48 (Linux PWM) covers exactly this — we plumb the same buzzer via the PWM framework instead of bit-banging.
+That works for tones in the multi-kHz range when nothing else is happening. It does *not* work the moment you want to play the tone *while* doing anything else. The right answer for production: drive BEEP from a **PWM peripheral** (i.MX6ULL has eight PWM channels), which generates the square wave in hardware. Chapter 48 (Linux PWM) covers exactly this, we plumb the same buzzer via the PWM framework instead of bit-banging.
 > **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
-**PWM** - Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
+> **PWM:** Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 
 For bare-metal pedagogy, the bit-bang loop is fine. It shows that the buzzer is just a frequency-controlled output.
 
@@ -200,12 +200,12 @@ int main(void)
 }
 ```
 
-Press the button. The LED toggles, the UART prints `press` / `release`, and the buzzer chirped once at boot. The main loop sleeps in `wfi` — all the interesting work happens in the EPIT ISR.
+Press the button. The LED toggles, the UART prints `press` / `release`, and the buzzer chirped once at boot. The main loop sleeps in `wfi`, all the interesting work happens in the EPIT ISR.
 
 ## 18B.5  Lab
 
 1. **Build and run.** Confirm a single press gives a single `press`/`release` pair on UART, and the LED toggles cleanly.
-2. **Disable the debounce.** Comment out the sliding-window check. respond to every raw edge. Time how many spurious events you get per real press. (10–50 is typical for a cheap tactile switch.)
+2. **Disable the debounce.** Comment out the sliding-window check. Respond to every raw edge. Time how many spurious events you get per real press. (10–50 is typical for a cheap tactile switch.)
 3. **Double-tap detection.** Add a 300 ms timer: if two presses occur within 300 ms, beep at 4 kHz for 50 ms.
 4. **Beep tones.** Play a 5-note sequence (C-D-E-F-G, 200 ms each). Hum the result. You should recognize the scale.
 5. **Power measurement.** Compare current draw with and without `wfi` in `main`. The difference is the CPU's idle savings, which on Cortex-A7 is real.
@@ -215,17 +215,17 @@ Press the button. The LED toggles, the UART prints `press` / `release`, and the 
 - **GPIO5 vs GPIO1 clock gates.** GPIO5 is in the SNVS domain and has its own gate bit (CCGR1[31:30]). Easy to miss.
 - **Active-low vs active-high.** Your schematic decides. If pressed-reads-1, your `key_history` test should be inverted.
 - **EPIT tick too fast.** A 1 ms tick × 8-deep history = 8 ms of debounce, which is *too short* for many switches. 10 ms × 8 = 80 ms is safe.
-- **`udelay(1)` calibration.** From Ch 16, `udelay` is GPT-based. should be accurate to within 1 µs. If your beep is off-pitch, GPT prescaler is wrong.
+- **`udelay(1)` calibration.** From Ch 16, `udelay` is GPT-based. Should be accurate to within 1 µs. If your beep is off-pitch, GPT prescaler is wrong.
 - **Floating button pin.** If the external 10 kΩ pull-up is missing, your reads are random. Always verify pull resistors with a scope (or just by reading the pin steady-state).
 - **Active vs passive buzzer.** An *active* buzzer has its own oscillator inside. You drive it with DC. Toggling it at audio frequencies makes it click and buzz, not play tones. *Passive* needs a square wave. Check your part.
 
 ## 18B.7  Going deeper
 
-- **IMX6ULLRM Chapter 28** — GPIO interrupt configuration (we ignored it here. Chapter 15's GIC code can be wired to a GPIO IRQ instead of using a polled tick).
+- **IMX6ULLRM Chapter 28**: GPIO interrupt configuration (we ignored it here. Chapter 15's GIC code can be wired to a GPIO IRQ instead of using a polled tick).
 > **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
-**GIC** - ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
-- **Jack Ganssle**, *A Guide to Debouncing* — the canonical engineering reference. Available free online.
-- **Linux source: `drivers/input/keyboard/gpio_keys.c`** — the kernel's gpio-keys driver. Reads GPIOs, debounces them, emits input events. We meet it in Chapter 45.
-- **Linux source: `drivers/pwm/pwm-imx27.c`** — i.MX PWM driver, which we'll use in Chapter 48 to replace `beep_tone` with hardware PWM.
+> **GIC:** ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
+- **Jack Ganssle**, *A Guide to Debouncing*, the canonical engineering reference. Available free online.
+- **Linux source: `drivers/input/keyboard/gpio_keys.c`**: the kernel's gpio-keys driver. Reads GPIOs, debounces them, emits input events. We meet it in Chapter 45.
+- **Linux source: `drivers/pwm/pwm-imx27.c`**: i.MX PWM driver, which we'll use in Chapter 48 to replace `beep_tone` with hardware PWM.
 
-> Next chapter: **Chapter 18C — Bare-metal RTC.** The SNVS domain again, this time for timekeeping that survives main-power-off.
+> Next chapter: **Chapter 18C: Bare-metal RTC.** The SNVS domain again, this time for timekeeping that survives main-power-off.

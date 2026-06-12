@@ -1,19 +1,19 @@
 ---
 chapter: 98
 title: LoRa (SX127x / SX126x / LLCC68 / E22)
-part: VII — Device cookbook
+part: VII - Device cookbook
 estimated_pages: 22
 status: draft
 ---
 
-# Chapter 98 — LoRa
-**sysfs** - a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+# Chapter 98: LoRa
+> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
-> **What:** **LoRa** — a Semtech-proprietary sub-GHz long-range modulation (chirp spread spectrum) reaching multiple kilometres at sub-100 kbps. Four real radios compared: **Semtech SX1276/78** (legacy LoRa, 433/868/915 MHz), **SX1262** (current generation, lower power, FSK + LoRa), **LLCC68** (cheap SX1262 sibling, limited SF range), and **EByte E22-900M30S** (a ready-to-fly SX1262 module with PA + LNA). We dissect the radio's SPI register map, walk the kernel `sx127x` / `sx1301` candidate drivers (and why **most production LoRa stacks live in user space**), write a tiny SPI-only LoRa driver from scratch in user space (no kernel driver), then bring up a real LoRaWAN gateway with **ChirpStack**.
+> **What:** **LoRa**, a Semtech-proprietary sub-GHz long-range modulation (chirp spread spectrum) reaching multiple kilometres at sub-100 kbps. Four real radios compared: **Semtech SX1276/78** (legacy LoRa, 433/868/915 MHz), **SX1262** (current generation, lower power, FSK + LoRa), **LLCC68** (cheap SX1262 sibling, limited SF range), and **EByte E22-900M30S** (a ready-to-fly SX1262 module with PA + LNA). We dissect the radio's SPI register map, walk the kernel `sx127x` / `sx1301` candidate drivers (and why **most production LoRa stacks live in user space**), write a tiny SPI-only LoRa driver from scratch in user space (no kernel driver), then bring up a real LoRaWAN gateway with **ChirpStack**.
 >
 > **Why:** LoRa is the only short-message radio that crosses kilometres without infrastructure, sub-watt, and into deep building penetration. It's the workhorse for agricultural sensors, wildlife trackers, water-meter telemetry, and remote alarms. Many engineers copy the "Arduino LoRa library" without understanding the modulation, the registers, or why a bad antenna costs most of your link budget. This chapter walks the whole stack.
 >
-> **Focus:** **LoRa is a SPI radio with two state machines on top — modem and packet handler — and a tightly coupled antenna RF chain you cannot ignore**. Chirp spread spectrum (CSS) gives ~–137 dBm sensitivity at SF12/125 kHz, but the air-time at SF12 is *seconds per packet*, throttled by duty-cycle regulation (1 % on 868 MHz EU). The four-tuple of spreading factor, bandwidth, coding rate, and preamble is the whole engineering job. You must know what each one costs in air-time, sensitivity, and power. The radio is easy. The link budget is the engineering.
+> **Focus:** **LoRa is a SPI radio with two state machines on top, modem and packet handler, and a tightly coupled antenna RF chain you cannot ignore**. Chirp spread spectrum (CSS) gives ~–137 dBm sensitivity at SF12/125 kHz, but the air-time at SF12 is *seconds per packet*, throttled by duty-cycle regulation (1 % on 868 MHz EU). The four-tuple of spreading factor, bandwidth, coding rate, and preamble is the whole engineering job. You must know what each one costs in air-time, sensitivity, and power. The radio is easy. The link budget is the engineering.
 
 
 ## 98.1  LoRa vs everything else short-message
@@ -34,10 +34,10 @@ status: draft
 The trade is direct: LoRa buys range with bitrate. At SF12/BW125, you transmit ~250 bits per *second* (yes, per second). A 50-byte payload costs **~2 seconds of air time**. EU 868 MHz lets you transmit only 1 % of the time → ~30 packets/hour. That single number drives every product decision.
 
 **Pick guide:**
-- **SX1276/78** — legacy projects, abundant code, OK power. pick SX1262 instead for anything new.
-- **SX1262** — the default new design. Lower TX current (~118 mA at +22 dBm vs ~120 mA at +20 dBm for SX1276), better RX sensitivity, FSK + LoRa in one chip, +22 dBm internal PA.
-- **LLCC68** — SX1262 register-compatible *almost*. only SF5–SF11 (no SF12). Save $0.50/unit if SF12 isn't needed.
-- **EByte E22** — buy this if you want a finished module with PA, LNA, SMA connector, RF shield. Slightly closed (you can't change the matching network) but eliminates 80 % of the RF risk.
+- **SX1276/78**: legacy projects, abundant code, OK power. Pick SX1262 instead for anything new.
+- **SX1262**: the default new design. Lower TX current (~118 mA at +22 dBm vs ~120 mA at +20 dBm for SX1276), better RX sensitivity, FSK + LoRa in one chip, +22 dBm internal PA.
+- **LLCC68**: SX1262 register-compatible *almost*. Only SF5–SF11 (no SF12). Save $0.50/unit if SF12 isn't needed.
+- **EByte E22**: buy this if you want a finished module with PA, LNA, SMA connector, RF shield. Slightly closed (you can't change the matching network) but eliminates 80 % of the RF risk.
 
 ## 98.2  How chirp spread spectrum actually works (the 5-minute primer)
 
@@ -77,9 +77,9 @@ The four-tuple you tune for every link:
 
 A 50-byte payload at SF12/BW125/CR4/5: ~2.3 s. At SF7/BW125/CR4/5: ~110 ms. Same payload, 20× the throughput. *But*: SF7 reaches ~3 km open field. SF12 reaches ~10 km. The product choice is in that ratio.
 
-## 98.3  SX1276 and SX1262 — what's in the chip
+## 98.3  SX1276 and SX1262, what's in the chip
 
-Both are single-chip transceivers: digital baseband + IF + RF front-end + PA. Antenna in/out is one or two pins (TX vs RX path selected by an internal RF switch on SX1262. external pin selection on SX1276).
+Both are single-chip transceivers: digital baseband + IF + RF front-end + PA. Antenna in/out is one or two pins (TX vs RX path selected by an internal RF switch on SX1262. External pin selection on SX1276).
 
 Block diagram (SX1262, the one to use for new designs):
 
@@ -115,14 +115,14 @@ This is the #1 source of porting pain when moving SX1276 code to SX1262.
 
 | Addr | Name | Purpose |
 |------|------|---------|
-| 0x00 | FIFO | TX/RX FIFO data (R/W) — burst-read pulls bytes |
+| 0x00 | FIFO | TX/RX FIFO data (R/W), burst-read pulls bytes |
 | 0x01 | OpMode | LoRa/FSK toggle, mode (sleep/standby/tx/rx) |
 | 0x06–08 | FrfMsb/Mid/Lsb | RF frequency: `Fcarrier = Frf × 32e6 / 2^19` |
 | 0x09 | PaConfig | PA selection (RFO vs PA_BOOST), output power |
 | 0x0E | FifoTxBaseAddr | where in the 256-byte chip RAM TX starts |
 | 0x0F | FifoRxBaseAddr | where RX starts |
 | 0x10 | FifoAddrPtr | current FIFO read/write pointer |
-| 0x12 | IrqFlags | IRQ status — write 1 to clear |
+| 0x12 | IrqFlags | IRQ status, write 1 to clear |
 | 0x13 | RxNbBytes | bytes in the last received packet |
 | 0x1D | ModemConfig1 | BW (upper 4 bits), CR (3 bits), explicit/implicit header |
 | 0x1E | ModemConfig2 | SF (upper 4), CRC enable, TX continuous |
@@ -154,7 +154,7 @@ The TX sequence in pseudocode:
 
 That's it. Eighty registers in the datasheet. This loop uses twelve.
 
-## 98.4  Wiring — what the schematic must do
+## 98.4  Wiring, what the schematic must do
 
 The radio is easy. The RF path is where projects die.
 
@@ -177,13 +177,13 @@ GPIO  ─┤ DIO0/IRQ     ├─────────────────
 Mandatory rules. Every one of these has destroyed a board in the field:
 
 1. **Antenna or 50 Ω dummy load at TX every time.** Transmitting into an open or short pin destroys the PA in milliseconds. This matters most during bring-up, when it is tempting to power the radio without an antenna just to see if it responds.
-2. **VDD bulk capacitor ≥ 10 µF + 100 nF near the chip.** Each transmit pulse is ~120 mA at +22 dBm — the supply must hold up. A weak rail = power droop = the modem retransmits = battery dies overnight.
+2. **VDD bulk capacitor ≥ 10 µF + 100 nF near the chip.** Each transmit pulse is ~120 mA at +22 dBm, the supply must hold up. A weak rail = power droop = the modem retransmits = battery dies overnight.
 3. **Ground plane under the radio.** Single-sided protoboard works at SF12 for ~30 m. Move to a real PCB with continuous ground for anything beyond eval.
-4. **TCXO recommended for SF11/SF12.** The crystal must hold ±20 ppm over temperature. a cheap XTAL drifts and the SF12 demodulator (very narrow effective bandwidth) loses the signal. SX1262 has TCXO control built in (`SetDIO3AsTCXOCtrl`).
+4. **TCXO recommended for SF11/SF12.** The crystal must hold ±20 ppm over temperature. A cheap XTAL drifts and the SF12 demodulator (very narrow effective bandwidth) loses the signal. SX1262 has TCXO control built in (`SetDIO3AsTCXOCtrl`).
 5. **PA_BOOST vs RFO on SX1276.** Two output paths. PA_BOOST is the high-power one (up to +20 dBm). RFO is the lower one (max +14 dBm). Pick *one* and route only that to your antenna. Asserting +20 dBm on RFO destroys the chip.
 6. **EByte modules** integrate the matching network and add a +30 dBm PA. They eliminate steps 1–5 if you also buy a real antenna. Total project savings: enormous.
 
-## 98.5  The kernel side — and why most LoRa stacks aren't in the kernel
+## 98.5  The kernel side, and why most LoRa stacks aren't in the kernel
 
 > **Driver choice:** Use the in-tree, maintained driver first.
 > Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
@@ -193,17 +193,17 @@ There's no `subsystem/lora/` in mainline. There are out-of-tree drivers (`sx127x
 
 1. **LoRaWAN MAC is huge and stateful.** The link-layer (network/application keys, ADR, retransmission, multi-channel scanning) lives in a daemon (ChirpStack, lora-net, lorawan-stack). A kernel driver isn't where this belongs.
 2. **No standard MAC.** P2P LoRa is application-defined. LoRaWAN is the most common but not the only. Every product wraps the PHY differently.
-**PHY** - physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
+> **PHY:** physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
 3. **Timing is not RT-critical.** LoRa packets are tens-to-thousands of milliseconds long. User-space SPI latency (a few ms) is irrelevant.
 4. **Mainline has refused most LoRa kernel patches** for these reasons. The community converged on user-space.
 
 This is unusual in this book. Almost every other chapter says "the kernel driver does this." On LoRa, the kernel is only the SPI bus controller.
 
-There *is* one important exception: **LoRaWAN gateway concentrators** (Semtech SX1301, SX1302, SX1303) — multi-channel parallel demodulators on PCIe or SPI used in *gateways* (not nodes). Even these are bound by `spidev`, with a user-space "packet forwarder" (`lora_pkt_fwd`, ChirpStack-MP-Packet-Forwarder). The hardware is FPGA-like. The abstraction is in user space.
+There *is* one important exception: **LoRaWAN gateway concentrators** (Semtech SX1301, SX1302, SX1303), multi-channel parallel demodulators on PCIe or SPI used in *gateways* (not nodes). Even these are bound by `spidev`, with a user-space "packet forwarder" (`lora_pkt_fwd`, ChirpStack-MP-Packet-Forwarder). The hardware is FPGA-like. The abstraction is in user space.
 
 ### What an out-of-tree LoRa kernel driver looks like (for context)
 
-The community `sx127x-driver` and `lora-net` Linux trees expose the radio as a **netdev** — `lora0` shows up like `wlan0`, you `ip link set lora0 up`, and a SOCK_RAW socket gives you packets. The driver pattern is:
+The community `sx127x-driver` and `lora-net` Linux trees expose the radio as a **netdev**, `lora0` shows up like `wlan0`, you `ip link set lora0 up`, and a SOCK_RAW socket gives you packets. The driver pattern is:
 
 ```c
 // Simplified from lora-net out-of-tree
@@ -228,13 +228,13 @@ static int sx127x_probe(struct spi_device *spi) {
 
 The threaded IRQ on DIO0 fires on `TxDone`/`RxDone`, the handler reads `IrqFlags`, pulls the FIFO, hands the skb up. It looks like every Linux netdev driver, just with chirp modulation under the hood.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-**IRQ** - interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
-But the **MAC** — addressing, ADR, retransmission, LoRaWAN OTAA join — is *not* in the driver. That's the daemon's job in user space.
+But the **MAC**, addressing, ADR, retransmission, LoRaWAN OTAA join, is *not* in the driver. That's the daemon's job in user space.
 
 For this book, we follow the dominant pattern: **`spidev` + user-space driver + ChirpStack daemon**. The driver internals above are for understanding what a netdev-wrapped path would look like.
 
-## 98.6  From scratch — a user-space SX1276 driver in C (transmit + receive)
+## 98.6  From scratch, a user-space SX1276 driver in C (transmit + receive)
 
 We build the smallest possible LoRa driver: open `spidev`, reset the chip, configure modem, transmit a packet, receive a packet. ~200 lines, no LoRaWAN, no MAC. Pure PHY. Two boards running this can ping each other at 5 km.
 
@@ -420,16 +420,16 @@ int main(int argc, char **argv) {
 
 What this driver shows that the framework hides:
 
-- **Frequency programming.** The `Frf = freq × 2^19 / 32e6` formula appears nowhere in `lora-net` — it's hidden by `set_frequency()`. Here you see the raw three-byte divider write.
-- **SPI access pattern.** A read is `addr & 0x7F`. a write is `addr | 0x80`. Burst FIFO read/write are sequential reads after one address byte.
-- **FIFO is a 256-byte chip RAM with a pointer.** Set `FifoAddrPtr` to where you want to read/write. then read/write the FIFO register repeatedly. Easy to get wrong — `FifoTxBaseAddr` is "where TX should start," `FifoAddrPtr` is "where the next byte goes/comes from."
+- **Frequency programming.** The `Frf = freq × 2^19 / 32e6` formula appears nowhere in `lora-net`, it's hidden by `set_frequency()`. Here you see the raw three-byte divider write.
+- **SPI access pattern.** A read is `addr & 0x7F`. A write is `addr | 0x80`. Burst FIFO read/write are sequential reads after one address byte.
+- **FIFO is a 256-byte chip RAM with a pointer.** Set `FifoAddrPtr` to where you want to read/write. Then read/write the FIFO register repeatedly. Easy to get wrong, `FifoTxBaseAddr` is "where TX should start," `FifoAddrPtr` is "where the next byte goes/comes from."
 - **IRQ flags are level-and-cleared.** Until you write back to `REG_IRQ_FLAGS`, the next operation sees a stale flag and you think the prior TX is still in progress.
 - **RSSI math is asymmetric.** HF (above 525 MHz) and LF (below) subtract different offsets. Forget the offset, your "RSSI" is meaningless.
 - **The whole driver is 200 lines.** With a real GPIO IRQ on DIO0 (`libgpiod`'s `gpiod_line_event_wait`) it becomes interrupt-driven. With a small framing layer (length + CRC + sequence) it becomes a usable PHY for point-to-point telemetry.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-**GPIO** - General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
-When you read the mainline-candidate `sx127x` driver later, you'll recognize *exactly* this sequence inside `sx127x_tx_pkt()` and `sx127x_rx_handler()`, wrapped in a netdev shell. The framework adds netdev plumbing, threaded IRQs, and skb-based queueing — but the radio dance is the same twelve register writes.
+When you read the mainline-candidate `sx127x` driver later, you'll recognize *exactly* this sequence inside `sx127x_tx_pkt()` and `sx127x_rx_handler()`, wrapped in a netdev shell. The framework adds netdev plumbing, threaded IRQs, and skb-based queueing, but the radio dance is the same twelve register writes.
 
 ### Translating to SX1262 (the chip you should use for new designs)
 
@@ -446,9 +446,9 @@ The same physical actions become **opcodes**:
 | `WriteReg(OpMode, TX)` | `SetTx(timeout)` |
 | poll `IrqFlags` | `GetIrqStatus()` + `ClearIrqStatus()` |
 
-Same dozen actions, different SPI shape. The Semtech "SX126x driver" reference implementation in their open-source repo is a clean read. port it from there.
+Same dozen actions, different SPI shape. The Semtech "SX126x driver" reference implementation in their open-source repo is a clean read. Port it from there.
 
-## 98.7  Device tree — wiring spidev to the radio
+## 98.7  Device tree, wiring spidev to the radio
 
 > **Template warning:** This block contains placeholder values.
 > Replace compatible strings, GPIO numbers, addresses, and paths with values from your board before using it.
@@ -476,7 +476,7 @@ For the user-space approach, all you need is `spidev` on the right CS:
 ```
 
 
-> *Production note: `rohm,dh2228fv` is a development-time spidev placeholder. modern kernels print a warning when it appears in DT. See Chapter 47's `spidev` warning for the proper DT overlay path or a real-chip compatible swap.*
+> *Production note: `rohm,dh2228fv` is a development-time spidev placeholder. Modern kernels print a warning when it appears in DT. See Chapter 47's `spidev` warning for the proper DT overlay path or a real-chip compatible swap.*
 `/dev/spidev3.0` appears. `libgpiod` lines manage RESET and DIO0.
 
 If you instead use the out-of-tree `sx127x-driver`:
@@ -499,12 +499,12 @@ You then get `lora0` and (in some out-of-tree forks) a SOCK_DGRAM/SOCK_RAW socke
 
 We've covered the **PHY** (LoRa modulation). The two product paths from here:
 
-- **LoRa P2P** — your own framing on top of the PHY. Two boards talk directly. Best for a fleet of your own devices, no gateway, no infrastructure. The user-space driver above is enough.
-- **LoRaWAN** — the *MAC* on top: device addressing (DevEUI/AppEUI/AppKey), OTAA join, three classes (A polling, B beacon, C continuous-RX), regional ISM channel plans, ADR (Adaptive Data Rate). Requires a **gateway** (multi-channel concentrator like SX1301/SX1303) + a **network server** (ChirpStack, The Things Stack) + an **application server**. Best for products joining a shared network (The Things Network, Helium, private deployments).
+- **LoRa P2P**: your own framing on top of the PHY. Two boards talk directly. Best for a fleet of your own devices, no gateway, no infrastructure. The user-space driver above is enough.
+- **LoRaWAN**: the *MAC* on top: device addressing (DevEUI/AppEUI/AppKey), OTAA join, three classes (A polling, B beacon, C continuous-RX), regional ISM channel plans, ADR (Adaptive Data Rate). Requires a **gateway** (multi-channel concentrator like SX1301/SX1303) + a **network server** (ChirpStack, The Things Stack) + an **application server**. Best for products joining a shared network (The Things Network, Helium, private deployments).
 
 ### A LoRaWAN gateway on the i.MX6ULL
 
-The gateway is a Linux box with a **concentrator card** (RAK2287/SX1303 SPI module, or a USB IC-880A). It listens to 8 channels in parallel — the SX1301/SX1303 is essentially 8 LoRa modems in one die — and forwards every received packet to a network server.
+The gateway is a Linux box with a **concentrator card** (RAK2287/SX1303 SPI module, or a USB IC-880A). It listens to 8 channels in parallel, the SX1301/SX1303 is essentially 8 LoRa modems in one die, and forwards every received packet to a network server.
 
 Stack:
 
@@ -560,54 +560,54 @@ End-to-end, an SX1262 node running OTAA-joined LoRaWAN will:
 3. → bridged to MQTT
 4. → received by ChirpStack network server, which validates AppKey, generates DevAddr, returns JoinAccept
 5. → downlinked through gateway-bridge → packet-forwarder → over the air → node receives the JoinAccept
-6. Node now sends uplinks. ChirpStack decrypts. your application server (or an MQTT subscriber) consumes them
+6. Node now sends uplinks. ChirpStack decrypts. Your application server (or an MQTT subscriber) consumes them
 
 A private LoRaWAN network on one i.MX6ULL is realistic. The kernel is involved as the SPI driver and nothing else.
 
 ## 98.9  Lab
 
-1. **Hello, SX1276.** Wire a SX1276 module to ECSPI3 + GPIO for RESET/DIO0. Build `sx1276_min.c`. Confirm `REG_VERSION` reads `0x12`. **If it doesn't, your SPI mode/wiring is wrong — fix before continuing.**
-2. **TX one packet.** Run with `t` arg. another board (or a hand-held LoRa sniffer like the RAK Wireless WisGate) should see the packet on 868.1 MHz / SF7 / BW125.
-3. **RX one packet.** On the second board, run without args. observe the message and RSSI/SNR. Move the boards apart. watch RSSI drop ~6 dB per doubling of distance (free-space).
-4. **Spreading-factor sweep.** Set SF7, then SF12. measure round-trip per-packet time. SF12 should be **~30× longer** than SF7. Confirm with a stopwatch.
+1. **Hello, SX1276.** Wire a SX1276 module to ECSPI3 + GPIO for RESET/DIO0. Build `sx1276_min.c`. Confirm `REG_VERSION` reads `0x12`. **If it doesn't, your SPI mode/wiring is wrong, fix before continuing.**
+2. **TX one packet.** Run with `t` arg. Another board (or a hand-held LoRa sniffer like the RAK Wireless WisGate) should see the packet on 868.1 MHz / SF7 / BW125.
+3. **RX one packet.** On the second board, run without args. Observe the message and RSSI/SNR. Move the boards apart. Watch RSSI drop ~6 dB per doubling of distance (free-space).
+4. **Spreading-factor sweep.** Set SF7, then SF12. Measure round-trip per-packet time. SF12 should be **~30× longer** than SF7. Confirm with a stopwatch.
 5. **Air-time calculator sanity check.** Use Semtech's air-time calculator (or the formula from §98.2): predict air-time for SF10/BW125/CR4/5/preamble 8/payload 20. Match against your measured `TxDone` timing. Should agree within 5 %.
 6. **Range walk.** With SF7/CR4/5/+17 dBm, walk away from a TX board with an RX board. Note where the packets stop being received (RSSI ≈ –123 dBm at the limit). Open-field outdoor: expect 2–5 km with a half-decent antenna.
 7. **DIO0 IRQ.** Replace the `while(... & IRQ_TX_DONE)` polling with `libgpiod` edge-event wait on the DIO0 pin. TX completion latency should drop from ~1 ms polling jitter to ~tens of µs.
-8. **Two boards ping-pong with sequence numbers + CRC.** Add a 4-byte header (`magic, seq_lo, seq_hi, crc8`). each side increments its `seq` on RX-success. lost packets are visible as gaps. This is a real point-to-point protocol.
+8. **Two boards ping-pong with sequence numbers + CRC.** Add a 4-byte header (`magic, seq_lo, seq_hi, crc8`). Each side increments its `seq` on RX-success. Lost packets are visible as gaps. This is a real point-to-point protocol.
 9. **Switch to SX1262 (stretch).** Port `sx1276_min.c` to SX1262's command-based interface using Semtech's open driver as reference. Same physical sequence, different SPI shape.
-10. **LoRaWAN gateway (capstone).** Acquire an SX1303 concentrator module (RAK2287 or similar). Bring up `sx1302_hal` + `chirpstack-gateway-bridge` + `chirpstack` on the i.MX6ULL. Provision an OTAA device. Watch the JoinRequest → JoinAccept handshake in ChirpStack's logs. Send 5 uplinks. receive them on MQTT.
+10. **LoRaWAN gateway (capstone).** Acquire an SX1303 concentrator module (RAK2287 or similar). Bring up `sx1302_hal` + `chirpstack-gateway-bridge` + `chirpstack` on the i.MX6ULL. Provision an OTAA device. Watch the JoinRequest → JoinAccept handshake in ChirpStack's logs. Send 5 uplinks. Receive them on MQTT.
 
 ## 98.10  Pitfalls
 
-- **Transmitting without an antenna.** Will destroy the PA within a few transmissions. The chip's "safe" RFO output is +14 dBm — even that wants a load. Always have a real antenna or a 50 Ω dummy load attached during TX.
+- **Transmitting without an antenna.** Will destroy the PA within a few transmissions. The chip's "safe" RFO output is +14 dBm, even that wants a load. Always have a real antenna or a 50 Ω dummy load attached during TX.
 - **Wrong PA output selected on SX1276.** `PA_BOOST` (RFO_HF/RFO_LF pins) vs `RFO` pin. The schematic must route exactly one to the antenna. Sending +20 dBm into the wrong pin is permanent damage.
-- **Sync word collision with LoRaWAN.** Private LoRa networks must use sync 0x12. The LoRaWAN value 0x34 is reserved. using it in P2P will make every LoRaWAN gateway in earshot try to demodulate your packets and crash.
-- **Bandwidth misnumbering.** The `BW` field is an *index* into a table, not the bandwidth in kHz. `0x07 = 125 kHz`, `0x08 = 250 kHz`, `0x09 = 500 kHz`. Putting `125` in the register sets ~3.9 MHz — out of spec, doesn't work.
-- **SF12 timing.** A SF12/BW125 packet of 51 bytes takes ~2.3 seconds. Your `while(... & TX_DONE)` poll loop must allow for it. many sample drivers time out at 1 s. Use 5+ seconds or compute from the air-time formula.
+- **Sync word collision with LoRaWAN.** Private LoRa networks must use sync 0x12. The LoRaWAN value 0x34 is reserved. Using it in P2P will make every LoRaWAN gateway in earshot try to demodulate your packets and crash.
+- **Bandwidth misnumbering.** The `BW` field is an *index* into a table, not the bandwidth in kHz. `0x07 = 125 kHz`, `0x08 = 250 kHz`, `0x09 = 500 kHz`. Putting `125` in the register sets ~3.9 MHz, out of spec, doesn't work.
+- **SF12 timing.** A SF12/BW125 packet of 51 bytes takes ~2.3 seconds. Your `while(... & TX_DONE)` poll loop must allow for it. Many sample drivers time out at 1 s. Use 5+ seconds or compute from the air-time formula.
 - **Duty cycle violations.** EU 868 g1 sub-band is **1 %**. At SF12, that's two packets per minute, period. Build a duty-cycle tracker in firmware or you'll be illegally transmitting and the regulator can fine you.
 - **TCXO not started.** SX1262 with TCXO: you must call `SetDIO3AsTCXOCtrl(voltage, delay)` before any frequency operation. Skip it and the radio's PLL drifts → packets demodulate with high error or not at all on SF11/SF12.
 > **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
-**PLL** - Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
-- **`Sleep` does not erase state on SX127x — but on SX1262 Cold Start it does.** SX127x in Sleep mode preserves register state and consumes ~200 nA. SX1262 in Cold Start (`SetSleep(0x00)`) loses configuration — you must reconfigure on wake. Check the datasheet.
-- **Single-chip "RF switch destroyed" failure.** A common module fault: the chip transmits OK at first but receive sensitivity is –80 dBm instead of –123 dBm — the internal/external RF switch was killed during a TX-into-open. Detect by measuring RSSI of a known close transmitter. If it's >40 dB worse than spec, the switch is gone.
-- **Out-of-tree driver kernel-version pinning.** `sx127x-driver` is community-maintained. major kernel updates break it. If you go the kernel-netdev route, pin your kernel until you have time to forward-port.
-- **Concentrator SPI clock too fast.** SX1303 SPI tops out at 8 MHz. some carrier boards expose 50 MHz `ecspi`. Set `spi-max-frequency = <8000000>;` or it works in the lab and fails on customer hardware.
+> **PLL:** Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
+- **`Sleep` does not erase state on SX127x, but on SX1262 Cold Start it does.** SX127x in Sleep mode preserves register state and consumes ~200 nA. SX1262 in Cold Start (`SetSleep(0x00)`) loses configuration, you must reconfigure on wake. Check the datasheet.
+- **Single-chip "RF switch destroyed" failure.** A common module fault: the chip transmits OK at first but receive sensitivity is –80 dBm instead of –123 dBm, the internal/external RF switch was killed during a TX-into-open. Detect by measuring RSSI of a known close transmitter. If it's >40 dB worse than spec, the switch is gone.
+- **Out-of-tree driver kernel-version pinning.** `sx127x-driver` is community-maintained. Major kernel updates break it. If you go the kernel-netdev route, pin your kernel until you have time to forward-port.
+- **Concentrator SPI clock too fast.** SX1303 SPI tops out at 8 MHz. Some carrier boards expose 50 MHz `ecspi`. Set `spi-max-frequency = <8000000>;` or it works in the lab and fails on customer hardware.
 - **Channel plan mismatch.** US915 has 64 uplink channels in 8 sub-bands. EU868 has 3 mandatory + 5 optional. A node configured for EU and a gateway for US never talk. The mistake is invisible until you check both sides' `region` parameter.
 
 ## 98.11  Going deeper
 
-- **Semtech SX127x datasheet** + **SX126x datasheet** — the canonical reference for register / command behavior.
-- **`semtech-prh/sx127x-driver` and `lora-net/lora-modules`** — out-of-tree Linux drivers. read the `sx127x.c` / `sx126x.c` source for "what a netdev wrap would look like."
-- **`Lora-net/sx1302_hal`** — Semtech's reference packet-forwarder for SX1301/SX1302/SX1303 concentrators. This is what every commercial LoRaWAN gateway ships.
-- **ChirpStack** (`chirpstack/chirpstack`) — open-source LoRaWAN network + application server, designed to run on a small Linux box.
-- **LoRa Alliance LoRaWAN Specification** (1.0.3 / 1.1) — the MAC standard.
-- **Semtech AN1200.22 — LoRa Modulation Basics** — the formal CSS math (a more rigorous version of §98.2).
-- **The Things Industries documentation** — practical channel-plan and ADR notes for production fleets.
-- **Ch 99** — the *non*-LoRa sub-GHz alternatives (nRF24L01, CC1101) when you don't need range but you do need throughput.
-- **Ch 95** — for comparison: BLE's GATT/HCI model vs LoRaWAN's MAC/PHY split.
+- **Semtech SX127x datasheet** + **SX126x datasheet**, the canonical reference for register / command behavior.
+- **`semtech-prh/sx127x-driver` and `lora-net/lora-modules`**: out-of-tree Linux drivers. Read the `sx127x.c` / `sx126x.c` source for "what a netdev wrap would look like."
+- **`Lora-net/sx1302_hal`**: Semtech's reference packet-forwarder for SX1301/SX1302/SX1303 concentrators. This is what every commercial LoRaWAN gateway ships.
+- **ChirpStack** (`chirpstack/chirpstack`), open-source LoRaWAN network + application server, designed to run on a small Linux box.
+- **LoRa Alliance LoRaWAN Specification** (1.0.3 / 1.1), the MAC standard.
+- **Semtech AN1200.22, LoRa Modulation Basics**: the formal CSS math (a more rigorous version of §98.2).
+- **The Things Industries documentation**: practical channel-plan and ADR notes for production fleets.
+- **Ch 99**: the *non*-LoRa sub-GHz alternatives (nRF24L01, CC1101) when you don't need range but you do need throughput.
+- **Ch 95**: for comparison: BLE's GATT/HCI model vs LoRaWAN's MAC/PHY split.
 
 ---
 
-> **End of Chapter 98 — LoRa.** Group M starts here: long-range and specialty wireless where the kernel is "just" the SPI controller and the protocol stack lives in user space. The next two chapters cover the alternatives — proprietary sub-GHz FSK (nRF24L01 / CC1101) and the IEEE 802.15.4 family (ZigBee, Thread).
+> **End of Chapter 98, LoRa.** Group M starts here: long-range and specialty wireless where the kernel is "just" the SPI controller and the protocol stack lives in user space. The next two chapters cover the alternatives, proprietary sub-GHz FSK (nRF24L01 / CC1101) and the IEEE 802.15.4 family (ZigBee, Thread).
 
-> Next chapter: **Chapter 99 — Sub-GHz proprietary radios (nRF24L01, CC1101).** Same sub-GHz spectrum, FSK instead of CSS, much higher throughput, no LoRaWAN-style infrastructure.
+> Next chapter: **Chapter 99: Sub-GHz proprietary radios (nRF24L01, CC1101).** Same sub-GHz spectrum, FSK instead of CSS, much higher throughput, no LoRaWAN-style infrastructure.
