@@ -1,4 +1,4 @@
-﻿# Chapter 3 — Host environment setup
+﻿# Chapter 3: Host environment setup
 
 > **What:** a Linux development host that can cross-compile for ARMv7-A, serve files over TFTP and NFS, talk to the board over serial and USB-OTG, and recover a bricked board.
 >
@@ -9,17 +9,7 @@
 
 ## 3.1  Choosing the host
 
-The book assumes **native Ubuntu 22.04 LTS** running on bare-metal hardware. Other options work but cost you time, sometimes a lot:
-
-| Host | Status | Notes |
-|------|--------|-------|
-| Native Ubuntu 22.04 LTS | **Recommended** | Everything in this book was tested here. |
-| Native Debian 12 (bookworm) | Works | Some package names differ; substitute as needed. |
-| Native Fedora 39+ | Works | Package names and `dnf` syntax differ; we don't translate every command. |
-| WSL2 on Windows 11 | Works *with caveats* | USB-OTG (`uuu`) requires `usbipd-win`; serial passthrough is fiddly; NFS server is awkward. |
-| Linux VM (VirtualBox/VMware) | Works | Slow builds. |
-| macOS + Docker | Don't | Cross-compile inside Docker works, but USB-OTG and serial do not pass through cleanly. |
-
+The book assumes **native / VM(VirtualBox/VMware) Ubuntu 22.04 LTS** running on bare-metal hardware. Other options work but cost you time, sometimes a lot:|
 The remainder of this book assumes Ubuntu 22.04. Commands shown with the `$` prompt run as your normal user. Commands with `#` run as root via `sudo`.
 
 ## 3.2  Workspace layout
@@ -39,7 +29,7 @@ $ tree -L 1
 ├── build      # all out-of-tree build outputs (kernel, U-Boot, BusyBox)
 ├── notes      # your lab journal, per-chapter
 ├── rootfs     # exported over NFS to the target
-├── scripts    # helpers; shared between chapters
+├── scripts    # helpers, shared between chapters
 ├── src        # upstream sources: linux, u-boot, busybox, your bare-metal code
 └── toolchains # prebuilt Arm compilers kept local to this project
 ```
@@ -65,7 +55,7 @@ $ sudo apt install -y \
     build-essential bison flex libssl-dev libncurses-dev \
     bc kmod cpio rsync wget curl git unzip xz-utils \
     device-tree-compiler u-boot-tools \
-    nfs-kernel-server tftpd-hpa \
+    nfs-kernel-server tftpd-hpa tftp-hpa \
     minicom picocom \
     qemu-user-static binfmt-support \
     gdb-multiarch \
@@ -180,6 +170,9 @@ export BAREMETAL_CROSS_COMPILE=arm-none-eabi-
 
 export TFTPROOT=/srv/tftp
 export NFSROOT="$IMX6ULL_HOME/rootfs"
+
+# Default direct-link lab addresses. If you use your home/office router
+# instead, replace these with the real LAN addresses from Section 3.10.
 export BOARD_IP=192.168.7.2
 export HOST_IP=192.168.7.1
 ```
@@ -330,7 +323,7 @@ Why the permission change matters:
 - After `sudo mkdir`, the new directory is owned by `root`, so your normal user would need `sudo` every time you copy a kernel, device tree, or U-Boot image into it.
 - `sudo chown $USER:$USER /srv/tftp` changes the owner to your user. Now you can write files there with normal commands like `cp zImage /srv/tftp/`.
 - The TFTP server does not run as your user. `TFTP_USERNAME="tftp"` means it runs as the low-privilege `tftp` user, so a bug in the TFTP server has less power on the host.
-- `chmod 755 /srv/tftp` means: owner can read/write/enter; everyone else can read/enter but not write. That lets the `tftp` user read files from the directory while only you can add or replace files.
+- `chmod 755 /srv/tftp` means: owner can read/write/enter, everyone else can read/enter but not write. That lets the `tftp` user read files from the directory while only you can add or replace files.
 
 Files you copy into `/srv/tftp` also need to be readable by the TFTP daemon. Normal files created by `cp` or `echo` are usually readable already. If U-Boot gets "permission denied" from TFTP, check with:
 
@@ -419,28 +412,51 @@ NXP's official tool. Download the latest release from <https://github.com/nxp-im
 $ cd ~/imx6ull/src
 $ git clone https://github.com/nxp-imx/mfgtools
 $ cd mfgtools
-$ sudo apt install -y libusb-1.0-0-dev libzip-dev libbz2-dev pkg-config cmake
+$ sudo apt install -y libusb-1.0-0-dev libzip-dev libbz2-dev pkg-config cmake libzstd-dev libtinyxml2-dev
 $ cmake . && make -j$(nproc)
 $ sudo cp uuu/uuu /usr/local/bin/
-$ uuu -v
+$ uuu -h
 uuu (Universal Update Utility) for nxp imx chips -- 1.5.x-0-gxxxxxxx
 ```
+Now add a udev rule so your normal user can talk to the board over USB without running `uuu` as root.
 
-### `imx_usb_loader`
+You *can* type `sudo uuu ...` every time, but do not make that your normal workflow. `uuu` is a host-side flashing tool that opens USB devices and writes boot images. It does not need full root access to your workstation. Giving it root privileges hides the real permission problem and increases the damage if you point a command at the wrong file or run a broken script.
 
-A community alternative that some find easier. Lighter, single binary, no fancy script DSL:
+The cleaner model is:
+
+- root owns system configuration, such as the udev rule;
+- your user belongs to a hardware-access group;
+- `uuu` runs as your user and can open only the matching USB devices.
+
+First check whether the group already exists:
 
 ```sh
-$ cd ~/imx6ull/src
-$ git clone https://github.com/boundarydevices/imx_usb_loader
-$ cd imx_usb_loader
-$ make
-$ sudo make install
+$ getent group plugdev
 ```
 
-You only need one. We will use `uuu` in this book because its scripting language is useful for Chapter 8's recovery flow. Install both if you like options.
+If that prints a `plugdev:...` line, the group already exists and you do not need to create it. Add yourself to it:
 
-Now add a udev rule so a normal user can talk to the board over USB without running `uuu` as root.
+```sh
+$ sudo usermod -aG plugdev "$USER"
+```
+
+If `getent` prints nothing, create the group first:
+
+```sh
+$ sudo groupadd plugdev
+$ sudo usermod -aG plugdev "$USER"
+```
+
+You will also see this shorter form in many setup notes:
+
+```sh
+$ sudo groupadd -f plugdev
+$ sudo usermod -aG plugdev "$USER"
+```
+
+The `-f` means "succeed even if the group already exists", so the command is safe to run on both cases.
+
+Log out and back in after `usermod`; group membership is read when your login session starts.
 
 Open a new rule file:
 
@@ -451,8 +467,8 @@ $ sudoedit /etc/udev/rules.d/99-imx.rules
 Put these two lines in it:
 
 ```text
-SUBSYSTEM=="usb", ATTR{idVendor}=="15a2", ATTR{idProduct}=="0080", MODE="0666"
-SUBSYSTEM=="usb", ATTR{idVendor}=="1fc9", ATTR{idProduct}=="0145", MODE="0666"
+SUBSYSTEM=="usb", ATTR{idVendor}=="15a2", ATTR{idProduct}=="0080", MODE="0660", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1fc9", ATTR{idProduct}=="0145", MODE="0660", GROUP="plugdev"
 ```
 
 Then reload udev:
@@ -463,7 +479,14 @@ $ sudo udevadm trigger
 ```
 
 `15a2:0080` is the i.MX6ULL ROM SDP enumeration. `1fc9:0145` is the same after a board enters the second-stage download (different VID/PID once U-Boot SPL takes over).
-> **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
+
+After reloading the rules, unplug and replug the board. Then test without `sudo`:
+
+```sh
+$ uuu -lsusb
+```
+
+If `uuu -lsusb` sees the board as your normal user, the setup is correct. Use `sudo` only while installing host packages, copying binaries into `/usr/local/bin`, or editing `/etc` files, do not use it as a workaround for USB permissions.
 
 ## 3.9  SD card preparation (just read for later chapter, not to follow now)
 
@@ -555,12 +578,20 @@ That regex on `/dev/sd[b-z]` is the seatbelt: it refuses to write to `/dev/sda`,
 
 ## 3.10  Host IP plan
 
-Pick a static IP for the dev host on the wire to the board. We will use `192.168.7.1` throughout the book:
+For TFTP, NFS, and U-Boot experiments, the board must know how to reach the host. The important thing is not the exact address. The important thing is that the address stays stable.
+
+There are two common setups.
+
+### Option A: direct host-to-board link
+
+Use this when your computer has a spare Ethernet port, a USB-to-Ethernet adapter, or Wi-Fi for internet plus Ethernet for the board.
+
+In this book, the clean lab network is:
 
 - Host: **192.168.7.1**
 - Board: **192.168.7.2**
 
-The simplest setup is a directly-connected Ethernet cable between host and board, with the host's secondary NIC set to a static IP. If you only have one NIC and need internet, a small unmanaged switch in between is fine. Wi-Fi works but adds variables. We prefer wired.
+This private `192.168.7.0/24` network is separate from your home or office LAN. It avoids DHCP changes, router settings, and IP conflicts. That is why many embedded Linux labs use a dedicated direct link.
 
 If you use NetworkManager:
 
@@ -591,6 +622,49 @@ Verify:
 ```sh
 $ ip -4 addr show enp0s31f6
 ... inet 192.168.7.1/24 ...
+```
+
+### Option B: board and host on your existing router
+
+Use this when your computer has only one Ethernet port and it already connects to your Wi-Fi modem or home router. In that case, do **not** force the host to `192.168.7.1`. Leave the host on the router's LAN, usually something like `192.168.1.x`, and plug the i.MX6ULL board into the same router or switch.
+
+Example:
+
+- Router: **192.168.1.1**
+- Host: **192.168.1.23**
+- Board: **192.168.1.50**
+
+Find the host's current LAN address:
+
+```sh
+$ ip -4 addr
+```
+
+Look for the address on the interface connected to the router. In later U-Boot commands, this host address becomes `serverip`.
+
+For the board address, use one of these:
+
+- reserve a fixed DHCP address for the board in your router;
+- let U-Boot request DHCP, then read the assigned address;
+- choose an unused static address outside the router's DHCP pool.
+
+Router mode is practical, but it has two drawbacks:
+
+- DHCP can change the board address unless you reserve it.
+- Some routers isolate clients, especially guest Wi-Fi networks. If TFTP or ping fails even though both devices have `192.168.1.x` addresses, check client isolation and firewall settings.
+
+Throughout the book, commands may show the direct-link values:
+
+```text
+serverip=192.168.7.1
+ipaddr=192.168.7.2
+```
+
+If you use router mode, substitute your real LAN values instead:
+
+```text
+serverip=<your host IP, for example 192.168.1.23>
+ipaddr=<your board IP, for example 192.168.1.50>
 ```
 
 We test the link to the board in Chapter 8 after the board has U-Boot on it.
@@ -632,8 +706,6 @@ $ ls -d ~/imx6ull/{src,build,boot,rootfs,scripts,toolchains,notes}
 /home/<you>/imx6ull/scripts
 /home/<you>/imx6ull/src
 /home/<you>/imx6ull/toolchains
-
-$ sudo -v
 ```
 
 If any of these fail, do not move on. Subsequent chapters silently assume each.
@@ -666,7 +738,6 @@ Open another terminal and run `echo "$CROSS_COMPILE"` before sourcing the script
 
 ## 3.13  Pitfalls
 
-- **WSL2 USB-OTG.** USB pass-through via `usbipd-win` works for ordinary USB but the SDP enumeration after a board reset can race with WSL's USB stack. Symptom: `uuu` reports "no device". Workaround: re-attach with `usbipd attach --busid <id>` after every reset. Annoying. Native Linux avoids this entirely.
 - **`tftp` blocked by firewall.** Ubuntu's UFW, if enabled, drops UDP/69 silently. `sudo ufw status` first.
 - **NFS over Wi-Fi to a slow board.** Booting a kernel over NFS-root on Wi-Fi works but is brittle. If you see "VFS: Unable to mount root fs", it is almost always NFS timing out, not a real kernel bug. Use wired.
 - **Forgot to source `env.sh`.** If `arm-none-linux-gnueabihf-gcc` or `arm-none-eabi-gcc` is not found, run `. ~/imx6ull/scripts/env.sh` in that terminal.
