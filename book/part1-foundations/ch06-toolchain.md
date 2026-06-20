@@ -1,19 +1,13 @@
----
-chapter: 6
-title: The toolchain
-part: I - Foundations
-estimated_pages: 24
-status: draft
----
-
 # Chapter 6: The toolchain
 
 > **What:** the set of programs that turn your C and assembly source into a binary your i.MX6ULL will execute.
 >
-> **Why:** every later chapter ends with "now build it." If "build" is a black box, every failure will be too.
+> **Why:** every later chapter ends with "now build it." If you do not know what the build tools are doing, build failures become guesswork.
 >
 > **Focus:** **(a)** that `gcc` is a *driver* over half a dozen smaller tools. **(b)** that **ELF** is the universal container, and the linker decides where every byte ends up. **(c)** that the **ABI** is the contract that every function call in your program follows.
+
 > **ELF:** Executable and Linkable Format, the standard Linux object and executable file format.
+
 > **ABI:** Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
 
 ## 6.1  `gcc` is not one program
@@ -24,16 +18,17 @@ When you type:
 $ arm-none-linux-gnueabihf-gcc -O2 -o hello hello.c
 ```
 
-…six programs run in sequence. `gcc` is a **driver**: it parses the command line, decides which sub-tools to invoke, builds their argument lists, and chains their I/O.
+The `gcc` command coordinates several build stages. GCC is a **driver**: it parses the command line, selects the required tools, and passes each stage's output to the next stage.
 
-The six sub-stages (the driver may merge some into one process for speed):
+The main build stages are:
 
 1. **`cpp`, preprocessor.** Resolves `#include`, expands macros, strips comments. Output: pure C, no directives. Try `-E` to stop here.
 2. **`cc1`, the C compiler proper.** Parses C, builds an internal IR (RTL/GIMPLE), optimizes, lowers to target assembly. Output: a `.s` file. Try `-S` to stop here.
 3. **`as` (from binutils), assembler.** Turns `.s` into a relocatable `.o` (ELF object file). Try `-c` to stop here.
-4. **`collect2`**: A wrapper around the linker that also handles C++ constructors. You almost never invoke it directly.
+4. **`collect2`**, when used by this GCC build. It wraps the linker and helps arrange constructor initialization. You normally do not invoke it directly.
 5. **`ld` (from binutils), linker.** Combines `.o` files and libraries, resolves symbol references, applies the linker script's address layout, and writes the final ELF executable.
-6. *(For dynamically-linked output)*, the resulting ELF references the dynamic loader, which runs at process start time on the target. Not part of host build, but in the picture.
+
+For a dynamically linked program, the final ELF also names a dynamic loader. That loader runs later on the target when the program starts. It is not a stage of the host compile command.
 
 You can see the chain by adding `-v` to any compile:
 
@@ -46,7 +41,7 @@ Target: arm-none-linux-gnueabihf
 ...
 ```
 
-For embedded work, the steps that bite are: step 1 (include path mismatches), step 5 (linker script and sysroot problems), and the boundary between step 3 and step 5 (wrong relocation types).
+Common failures include incorrect include paths during preprocessing, incompatible object files during linking, and missing libraries or startup files in the sysroot.
 
 ## 6.2  The binutils inventory
 
@@ -54,12 +49,12 @@ For embedded work, the steps that bite are: step 1 (include path mismatches), st
 
 | Tool | What it does | When you reach for it |
 |------|-------------|----------------------|
-| `as` | Assemble `.s` → `.o` | Indirectly via `gcc`; rarely by hand. |
-| `ld` | Link `.o` + libraries → ELF | Bare-metal builds (`-T linker.ld`). |
-| `objcopy` | Convert between formats; extract sections | "I have an ELF, give me a raw binary." |
-| `objdump` | Disassemble, dump headers/sections | "What does this code actually look like?" |
-| `nm` | List symbols in an object | "Where is `foo` defined and is it exported?" |
-| `readelf` | Dump ELF metadata in detail | "What sections, segments, and dynamic info does this have?" |
+| `as` | Assemble `.s` into `.o` | Usually invoked through `gcc` |
+| `ld` | Link object files and libraries into an ELF | Bare-metal builds using `-T linker.ld` |
+| `objcopy` | Convert formats and extract sections | Convert an ELF into a raw binary |
+| `objdump` | Disassemble code and display headers or sections | Inspect generated instructions |
+| `nm` | List symbols in an object | Find where a symbol is defined or exported |
+| `readelf` | Display ELF metadata | Inspect sections, segments, and dynamic information |
 | `strip` | Remove symbols/debug info | Producing the shipped binary. |
 | `ar` | Build/dissect `.a` archives (static libraries) | When making your own libs. |
 | `addr2line` | Map address → file:line | Decoding crash addresses, oopses. |
@@ -89,7 +84,7 @@ Disassembly of section .text:
   900018:   eafffffe    b   900018 <main+0xc>
 ```
 
-You can read your own machine code. For embedded work, that skill is mandatory.
+This output lets you verify the instructions and addresses produced by the toolchain.
 
 ### `readelf -l` to see segments
 
@@ -115,26 +110,72 @@ For bare-metal output we will *not* have an INTERP segment. The ELF will be stat
 
 ## 6.3  Section, segment, VMA, LMA
 
-A common source of confusion: what is the difference between a section and a segment?
+These terms describe three different viewpoints: the compiler, the linker, and the loader.
 
-- **Sections** are the linker's view of an ELF. `.text`, `.rodata`, `.data`, `.bss`, `.init_array`, `.debug_*`. The linker script names these and decides where each ends up.
-- **Segments** are the loader's view. A segment is a contiguous range of memory the runtime is supposed to load with given permissions. Segments are described by program headers. Multiple sections can map into one segment (e.g., `.text` + `.rodata` both go into a single R-X segment).
+| Word | Who mainly cares? | Meaning |
+|------|-------------------|---------|
+| **Section** | Compiler and linker | A named bucket of related bytes: `.text`, `.rodata`, `.data`, `.bss`, `.debug_*`. |
+| **Segment** | Loader | A loadable memory range described by ELF program headers. One segment can contain several sections. |
+| **VMA** | CPU at runtime | The address the code/data expects to have when it is being used. |
+| **LMA** | Loader/startup code | The address where the initial bytes are stored before they are moved to their runtime address. |
 
-**VMA (Virtual Memory Address)** is the address the section's content *expects to live at when the program runs*.
+If you come from MCU work, start with **sections**. You already know these:
 
-**LMA (Load Memory Address)** is the address from which the loader should *initially read* the section's content.
+- `.text`: executable instructions.
+- `.rodata`: constants and string literals.
+- `.data`: globals/statics with non-zero initial values, such as `int led = 1;`.
+- `.bss`: globals/statics that start as zero, such as `int counter;`.
 
-Most of the time VMA = LMA. The interesting case is **`.data`** in a bare-metal Flash + RAM system:
+The linker script arranges sections. The loader does not want to reason about every tiny section. It wants bigger chunks it can load or map with permissions:
 
-- VMA of `.data` = somewhere in RAM (where the variables live at runtime).
-- LMA of `.data` = somewhere in Flash (where the *initial values* are stored persistently).
-- Your startup code copies LMA → VMA before `main()`.
+```text
+sections:  .text  .rodata  .data  .bss  .debug_*
+             |       |       |      |
+             v       v       v      v
+segments:  LOAD R-X        LOAD RW       debug is not loaded
+```
 
-In the Cortex-M world this distinction is everyday. In Linux user-space it disappears because the loader handles it. In bare-metal on the i.MX6ULL it returns.
+So a **segment** is the loader-facing package. For a Linux process, the kernel and dynamic linker read the ELF program headers, create mappings for the `LOAD` segments, and eventually call into the program. For our bare-metal image, the "loader" is usually the Boot ROM, U-Boot, `uuu`, or our own startup code.
+
+Now the address pair:
+
+- **VMA** answers: "Where will this section live when the CPU uses it?"
+- **LMA** answers: "Where are the bytes stored in the image before runtime setup?"
+
+In a Linux process, a VMA is normally a virtual address. In early bare-metal code, before the MMU is enabled, it is usually the physical address from which the CPU executes or accesses data. For this chapter, think of VMA as the **runtime address**.
+
+Most simple programs have VMA = LMA. If the Boot ROM loads your whole image into OCRAM at `0x00907400`, and your code also runs from `0x00907400`, the load address and runtime address match:
+
+```text
+image in OCRAM:
+  .text  VMA 0x00907400, LMA 0x00907400
+  .data  VMA 0x00908000, LMA 0x00908000
+```
+
+The useful case is when **where bytes are stored** differs from **where bytes must run**. Classic Cortex-M Flash + RAM does this every day:
+
+```text
+Flash image                         RAM after startup
+-----------                         -----------------
+.text   runs from Flash             .data  variables live here
+.rodata stays in Flash              .bss   zeroed here
+.data  initial values  ----copy---> .data  runtime values
+```
+
+For `.data` in that system:
+
+| Address kind | Example meaning |
+|--------------|-----------------|
+| VMA | RAM address where `led` lives when C code reads/writes it. |
+| LMA | Flash address where the initial value of `led` was stored in the image. |
+
+That is why startup code copies `.data` from LMA to VMA before `main()`, then zeros `.bss`. In linker-script language, `AT(addr)` is how you say "this section runs over here, but its initial bytes are loaded over there." Chapter 10 uses this pattern with `AT(_etext)`.
+
+Linux user-space hides most of this because the kernel and dynamic linker perform the load/mapping work. Bare-metal code cannot hide it. On the i.MX6ULL, the distinction returns whenever a small image starts in OCRAM, initializes DDR, then moves code or data into DRAM.
 
 ## 6.4  Linker scripts
 
-A linker script is a small DSL that tells `ld`:
+A linker script (`.ld` file) is a small text file that tells `ld`:
 
 1. What memory regions exist and their attributes.
 2. Which sections go into which regions.
@@ -163,14 +204,13 @@ SECTIONS
 
 Five things to notice:
 
-1. `ENTRY(_start)` tells the linker which symbol is the entry. The Boot ROM does not consult this, it jumps to a fixed offset. But debuggers and tooling care.
+1. `ENTRY(_start)` records the ELF entry symbol. The Boot ROM uses the IVT entry field instead, but debuggers and ELF tools use this value.
 2. `MEMORY` declares one region called `OCRAM` of ~100 KB. Permissions (`rwx`) are advisory for now.
-3. `SECTIONS` orders the input sections into output sections, attached `> OCRAM` to lay each at the next available address inside OCRAM.
+3. `SECTIONS` combines input sections into output sections. The `> OCRAM` placement assigns each output section to the next available address in OCRAM.
 4. `_sbss = .; ... _ebss = .;` exports the bounds of `.bss` so our startup code can clear it.
-5. `_stack_top` is computed at link time as "one past the end of OCRAM", our startup code loads SP from this.
+5. `_stack_top` is computed at link time as one address past the end of the declared OCRAM region. Startup code loads `sp` from this symbol.
 
 We will revise this script over the next chapters as we move to DDR. The format does not change. Only the regions do.
-> **DDR:** external DRAM that must be configured and trained before most software can run from it.
 
 ## 6.5  The ABI: what makes function calls work
 
@@ -182,20 +222,20 @@ When `foo()` calls `bar()`, both sides must agree on:
 - Where do floating-point arguments go, in integer registers, or in FPU registers?
 - How are structs > 8 bytes returned?
 
-The **EABI** (Embedded ABI) for ARM specifies all of this. ARMv7-A Linux uses the **AAPCS** (ARM Architecture Procedure Call Standard) plus the EABI's run-time conventions. The relevant variant for us is **AAPCS-VFP**, also called "hard-float," in which floating-point parameters travel in `s0`–`s15` / `d0`–`d7` rather than integer registers.
+The **EABI** (Embedded ABI) for ARM specifies all of this. ARMv7-A Linux uses the **AAPCS** (ARM Architecture Procedure Call Standard) plus the EABI's runtime conventions. The relevant variant for us is **AAPCS-VFP**, also called "hard-float," in which floating-point parameters use `s0`-`s15` / `d0`-`d7` rather than integer registers.
 
 The core rules (simplified):
 
 | Register | AAPCS role |
 |----------|-----------|
-| r0–r3 | First four integer arguments / return value (`r0`, optionally `r0,r1` for 64-bit). Caller-saved. |
-| r4–r11 | Callee-saved (must be preserved). R9 is "platform register", see §6.6. |
+| r0-r3 | First four integer arguments / return value (`r0`, optionally `r0,r1` for 64-bit). Caller-saved. |
+| r4-r11 | Callee-saved (must be preserved). R9 is "platform register", see §6.6. |
 | r12 (ip) | Intra-procedure-call scratch. Caller-saved. |
 | r13 (sp) | Stack pointer. 8-byte aligned at function boundary. |
 | r14 (lr) | Link register (return address). |
 | r15 (pc) | Program counter. |
-| s0–s15 / d0–d7 | First eight FP arguments / FP return. Caller-saved. |
-| s16–s31 / d8–d15 | Callee-saved FP. |
+| s0-s15 / d0-d7 | First eight FP arguments / FP return. Caller-saved. |
+| s16-s31 / d8-d15 | Callee-saved FP. |
 
 Why this matters: when you write a function in assembly and call it from C (or vice versa), you **must** obey AAPCS or memory corruption follows. The toolchain assumes it. You must too.
 
@@ -209,19 +249,31 @@ Three flavors of FP ABI exist:
 
 The triplet suffix tells you which: `arm-none-linux-gnueabi` (soft), `arm-none-linux-gnueabihf` (hard). **You cannot link a soft-float `.o` with a hard-float `.o`**. The linker refuses.
 
-Linux on i.MX6ULL is universally hard-float in 2026. So is everything we build.
+The Linux toolchain selected for this book uses the hard-float ABI. All Linux user-space objects and libraries that we combine must use the same ABI.
 
 ## 6.6  The C library, or its absence
 
-For bare-metal code in Part II, we want **no libc at all**. We will write our own `memcpy`, our own `printf`. The reason is the same reason we wrote this book: dependencies hide assumptions.
+For bare-metal code in Part II, we want **no libc at all**. We will write our own `memcpy` and our own `printf`. This keeps the early examples explicit: every dependency and hardware assumption is visible.
+
+The C library, or libc, is **separate from GCC**. GCC is the compiler driver and compiler. Libc is a runtime library plus headers that the compiler links against when you build Linux user-space programs. A complete cross-toolchain usually ships all of these together:
+
+| Piece | Example | Job |
+|-------|---------|-----|
+| Compiler | `arm-none-linux-gnueabihf-gcc` | Turns C into object files. |
+| Binutils | `as`, `ld`, `objcopy`, `readelf` | Assembles, links, converts, and inspects binaries. |
+| libc headers | `stdio.h`, `unistd.h`, `pthread.h` | Tell the compiler what user-space APIs look like. |
+| libc binaries | `libc.so`, `libc.a`, startup files such as `crt1.o` | Provide the code that implements the C/POSIX runtime. |
+| libgcc | `libgcc.a` | Small helper routines that GCC itself may need, such as integer division helpers. |
+
+Those headers and libraries live in the toolchain's **sysroot**: a directory that looks like a tiny target root filesystem, containing target headers and target libraries. So people say "the Ubuntu ARM GCC toolchain ships glibc," but glibc is not inside the compiler executable. It is packaged alongside the compiler and selected by the compiler when linking.
 
 For Linux user-space code, we use a libc. Three options:
 
 | libc | Size of typical static `hello world` | Notes |
 |------|--------------------------------------|-------|
-| glibc | ~700 KB | The default on most distros. Largest, most compatible. |
-| musl | ~30 KB | Tiny, MIT-licensed, fast cold-start. Increasingly default for embedded. |
-| uClibc-ng | ~50 KB | Maintained fork of uClibc. Still used in OpenWRT/Buildroot. |
+| glibc | ~700 KB | Common on general-purpose Linux distributions. Broad compatibility. |
+| musl | ~30 KB | Small, MIT-licensed implementation often used in compact systems. |
+| uClibc-ng | ~50 KB | Maintained fork of uClibc, available in Buildroot and used by some embedded distributions. |
 
 We will mostly use glibc because the Ubuntu toolchain ships it. In Chapter 34 we switch to musl once for comparison.
 
@@ -236,14 +288,42 @@ A libc bundles:
 - **POSIX threads** (`pthread_*`), sometimes a separate `libpthread.so`, sometimes folded in.
 - **Locale, time, network, etc.**
 
-When we write bare-metal code, *none of this is available*. There is no `malloc`. There is no `printf` (we write one). There is no `errno` (we set our own). Once you accept that, working without libc is straightforward.
+Bare-metal code does not receive these services automatically. There is no `malloc`, `printf`, or `errno` unless our program or another linked library implements it.
 
 ## 6.7  Make, in working depth
 
-`make` is older than most engineers reading this, but for the bare-metal projects in Part II, and for every kernel / U-Boot / Buildroot build later, it is the tool you will use. This section is longer than it looks. Every later chapter references it, but once you have it down, you do not need to revisit it.
-> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
-> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
+`make` runs the builds for the bare-metal projects in Part II and for U-Boot, Linux, and Buildroot later in the book. This section explains the parts used by those builds.
+
+Before syntax, understand the job.
+
+`make` decides which build commands need to run. It does not know C, assembly, ELF, or ARM by itself. You teach it:
+
+1. Which files you want to create.
+2. Which input files each output depends on.
+3. Which shell command creates the output from the inputs.
+
+Then `make` answers one question: **what commands need to run right now?**
+
+It answers by looking at files and timestamps:
+
+- If the output file does not exist, build it.
+- If an input file is newer than the output file, rebuild it.
+- If the output exists and all inputs are older, skip it.
+
+For our bare-metal LED program, the dependency chain looks like this:
+
+```text
+startup.S ──► startup.o ┐
+                         ├──► led.elf ──► led.bin
+main.c    ──► main.o    ┘
+link.ld   ──────────────┘
+```
+
+If you edit `main.c`, only `main.o`, `led.elf`, and `led.bin` need rebuilding. `startup.o` can be reused. If you edit `link.ld`, the object files can be reused, but `led.elf` and `led.bin` must be rebuilt. This is why `make` exists: it avoids rebuilding everything when only part of the input changed.
+
+A `Makefile` records those dependency relationships and the shell commands that produce each output. `make` decides whether to run the commands and in what order.
+
+When you run plain `make`, it reads a file named `Makefile` in the current directory and builds the first target in that file. In our examples, the first target is usually `all`, and `all` depends on the final file we want, such as `led.bin`.
 
 ### 6.7.1  Rule shape
 
@@ -253,15 +333,17 @@ target ...: prerequisite ...
 <TAB>command
 ```
 
-`make` builds the *target* by running the *command(s)* when (a) the target does not exist, or (b) any prerequisite is newer than the target. Commands **must** be indented with a literal `TAB`, spaces do not work. Every engineer hits this the first time they cut-and-paste a rule.
+In a rule, the *target* is the file you want to create. The *prerequisites* are the files it depends on. The indented commands are the recipe that creates or updates the target.
+
+`make` builds the target when the target does not exist or when a prerequisite is newer than the target. Recipe commands **must** be indented with a literal `TAB`. Spaces do not work.
 
 ### 6.7.2  Variables: four flavors of assignment
 
 ```make
 CC     = arm-none-linux-gnueabihf-gcc         # 1) recursive ("deferred")
 CC    := arm-none-linux-gnueabihf-gcc         # 2) simple ("immediate")
-CFLAGS ?= -O2                       # 3) only if not already set
-OBJS  += extra.o                   # 4) append
+CFLAGS ?= -O2                                 # 3) only if not already set
+OBJS  += extra.o                              # 4) append
 ```
 
 The pair people misunderstand most is `=` vs `:=`:
@@ -280,7 +362,7 @@ name := there
 $(info $(greet))   # prints "hello world"   ← immediate expansion
 ```
 
-Use `:=` everywhere by default. The `=` form is occasionally necessary (recursive expansion of generated variables) but mostly a trap.
+Use `:=` everywhere by default. The `=` form is occasionally necessary (recursive expansion of generated variables), but it is easier to misuse.
 
 ### 6.7.3  Pattern rules and automatic variables
 
@@ -310,7 +392,7 @@ A pair of pattern rules and one main rule, plus a `clean` phony, is 90% of every
 .PHONY: all clean install
 ```
 
-Tells `make` that `all` / `clean` / `install` are **not** filenames. Without `.PHONY`, if you ever happen to create a file literally named `clean`, `make clean` would consider that file "up to date" and skip the recipe. With `.PHONY`, the recipe always runs.
+Tells `make` that `all` / `clean` / `install` are **not** filenames. Without `.PHONY`, a file named `clean` would make `make clean` consider the target up to date and skip the recipe. With `.PHONY`, the recipe always runs.
 
 ### 6.7.5  Useful functions
 
@@ -416,9 +498,7 @@ Two ways to combine your code with libraries:
 - **Static.** Library code is copied into your binary at link time. The binary is self-contained. No `libfoo.so` is needed at runtime. Bigger file. Faster startup.
 - **Dynamic.** Library code lives in `.so` files on disk. Your binary references them by name. The dynamic loader (`/lib/ld-linux-armhf.so.3`) resolves them at process start.
 
-Default on a Linux distro: dynamic. Default on a tight embedded system with a known rootfs: often static (saves space if you only have a few binaries. Saves disk IO at startup).
-> **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
-> **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
+Linux distributions normally use dynamic linking. Small embedded systems may use either model. Static linking simplifies deployment for a few standalone programs, while dynamic linking saves storage when many programs share the same libraries.
 
 To force static:
 
@@ -432,13 +512,15 @@ hello: ELF 32-bit LSB executable, ARM, EABI5 version 1 (SYSV),
 Compare sizes:
 
 ```sh
-$ arm-none-linux-gnueabihf-gcc -o hello-dyn  hello.c          ; ls -l hello-dyn
-$ arm-none-linux-gnueabihf-gcc -static -o hello-stc hello.c   ; ls -l hello-stc
+$ arm-none-linux-gnueabihf-gcc -o hello-dyn hello.c
+$ ls -l hello-dyn
+$ arm-none-linux-gnueabihf-gcc -static -o hello-stc hello.c
+$ ls -l hello-stc
 ```
 
 Expect roughly 8 KB dynamic vs 600 KB static with glibc, or ~30 KB static with musl.
 
-## 6.9  ELF, in just enough depth
+## 6.9  ELF structure needed for this book
 
 An ELF file has:
 
@@ -517,25 +599,25 @@ In your journal, answer:
 3. What is the address of `_start`?
 4. What is the address `nm` reports for `_stack_top`? Does it match `ORIGIN(OCRAM) + LENGTH(OCRAM)`?
 
-Compare your work against the listings above. Experimenting with `readelf -a` is the answer.
+Compare the reported sections, symbols, and addresses with the linker script. Use `readelf -a` when you need additional ELF details.
 
 ## 6.11  Pitfalls
 
-- **Mixing incompatible toolchain outputs.** Do not link bare-metal objects from `arm-none-eabi-` into Linux user-space programs built with `arm-none-linux-gnueabihf-`. They have different runtime assumptions. The compiler will not warn clearly. The linker error usually appears later and looks unrelated.
-- **`-nostdlib` silently dropping libgcc.** If your code uses 64-bit integer division on a target without HW divide, `gcc` emits a call to `__aeabi_uldivmod`, provided by `libgcc`. With `-nostdlib`, you must explicitly add `-lgcc` after your objects.
-- **Linker script orders matter.** `*(.text*)` after `*(.text.startup)` makes the startup come first. Get this wrong and the wrong code runs first. We will be deliberate about this in Ch 9.
-- **`.bss` zeroing.** If your startup forgets to zero `.bss`, every uninitialized global is whatever was in memory at boot, which on i.MX6ULL OCRAM is often a useful-looking pattern, leading to bugs that "work fine" except when ROM cleans differently next boot.
+- **Mixing incompatible toolchain outputs.** Do not link bare-metal objects from `arm-none-eabi-` into Linux user-space programs built with `arm-none-linux-gnueabihf-`. They have different runtime assumptions. The failure may appear only at link time and may mention an ABI or relocation mismatch.
+- **`-nostdlib` also removes the automatic libgcc link.** If code uses an operation such as 64-bit integer division, GCC may emit a call to `__aeabi_uldivmod` from `libgcc`. Add `-lgcc` explicitly after your object files when required.
+- **Linker-script order matters.** Place a specific startup section before a broader wildcard such as `*(.text*)` when startup must appear first. Chapter 9 shows the required ordering.
+- **`.bss` must be zeroed.** If startup does not clear `.bss`, uninitialized globals contain old memory values and program behavior can change between boots.
 - **Wrong `-march`/`-mcpu`.** Toolchain defaults vary. Always specify `-mcpu=cortex-a7` explicitly for Cortex-A7 code. The compiler then schedules instructions for that pipeline.
 - **`strip` on the binary you wanted to debug.** Keep an unstripped copy. A useful convention in your Makefile: `$(NAME).elf` is unstripped (for `gdb`/`objdump`). `$(NAME).stripped.elf` is the smaller deliverable.
 
 ## 6.12  Going deeper
 
-- *Linkers and Loaders* by John Levine. The canonical book on what `ld` actually does.
+- *Linkers and Loaders* by John Levine. A detailed explanation of linkers and loaders.
 - *The ELF Specification* (latest is the System V ABI ed. 4.1. The AAPCS additions are in ARM IHI 0042).
 - The GCC manual, at least the section on language-independent options.
 - *Procedure Call Standard for the Arm Architecture* (AAPCS32), ARM IHI 0042.
 - `man elf`, `man 5 elf`, `man 1 ld`, `man 1 ld.so`.
 - LWN: "How programs get run" (the kernel `exec` path. Relevant when you write a `binfmt`).
 
-> Next chapter: **Chapter 7: The Boot ROM, IVT, DCD, and BootData.** With the toolchain understood, we can now build images that survive the Boot ROM's scrutiny.
+> Next chapter: **Chapter 7: The Boot ROM, IVT, DCD, and BootData.** With the toolchain understood, we can build images in the format expected by the Boot ROM.
 > **DCD:** Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.

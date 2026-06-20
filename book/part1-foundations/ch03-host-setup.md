@@ -1,6 +1,6 @@
 ﻿# Chapter 3: Host environment setup
 
-> **What:** a Linux development host that can cross-compile for ARMv7-A, serve files over TFTP and NFS, talk to the board over serial and USB-OTG, and recover a bricked board.
+> **What:** a Linux development host that can cross-compile for ARMv7-A, serve files over TFTP and NFS, communicate with the board over serial and USB-OTG, and recover a board that cannot boot from storage.
 >
 > **Why:** for the next sixty chapters, the host is your lever. A flaky host wastes more of your time than any bug in your code.
 >
@@ -64,19 +64,19 @@ $ sudo apt install -y \
     fakeroot dosfstools mtools parted
 ```
 
-What each pulls in, briefly:
+What the main packages provide:
 
-- **`build-essential`, `bison`, `flex`, `libssl-dev`, `libncurses-dev`** — what the kernel and U-Boot need to build. Surprise: the kernel needs OpenSSL during build (for module signing).
-- **`bc`** — really. The kernel build literally invokes `bc` for arithmetic.
-- **`device-tree-compiler`** — `dtc`. You'll use this in every chapter from Ch 27 on.
-- **`u-boot-tools`** — provides `mkimage`, `mkenvimage`, `dumpimage`, `mkeficapsule`.
-- **`nfs-kernel-server`, `tftpd-hpa`** — server side of the network-boot loop.
-- **`minicom`, `picocom`** — serial terminals. We'll use `picocom`. `minicom` is here for users who prefer it.
-- **`qemu-user-static`, `binfmt-support`** — lets you run ARM binaries on the host transparently. Useful when staging a rootfs with `chroot`.
-- **`gdb-multiarch`** — one `gdb` that speaks every architecture. We'll point it at ARM ELFs.
-- **`libusb-1.0-0-dev`, `libftdi1-dev`** — needed by `imx_usb_loader` and OpenOCD when we build them from source.
-**OpenOCD** - the host program that talks to a JTAG adapter and exposes a GDB server.
-- **`fakeroot`, `dosfstools`, `mtools`, `parted`** — manipulate SD card images without needing root.
+- **`build-essential`, `bison`, `flex`, `libssl-dev`, `libncurses-dev`** provide tools and libraries needed to build the kernel and U-Boot. The kernel uses OpenSSL during build for features such as module signing.
+- **`bc`** provides arithmetic used by parts of the kernel build.
+- **`device-tree-compiler`** provides `dtc`, the device-tree compiler.
+- **`u-boot-tools`** provides `mkimage`, `mkenvimage`, `dumpimage`, and `mkeficapsule`.
+- **`nfs-kernel-server`, `tftpd-hpa`** provide the server side of network boot.
+- **`minicom`, `picocom`** are serial terminals. This book uses `picocom`.
+- **`qemu-user-static`, `binfmt-support`** let the host run ARM user-space binaries. This is useful when preparing a root filesystem with `chroot`.
+- **`gdb-multiarch`** is a GDB build that supports multiple architectures, including ARM.
+- **`libusb-1.0-0-dev`, `libftdi1-dev`** are needed when building USB and JTAG tools such as `imx_usb_loader` and OpenOCD.
+- **OpenOCD** is the host program that controls a JTAG adapter and exposes a GDB server.
+- **`fakeroot`, `dosfstools`, `mtools`, `parted`** manipulate filesystem and SD-card images.
 
 If `apt` complains about any package on your distribution, search for the closest equivalent and note the substitution in your journal.
 
@@ -89,7 +89,7 @@ We need two prebuilt Arm toolchains:
 - **Bare-metal toolchain:** `arm-none-eabi-`
   Builds the small no-OS experiments in Part II. It does not assume Linux, glibc, processes, or a dynamic loader.
 
-Keeping both is not the same as letting random compilers leak into the build. We will install both in one project-local directory, name them clearly, and select them explicitly.
+We will install both toolchains in one project-local directory, give them unambiguous paths, and select the required toolchain explicitly for each build.
 
 Download these two Arm GNU Toolchain packages from Arm's official page:
 
@@ -128,7 +128,7 @@ Those are the paths to remember when debugging build problems.
 
 ### Decoding the triplets
 
-`arm-none-linux-gnueabihf` and `arm-none-eabi` look alphabet-soupy. They are not.
+The names `arm-none-linux-gnueabihf` and `arm-none-eabi` are long because each part describes the target environment.
 
 - `arm` means the target CPU family is 32-bit Arm.
 - The middle `none` is the vendor field. Here it means no specific silicon vendor.
@@ -213,9 +213,9 @@ arm-none-eabi-
 
 ## 3.5  Serial console
 
-Wire pin 8 of UART1 TX on the SoC to the host's USB-serial dongle RX, and UART1 RX on the SoC to the host's TX. Ground common. The Point Atom MINI exposes UART1 on a 3.3 V header — do **not** connect a 5 V FTDI adapter directly or you may damage the SoC. A `CP2102` or `CH340G` 3.3 V module is the standard cheap option.
+The Point Atom MINI includes a USB-to-TTL bridge connected to its debug UART. Connect the board's **USB-TTL** or **DEBUG USB** port to the host. Do not add an external serial adapter for the normal setup.
 
-Once plugged in:
+After connecting it, check which serial device appeared:
 
 ```sh
 $ ls /dev/ttyUSB*
@@ -232,10 +232,16 @@ $ dmesg | tail
 [...] usb 1-1.2: cp210x converter now attached to ttyUSB0
 ```
 
-Open the console with `sudo`:
+Serial devices are normally owned by the `dialout` group. Add your user to that group once:
 
 ```sh
-$ sudo picocom -b 115200 /dev/ttyUSB0
+$ sudo usermod -aG dialout "$USER"
+```
+
+Log out and back in so the new group membership takes effect. Then open the console without `sudo`:
+
+```sh
+$ picocom -b 115200 /dev/ttyUSB0
 picocom v3.1
 port is        : /dev/ttyUSB0
 flowcontrol    : none
@@ -247,22 +253,22 @@ stopbits are   : 1
 Terminal ready
 ```
 
-We use `sudo` here on purpose. `/dev/ttyUSB0` is a hardware device node, and Linux protects hardware access with file permissions. For this book, keep `sudo` in the serial command so the privilege boundary stays visible.
+Quit with Ctrl-A Ctrl-X. To send Ctrl-C to the board, press Ctrl-A and then Ctrl-C because picocom uses Ctrl-A as its command key.
 
-Quit with Ctrl-A Ctrl-X. To send a real Ctrl-C to the board, press Ctrl-A then Ctrl-C — picocom uses Ctrl-A as its escape key.
+At this stage, a silent console is normal because we have not built a bootable image. If later output is unreadable, confirm 115200 8N1, check that you opened the correct serial device, and try another USB data cable.
 
-**Pitfall:** if you see garbage characters, the baud rate is wrong or the host's TX is fighting with the board's TX. Disconnect, double-check wiring.
+If a board revision has no built-in USB-TTL bridge, use a separate **3.3 V** USB-TTL adapter on the UART header. Connect board TX to adapter RX, board RX to adapter TX, and GND to GND. Leave the adapter VCC pin disconnected.
 
 ### 3.5a  Windows-side serial terminals (for Windows-mainly readers)
 
 If your host is Windows (WSL2 or dual-boot Linux), or if you sometimes connect from a Windows laptop in the field, the most-used serial-terminal options are:
 
-- **MobaXterm** (`mobaxterm.mobatek.net`, free Home Edition) — combined SSH client + serial terminal + X server + session-saving + SFTP browser. Recommended for Windows hosts.
-- **SecureCRT** (`vandyke.com`, commercial) — fastest scrollback, best session-tabs, configurable keymap. Worth the money if you live in serial consoles.
-- **Putty** (`putty.org`, free) — minimal, ubiquitous, no scripting. Fine if you only need it occasionally.
-- **Tera Term** (`teratermproject.github.io`, free) — Japanese-origin, popular in industrial settings, has a useful macro language.
+- **MobaXterm** (`mobaxterm.mobatek.net`, free Home Edition) combines SSH, serial, X server, saved sessions, and SFTP.
+- **SecureCRT** (`vandyke.com`, commercial) provides fast scrollback, saved sessions, and a configurable keymap.
+- **PuTTY** (`putty.org`, free) provides a small serial and SSH client.
+- **Tera Term** (`teratermproject.github.io`, free) provides serial access and a macro language.
 
-For all of them, the **CH340/CP2102 USB-serial dongle driver** is the prerequisite on Windows. install from the chip vendor's site (`wch.cn` for CH340, `silabs.com` for CP2102). Linux includes both kernel drivers by default, nothing to install.
+The board's integrated bridge may use a CH340 or CP2102 device. Windows may need the corresponding driver from `wch.cn` or `silabs.com`. Linux normally includes both drivers.
 
 When configuring any of these tools, the settings are the same we used for `picocom`: **115200 8N1, no flow control**.
 
@@ -270,10 +276,10 @@ When configuring any of these tools, the settings are the same we used for `pico
 
 The Linux kernel source tree is ~80,000 files. Tools that index it on a fast SSD beat ones that don't.
 
-- **Source Insight 4** (`sourceinsight.com`, commercial Windows) — extremely fast indexer, instant "Go to Definition," visual call graphs. Read-only for our purposes. It is popular in Chinese-language embedded communities.
-- **VSCode + C/C++ extension** (Microsoft) — slower indexer but free, cross-platform, and you can edit. Use `compile_commands.json` from a kernel build so IntelliSense follows the right includes.
-- **`cscope` + `ctags`** in the terminal — old-school, instant, scriptable.
-- **`elixir.bootlin.com`** — kernel cross-reference in your browser, no install. Surprisingly capable.
+- **Source Insight 4** (`sourceinsight.com`, commercial Windows) provides source indexing, Go to Definition, and call graphs.
+- **VS Code + C/C++ extension** (Microsoft) is free and cross-platform. Use `compile_commands.json` from a kernel build so IntelliSense follows the correct include paths.
+- **`cscope` + `ctags`** provide terminal-based source navigation and can be scripted.
+- **`elixir.bootlin.com`** provides a web-based Linux source cross-reference without a local installation.
 
 For this book, we do not require any of them. But if you find yourself spending more than five minutes hunting a kernel symbol, install one.
 
@@ -393,16 +399,16 @@ What the commands do:
 
 The flags decoded:
 
-- `rw` — the target can write back. We want this. The target's `dmesg` and `/var/log` should be persistent across reboots.
-- `sync` — writes are committed before the server replies. Slower but safer.
-- `no_root_squash` — the target's `root` is treated as host root. Required, because the target's processes will create files as `uid 0` and expect them to be readable by `uid 0`.
-- `no_subtree_check` — skip a check that hurts performance and offers little safety on a dev host.
+- `rw` lets the target write to the exported filesystem.
+- `sync` commits writes before the server replies. This is slower but reduces the chance of losing recent writes.
+- `no_root_squash` maps the target's root user to host UID 0. This is convenient for a development root filesystem but unsafe on an untrusted network.
+- `no_subtree_check` disables a subtree validation step that is not useful for this dedicated export.
 
 **Security:** these are dev-host settings. Do not run an NFS server with these flags on a network you do not control.
 
 ## 3.8  USB-OTG flashing tools
 
-The i.MX6ULL Boot ROM speaks **SDP** (Serial Download Protocol) over its USB-OTG port. When you strap the boot pins to "USB" or no SD/eMMC is present, the chip enumerates as a USB device and waits for someone to push an image. Two tools speak SDP:
+The i.MX6ULL Boot ROM speaks **SDP** (Serial Download Protocol) over its USB-OTG port. When the board's boot selector is in **USB mode**, the chip enumerates as a USB device and waits for the host to send an image. Two tools speak SDP:
 
 ### `uuu` (Universal Update Utility)
 
@@ -424,8 +430,8 @@ You *can* type `sudo uuu ...` every time, but do not make that your normal workf
 
 The cleaner model is:
 
-- root owns system configuration, such as the udev rule;
-- your user belongs to a hardware-access group;
+- Root owns system configuration such as the udev rule.
+- Your user belongs to a hardware-access group.
 - `uuu` runs as your user and can open only the matching USB devices.
 
 First check whether the group already exists:
@@ -456,7 +462,7 @@ $ sudo usermod -aG plugdev "$USER"
 
 The `-f` means "succeed even if the group already exists", so the command is safe to run on both cases.
 
-Log out and back in after `usermod`; group membership is read when your login session starts.
+Log out and back in after `usermod`. Group membership is read when your login session starts.
 
 Open a new rule file:
 
@@ -488,9 +494,9 @@ $ uuu -lsusb
 
 If `uuu -lsusb` sees the board as your normal user, the setup is correct. Use `sudo` only while installing host packages, copying binaries into `/usr/local/bin`, or editing `/etc` files, do not use it as a workaround for USB permissions.
 
-## 3.9  SD card preparation (just read for later chapter, not to follow now)
+## 3.9  SD card preparation for later chapters
 
-A spare 4–32 GB SD card, class 10 or better, dedicated to this project. We will overwrite it many times.
+Use a spare 4-32 GB SD card, class 10 or better, dedicated to this project. We will overwrite it many times. Do not write an image in this chapter.
 
 Identify which device it is, **carefully**:
 
@@ -499,13 +505,13 @@ $ lsblk
 NAME    MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS
 sda       8:0    0   1.0T  0 disk
 └─sda1    8:1    0   1.0T  0 part /
-sdc       8:32   1   7.5G  0 disk         ← this is the SD card
+sdc       8:32   1   7.5G  0 disk         <-- this is the SD card
 └─sdc1    8:33   1   7.5G  0 part
 ```
 
 If you wipe the wrong block device you will lose your operating system. Check the size and the mount points twice before running `dd`.
 
-The manual write flow is short, and you should understand it before using any helper script. In later chapters the image name will be whatever image you just built, for example `~/imx6ull/build/images/sdcard.img`.
+The manual write flow is short, and you should understand it before using any helper script. In later chapters the image name will be the image you built, for example `~/imx6ull/build/images/sdcard.img`.
 
 First unmount any mounted partition on the card. Unmount the partition path, not the whole-disk path:
 
@@ -644,8 +650,8 @@ Look for the address on the interface connected to the router. In later U-Boot c
 
 For the board address, use one of these:
 
-- reserve a fixed DHCP address for the board in your router;
-- let U-Boot request DHCP, then read the assigned address;
+- Reserve a fixed DHCP address for the board in your router.
+- Let U-Boot request DHCP, then read the assigned address.
 - choose an unused static address outside the router's DHCP pool.
 
 Router mode is practical, but it has two drawbacks:
@@ -743,13 +749,13 @@ Open another terminal and run `echo "$CROSS_COMPILE"` before sourcing the script
 - **Forgot to source `env.sh`.** If `arm-none-linux-gnueabihf-gcc` or `arm-none-eabi-gcc` is not found, run `. ~/imx6ull/scripts/env.sh` in that terminal.
 - **Wrong compiler on `PATH`.** `which arm-none-linux-gnueabihf-gcc` and `which arm-none-eabi-gcc` must both point inside `/home/<you>/imx6ull/toolchains/`. If either points into `/usr/bin`, fix the environment before building.
 - **`dd` to the wrong device.** Every embedded engineer has done this once. Use the helper from §3.9 and you will only do it once.
-- **`sudo` and environment variables.** `sudo CROSS_COMPILE=arm-none-linux-gnueabihf- make` does *not* pass `CROSS_COMPILE` unless `sudo`'s `env_reset` is disabled. Build without `sudo`. install with `sudo`.
+- **`sudo` and environment variables.** `sudo CROSS_COMPILE=arm-none-linux-gnueabihf- make` does *not* pass `CROSS_COMPILE` unless `sudo`'s `env_reset` is disabled. Build without `sudo`. Install with `sudo`.
 
 ## 3.14  Going deeper
 
-- `man 8 exportfs`, `man 5 exports`, `man 8 tftpd`, `man 5 udev` — read the man pages of the services you just configured.
+- `man 8 exportfs`, `man 5 exports`, `man 8 tftpd`, and `man 5 udev` explain the services configured in this chapter.
 - `picocom`'s `-l` (lock-file) and `-i` (initstring) options are useful for scripting boot.
 - *The TCP/IP Guide* (Charles Kozierok) on TFTP and NFS protocols if you want to know what is on the wire.
 - If you intend to run a lot of cross-builds, look at `ccache` (`sudo apt install ccache`) and prepend it to `CROSS_COMPILE`: `CROSS_COMPILE="ccache arm-none-linux-gnueabihf-"`. We do *not* use it in this book because it occasionally masks subtle dependency bugs in Makefiles we're trying to read.
 
-> Next chapter: **Chapter 4 — ARMv7-A and the Cortex-A7, for the MCU engineer.** We leave the host and start understanding the silicon we will program.
+> Next chapter: **Chapter 4: ARMv7-A and the Cortex-A7 for the MCU engineer.** We leave the host and examine the CPU architecture we will program.
