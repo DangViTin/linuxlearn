@@ -1,17 +1,4 @@
----
-chapter: 12
-title: UART driver and printf
-part: II - Bare-metal i.MX6ULL
-estimated_pages: 18
-status: draft
----
-
 # Chapter 12: UART driver and `printf`
-> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
-> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
-
 > **What:** a polled UART1 driver and a tiny `printf` clone that uses it. By the end of the chapter your bare-metal program can say `Hello, world!` instead of blink.
 >
 > **Why:** debugging bare-metal without `printf` is doable but slow. Adding text output changes everything. Every later chapter in Part II uses `printf` freely.
@@ -341,8 +328,6 @@ The echo confirms RX works. We have a console.
 We are deliberately using polling. Reasons:
 
 - **No interrupt controller yet.** The GIC will be set up properly in Chapter 15.
-> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
-> **GIC:** ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 - **Polling is enough for `printf`.** Even at 115200 baud, transmitting one character takes 87 µs. Worst case we spin 87 µs per character. For diagnostic output that's fine. In a high-throughput application it wouldn't be.
 - **Simplicity reveals more.** Polling shows you the status-bit pattern in full. After you do it once, the interrupt version is just "the same thing, but the FIFO threshold triggers an ISR."
 
