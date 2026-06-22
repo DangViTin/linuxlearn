@@ -1,11 +1,3 @@
----
-chapter: 11
-title: Hand-building a Boot ROM-acceptable image
-part: II - Bare-metal i.MX6ULL
-estimated_pages: 22
-status: draft
----
-
 # Chapter 11: Hand-building a Boot ROM-acceptable image
 
 > **What:** a real Python tool, `mkimx.py`, that turns a flat `.bin` into a Boot-ROM-loadable `.imx`. We then `dd` the result to an SD card and boot from it, no `mkimage`, no NXP tools, no magic.
