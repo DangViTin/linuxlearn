@@ -43,11 +43,6 @@ In SDP mode, `uuu` skips the first `0x400` bytes of the file (the ROM never read
 > **Two boot paths, one image, one IVT.** The `.imx` is built once. The IVT it contains works for SDP, for SD boot, and for eMMC boot. The only thing that differs is where the file lives, RAM (pushed by uuu) vs LBA 2 of the SD card. The IVT is happy in either case because all its addresses are absolute physical RAM addresses.
 
 ## 11.2  `mkimx.py`, our own image builder
-
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
-> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
-
-
 Save as `~/imx6ull/scripts/mkimx.py`:
 
 ```python
@@ -150,15 +145,10 @@ $ chmod +x ~/imx6ull/scripts/mkimx.py
 ```
 
 The script is 60 lines but does everything the U-Boot `mkimage -T imximage` tool does for the simple case. The only feature we left out is DCD support, which we add in Chapter 14 once we need it.
-> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-> **DCD:** Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
-> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
-
 
 - **The length field in the IVT header is big-endian.** Everything else in the IVT is little-endian. NXP did this. We don't. The `struct.pack('>BHB', ...)` line handles it. This is the single most common "I wrote my own mkimage and the ROM rejects it" bug.
 - **`BootData.length` includes the IVT and the 4 KB padding.** Not just the code. If you forget the `IMAGE_OFFSET` part of the addend, the ROM stops loading before your `.text` even starts.
 - **`csf_addr = 0`** disables **HAB** (High Assurance Boot, NXP's signed-boot framework. Ch 124) signature checking. Setting it to a non-zero address would point the ROM at a CSF (Command Sequence File) it must verify.
-> **HAB:** High Assurance Boot, NXP's ROM-enforced secure boot mechanism on i.MX SoCs.
 
 ## 11.3  Building and inspecting
 
@@ -288,7 +278,6 @@ Now:
 5. Watch the LED.
 
 If it blinks, you have just booted an i.MX6ULL from an SD card you produced byte by byte. No U-Boot, no mkimage, no Yocto. Just 60 lines of Python and 50 lines of C/asm.
-> **Yocto:** a metadata-driven build system for producing custom Linux distributions.
 
 ## 11.6  Reading IVT from a vendor image
 
@@ -314,7 +303,6 @@ Decode:
 | BootData.length | `0x000C0000` = 768 KB | |
 
 This U-Boot image loads to DRAM at `0x8077C000`. It must include a DCD, because DDR is not initialized when the ROM starts loading. The DCD lives at address `0x8077042C` *after* the image is loaded. The ROM walks the DCD from there as part of its load sequence. (We will dissect DCD contents in Chapter 14.)
-> **DDR:** external DRAM that must be configured and trained before most software can run from it.
 
 ## 11.7  Lab
 
