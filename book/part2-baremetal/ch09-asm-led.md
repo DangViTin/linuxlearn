@@ -1,11 +1,3 @@
----
-chapter: 9
-title: First LED, pure assembly
-part: II - Bare-metal i.MX6ULL
-estimated_pages: 16
-status: draft
----
-
 # Chapter 9: First LED, pure assembly
 > **HAB:** High Assurance Boot, NXP's ROM-enforced secure boot mechanism on i.MX SoCs.
 
@@ -62,8 +54,6 @@ Addresses for GPIO1_IO03, from the Reference Manual:
 | `GPIO1_GDIR` | `0x0209C004` | GPIO1 direction register (bit 3 = direction for GPIO1_IO03; 1 = output) |
 
 The value to write into `MUX_CTL` for GPIO function is **5**. The IOMUX table in RM Chapter 32 says, for the pad `GPIO1_IO03`, ALT5 is `GPIO1_IO03`. (The naming is circular: the *pad* is named for the GPIO function it has at ALT5.)
-> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
-> **IOMUX:** the pin multiplexer that decides which peripheral function appears on each package pin.
 
 ### CCM_CCGR encoding (2 bits per gate)
 
@@ -381,7 +371,6 @@ You have already done the lab if the LED blinked. To deepen:
 - **IMX6ULLRM Chapter 28, GPIO**: Specifically Table 28-1 (register summary) and Table 28-3 (GPIOx_DR bit layout).
 - **IMX6ULLRM Chapter 32, IOMUXC**: Look up GPIO1_IO03 in the IOMUX table.
 - **IMX6ULLRM Chapter 18, CCM**: Table 18-5 (CCGR bit definitions).
-> **CCM:** Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
 - **ARM DDI 0406** Section A8.8.62, `LDR (literal)` form, which is what `ldr Rn, =const` expands into.
 - The GNU Assembler manual, "ARM Dependent Features", `.syntax unified`, `.cpu`, `.global`, literal pools.
 - Your **Point Atom MINI schematic**, the only authoritative source for which LED is on which pin on *your* board.
