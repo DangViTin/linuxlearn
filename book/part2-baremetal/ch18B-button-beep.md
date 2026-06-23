@@ -14,7 +14,7 @@ status: draft
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 >
-> **Why:** every product accepts input and emits feedback. Until now, our only input was UART and our only output was an LED. Adding a button and a buzzer completes the minimal HMI vocabulary, and forces us to handle **debouncing**, a topic every embedded engineer should learn once and then trust.
+> **Why:** every product accepts input and emits feedback. Until now, our only input was UART and our only output was an LED. Adding a button and a buzzer completes the minimal HMI vocabulary, and forces us to handle **debouncing**, a topic every embedded engineer should understand.
 >
 > **Focus:** the debounce decision: spin-debounce, timer-debounce, or hardware-debounce. The right one depends on what else the CPU has to do. We will see all three.
 
@@ -40,7 +40,7 @@ Pad addresses (from RM IOMUXC chapter):
 - `IOMUXC_SNVS_SW_MUX_CTL_PAD_SNVS_TAMPER1` (for BEEP, note the `SNVS_` prefix. SNVS-domain pads live in a separate IOMUXC bank)
 - `IOMUXC_SNVS_SW_PAD_CTL_PAD_SNVS_TAMPER1`
 
-GPIO5 sits in the SNVS power domain, with base `0x020AC000`. Its clock gate is in a different CCGR bit than GPIO1's. Cross-check the RM table when you bring it up, clocking the wrong GPIO bank is the classic i.MX6ULL bug.
+GPIO5 sits in the SNVS power domain, with base `0x020AC000`. Its clock gate is in a different CCGR bit than GPIO1's. Cross-check the RM table when you bring it up. Clocking the wrong GPIO bank is a common i.MX6ULL bug.
 
 ## 18B.2  Button driver, polled with software debounce
 
@@ -52,7 +52,7 @@ if ((GPIO_DR(GPIO1_BASE) & (1 << 18)) == 0) {
 }
 ```
 
-works once. Then bounce ruins it. When the mechanical contacts close, they bounce, make-break-make-break for typically 1–10 ms. A polled read can sample mid-bounce and report "pressed → released → pressed" several times for a single physical press.
+works once. Then bounce breaks the logic. When the mechanical contacts close, they bounce, make-break-make-break for typically 1-10 ms. A polled read can sample during the bounce and report "pressed, released, pressed" several times for a single physical press.
 
 The classical fix in 1980s firmware was a 20 ms hardware RC filter on the input. We do it in software instead:
 
@@ -61,7 +61,7 @@ int key_read_debounced(void)
 {
     /* Sample, wait, sample again; return 1 only if both samples match. */
     int s1 = (GPIO_DR(GPIO1_BASE) & (1 << 18)) ? 0 : 1;
-    mdelay(20);  /* 20 ms is overkill; tactile switches usually settle in under 5 ms */
+    mdelay(20);  /* 20 ms is longer than usually needed. Tactile switches often settle in under 5 ms. */
     int s2 = (GPIO_DR(GPIO1_BASE) & (1 << 18)) ? 0 : 1;
     return (s1 == s2) ? s1 : -1;   /* -1 = bouncing */
 }
@@ -95,7 +95,7 @@ void key_tick(void)
 }
 ```
 
-This pattern is the basis of most modern keypad-scan implementations. The 80 ms validation window is conservative. Tune to 30 ms (3 ticks) for snappier response if your switch is good quality.
+This pattern is the basis of most modern keypad-scan implementations. The 80 ms validation window is conservative. Tune to 30 ms (3 ticks) for faster response if your switch is good quality.
 
 ### Best (for production): hardware debouncing + interrupt
 
@@ -142,13 +142,13 @@ void beep_tone(uint32_t hz, uint32_t ms)
 
 A small but real bug to watch for: if you forget the final `GPIO_DR |= bit`, you may exit `beep_tone` with the PNP on and the buzzer stuck mid-cycle, drawing power and emitting a click. Without that final write, the PNP can stay on and the buzzer clicks.
 
-### Why not just a GPIO toggle in a tight loop?
+### Why not only a GPIO toggle in a tight loop?
 
-That works for tones in the multi-kHz range when nothing else is happening. It does *not* work the moment you want to play the tone *while* doing anything else. The right answer for production: drive BEEP from a **PWM peripheral** (i.MX6ULL has eight PWM channels), which generates the square wave in hardware. Chapter 48 (Linux PWM) covers exactly this, we plumb the same buzzer via the PWM framework instead of bit-banging.
+That works for tones in the multi-kHz range when nothing else is happening. It does *not* work the moment you want to play the tone *while* doing anything else. The production answer is to drive BEEP from a **PWM peripheral** (i.MX6ULL has eight PWM channels), which generates the square wave in hardware. Chapter 48 (Linux PWM) covers exactly this. We connect the same buzzer through the PWM framework instead of bit-banging.
 > **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 > **PWM:** Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 
-For bare-metal pedagogy, the bit-bang loop is fine. It shows that the buzzer is just a frequency-controlled output.
+For bare-metal learning, the bit-bang loop is fine. It shows that the buzzer is a frequency-controlled output.
 
 ## 18B.4  Putting it together
 
@@ -205,7 +205,7 @@ Press the button. The LED toggles, the UART prints `press` / `release`, and the 
 ## 18B.5  Lab
 
 1. **Build and run.** Confirm a single press gives a single `press`/`release` pair on UART, and the LED toggles cleanly.
-2. **Disable the debounce.** Comment out the sliding-window check. Respond to every raw edge. Time how many spurious events you get per real press. (10–50 is typical for a cheap tactile switch.)
+2. **Disable the debounce.** Comment out the sliding-window check. Respond to every raw edge. Time how many spurious events you get per real press. (10-50 is typical for a cheap tactile switch.)
 3. **Double-tap detection.** Add a 300 ms timer: if two presses occur within 300 ms, beep at 4 kHz for 50 ms.
 4. **Beep tones.** Play a 5-note sequence (C-D-E-F-G, 200 ms each). Hum the result. You should recognize the scale.
 5. **Power measurement.** Compare current draw with and without `wfi` in `main`. The difference is the CPU's idle savings, which on Cortex-A7 is real.
@@ -216,7 +216,7 @@ Press the button. The LED toggles, the UART prints `press` / `release`, and the 
 - **Active-low vs active-high.** Your schematic decides. If pressed-reads-1, your `key_history` test should be inverted.
 - **EPIT tick too fast.** A 1 ms tick × 8-deep history = 8 ms of debounce, which is *too short* for many switches. 10 ms × 8 = 80 ms is safe.
 - **`udelay(1)` calibration.** From Ch 16, `udelay` is GPT-based. Should be accurate to within 1 µs. If your beep is off-pitch, GPT prescaler is wrong.
-- **Floating button pin.** If the external 10 kΩ pull-up is missing, your reads are random. Always verify pull resistors with a scope (or just by reading the pin steady-state).
+- **Floating button pin.** If the external 10 kΩ pull-up is missing, your reads are random. Always verify pull resistors with a scope or by reading the steady-state pin value.
 - **Active vs passive buzzer.** An *active* buzzer has its own oscillator inside. You drive it with DC. Toggling it at audio frequencies makes it click and buzz, not play tones. *Passive* needs a square wave. Check your part.
 
 ## 18B.7  Going deeper
@@ -228,4 +228,4 @@ Press the button. The LED toggles, the UART prints `press` / `release`, and the 
 - **Linux source: `drivers/input/keyboard/gpio_keys.c`**: the kernel's gpio-keys driver. Reads GPIOs, debounces them, emits input events. We meet it in Chapter 45.
 - **Linux source: `drivers/pwm/pwm-imx27.c`**: i.MX PWM driver, which we'll use in Chapter 48 to replace `beep_tone` with hardware PWM.
 
-> Next chapter: **Chapter 18C: Bare-metal RTC.** The SNVS domain again, this time for timekeeping that survives main-power-off.
+> Next chapter: **Chapter 18C: Bare-metal RTC.** The SNVS domain again, this time for timekeeping that survives main power being off.

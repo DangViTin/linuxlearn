@@ -24,6 +24,7 @@ We will use *only the first-level page table*, mapping the entire 4 GiB virtual 
 - **No ASIDs**: single address space. One global mapping.
 - **No process isolation**: that's a Linux concern.
 - **No LPAE**: short-descriptor format is sufficient.
+- **No stage-2 translation**: stage 2 is the hypervisor translation layer used later in Part IX. Here we build only the normal stage-1 table.
 
 What we *are* doing:
 
@@ -204,7 +205,7 @@ void mmu_enable(void)
 
 A few notes:
 
-- **`__attribute__((aligned(16384)))`** ensures the table starts at a 16 KiB boundary, which TTBR requires. Skip it and TTBR drops the low 14 bits silently, leaving your MMU pointing at garbage.
+- **`__attribute__((aligned(16384)))`** ensures the table starts at a 16 KiB boundary, which TTBR requires. Skip it and TTBR drops the low 14 bits silently, leaving your MMU pointing at the wrong address.
 - **`DACR = 0x55555555`** sets every domain to "client," which means accesses respect AP bits. The other valid value is "manager" (`0xFFFFFFFF`), which ignores AP entirely. Linux uses client. We follow.
 - **Order matters at enable time.** Invalidate the caches *before* enabling them. Otherwise pre-MMU stale lines stay valid and corrupt your data.
 - **The set/way D-cache invalidate** in `invalidate_dcache_all` uses the Cortex-A7 cache geometry: 32 KB L1-D, 4-way set-associative, 64-byte lines → **128 sets**, 4 ways. On a different CPU, look up the geometry from `CCSIDR`.
@@ -247,9 +248,9 @@ MMU on.
 After MMU: memtest 4 MB took 4100 us
 ```
 
-Roughly an 8× speedup on the memtest. The exact ratio depends on the access pattern. Sequential memcpy can hit 10–15× with both caches on.
+About an 8x speedup on the memtest. The exact ratio depends on the access pattern. Sequential memcpy can hit 10-15x with both caches on.
 
-## 17.5  What just happened
+## 17.5  What happened
 
 After `mmu_enable()`:
 
@@ -259,7 +260,7 @@ After `mmu_enable()`:
 - Instruction fetches are cached in L1 I-cache.
 - Branch prediction is on.
 
-For the rest of Part II, we leave the MMU on. Chapter 18's bare-metal peripherals work transparently, Device memory mapping ensures their MMIO behaves correctly.
+For the rest of Part II, we leave the MMU on. Chapter 18's bare-metal peripherals still work because Device memory mapping keeps their MMIO behavior correct.
 
 ## 17.6  Cache maintenance, when you must intervene
 
@@ -354,16 +355,16 @@ The 10× difference is why Linux brings caches up early in arch_setup.
 
 1. **Build, run, observe speedup.** Confirm memtest goes from ~30 ms to ~4 ms.
 2. **Try mapping DRAM as Device.** Change `mmu_build_table` to mark DRAM as Device. Re-run. The memtest will succeed but at ~25 ms (the slow-DRAM-access path). Compare with no-MMU. Demonstrates that the MMU itself isn't the speedup, the cache attribute is.
-3. **Try mapping peripherals as Normal Cacheable.** Predict the failure mode. Implement it. Observe, UART output may stop, or characters appear bunched, or `tick_ms()` stops advancing. **Restore.**
-4. **Cache-line aliasing experiment.** Write to a buffer, then read it from a *different virtual address* that maps to the same physical address. (Construct this by adding a second mapping in your page table.) Confirm the read sees the right value despite VIPT cache being involved, Linux handles this for you in the page allocator. Here you can see the issue raw.
+3. **Try mapping peripherals as Normal Cacheable.** Predict the failure mode. Implement it. Observe what fails. UART output may stop, characters may appear in bursts, or `tick_ms()` may stop advancing. **Restore.**
+4. **Cache-line aliasing experiment.** Write to a buffer, then read it from a *different virtual address* that maps to the same physical address. Construct this by adding a second mapping in your page table. Confirm the read sees the right value despite VIPT cache being involved. Linux handles this for you in the page allocator. Here you see the issue directly.
 5. **Implement `dcache_clean_range`** and verify with a flush-then-DMA-style pattern.
 
 ## 17.10  Pitfalls
 
-- **Page table not 16 KiB aligned.** Symptom: enabling MMU traps to data abort. Cause: TTBR's low 14 bits are reserved zero. If your table address has any of them set, the actual base is silently truncated.
+- **Page table not 16 KiB aligned.** Symptom: enabling MMU raises a data abort. Cause: TTBR's low 14 bits are reserved zero. If your table address has any of them set, the actual base is silently truncated.
 - **Forgetting `dsb. isb` around MMU/cache changes.** Required by the architecture. Symptom: works most of the time. Fails intermittently.
 - **Cache enabled with stale lines.** Invalidate before enable. Always.
-- **Peripheral mapped Normal Cacheable.** Diagnosed above. Pernicious. Bare-metal habit: peripheral writes always followed by a `dsb` if the next access depends on the write actually reaching the device.
+- **Peripheral mapped Normal Cacheable.** Diagnosed above. This can be hard to find. Bare-metal habit: follow peripheral writes with a `dsb` if the next access depends on the write reaching the device.
 - **Wrong cache geometry.** Cortex-A7 L1-D is **128 sets × 4 ways × 64-byte lines** (32 KB total). The exact geometry is in `CCSIDR`. Portable code reads `CCSIDR` rather than hardcoding.
 - **TTBCR misconfigured.** Setting `N != 0` splits the address space between TTBR0 and TTBR1. We use `N = 0` to put everything under TTBR0.
 - **DACR with manager domain.** Manager-domain entries ignore AP. Useful for kernel. Dangerous for user-facing code. Use "client" (0b01 per domain).
@@ -372,10 +373,10 @@ The 10× difference is why Linux brings caches up early in arch_setup.
 
 - **ARM DDI 0406**, sections B3.5 (short descriptor format) and B3.7 (memory attributes). The canonical reference.
 - **ARM DEN 0013**: *Cortex-A Series Programmer's Guide*, Chapters 10 (caches) and 11 (MMU).
-- **Linux source: `arch/arm/mm/proc-v7-2level.S`** and `arch/arm/mm/mmu.c`. The kernel version of what we just did.
+- **Linux source: `arch/arm/mm/proc-v7-2level.S`** and `arch/arm/mm/mmu.c`. The kernel version of what we built here.
 - **`Documentation/arm/memory.txt`** in the Linux kernel tree. Describes the virtual memory layout.
 - *Computer Architecture: A Quantitative Approach* (Hennessy & Patterson), Chapter 5, for the cache theory.
 
-> Next chapter: **Chapter 18: Optional bare-metal peripherals.** I²C and SPI bare-metal, just enough to prove we can. Chapter 18 ends the required path of Part II. After that, three supplementary chapters (18A Project organization, 18B Button + beep, 18C Bare-metal RTC) are inserted for readers who want to fully match the Point Atom-style depth of bare-metal coverage before moving to U-Boot in Part III. They are independent of each other. Skip any.
+> Next chapter: **Chapter 18: Optional bare-metal peripherals.** I²C and SPI bare-metal, enough to prove we can use them. Chapter 18 ends the required path of Part II. After that, three supplementary chapters (18A Project organization, 18B Button + beep, 18C Bare-metal RTC) are inserted for readers who want the Point Atom-style depth of bare-metal coverage before moving to U-Boot in Part III. They are independent of each other.
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.

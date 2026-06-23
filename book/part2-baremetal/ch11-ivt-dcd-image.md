@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 11: Hand-building a Boot ROM-acceptable image
 
-> **What:** a real Python tool, `mkimx.py`, that turns a flat `.bin` into a Boot-ROM-loadable `.imx`. We then `dd` the result to an SD card and boot from it, no `mkimage`, no NXP tools, no magic.
+> **What:** a real Python tool, `mkimx.py`, that turns a flat `.bin` into a Boot-ROM-loadable `.imx`. We then `dd` the result to an SD card and boot from it, with no `mkimage` and no NXP tools.
 >
 > **Why:** the Chapter 9 `wrap.sh` worked, but you will edit this tool again. A 60-line Python script you understand beats a 3-line shell command you don't.
 >
@@ -40,14 +40,9 @@ file offset    content                                size
 
 In SDP mode, `uuu` skips the first `0x400` bytes of the file (the ROM never reads them on USB-SDP). It uploads everything from offset `0x0400` onward to the RAM address in `BootData.start`. On the SD-card path, the **whole** file is `dd`'d to the card starting at sector 2 (LBA 2 = byte offset `0x400`), and the ROM reads the IVT directly from the card.
 
-> **Two boot paths, one image, one IVT.** The `.imx` is built once. The IVT it contains works for SDP, for SD boot, and for eMMC boot. The only thing that differs is where the file lives, RAM (pushed by uuu) vs LBA 2 of the SD card. The IVT is happy in either case because all its addresses are absolute physical RAM addresses.
+> **Two boot paths, one image, one IVT.** The `.imx` is built once. The IVT it contains works for SDP, for SD boot, and for eMMC boot. The only thing that differs is where the file lives: RAM for `uuu`, or LBA 2 of the SD card. The IVT works in either case because all its addresses are absolute physical RAM addresses.
 
 ## 11.2  `mkimx.py`, our own image builder
-
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
-> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
-
-
 Save as `~/imx6ull/scripts/mkimx.py`:
 
 ```python
@@ -77,7 +72,7 @@ IMAGE_OFFSET  = 0x1000   # start of user binary, relative to IVT
 def ivt_header():
     # The IVT header is 4 bytes:
     #   byte 0 = tag (0xD1)
-    #   byte 1-2 = length (BIG endian, 16-bit)  -- this is the gotcha
+    #   byte 1-2 = length (BIG endian, 16-bit)
     #   byte 3 = version (0x40 = HAB v4)
     return struct.pack('>BHB', IVT_TAG, IVT_LENGTH, IVT_VERSION)
 
@@ -148,15 +143,10 @@ Make it executable:
 ```sh
 $ chmod +x ~/imx6ull/scripts/mkimx.py
 ```
-
 The script is 60 lines but does everything the U-Boot `mkimage -T imximage` tool does for the simple case. The only feature we left out is DCD support, which we add in Chapter 14 once we need it.
-> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-> **DCD:** Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
-> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 
-
-- **The length field in the IVT header is big-endian.** Everything else in the IVT is little-endian. NXP did this. We don't. The `struct.pack('>BHB', ...)` line handles it. This is the single most common "I wrote my own mkimage and the ROM rejects it" bug.
-- **`BootData.length` includes the IVT and the 4 KB padding.** Not just the code. If you forget the `IMAGE_OFFSET` part of the addend, the ROM stops loading before your `.text` even starts.
+- **The length field in the IVT header is big-endian.** Everything else in the IVT is little-endian. The `struct.pack('>BHB', ...)` line handles this difference. This is the most common "I wrote my own mkimage and the ROM rejects it" bug.
+- **`BootData.length` includes the IVT and the 4 KB padding.** It is not only the code size. If you forget the `IMAGE_OFFSET` part of the addend, the ROM stops loading before your `.text` even starts.
 - **`csf_addr = 0`** disables **HAB** (High Assurance Boot, NXP's signed-boot framework. Ch 124) signature checking. Setting it to a non-zero address would point the ROM at a CSF (Command Sequence File) it must verify.
 > **HAB:** High Assurance Boot, NXP's ROM-enforced secure boot mechanism on i.MX SoCs.
 
@@ -190,7 +180,7 @@ We'll use the first option. The cleaner invocation:
 $ ~/imx6ull/scripts/mkimx.py led.bin led.imx --load 0x00907400 --entry 0x00908400
 ```
 
-Even cleaner: since `entry` always equals `load + IMAGE_OFFSET` for our convention, we could compute it in the script and drop the `--entry` flag. We leave it explicit because someday you'll want the IVT separated from the code (with a DCD in between) and you'll need the freedom.
+Since `entry` always equals `load + IMAGE_OFFSET` for our convention, we could compute it in the script and drop the `--entry` flag. We leave it explicit because later you may want the IVT separated from the code, with a DCD in between.
 
 Verify the IVT with raw `xxd`:
 
@@ -255,7 +245,7 @@ Wipe /dev/sdc (size 7.5G)? [y/N] y
 $ sync
 ```
 
-Hmm, `sd-write.sh` does `dd if=$IMG of=$DEV bs=1M`, which writes from byte 0. That overwrites the IVT-at-offset-0x400 layout, putting *our* IVT at offset 0. Wrong.
+`sd-write.sh` does `dd if=$IMG of=$DEV bs=1M`, which writes from byte 0. That overwrites the IVT-at-offset-0x400 layout and puts our IVT at offset 0. That is wrong for this image.
 
 Two fixes:
 
@@ -268,11 +258,11 @@ $ sudo dd if=led.imx of=/dev/sdc bs=1k seek=1 conv=fsync
 $ sync
 ```
 
-The `seek=1` means we do not write the first 1 KB. That's intentional: the ROM never reads it.
+The `seek=1` means we do not write the first 1 KB. That is intentional because the ROM never reads it.
 
 ### Option 2, pre-pad the .imx so it starts at offset 0
 
-Our `mkimx.py` already prepends `0x400` of zero. So `bs=1M conv=fsync` from offset 0 works *if* you accept that the first 1 KB on the card becomes zeros. That is, the `0x400` pad inside the `.imx` IS the first 1 KB of the SD card. Both options are equivalent. Option 2 with our specific `.imx` is the one we'll use. Replace the second line above with:
+Our `mkimx.py` already prepends `0x400` of zero. So `bs=1M conv=fsync` from offset 0 works if you accept that the first 1 KB on the card becomes zeros. The `0x400` pad inside the `.imx` is the first 1 KB of the SD card. Both options are equivalent. Option 2 with our specific `.imx` is the one we will use. Replace the second line above with:
 
 ```sh
 $ sudo dd if=led.imx of=/dev/sdc bs=1M conv=fsync status=progress
@@ -287,36 +277,9 @@ Now:
 4. Power on.
 5. Watch the LED.
 
-If it blinks, you have just booted an i.MX6ULL from an SD card you produced byte by byte. No U-Boot, no mkimage, no Yocto. Just 60 lines of Python and 50 lines of C/asm.
-> **Yocto:** a metadata-driven build system for producing custom Linux distributions.
+If it blinks, you have booted an i.MX6ULL from an SD card you produced byte by byte. No U-Boot, no mkimage, no Yocto. The image came from 60 lines of Python and 50 lines of C/assembly.
 
-## 11.6  Reading IVT from a vendor image
-
-Apply what we just built to dissect a vendor image. Find any U-Boot `.imx` you have:
-
-```sh
-$ wget https://example.org/some-vendor/u-boot.imx -O u-boot.imx
-$ xxd -s 0x400 -l 48 u-boot.imx
-00000400: d100 2040 00f8 7780 0000 0000 2c04 7780  .. @..w.....,.w.
-00000410: 2cc0 7780 00c0 7780 0000 0000 0000 0000  ,.w...w.........
-00000420: 00c0 7780 0000 0c00 0000 0000             ..w.........
-```
-
-Decode:
-
-| Field | Value | Note |
-|-------|-------|------|
-| entry | `0x877800F8` | DRAM (post-DDR-init); U-Boot |
-| dcd | `0x8077042C` | Has a DCD! |
-| boot_data | `0x8077C02C` | |
-| self | `0x8077C000` | |
-| BootData.start | `0x8077C000` | Load to DRAM |
-| BootData.length | `0x000C0000` = 768 KB | |
-
-This U-Boot image loads to DRAM at `0x8077C000`. It must include a DCD, because DDR is not initialized when the ROM starts loading. The DCD lives at address `0x8077042C` *after* the image is loaded. The ROM walks the DCD from there as part of its load sequence. (We will dissect DCD contents in Chapter 14.)
-> **DDR:** external DRAM that must be configured and trained before most software can run from it.
-
-## 11.7  Lab
+## 11.6  Lab
 
 1. **Build and SDP-boot.** Confirm `mkimx.py` produces the same working blink as Chapter 9's `wrap.sh`.
 2. **Build and SD-boot.** Eject the card, insert into the board with the switch set to SD. Confirm the LED blinks without `uuu` involvement.
@@ -324,7 +287,7 @@ This U-Boot image loads to DRAM at `0x8077C000`. It must include a DCD, because 
 4. **Find another mistake.** Make `mkimx.py` emit `IVT_LENGTH` little-endian instead of big-endian. Build, SDP-push. The ROM rejects it silently. Restore.
 5. **Dissect a vendor image.** Pick any `u-boot*.imx` you have on hand. Decode every IVT/BootData field. Identify whether a DCD is present and roughly how large it is.
 
-## 11.8  Pitfalls
+## 11.7  Pitfalls
 
 - **Endianness of IVT header length.** Big-endian. The rest of the IVT is little-endian. Easy to miss.
 - **`BootData.length` shorter than the file.** Tail bytes are not loaded. We always set it to "everything from start of image to end of code, including the 4 KB header gap."
@@ -333,7 +296,7 @@ This U-Boot image loads to DRAM at `0x8077C000`. It must include a DCD, because 
 - **`sync` forgotten after `dd`.** Linux's page cache is fast. A "complete" `dd` may still have a buffer in RAM. Always `sync` (or `dd conv=fsync`) before pulling the card.
 - **Booting the same SD card on a different SoC.** This image is i.MX6ULL-specific. Reusing it on another i.MX6 variant may or may not work. The IVT is the same format but load addresses change. Build per board.
 
-## 11.9  Going deeper
+## 11.8  Going deeper
 
 - **IMX6ULLRM Chapter 8 §8.7**: the formal IVT spec.
 - **U-Boot source: `tools/imximage.c`**: the reference C implementation. Compare against `mkimx.py`. You'll see we covered the simple case correctly.

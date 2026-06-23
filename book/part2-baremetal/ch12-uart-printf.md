@@ -1,16 +1,4 @@
----
-chapter: 12
-title: UART driver and printf
-part: II - Bare-metal i.MX6ULL
-estimated_pages: 18
-status: draft
----
-
 # Chapter 12: UART driver and `printf`
-> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
-> **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 
 > **What:** a polled UART1 driver and a tiny `printf` clone that uses it. By the end of the chapter your bare-metal program can say `Hello, world!` instead of blink.
 >
@@ -21,14 +9,68 @@ status: draft
 
 ## 12.1  Which UART, and on which pins
 
-The i.MX6ULL has eight UART controllers (UART1 through UART8). The board's debug header from Chapter 8 brings out **UART1**. Its TX is `UART1_TX_DATA` and RX is `UART1_RX_DATA`. On the Point Atom MINI these signals come out on the pads literally named UART1_TX_DATA and UART1_RX_DATA, in their reset mux (ALT0). The 4-pin debug header from Chapter 8 brings them out.
+The i.MX6ULL has eight UART controllers, UART1 through UART8. The Point Atom MINI uses **UART1** as its debug console. The UART1 TX and RX pads are connected to the board's integrated USB-to-TTL bridge, which then connects to the host through the **USB-TTL** or **DEBUG USB** port described in Chapter 8.
+
+The signal path is:
+
+```text
+i.MX6ULL UART1 pads -> onboard USB-TTL bridge -> debug USB connector -> host serial device
+```
+
+No external CP2102, CH340, FTDI adapter, or jumper wiring is needed. The bridge chip may itself be a CH340 or similar device, but it is already installed on the board.
 
 For our purposes:
 
 - Module: **UART1**, base address `0x02020000`.
 - Pads: `UART1_TX_DATA` (ALT0 = UART1_TX_DATA), `UART1_RX_DATA` (ALT0 = UART1_RX_DATA).
 - Pad IOMUXC registers: `IOMUXC_SW_MUX_CTL_PAD_UART1_TX_DATA` at `0x020E0084`, RX at `0x020E0088`. (Verify against your RM.)
-- Daisy-chain register: `IOMUXC_UART1_RX_DATA_SELECT_INPUT` at `0x020E0624`, telling UART1 which pad to listen on for RX (usually `0` for the matching `UART1_RX_DATA` pad).
+- Daisy-chain register: `IOMUXC_UART1_RX_DATA_SELECT_INPUT` at `0x020E0624`. For the `UART1_RX_DATA` pad used here, the required daisy value is `3`.
+
+### Why RX needs a daisy-chain register
+
+Many i.MX6ULL peripheral inputs can arrive through more than one package pad. UART1 RX is one example. Several pads have an alternate function that can feed the UART1 receiver. The UART therefore needs two separate selections:
+
+1. **Pad MUX selection:** choose which function the physical pad performs.
+2. **Peripheral input selection:** choose which eligible pad the UART1 receiver listens to.
+
+The second selection is the **daisy-chain register**. Despite the name, signals are not passed through devices in a serial chain. It is an input multiplexer inside the SoC:
+
+```text
+candidate pad A ----\
+candidate pad B -----+--> SELECT_INPUT mux --> UART1 RX logic
+UART1_RX_DATA pad ---/
+                         ^
+                         daisy value selects one path
+```
+
+For our board, both settings are required:
+
+```c
+REG(IOMUX_MUX_RX) = 0;  /* ALT0: this pad performs UART1_RX_DATA */
+REG(IOMUX_DAISY)  = 3;  /* UART1 listens to this pad's input path */
+```
+
+These two numbers belong to different registers. Daisy value `3` does **not** mean ALT3. The pad uses **ALT0**, while the UART input selector uses **candidate 3**.
+
+The upstream Linux pin-function header describes the same route with this five-value tuple:
+
+```c
+MX6UL_PAD_UART1_RX_DATA__UART1_DCE_RX  0x0088 0x0314 0x0624 0 3
+```
+
+The tuple means:
+
+| Value | Meaning |
+|-------|---------|
+| `0x0088` | MUX_CTL register offset |
+| `0x0314` | PAD_CTL register offset |
+| `0x0624` | SELECT_INPUT register offset |
+| `0` | pad mux mode, ALT0 |
+| `3` | input daisy value |
+
+TX usually does not need this extra selection. Once the TX pad is muxed to UART1 TX, the UART drives that pad outward. RX travels inward, so the SoC must know which possible pad to connect to the receiver.
+
+If the daisy value is wrong, TX can still print correctly while RX receives nothing. A voltage transition may reach the physical RX pad, but the UART receiver is connected internally to a different candidate path.
 
 The UART1 controller is on AIPS-1. Its clock gate is in **CCM_CCGR5**, bits 24-25 (CG12). UART1's input clock, `uart_clk_root`, has a default of **80 MHz** (PLL3 / 6, with the post-divider set to 1). We'll use that.
 
@@ -56,7 +98,7 @@ The simplest values that yield this ratio cleanly are `(UBIR+1) = 71`, `(UBMR+1)
 - `UBIR = 70`
 - `UBMR = 3082`
 
-If exact match is impossible, the chip rounds. Up to ~3% baud error is tolerated by most receivers. A mismatched baud rate shows up as garbage characters that look like ASCII but are not.
+If exact match is impossible, the chip rounds. Most receivers tolerate up to about 3% baud error. A mismatched baud rate appears as unreadable characters that look like ASCII but are not.
 
 ## 12.3  Register map (the ones we actually use)
 
@@ -72,12 +114,12 @@ The UART has dozens of registers. We use six:
 | `UCR4` | `+0x08C` | Control 4 (DMA off, RX threshold) |
 | `UFCR` | `+0x090` | FIFO control + clock div |
 | `USR1` | `+0x094` | Status 1 (TRDY = TX FIFO has room) |
-| `USR2` | `+0x098` | Status 2 (TXDC = TX complete; RDR = RX data ready) |
+| `USR2` | `+0x098` | Status 2 (TXDC = TX complete, RDR = RX data ready) |
 | `UESC` | `+0x09C` | Escape character (we ignore) |
 | `UTIM` | `+0x0A0` | Escape timer (we ignore) |
 | `UBIR` | `+0x0A4` | Baud numerator |
 | `UBMR` | `+0x0A8` | Baud denominator |
-| `UTS`  | `+0x0B4` | UART test register; TX FIFO full bit lives here |
+| `UTS`  | `+0x0B4` | UART test register. The TX FIFO full bit lives here. |
 
 The full list is RM Table 55-3. We will not visit most of them.
 
@@ -148,7 +190,7 @@ void uart_init(void)
     REG(IOMUX_MUX_RX) = 0;
     REG(IOMUX_PAD_TX) = 0x000010B0;   /* Push-pull, 50 MHz, no pull */
     REG(IOMUX_PAD_RX) = 0x000130B1;   /* With keeper for stable idle level */
-    REG(IOMUX_DAISY)  = 3;            /* select UART1_RX_DATA pad (verify w/ RM) */
+    REG(IOMUX_DAISY)  = 3;            /* select UART1_RX_DATA input path */
 
     /* 3.  Soft-reset the UART (SRST is active-low: clear to assert). */
     REG(UART_UCR2) = 0;
@@ -165,11 +207,11 @@ void uart_init(void)
                    | (1u << 0);   /* SRST released */
 
     /* 6.  UCR3.RXDMUXSEL must be 1 for receive to work on the externally-muxed
-          path -- yes, this trips people up; it's in the errata. */
+          path.  This is documented in the errata. */
     REG(UART_UCR3) |= (1u << 2);
 
     /* 7.  No DMA, no escape detection. */
-    REG(UART_UCR4) = (1u << 0);    /* DREN: receive-ready interrupt enable bit; we don't use IRQ yet but writing 0 elsewhere is fine */
+    REG(UART_UCR4) = (1u << 0);    /* DREN: receive-ready interrupt enable bit. We do not use IRQ yet. */
 
     /* 8.  FIFO control: RX trigger = 1, TX trigger = 2, RFDIV = /1.
           UFCR fields:
@@ -214,8 +256,8 @@ int uart_getc(void)
 Read `uart_init()` carefully. Each line is in the RM, and each line costs someone an afternoon when it is skipped. A few specific points:
 
 - **UBIR must be written before UBMR.** The order matters. The controller's internal divider is latched on the UBMR write. Reverse and you'll get baud rates 6.8% off, which still looks like text but has occasional corruption.
-- **The `\n` → `\r\n` translation in `uart_puts`** is here because dumb terminals (and `picocom` by default) expect CRLF endings to advance to a new line *and* return to column 0. We do not get this for free.
-- **`UCR3.RXDMUXSEL = 1`** is the errata fix that I lost an afternoon to once. Without it, RX appears dead.
+- **The `\n` → `\r\n` translation in `uart_puts`** is here because simple terminals, and `picocom` by default, expect CRLF endings to advance to a new line and return to column 0. Our bare-metal program must do this itself.
+- **`UCR3.RXDMUXSEL = 1`** is required by the errata. Without it, RX appears dead.
 
 ## 12.5  A 200-line `printf`
 
@@ -314,7 +356,15 @@ int main(void)
 }
 ```
 
-Build:
+Keep the board's integrated USB-TTL port connected. In one host terminal, open the serial device found in Chapter 8:
+
+```sh
+$ picocom -b 115200 /dev/ttyUSB0
+```
+
+If the bridge appeared as `/dev/ttyACM0`, use that path instead. This connection carries UART text. The separate USB-OTG connection carries SDP commands from `uuu`.
+
+In another host terminal, build and load the image through the board's USB-OTG port:
 
 ```sh
 $ make
@@ -322,7 +372,7 @@ $ ~/imx6ull/scripts/mkimx.py led.bin led.imx --load 0x00907400 --entry 0x0090840
 $ uuu -b sdp led.imx
 ```
 
-In the picocom window:
+In the terminal connected through the integrated USB-TTL bridge:
 
 ```
 Hello, i.MX6ULL bare-metal world!
@@ -334,37 +384,36 @@ Type characters. They will echo back.
 > hello
 ```
 
-The echo confirms RX works. We have a console.
+The printed text confirms the UART1 TX path through the onboard bridge. The echo confirms the UART1 RX path through the same bridge.
 
 ## 12.7  Why polled UART, not interrupt-driven
 
 We are deliberately using polling. Reasons:
 
 - **No interrupt controller yet.** The GIC will be set up properly in Chapter 15.
-> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
-> **GIC:** ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
 - **Polling is enough for `printf`.** Even at 115200 baud, transmitting one character takes 87 µs. Worst case we spin 87 µs per character. For diagnostic output that's fine. In a high-throughput application it wouldn't be.
-- **Simplicity reveals more.** Polling shows you the status-bit pattern in full. After you do it once, the interrupt version is just "the same thing, but the FIFO threshold triggers an ISR."
+- **Polling shows the status bits directly.** After you do it once, the interrupt version is the same hardware flow, but the FIFO threshold triggers an ISR.
 
 We will write an interrupt-driven echo as a lab in Chapter 15.
 
 ## 12.8  Lab
 
-1. **Build, push via SDP, observe `Hello, world`.** Confirm baud rate by typing fast and slow. Characters should echo back at any speed.
+1. **Build, push via SDP, and observe `Hello, world`.** Use USB-OTG for `uuu` and the integrated USB-TTL port for `picocom`. Type several characters and confirm that each one echoes.
 2. **Measure the baud error.** Insert a `for` loop that emits `'U'` (0x55, the canonical alternating-bit-pattern character) 1 million times. Capture on a scope. Measure one bit period. Compute actual baud. Compare to 115200. Should be within 1%.
 3. **Add `%b`** to `mini_printf`, binary representation, for register dumps. Use it to dump `UCR1`, `UCR2`, `USR1`, `USR2` at startup.
 4. **Print system info.** Read OCOTP_CFG0 and OCOTP_CFG1 (RM Chapter 37) and print the chip's unique ID.
-5. **Stress test.** Connect picocom and a script on the host that types 10 KB of text. Confirm none is lost. (We don't have flow control. At 115200 with a polled receiver, 10 KB should still be safe.)
+5. **Stress test.** Send 10 KB of text through the board's USB-TTL serial device and confirm it is echoed. We do not use hardware flow control, so the host script must not send faster than the polled receiver can consume data.
 
 ## 12.9  Pitfalls
 
 - **Wrong RFDIV in UFCR.** Setting `RFDIV = 0` divides by 6, not 1. Symptom: baud rate is six times too slow. The encoding is: 000=/6, 001=/5, 010=/4, 011=/3, 100=/2, 101=/1. Always `0b101`.
 - **Forgot to release SRST.** Symptom: UART silent. `UCR2.SRST = 0` means *asserted*. Set it to release.
-- **Wrong daisy-chain (SELECT_INPUT).** Symptom: TX works (you see `Hello`), RX doesn't (no echo). The UART_RX_DATA_SELECT_INPUT register decides which pad routes to UART1's receiver. Wrong value = data goes nowhere.
+- **Wrong daisy-chain (SELECT_INPUT).** Symptom: TX works through the onboard bridge, but typed characters do not echo. `UART1_RX_DATA_SELECT_INPUT` must select the pad physically connected to the bridge.
+- **Using the wrong USB connector.** The USB-TTL port appears as `/dev/ttyUSBx` or `/dev/ttyACMx` and carries console text. The USB-OTG port appears as the i.MX6ULL SDP device and is used by `uuu`.
 - **CRLF vs LF.** `picocom` defaults to translating LF to CRLF on receive. Newer terminals don't. If your output is "stairstepped," your `\n` is not being followed by `\r`. Our `uart_puts` handles it.
-- **`printf` with `float`s.** Compiles, runs, prints garbage (we never wrote `%f`). Don't pass floats to a printf you haven't taught.
-- **UBIR after UBMR.** Discussed in §12.4. Don't.
-- **Forgot the CCGR.** Always. Every. Time.
+- **`printf` with `float`s.** Compiles, runs, and prints wrong output because we never wrote `%f`. Do not pass floats to this `printf`.
+- **UBIR after UBMR.** Discussed in §12.4. Write UBIR first.
+- **Forgot the CCGR.** If the UART is silent, check the clock gate before debugging the UART registers.
 
 ## 12.10  Going deeper
 

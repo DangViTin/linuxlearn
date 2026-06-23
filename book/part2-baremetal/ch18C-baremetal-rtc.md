@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 18C: Bare-metal RTC
 
-> **What:** access the **SNVS** (Secure Non-Volatile Storage) RTC on i.MX6ULL: set the wall-clock time, read it back at runtime, and watch it survive a deliberate main-power brown-out.
+> **What:** access the **SNVS** (Secure Non-Volatile Storage) RTC on i.MX6ULL: set the wall-clock time, read it back at runtime, and confirm it survives a deliberate main-power brown-out.
 >
 > **Why:** Any product that needs to log timestamps, run scheduled actions, or check license expiration relies on an RTC that survives power cycles. SNVS is the only always-on domain on i.MX6ULL. We need to know how to talk to it.
 >
@@ -31,7 +31,7 @@ For this chapter we use only the second counter, the scratch SRAM (LPGPR registe
 
 The Point Atom MINI exposes a **VBAT** pin on the schematic (typically populated with a CR1220 coin cell holder or a small supercap). When main power is removed, VDD_SNVS_IN is supplied from VBAT. While the SoC's main rails are off, SNVS's 32 kHz oscillator continues, its counter continues to increment, and its LPGPR scratch SRAM retains its contents.
 
-If your board has no battery: SNVS still works, but power-loss = SNVS reset. Useful for boot-counting but not for wall-clock survival across reboots.
+If your board has no battery: SNVS still works, but power loss resets SNVS. It is still useful for boot counting, but not for wall-clock survival across reboots.
 
 The clocks the SNVS controller needs come from:
 
@@ -163,14 +163,14 @@ int printf(const char *fmt, ...);
 
 static void format_secs(uint64_t s, char *out)
 {
-    /* Print as DDD:HH:MM:SS for the casual case (RTC seconds since enable). */
+    /* Print as DDD:HH:MM:SS for RTC seconds since enable. */
     uint32_t days = (uint32_t)(s / 86400);
     s %= 86400;
     uint32_t h = (uint32_t)(s / 3600);
     s %= 3600;
     uint32_t m = (uint32_t)(s / 60);
     uint32_t sec = (uint32_t)(s % 60);
-    /* Use mini_printf style; here just sprintf via uart_puts: */
+    /* Use mini_printf style. In real code, implement this with uart_puts(). */
     static char buf[40];
     /* Implement with multiple uart_puts() calls instead of sprintf to
      * keep dependencies minimal. */
@@ -184,7 +184,7 @@ int main(void)
     uart_init();
     rtc_init();
 
-    /* Has SNVS been set before?  Use scratch[0] as a magic-marker.
+    /* Has SNVS been set before?  Use scratch[0] as a known marker.
      * If 0xDEADBEEF, the RTC has been initialized previously. */
     if (rtc_scratch_read(0) != 0xDEADBEEF) {
         printf("First boot since SNVS power-on; setting time.\r\n");
@@ -209,7 +209,7 @@ int main(void)
 Run this lab to see SNVS in action.
 
 1. Boot, set the wall clock, observe the counter ticking up.
-2. Power-cycle the board (just unplug VBUS. Keep the coin cell installed).
+2. Power-cycle the board. Unplug VBUS, but keep the coin cell installed.
 3. Re-power. Observe the counter resumes from where it left off, *plus* the ~2 seconds you spent unplugged.
 
 The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, increment every reboot, and observe an "n-th boot" indicator that the SoC reset cannot clear. Useful in production for tamper detection and reboot accounting.
@@ -217,7 +217,7 @@ The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, 
 ## 18C.7  Lab
 
 1. **Build and run §18C.5.** Confirm the counter advances at 1 Hz.
-2. **Brown-out test.** As described above. Don't expect millisecond accuracy across the power cycle. The first read after power-on may show 1–2 seconds of slack while SNVS internals settle.
+2. **Brown-out test.** As described above. Don't expect millisecond accuracy across the power cycle. The first read after power-on may show 1-2 seconds of slack while SNVS internals settle.
 3. **Boot counter.** Add a `boot_count = rtc_scratch_read(1); rtc_scratch_write(1, boot_count + 1);` to `main`. Print it at startup. Power-cycle 10 times. Confirm it counts up.
 4. **Lose VBAT.** If your coin cell is removable, pop it out, power-cycle the main rail, observe the SNVS reset (boot_count back to 0, scratch RAM at `0xDEADBEEF` lost).
 5. **Wall-clock UNIX time.** Have the user enter `t=1716595200\n` over UART. Call `rtc_set_seconds`. Then print the date in a real human-readable form (`gmtime`-style). This is a small but pleasant integration exercise.
@@ -227,7 +227,7 @@ The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, 
 - **Reading the counter without rollover protection.** Without the `do { hi1 = ...; lo = ...; hi2 = ...; } while (hi1 != hi2);` pattern, you can occasionally read a stale `hi` paired with an already-incremented `lo`. The error is rare (~once per 2^15 reads) but real.
 - **Forgetting that scratch SRAM is only 24 bytes.** Six 32-bit words. Allocate carefully.
 - **Writing to LPSRTC while it's running.** The RM requires you to clear `LPCR_SRTC_ENV` first. Our `rtc_set_seconds` does this.
-- **No VBAT supply.** Behavior is identical until you power-cycle. Then SNVS resets. Symptom: the boot-counter mysteriously resets to zero only on power-cycle, not on warm-reset. The fix is in hardware.
+- **No VBAT supply.** Behavior is identical until you power-cycle. Then SNVS resets. Symptom: the boot-counter resets to zero only on power-cycle, not on warm reset. The fix is in hardware.
 - **SNVS tamper inputs floating.** If your board exposes tamper pins (TAMPER_IN_x) and they float, the SNVS may go into "tampered" state and refuse to release secrets. Tie them via the schematic.
 
 ## 18C.9  Going deeper
@@ -239,7 +239,7 @@ The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, 
 
 ---
 
-End of Part II's inserted chapters. Part II proper ends with Chapter 18. Chapters 18A–C are supplementary deep-dives. Read them in any order, or skip them entirely.
+End of Part II's inserted chapters. Part II proper ends with Chapter 18. Chapters 18A-18C are supplementary deep-dives. Read them in any order, or skip them entirely.
 
 > Next chapter: **Chapter 19: U-Boot from source, first boot.** With the bare-metal foundation in place, we move from writing it ourselves to reading a real bootloader that does the same things.
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.

@@ -1,14 +1,4 @@
----
-chapter: 10
-title: C + startup.S + linker script
-part: II - Bare-metal i.MX6ULL
-estimated_pages: 20
-status: draft
----
-
 # Chapter 10: C + startup.S + linker script
-> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 
 > **What:** the same blinking LED as Chapter 9, but with `main()` written in C. To get there we need a proper startup that sets the stack, zeroes `.bss`, copies `.data` from its load address to its run address, then branches to `main`. We also write our first real linker script.
 >
@@ -17,7 +7,7 @@ status: draft
 > **Focus:** the **LMA vs VMA** distinction for `.data` (introduced in Chapter 6, made concrete here). If you can answer where the initial value of a global lives and how it reaches RAM, you understand startup.
 
 
-## 10.1  What `int x = 7;` actually needs
+## 10.1  What an initialized global needs
 
 Consider a C file with three globals:
 
@@ -28,10 +18,8 @@ const int z = 42;      // const + initialized → .rodata
 ```
 
 On a hosted system (your Linux laptop), the loader reads the ELF, mmaps `.data` and `.rodata` from disk, allocates and zero-fills `.bss`, and your program starts. On bare-metal, *there is no loader*. We are loaded as a flat blob into OCRAM (or DRAM, later). Whoever loaded us is done. The rest is on us.
-> **ELF:** Executable and Linkable Format, the standard Linux object and executable file format.
 
 So we, ourselves, must:
-
 - **Set a stack pointer.** Without it, the first C function call crashes.
 - **Zero `.bss`.** Otherwise `y` is whatever was in OCRAM when we arrived.
 - **Copy `.data` from its load location to its run location** (when those differ). This is the LMA-vs-VMA dance from Chapter 6.
@@ -43,9 +31,6 @@ Optionally, also: set up exception vectors, configure caches, enable the FPU. We
 
 > **Template warning:** This block contains placeholder values.
 > Replace compatible strings, GPIO numbers, addresses, and paths with values from your board before using it.
-> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-
 
 The Chapter 9 program had no `.data` and no `.bss`. We slapped `-Ttext=0x00907400` on the command line and let it ride. For C code, we need a real script. Save it as `link.ld`:
 
@@ -102,15 +87,15 @@ Decoded line by line:
 - **`ENTRY(_start)`**: names the symbol that `objdump` and `gdb` will treat as the executable entry. The Boot ROM does not consult this. It uses the IVT's `entry` field. But debuggers do, and getting it right keeps `gdb` from being puzzled.
 - **`MEMORY { OCRAM ... }`**: describes our one available region. ORIGIN is the load address. LENGTH is conservative: 128 KB total OCRAM, minus the first 28 KB the ROM uses for its working area = ~99 KB free starting at `0x00907400`.
 - **`. = ORIGIN(OCRAM);`**: the location counter starts at the region's base.
-- **`.text` section**: gathers all `.text*`, `.rodata*`, plus a `KEEP(*(.vectors))` placeholder for a future vector table. `KEEP` tells the linker not to garbage-collect this even if no symbol references it. `ALIGN(4)` keeps us word-aligned.
+- **`.text` section**: gathers all `.text*`, `.rodata*`, plus a `KEEP(*(.vectors))` placeholder for a future vector table. `KEEP` tells the linker not to remove this as unused, even if no symbol references it. `ALIGN(4)` keeps us word-aligned.
 - **`_etext = .;`**: captures the location counter. This is where `.text` ends. It is also where the `.data` *load image* will be placed (see next line).
-- **`.data` section with `AT(_etext)`**: the magic line. `AT(addr)` specifies a different LMA for the section. The VMA still flows from the location counter (immediately after `.text` in this case), but the load-address-stored content starts at `_etext`. Because in our layout both are equal, this is currently a no-op, but the *machinery* is in place for when we move `.data` to DRAM later.
+- **`.data` section with `AT(_etext)`**: the important line. `AT(addr)` specifies a different LMA for the section. The VMA still flows from the location counter, immediately after `.text` in this case. The initial bytes for `.data` start at `_etext`. In our current layout the VMA and LMA are equal, so this is a no-op for now. The setup is ready for when we move `.data` to DRAM later.
 - **`_sdata` / `_edata`**: boundary symbols our startup uses to know how much to copy.
 - **`.bss (NOLOAD)`**: `NOLOAD` means: the linker does not write any bytes into the image for this section. The boundary symbols `_sbss` / `_ebss` are still exported so startup can zero the region.
 - **`_stack_top`**: computed at link time as the high water mark. The startup loads SP from this.
 - **`/DISCARD/`**: throws away ELF notes and attributes that have no place in a bare-metal binary.
 
-Three things in this script are easy to get wrong. Each one bites only once.
+Three things in this script are easy to get wrong. Check them now.
 
 1. **Forgetting `KEEP` around the vector table.** When you later link with `-gc-sections`, the linker removes the table because nothing in C references it. `KEEP` prevents this.
 2. **Forgetting `AT(_etext)` for `.data`.** Then VMA = LMA always, and you don't notice anything is missing, until you move `.data` to DRAM and your initial values turn out to be whatever was in DRAM at boot.
@@ -125,7 +110,7 @@ Three things in this script are easy to get wrong. Each one bites only once.
     .align  5                       @ vector table must be 32-byte aligned
     .global _vectors
 _vectors:
-    b       _start                  @ Reset           — we will replace these in Ch 15
+    b       _start                  @ Reset, replaced in Ch 15
     b       .                       @ Undef
     b       .                       @ SVC
     b       .                       @ Prefetch abort
@@ -159,8 +144,8 @@ _start:
     blo     1b
 
     /*  Copy .data from LMA to VMA.  In our current layout they are equal,
-        so this loop copies zero bytes.  Keep it; the day we move .data to
-        DRAM it earns its salary. */
+        so this loop copies zero bytes.  Keep it.  When we move .data to
+        DRAM, this loop becomes necessary. */
     ldr     r0, =_etext             @ source (LMA)
     ldr     r1, =_sdata             @ destination (VMA)
     ldr     r2, =_edata
@@ -169,7 +154,7 @@ _start:
     strlo   r3, [r1], #4
     blo     2b
 
-    /*  Branch to main.  Pass argc=0, argv=NULL, just to be polite. */
+    /*  Branch to main.  Pass argc=0, argv=NULL. */
     mov     r0, #0
     mov     r1, #0
     bl      main
@@ -185,14 +170,10 @@ A few notes on the assembly choices:
 - **`cpsid if, #0x13`** is a `cps` instruction with the side effect of setting the mode bits to `0b10011` (SVC) and the I and F mask bits. One instruction. Three guarantees.
 - **`strlo r2, [r0], #4`** is post-indexed: store, *then* add 4 to r0. `lo` (= `cc` = unsigned less-than) is the AAPCS-comparison flag that pairs with `cmp` in our loop. This conditional store/post-increment idiom is so common in ARM startup that you should be able to read it instantly.
 - **`bl main`** is *branch-and-link*: it sets LR to the return address before branching. If `main` does return, we fall through to `hang`. The `wfi` (Wait For Interrupt) instruction makes the core idle in a low-power state instead of busy-spinning at 396 MHz, which is at least polite to the power budget.
-- **`.section .text.startup`** puts our startup code in a named subsection. The linker script's `*(.text*)` matches `.text.startup` and pulls it in early. We could just put it in plain `.text`, naming it explicitly is hygiene, not necessity.
-- The vector table at the top is mostly placeholder `b .` (branch-to-self). In Chapter 15 we replace those self-loops with real handlers.
+- **`.section .text.startup`** puts our startup code in a named subsection. The linker script's `*(.text*)` matches `.text.startup` and pulls it in early. We could put it in plain `.text`, but the explicit name makes the startup code easier to find.
+- The vector table at the top is placeholder `b .` (branch-to-self). In Chapter 15 we replace those self-loops with real handlers.
 
 ## 10.4  `main.c`, the LED, again
-
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
-> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
-
 
 ```c
 #include <stdint.h>
@@ -272,7 +253,7 @@ clean:
 
 A couple of flags worth highlighting:
 
-- **`-fno-common`**: forces every uninitialized global into `.bss` instead of "common" symbols. Without this, two files declaring `int foo;` would silently coalesce, which is convenient on hosted Linux and dangerous on bare-metal.
+- **`-fno-common`**: forces every uninitialized global into `.bss` instead of "common" symbols. Without this, two files declaring `int foo;` would merge without a clear warning. That is convenient on hosted Linux and dangerous on bare-metal.
 - **`-Werror=implicit-function-declaration`**: we never tolerate "I forgot to include the header." It is one of the cheapest bugs to prevent.
 - **`-O2 -g`** together, optimize but keep DWARF. The `-g` does not affect the binary. It only enlarges the ELF.
 
@@ -297,7 +278,7 @@ A few observations:
 - **`data` is 0.** No initialized globals in our C.
 - **`bss` is 0.** No uninitialized globals.
 
-Now `data` and `bss` are exercised but we are not yet using them. Let us add a `.data` value just to confirm the copy loop works:
+Now `data` and `bss` are exercised but we are not yet using them. Add a `.data` value to confirm the copy loop works:
 
 In `main.c`, change `LED_BIT`:
 
@@ -346,7 +327,7 @@ If you change the linker script's `OCRAM` origin, *every* literal-pool address c
 
 ## 10.8  What if `main()` returns?
 
-In `startup.S`, after `bl main`, we fall through to a `hang` loop. In real life `main()` should never return on bare-metal. But during development it does happen, you `return` accidentally, you let an `if (...) return;` slip in. The `hang` saves you from "what the hell, the LED stopped" without obvious cause.
+In `startup.S`, after `bl main`, we fall through to a `hang` loop. In normal bare-metal code, `main()` should never return. During development, it can happen by accident, for example from an unintended `return` or `if (...) return;`. The `hang` loop gives you a stable failure state instead of letting execution continue into unknown memory.
 
 You can make the dependency explicit by giving `main` the `__attribute__((noreturn))`:
 
@@ -393,7 +374,7 @@ Rule: **every memory-mapped register access uses `volatile`. Every one.** Macroi
 - **`bss` not zeroed.** Symptom: nondeterministic startup behavior across resets. Cause: forgot the loop, or got the `_sbss`/`_ebss` symbols wrong in the linker script.
 - **`.data` not copied.** Symptom: globals appear to have random initial values. Cause: forgot the copy loop, or `AT(_etext)` not in the linker script (so LMA and VMA collided in a way the loop didn't notice).
 - **Stack not aligned at function entry.** AAPCS requires SP to be 8-byte aligned at every public function entry. `_stack_top = ORIGIN + LENGTH` aligns naturally as long as LENGTH is a multiple of 8. Change LENGTH to an odd value and expect crashes inside libgcc helpers.
-- **`-fno-common` not set.** Two `int foo;` declarations in two `.c` files silently merge into one symbol. Sometimes the result works, sometimes it corrupts memory. Always enable.
+- **`-fno-common` not set.** Two `int foo;` declarations in two `.c` files merge into one symbol without a clear warning. Sometimes the result works, sometimes it corrupts memory. Always enable.
 - **Forgot `volatile`.** Discussed above.
 - **Linker script does not declare `.rodata`.** GCC may emit string literals into `.rodata`, which falls through to the next region. We folded `.rodata` into `.text` here. If you split them out, make sure both are placed in OCRAM.
 - **`_sbss` is not 4-byte aligned.** Our `ALIGN(4)` on `.bss` handles this. If you ever remove it, the `strlo r2, [r0], #4` in startup will hit an unaligned-address fault.

@@ -63,7 +63,7 @@ The PLL1 register has these bit fields:
 | 13 | ENABLE | 1 = output enabled |
 | 14 | BYPASS_CLK_SRC | Source of bypass clock (we don't use bypass) |
 | 16 | BYPASS | 1 = output is the bypass clock, not the PLL |
-| 31 | LOCK | Read-only; 1 = PLL has acquired lock |
+| 31 | LOCK | Read-only. 1 = PLL has acquired lock |
 
 For 696 MHz: we want `24 × DIV / 2 = 696`, so DIV = 58. DIV_SELECT is the raw divider value, so we write 58 directly.
 
@@ -342,7 +342,7 @@ The Boot ROM leaves the chip at ARM = 396 MHz already (PLL1 at 792 MHz, divided)
 
 ## 13.6  Verifying with hardware
 
-A read-back of what you just wrote can lie to itself. For confidence, measure the clock externally.
+A register read-back only proves the register accepted the value. For confidence, measure the clock externally.
 
 ### Quick check: blink rate
 
@@ -397,23 +397,23 @@ for (;;) {
 }
 ```
 
-The frequency of the resulting square wave is determined by (CPU clock / 5 instructions per iteration). Scope it. With ARM at 696 MHz and 5 cycles per iteration → ~70 MHz toggle. The scope and the GPIO drive strength cannot reproduce that cleanly. You see a degraded waveform, but the period is still measurable. The same loop at 396 MHz produces 40 MHz. A 2× change in frequency between the two builds is the proof.
+The frequency of the resulting square wave is determined by CPU clock divided by about 5 instructions per iteration. Measure it with a scope. With ARM at 696 MHz and 5 cycles per iteration, the toggle rate is about 70 MHz. The scope and the GPIO drive strength cannot reproduce that cleanly. You see a degraded waveform, but the period is still measurable. The same loop at 396 MHz produces about 40 MHz. A 2× change in frequency between the two builds proves the CPU clock changed.
 
 ## 13.7  Why we set up clocks before DDR
 
-We do not, strictly, *have* to set the ARM clock to 696 MHz before DDR, DDR works at the default ARM speed. But we *do* need to know the AHB and IPG clocks before DDR init, because:
+We do not have to set the ARM clock to 696 MHz before DDR. DDR works at the default ARM speed. But we do need to know the AHB and IPG clocks before DDR init, because:
 
 - **DDR timing parameters are absolute (nanoseconds).** The MMDC controller converts ns to cycles using *its own* input clock. If we set the bus clocks wrong, the DDR controller computes the wrong number of clocks per timing parameter, and DRAM accesses corrupt.
 - **MMDC's clock comes from CBCDR.MMDC_PODF**, which divides periph_clk. Setting MMDC clock = 396 MHz makes the conversion factors easy: 1 cycle = 2.525 ns.
 
-So this chapter and Chapter 14 are coupled: get clocks right here, and DDR init can use the values verbatim.
+So this chapter and Chapter 14 are connected. Get clocks right here, and DDR init can use the same values.
 
 ## 13.8  Lab
 
 1. **Build, push, observe pre/post clocks.** Confirm ARM goes from 396 to 696 MHz.
 2. **Enable PMU CCNT.** Measure a known busy loop's cycle count. Confirm it matches the loop length.
 3. **Scope a GPIO toggle loop.** Measure frequency. Compute the cycles-per-iteration the compiler emitted. Compare to `objdump`.
-4. **Try to set ARM to 792 MHz.** This is the upper bin. Some chips can take it. (Many MINIs can. Yours may or may not.) Set DIV_SELECT = 66. Observe, does it lock, does it crash? **Restore 696 MHz** before next chapter.
+4. **Try to set ARM to 792 MHz.** This is the upper bin. Some chips work at this speed, including many MINI boards. Yours may or may not. Set DIV_SELECT = 66. Observe whether the PLL locks and whether the program crashes. **Restore 696 MHz** before the next chapter.
 5. **Read CCM_CBCMR after init and decode every field by hand.** Cross-check with what your code wrote.
 
 ## 13.9  Pitfalls
@@ -423,7 +423,7 @@ So this chapter and Chapter 14 are coupled: get clocks right here, and DDR init 
 - **PLL lock never asserts.** Most likely: POWERDOWN bit still set, or you're reading the wrong PLL register. Double-check addresses.
 - **Wrong PFD FRAC formula.** It's `f_PLL × 18 / FRAC`, not `f_PLL / FRAC`. The 18× makes the math counterintuitive.
 - **CCM_CBCDR divider fields off-by-one.** "Divider N" = "field value (N-1)". For divider 3, write 2.
-- **Boot ROM did something useful that you undid.** The ROM configures DDR (via DCD if present) and sometimes the USB PLL. If you blow those away, you may break things that depended on them. Only modify what you understand.
+- **Boot ROM did something useful that you undid.** The ROM configures DDR (via DCD if present) and sometimes the USB PLL. If you overwrite those settings, you may break code that depended on them. Only modify what you understand.
 > **DCD:** Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
 
 ## 13.10  Going deeper

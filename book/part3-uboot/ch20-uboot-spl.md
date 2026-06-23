@@ -170,7 +170,7 @@ save_boot_params_ret:
 You wrote almost every line of this in Chapter 10's `startup.S`. The differences:
 
 - `save_boot_params` is a hook the SoC family uses to capture boot-mode info the ROM leaves in registers. We never needed it in bare-metal.
-- The HYP-mode check is for Cortex-A15+ which can boot in hypervisor mode. The Cortex-A7 on i.MX6ULL does not have HYP, so the check is a no-op for us.
+- The HYP-mode check handles CPUs that may arrive from firmware in hypervisor mode. The i.MX6ULL Cortex-A7 implements the virtualization extensions, but our normal U-Boot/Linux path does not use HYP. Part IX returns to this when we deliberately boot Xen.
 - `cpu_init_cp15` configures cache and MMU registers to a known state.
 > **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
 > **MMU:** Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.

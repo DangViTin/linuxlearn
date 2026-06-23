@@ -455,5 +455,4 @@ Even if you never plan to submit upstream, this file documents who owns the port
 - **U-Boot mainline commit history**: `git log board/freescale/mx6ull_14x14_evk/` is a tour of every issue that the EVK port has ever had. Read at least the most recent 50 commits.
 - **AN12085**: *Designing a Hardware Solution Based on the i.MX 6UL/6ULL*. From a U-Boot perspective: what needs to be true on a custom board for the mainline boot path to just work.
 
-> Next chapter: **Chapter 23: `bootcmd`, `bootargs`, FIT images.** With a working board port, we turn to the *contract* between U-Boot and the kernel: how U-Boot decides what kernel to load, what it tells the kernel about the system, and the modern FIT image format.
-> **FIT:** Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
+> Next chapter: **Chapter 22A: Building i.MX6ULL U-Boot from nothing.** Instead of adapting an existing SoC port, we derive the platform support from the hardware manual, schematic, and our bare-metal code.

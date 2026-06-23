@@ -324,6 +324,18 @@ apt install gdbserver strace ltrace valgrind trace-cmd perf \
             rauc casync
 ```
 
+### Part IX — Applied virtualization
+
+```sh
+# On the host
+apt install qemu-system-arm qemu-system-aarch64 gdb-multiarch \
+            device-tree-compiler u-boot-tools bridge-utils
+
+# Hypervisor builds also need the normal kernel/U-Boot build tools above.
+# Xen, Jailhouse, Zephyr, and STM32MP1-specific tooling are pinned inside
+# their chapters because version drift matters.
+```
+
 ## A.6  Pitfalls
 
 - **libgpiod v1 vs v2.** The CLI changed: `gpioget --chip=gpiochip0 18` (v2) vs `gpioget gpiochip0 18` (v1). Ubuntu 24.04+ ships v2; older Buildroot trees ship v1. Match documentation to your version.

@@ -23,9 +23,9 @@ status: draft
 In Cortex-M:
 
 - The NVIC is inside the CPU.
-- Hardware auto-stacks R0–R3, R12, LR, PC, xPSR on the active stack.
+- Hardware auto-stacks R0-R3, R12, LR, PC, xPSR on the active stack.
 - The vector table is an array of *function pointers*. The CPU loads PC directly from the slot.
-- `BX LR` (with magic EXC_RETURN) tells hardware to unstack.
+- `BX LR` with the special `EXC_RETURN` value tells hardware to unstack.
 
 In Cortex-A7:
 
@@ -34,7 +34,7 @@ In Cortex-A7:
 - The vector table is an array of *branch instructions*, not function pointers.
 - Return is an explicit `rfeia sp!` or equivalent.
 
-The trade-off: A-profile gives you more flexibility (you can split handlers across modes, share register banks, etc.) at the cost of writing more boilerplate. Linux's `arch/arm/kernel/entry-armv.S` is several hundred lines of the same pattern. Correct, but intimidating to read the first time.
+The trade-off: A-profile gives you more flexibility (you can split handlers across modes, share register banks, etc.) at the cost of writing more entry and exit code. Linux's `arch/arm/kernel/entry-armv.S` is several hundred lines of the same pattern. Correct, but intimidating to read the first time.
 
 We will write a smaller version. The pattern is identical.
 
@@ -102,7 +102,7 @@ data_handler:
 unused_handler:
 svc_handler:
 fiq_handler:
-    b       .                        @ trap: branch to self forever
+    b       .                        @ stop here: branch to self forever
 
     .global irq_entry
 irq_entry:
@@ -138,12 +138,12 @@ irq_entry:
 
 What is happening:
 
-- **The `ldr pc, =sym` form** rather than `b sym` is used because `b` has a ±32 MB range, and our handler labels are far away in flash/DRAM. `ldr pc, =sym` is the standard ARM idiom for a far branch.
+- **The `ldr pc, =sym` form** rather than `b sym` is used because `b` has a limited branch range, and our handler labels may be far away in flash or DRAM. This form loads the full handler address into `pc`.
 - **`sub lr, lr, #4`** before `srsdb`. The CPU put `PC_interrupted + 4` in `LR_irq`. ARM defines a fixed return offset per exception: 4 for IRQ, 4 for prefetch abort, 8 for data abort, 0 for SVC. For IRQ we subtract 4 to land back on the interrupted instruction.
 - **`srsdb sp!, #0x12`** stores `{LR, SPSR}` to the IRQ-mode stack pointer. Mode 0x12 = IRQ. The `db` (decrement-before) and `!` (writeback) make it a stack push.
 - **`cpsid i, #0x13`** switches to SVC mode and masks IRQs (which were already masked, but explicit). After this, we are on the SVC-mode stack.
 - **`push {r0-r3, r12, lr}`** saves the caller-saved registers AAPCS expects us to preserve across the C function call.
-- **`bl c_irq_dispatch`** is the standard branch-and-link, but with our preserved state. C function returns. SP back to where it was.
+- **`bl c_irq_dispatch`** branches to the C interrupt dispatcher and stores the return address in `lr`. When the C function returns, `sp` is back where it was.
 - **`cpsid i, #0x12`** moves back to IRQ mode (so `rfeia sp!` pops from the IRQ stack, where we pushed in `srsdb`).
 - **`rfeia sp!`** pops two words: PC and CPSR. The CPU resumes with that PC and that mode/CPSR. Masking of IRQs is automatically restored from the SPSR we saved.
 
@@ -197,8 +197,8 @@ Registers we will use (offsets within their region):
 | `GICD_ICENABLERn` | `+0x180 + 4n` | Disable (write-1-to-clear) |
 | `GICD_ISPENDRn` | `+0x200 + 4n` | Set pending |
 | `GICD_ICPENDRn` | `+0x280 + 4n` | Clear pending |
-| `GICD_IPRIORITYRn` | `+0x400 + n` | Priority (8 bits each; 256 bytes for 256 IRQs) |
-| `GICD_ITARGETSRn` | `+0x800 + n` | Target CPU mask (per IRQ; SPI only; PPI/SGI are fixed) |
+| `GICD_IPRIORITYRn` | `+0x400 + n` | Priority, 8 bits each, 256 bytes for 256 IRQs |
+| `GICD_ITARGETSRn` | `+0x800 + n` | Target CPU mask. Per IRQ for SPI. Fixed for PPI and SGI. |
 | `GICD_ICFGRn` | `+0xC00 + 4n` | Trigger type (edge/level), 2 bits per IRQ |
 
 ### CPU Interface (`GICC_*`)
@@ -206,7 +206,7 @@ Registers we will use (offsets within their region):
 | Register | Offset | Purpose |
 |----------|--------|---------|
 | `GICC_CTLR` | `+0x000` | Enable CPU interface |
-| `GICC_PMR` | `+0x004` | Priority mask (must be ≥ priority of IRQ to allow) |
+| `GICC_PMR` | `+0x004` | Priority mask. Must allow the IRQ priority. |
 | `GICC_BPR` | `+0x008` | Binary point (we set 0 = full priority resolution) |
 | `GICC_IAR` | `+0x00C` | Read: pending IRQ ID + ack |
 | `GICC_EOIR` | `+0x010` | Write: end-of-interrupt |
@@ -334,7 +334,7 @@ void c_irq_dispatch(void)
 {
     uint32_t iar = REG(GICC_IAR);
     uint32_t irq = iar & 0x3FF;
-    if (irq == 1023) return;   /* spurious — IAR returns 1023 when no IRQ is active */
+    if (irq == 1023) return;   /* spurious: IAR returns 1023 when no IRQ is active */
     if (irq < MAX_IRQ && handlers[irq]) handlers[irq]();
     REG(GICC_EOIR) = iar;       /* end of interrupt */
 }
@@ -344,7 +344,7 @@ A note on the `GICD_IPRIORITYR` writes: each IRQ has *one byte* of priority, not
 
 ## 15.7  Hooking up the UART1 IRQ
 
-UART1's IRQ is shown as **IRQ 26** in the i.MX6ULL RM Table 3-1 (interrupt assignments). That number is the *SPI (Shared Peripheral Interrupt) offset*. The GIC's own ID space numbers SGIs 0–15, PPIs 16–31, and SPIs from 32 upward, so the GIC **INTID** for UART1 is `32 + 26 = 58`. We pass `58` to `gic_register()` and `gic_enable_irq()`. (Different SoC docs use one convention or the other. Once you internalize "RM number + 32 = GIC INTID for SPIs," the rest is bookkeeping.)
+UART1's IRQ is shown as **IRQ 26** in the i.MX6ULL RM Table 3-1 (interrupt assignments). That number is the *SPI (Shared Peripheral Interrupt) offset*. The GIC's own ID space numbers SGIs 0-15, PPIs 16-31, and SPIs from 32 upward, so the GIC **INTID** for UART1 is `32 + 26 = 58`. We pass `58` to `gic_register()` and `gic_enable_irq()`. Different SoC docs use one convention or the other. Once you internalize "RM number + 32 = GIC INTID for SPIs," the rest is bookkeeping.
 
 Modify `uart_init` (Chapter 12) to enable the RX-ready interrupt:
 
@@ -399,7 +399,7 @@ int main(void)
 
 `wfi` (Wait For Interrupt) puts the core to sleep until an interrupt fires. After each ISR returns, we resume here, immediately re-enter `wfi`. Power-efficient idle.
 
-The echo is now driven entirely by the UART1 ISR. The main thread literally does nothing except sleep.
+The echo is now driven entirely by the UART1 ISR. The main thread only sleeps.
 
 ## 15.8  What happens when you type a character
 
@@ -428,8 +428,8 @@ Eleven steps. Every Linux IRQ in user space follows the same pattern.
 1. **Build, push, type characters, see them echo.** Confirm IRQ-driven.
 2. **Replace polling printf with IRQ-driven printf.** Wrap `uart_putc` in a small queue. When TX FIFO has space (`UCR1.TRDYEN`), drain queue from ISR. Now your `printf` returns immediately.
 3. **Count IRQs.** Increment `rx_count` in the ISR. After 1000 characters, dump it from `main`. Confirm exact match.
-4. **Try without `wfi`.** Replace `for(;;){wfi}` with `for(;;)`. Observe: same correctness, much higher idle power. (You won't *see* the power difference, but it's there.)
-5. **Trigger a data abort.** From `main`, do `*(volatile uint32_t *)0x1 = 0;`. Confirm `data_handler` (currently `b .`) is hit. Add a `printf` to `data_handler` (it must run in ABT mode, easy way: just hang and let JTAG inspect. Or copy the `cpsid` dance to switch to SVC).
+4. **Try without `wfi`.** Replace `for(;;){wfi}` with `for(;;)`. The program still works, but idle power is higher. You may not see the power difference without measuring it.
+5. **Trigger a data abort.** From `main`, do `*(volatile uint32_t *)0x1 = 0;`. Confirm `data_handler` (currently `b .`) is hit. Add a `printf` to `data_handler` (it must run in ABT mode). The simple debug path is to halt and inspect with JTAG. The fuller path is to copy the `cpsid` pattern and switch to SVC.
 > **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 > **JTAG:** the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 6. **Add an SVC instruction** (`asm volatile ("svc #0")`) and observe the SVC handler is hit. This is the foundation of syscalls.

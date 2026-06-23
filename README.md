@@ -7,7 +7,7 @@ This repository contains the Markdown source for a first-principles embedded Lin
 Read at https://dangvitin.github.io/linuxlearn/
 ## Current Scope
 
-The book covers bare-metal i.MX6ULL bring-up, U-Boot, mainline Linux, root filesystem construction, Linux driver development, a device cookbook, debugging, production flows, secure boot, field updates, CI/CD, and upstream patch submission.
+The book covers bare-metal i.MX6ULL bring-up, U-Boot, mainline Linux, root filesystem construction, Linux driver development, a device cookbook, debugging, production flows, secure boot, field updates, CI/CD, upstream patch submission, and an advanced virtualization track.
 
 ## Target Reader
 
@@ -22,4 +22,4 @@ Primary target:
 - 512 MiB DDR3L
 - UART console, SD/eMMC boot, USB-OTG recovery, optional JTAG
 
-Most Part IV through Part VIII material transfers to other Linux-capable ARM SoCs. Parts II and III are intentionally i.MX6ULL-specific because they teach Boot ROM, DCD, DDR, IOMUX, clock, and U-Boot porting details.
+Most Part IV through Part VIII material transfers to other Linux-capable ARM SoCs. Parts II and III are intentionally i.MX6ULL-specific because they teach Boot ROM, DCD, DDR, IOMUX, clock, and U-Boot porting details. Part IX is an applied virtualization path: QEMU first, Xen on i.MX6ULL where useful, Jailhouse in QEMU ARM64, and STM32MP1 Linux+RTOS for the more production-realistic A7/M4 split.

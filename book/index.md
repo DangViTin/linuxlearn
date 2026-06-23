@@ -73,6 +73,7 @@ part3-uboot/ch19-uboot-from-source
 part3-uboot/ch20-uboot-spl
 part3-uboot/ch21-uboot-internals
 part3-uboot/ch22-uboot-board-port
+part3-uboot/ch22A-uboot-new-soc-from-scratch
 part3-uboot/ch23-bootcmd-bootargs-fit
 part3-uboot/ch23A-multi-variant-fit
 part3-uboot/ch24-workflows-tftp-nfs-usb
@@ -379,11 +380,31 @@ part8-debug/ch125A-vscode-gdbserver
 part8-debug/ch126-closing
 ```
 
+```{toctree}
+:hidden:
+:caption: Part IX — Applied virtualization
+:maxdepth: 2
+
+part9-virtualization/ch127-why-embedded-hypervisors
+part9-virtualization/ch128-qemu-virtual-hardware-lab
+part9-virtualization/ch129-tiny-linux-in-qemu
+part9-virtualization/ch130-uboot-in-qemu
+part9-virtualization/ch131-hyp-stage2-virtual-interrupts
+part9-virtualization/ch132-xen-in-qemu
+part9-virtualization/ch133-first-domu-linux
+part9-virtualization/ch134-xen-on-imx6ull
+part9-virtualization/ch135-domu-on-imx6ull
+part9-virtualization/ch136-devices-memory-dma
+part9-virtualization/ch137-jailhouse-in-qemu-arm64
+part9-virtualization/ch138-zephyr-baremetal-inmate
+part9-virtualization/ch139-stm32mp1-linux-rtos
+```
+
 ---
 
 ## What this is
 
-A 1,700-page book in progress, aimed at engineers who already write firmware for microcontrollers and want to take the same first-principles approach to Linux. We build the entire stack by hand — bare-metal startup, U-Boot from source, mainline Linux, hand-built root filesystem, every driver subsystem — before adopting any framework that hides what just happened.
+A first-principles embedded Linux book in progress, aimed at engineers who already write firmware for microcontrollers and want to take the same first-principles approach to Linux. We build the entire stack by hand — bare-metal startup, U-Boot from source, mainline Linux, hand-built root filesystem, every driver subsystem — before adopting any framework that hides what just happened.
 
 The target board is the **i.MX6ULL on the Point Atom MINI** (or ALPHA — both work; pin assignments are noted where they differ). Every chapter explains the *pattern* — pin lookups, register layouts, kernel APIs — that transfers to any i.MX6ULL board, and most patterns transfer to any Cortex-A Linux SoC.
 
@@ -393,6 +414,7 @@ The target board is the **i.MX6ULL on the Point Atom MINI** (or ALPHA — both w
 - **Explanatory, not procedural.** Every chapter follows the same seven-section template: *What / Why / How / Focus / Lab / Pitfalls / Going deeper*. Reading a chapter, you should always know which paragraph answers which question.
 - **Hand-built where it teaches.** Our own bare-metal stack (Part II), our own image-builder (Ch 11), our own cross-toolchain (Ch 122). Tools become productivity wins only after you can do without them.
 - **Production-grade where it matters.** Watchdog, runtime PM, PREEMPT_RT real-time, secure boot, OTA, mainline patch-submission, CI/CD — these chapters appear because real products require them, not because the dev board does.
+- **Virtualization without magic.** Part IX is drafted as a buildable advanced path: QEMU first, Xen next, then real i.MX6ULL constraints, Jailhouse in QEMU ARM64, and STM32MP1 Linux+RTOS where the hardware makes that split useful.
 
 ## Reading order
 
@@ -419,7 +441,7 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
   - 10 + 3 supplementary (18A–C)
   - ✅ Drafted
 * - Part III — U-Boot, deeply
-  - 6 + 1 supplementary (23A)
+  - 6 + 2 supplementary (22A, 23A)
   - ✅ Drafted
 * - Part IV — The Kernel
   - 6 + 2 supplementary (27A, 30A)
@@ -436,9 +458,12 @@ The full [Table of Contents](toc.md) gives the chapter list, dependency graph, a
 * - Part VIII — Debug, production, advanced
   - 9 + 5 supplementary
   - ✅ Drafted
+* - Part IX — Applied virtualization
+  - 13 chapters (Ch 127–139)
+  - Drafted, lab validation pending
 * - **Total**
-  - **118 numbered + 28 supplementary = 146**
-  - **Full first draft**
+  - **131 numbered + 29 supplementary = 160**
+  - **Full draft; Part IX lab validation pending**
 ```
 
 ## Hardware

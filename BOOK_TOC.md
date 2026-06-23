@@ -11,18 +11,19 @@
 
 ## Scope
 
-**8 Parts, 146 chapters (118 numbered + 28 supplementary, "letter-suffix" convention), ~2,470 pages.** The supplementary chapters (letter-suffixed: `18A`, `18B`, `35A`, `52A`, etc.) expand specific topics where the numbered chapter's default depth isn't enough for production work — they share a parent number and can be read independently. The numbered chapters are the required path; the supplementary chapters are recommended.
+**9 Parts, 160 chapters (131 numbered + 29 supplementary, "letter-suffix" convention), ~2,870 pages.** The supplementary chapters (letter-suffixed: `18A`, `18B`, `35A`, `52A`, etc.) expand specific topics where the numbered chapter's default depth isn't enough for production work — they share a parent number and can be read independently. The numbered chapters are the required path; the supplementary chapters are recommended. Part IX is drafted but still needs hardware and QEMU lab validation.
 
 ## What the book covers
 
 - **Part I — Foundations.** Host setup, the ARMv7-A architecture as it differs from Cortex-M, the i.MX6ULL SoC, the GNU toolchain, the Boot ROM's `IVT` / `DCD` / `BootData` contract, and a hardware bring-up checklist.
 - **Part II — Bare-metal i.MX6ULL.** Build the entire stack from the reset vector up: LED in pure assembly; a C runtime with hand-written startup and linker script; a Boot-ROM-acceptable image built by our own Python tool; UART + `printf`; CCM clocks; DDR3 + MMDC; exceptions and GIC; timers; MMU + caches; one chapter each of bare-metal I²C/SPI/LCD, button input, and bare-metal RTC.
-- **Part III — U-Boot, deeply.** Build mainline U-Boot, recognize Part II inside its source, understand SPL, trace the boot flow line by line, port U-Boot to a custom board, master `bootcmd` / `bootargs` / FIT, build a multi-variant FIT image, set up the TFTP + NFS + USB-OTG development loop.
+- **Part III — U-Boot, deeply.** Build mainline U-Boot, recognize Part II inside its source, understand SPL, trace the boot flow line by line, port U-Boot to a custom board, bring up U-Boot on a previously unsupported SoC, master `bootcmd` / `bootargs` / FIT, build a multi-variant FIT image, set up the TFTP + NFS + USB-OTG development loop.
 - **Part IV — The Kernel.** Build mainline Linux for i.MX6ULL, boot it from U-Boot, deep-dive on the Device Tree, trace `start_kernel()` to PID 1, build an initramfs from scratch, master `make menuconfig`, learn the kernel-lifecycle decision framework (mainline / LTS / vendor BSP), validate DT bindings against YAML schemas.
 - **Part V — Root filesystem & user space.** A `busybox`-based hand-built rootfs; `/proc` `/sys` `devtmpfs`; init systems; libc and dynamic linking; Buildroot; Ubuntu-base as a fully-featured alternative; read-only root + overlayfs for industrial deployments; containers on embedded.
 - **Part VI — Driver development.** ~33 chapters covering every common subsystem from char devices and platform drivers through I²C/SPI/PWM/RTC/IIO/regmap/DMA/Net/Sound/DRM/USB, with deeper treatment of CAN, multi-touch, block devices, WIFI, cellular modems, HDMI bridges, kernel timers, async notification, watchdog, power management, PREEMPT_RT real-time, MTD/UBI, V4L2/GStreamer, and a Rust-for-Linux sidebar. **One canonical example per subsystem** — depth on real chips lives in Part VII.
 - **Part VII — Device cookbook.** 54 chapters, one per common device class, with 2–4 real chips compared side-by-side: schematic + DT example + driver code (or existing-driver enablement) + user-space access + lab + chip-specific pitfalls. Storage, environmental & motion sensors, ADCs/DACs, displays, cameras, audio codecs, WiFi/BT modules, LoRa/UWB/ZigBee/cellular, industrial buses (RS-485, LIN, CAN), RFID/NFC, fingerprint, smart LEDs (WS2812), motor drivers, external RTC. *This is the go-to reference Part.*
 - **Part VIII — Debug, production, advanced.** JTAG/OpenOCD/GDB across layers; kernel debugging without JTAG (ftrace, eBPF, kgdb); user-space debugging; a capstone custom-board port; build your own toolchain with crosstool-NG; Yocto layer development; secure boot (HAB) and OP-TEE; field updates (RAUC, SWUpdate, Mender); the mainline patch-submission workflow; CI/CD for embedded; BSP → mainline migration playbook; VSCode + gdbserver remote debug.
+- **Part IX — Applied virtualization and mixed-criticality systems.** QEMU as a buildable lab bench; ARM HYP mode without magic; Xen in QEMU; Xen on real i.MX6ULL with a tiny DomU; device ownership, DMA, and isolation limits; Jailhouse in QEMU ARM64; bare-metal/Zephyr inmate cells; STM32MP1 Linux + RTOS using the practical A7/M4 split.
 
 ---
 
@@ -287,6 +288,15 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 - Boot and verify
 - **Lab:** even if you use the Point Atom board, *pretend* it's a custom one — change the model string, hostname, default bootcmd
 - **Pages:** ~22
+
+### Chapter 22A — Supplementary: Building i.MX6ULL U-Boot from nothing
+- Create every architecture, board, driver, Device Tree, and configuration file for a teaching i.MX6ULL platform
+- Expose the complete direct-register UART, clock, timer, watchdog, pin-routing, and DDR initialization code
+- Build the Boot ROM IVT and DCD image, write it to SD, and follow the boot path to the first prompt
+- Write UART1, GPT1, and USDHC2 PIO drivers directly from the i.MX6ULL register descriptions
+- Explain every defconfig option, build artifact, test command, and failure checkpoint
+- **Lab:** recreate i.MX6ULL support under a teaching architecture without selecting the existing i.MX6 platform
+- **Pages:** ~76
 
 ### Chapter 23 — `bootcmd`, `bootargs`, FIT images
 - `bootm`, `bootz`, `booti` — what each expects
@@ -1425,19 +1435,131 @@ Many readers came here from VSCode and would rather debug there than learn `tui`
 
 ---
 
+# PART IX — APPLIED VIRTUALIZATION AND MIXED-CRITICALITY SYSTEMS
+
+> *This part is optional and advanced. It exists for readers who want real hypervisor experiments, not only HYP-mode vocabulary. The path starts in QEMU, moves to Xen on the i.MX6ULL, then uses Jailhouse and STM32MP1 where the hardware model is a better fit.*
+
+### Chapter 127 — Why embedded products use hypervisors
+- The real product problems: crash isolation, security boundaries, mixed criticality, legacy BSP containment, and device ownership
+- Containers vs PREEMPT_RT vs TrustZone vs remoteproc/OpenAMP vs Xen vs Jailhouse
+- Why a hypervisor is sometimes the clean answer and sometimes architectural overkill
+- The rule for this part: every chapter must end with something visible and testable
+- **Lab:** choose the right isolation model for three product scenarios and defend the decision
+- **Pages:** ~14
+
+### Chapter 128 — QEMU as a virtual hardware lab
+- QEMU as a repeatable ARM lab bench, not an i.MX6ULL clone
+- ARMv7-A `virt`, ARM64 `virt`, and when `vexpress` is useful
+- Serial console, memory size, CPU model, DTB, kernel, initrd, and command line as explicit hardware choices
+- GDB with `-S -s` before Linux prints anything
+- **Lab:** start QEMU halted, attach GDB, and explain every command-line option
+- **Pages:** ~18
+
+### Chapter 129 — Build and boot tiny Linux in QEMU
+- Build a tiny ARM Linux kernel and BusyBox/Buildroot initramfs
+- Direct boot: `QEMU → Linux → initramfs → /init`
+- DTB, `console=`, `rdinit=`, and the first shell
+- Failure-driven learning: wrong console, missing init, wrong DTB
+- **Lab:** boot to a shell, then break each input and record the symptom
+- **Pages:** ~24
+
+### Chapter 130 — U-Boot in QEMU
+- Put U-Boot in front of the QEMU Linux boot
+- Manual `bootz` / `booti`: load kernel, DTB, initramfs into non-overlapping RAM
+- `bootargs`, scripted boot, and FIT handoff
+- Why hypervisors depend on firmware doing the next-stage handoff correctly
+- **Lab:** boot Linux manually from U-Boot, then turn the commands into a repeatable script
+- **Pages:** ~20
+
+### Chapter 131 — HYP mode, stage-2 MMU, and virtual interrupts
+- PL0, PL1, PL2, HYP mode, `svc`, and `hvc`
+- HYP mode vs TrustZone Monitor mode
+- Stage-1 translation: virtual → physical
+- Stage-2 translation: guest physical → real physical
+- Virtual timer, virtual GIC, and why guests need believable interrupts
+- **Lab:** compare plain Linux and hypervisor boot logs and identify mode, timer, interrupt, and memory-map evidence
+- **Pages:** ~26
+
+### Chapter 132 — Xen in QEMU
+- Boot path: `QEMU → Xen → Dom0 Linux`
+- Xen binary, Dom0 kernel, initramfs/rootfs, DTB, and console
+- `xl info`, memory allocation, and where control moves from Xen to Dom0
+- Keeping the first Xen boot small and serial-only
+- **Lab:** boot Xen and Dom0 in QEMU and save the annotated boot log
+- **Pages:** ~28
+
+### Chapter 133 — First DomU Linux
+- Boot path: `Xen → Dom0 → xl create → DomU`
+- Domain config explained line by line: name, kernel, ramdisk, memory, vCPUs, console, command line
+- Tiny BusyBox/Buildroot guest first, not a full distribution
+- Failure isolation: DomU can die while Dom0 survives
+- **Lab:** start, attach, inspect, shut down, and restart a DomU Linux guest
+- **Pages:** ~26
+
+### Chapter 134 — Xen on i.MX6ULL
+- Moving from QEMU to the real board
+- i.MX6ULL reality: one Cortex-A7, limited RAM, real DTB, real UART, real U-Boot handoff
+- Build Xen for ARM32 and boot Dom0 Linux on the Point Atom board
+- Confirm that the board demonstrates HYP-mode mechanics but is not a rich virtualization platform
+- **Lab:** boot `U-Boot → Xen → Dom0 Linux` on the i.MX6ULL and preserve the serial log
+- **Pages:** ~30
+
+### Chapter 135 — DomU Linux on i.MX6ULL
+- A tiny DomU on the real board: one vCPU, small RAM, initramfs, console only
+- `xl list`, DomU console, `uname -a` in both worlds
+- What this proves: real guest isolation
+- What it does not prove: performance, device pass-through safety, or hard real-time behavior
+- **Lab:** boot a DomU, kill it, and prove Dom0 remains alive
+- **Pages:** ~24
+
+### Chapter 136 — Devices, memory, and DMA boundaries
+- Device ownership tables: owner, shared/not shared, DMA, reset, clock, pinctrl, debug
+- Why the CPU MMU does not automatically protect against DMA
+- UART, Ethernet, GPIO bank, SPI/I2C, timers, and interrupt ownership
+- Xen grant tables, event channels, virtual network, shared memory
+- **Lab:** produce device ownership tables for i.MX6ULL Xen, QEMU Xen, and STM32MP157 Linux+M4
+- **Pages:** ~26
+
+### Chapter 137 — Jailhouse in QEMU ARM64
+- Why Jailhouse is taught on QEMU ARM64 first: multiple CPUs and a known demo platform
+- Boot path: `QEMU ARM64 → Linux root cell → jailhouse.ko → system cell → inmate cell`
+- Root cell vs inmate cell, CPU assignment, memory regions, interrupts, and no scheduler
+- Why i.MX6ULL is a poor Jailhouse target even though Cortex-A7 can implement virtualization extensions
+- **Lab:** enable Jailhouse in QEMU ARM64 and start a tiny inmate
+- **Pages:** ~28
+
+### Chapter 138 — Bare-metal or Zephyr inmate cell
+- Start with a minimal bare-metal inmate before adding Zephyr
+- Link address, assigned RAM, console ownership, timer, and stop/reload path
+- Zephyr as the RTOS-flavored inmate once the bare-metal path is understood
+- Shared memory and interrupt discipline
+- **Lab:** run a bare-metal inmate, then a Zephyr inmate, while Linux root cell stays alive
+- **Pages:** ~26
+
+### Chapter 139 — STM32MP1 Linux plus RTOS, the production pattern
+- Why STM32MP157 is a better Linux+RTOS teaching target than i.MX6ULL: dual A7 plus M4
+- Main production path: Linux on Cortex-A7, Zephyr/FreeRTOS on Cortex-M4, RPMsg/OpenAMP between them
+- Optional Jailhouse path for A7-to-A7 partitioning when the M4 is not enough
+- Decision checklist: Xen vs Jailhouse vs remoteproc/OpenAMP vs no hypervisor
+- **Lab:** boot Linux on A7 and start M4 firmware, then evaluate whether Jailhouse is justified
+- **Pages:** ~30
+
+---
+
 ## Total page estimate
 
 | Part | Numbered | Supplementary | Pages |
 |------|---------:|--------------:|------:|
 | I — Foundations                | 8   | —                                  | 136 |
 | II — Bare-metal i.MX6ULL       | 10  | +3 (18A–C)                         | 252 |
-| III — U-Boot                   | 6   | +1 (23A)                           | 128 |
+| III — U-Boot                   | 6   | +2 (22A, 23A)                      | 204 |
 | IV — Kernel                    | 6   | +2 (27A, 30A)                      | 148 |
 | V — Rootfs & user space        | 5   | +3 (35A, 35B, 35C)                 | 140 |
-| VI — Driver development        | 20  | +13 (51A/B, 52A, 54A/B, 55A–I)     | 644 |
+| VI — Driver development        | 20  | +14 (51A/B, 52A, 54A/B, 55A–I)     | 644 |
 | **VII — Device cookbook**      | **54** | —                               | **~735** |
 | VIII — Debug & advanced        | 9   | +5 (120A, 121A, 122A, 123A, 125A)  | 290 |
-| **Total**                      | **118** | **+27**                        | **~2,473 pages** |
+| IX — Applied virtualization     | 13  | —                                  | 320 |
+| **Total**                      | **131** | **+29**                        | **~2,869 pages** |
 
 ---
 
@@ -1473,6 +1595,9 @@ Ch1 → Ch2 → Ch3 ─┐
                                                           ┌───────────────────────┘
                                                           ▼
                                             Ch118..Ch126 (cross-cutting; read alongside earlier parts)
+                                                          │
+                                                          ▼
+                                            Ch127..Ch139 (optional virtualization path: QEMU → Xen → Jailhouse/STM32MP1)
 ```
 
 Bare-metal Part II is the *only* part that can be safely skipped by a reader who only wants kernel/drivers. For *your* learning, do not skip it — it's the chapter set that will set this book apart.
@@ -1484,10 +1609,12 @@ Ch10 ──┬──► Ch18A (project organization)  ──► informs every su
        └──► Ch11..Ch16 (proceed normally)
 Ch16 ──► Ch18B (button+beep)  ──► Ch17 MMU
 Ch18 ──► Ch18C (bare-metal RTC)
+Ch22 ──► Ch22A (optional new-SoC bring-up path) ──► Ch23
 Ch35 ──► Ch35A (Ubuntu-base, optional alternative to Ch31/35)
 Ch43 ──► any of Ch55A..Ch55H (siblings, independent)
 Ch44..Ch55I ──► any chapter of Part VII Device Cookbook (Ch 64..Ch 117) — pick the chip class you need
 Ch120 ──► Ch125A (VSCode workflow; can be read after any driver chapter)
+Ch126 ──► Ch127..Ch139 (optional virtualization and mixed-criticality path)
 ```
 
 ---

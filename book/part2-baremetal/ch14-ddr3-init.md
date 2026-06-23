@@ -10,7 +10,7 @@ status: draft
 
 > **What:** code that takes the Point Atom MINI's DDR3 chip from "powered on but uninitialized" to "512 MiB of usable memory at `0x80000000`," by hand. Then code that copies itself from OCRAM to DRAM and continues running from DRAM.
 >
-> **Why:** until this works, your bare-metal world is 100 KB. After it works, it is 512 MiB. More fundamentally: every dev board you have ever used had someone solve this problem for you in a vendor BSP. Solving it once removes the "magic" from a layer you will otherwise trust forever.
+> **Why:** until this works, your bare-metal world is 100 KB. After it works, it is 512 MiB. More fundamentally: every dev board you have ever used had someone solve this problem for you in a vendor BSP. Solving it once makes this hidden layer visible.
 > **BSP:** Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 >
 > **Focus:** The JEDEC DDR3 init sequence is universal across vendors. The MMDC register groups are i.MX-specific. Know both, and you can port to a different DRAM part or a different SoC.
@@ -39,7 +39,7 @@ Most Cortex-M parts have 64 KB to 2 MB of built-in SRAM, and many SoCs expose SD
 
 The i.MX6ULL MMDC supports **DDR3, DDR3L, and LPDDR2**, at up to 400 MHz cell clock (actually 396 MHz), giving up to 800 MT/s on a 16-bit bus = 1.6 GB/s peak. The Point Atom boards always use **DDR3L** (the low-voltage variant), not standard 1.5 V DDR3.
 
-## 14.2  DDR3, in just enough detail
+## 14.2  DDR3, enough detail for bring-up
 
 A DDR3 chip is a 2D array (or 3D, with multiple banks) of capacitor cells, accessed by:
 
@@ -139,7 +139,7 @@ Typical settings:
 | Pin group | PAD_CTL value | Meaning |
 |-----------|---------------|---------|
 | `DRAM_ADDR*`, `DRAM_RAS_B`, `DRAM_CAS_B`, etc. | `0x000000F0` | Strong drive, no pull |
-| `DRAM_DQ[15:0]`, `DRAM_DQS[1:0]_B`, `DRAM_DQS[1:0]` | `0x00000030` | Slightly weaker; ODT capable |
+| `DRAM_DQ[15:0]`, `DRAM_DQS[1:0]_B`, `DRAM_DQS[1:0]` | `0x00000030` | Slightly weaker, ODT capable |
 | `DRAM_SDQS[1:0]_B`, `DRAM_SDQS[1:0]` | `0x00000030` | |
 | `DRAM_RESET`, `DRAM_ODT[1:0]`, `DRAM_CKE[1:0]`, `DRAM_SDCKE[1:0]` | `0x000030B0` | With keeper for stable idle |
 
@@ -173,7 +173,7 @@ The MMDC controller does most of this for you via the **MDSCR** command interfac
 | 1:0 | Burst length | 00 (BL8 fixed) |
 | 6:4 + 2 | CAS latency | CL = 11 → 1110_1 → 0b01110 |
 | 8 | DLL reset | 1 (reset DLL at init) |
-| 11:9 | Write recovery (tWR) | depends; for tWR=15ns@800MHz, 6 ⇒ 0b101 |
+| 11:9 | Write recovery (tWR) | depends. For tWR=15ns@800MHz, 6 ⇒ 0b101 |
 
 **MR1**:
 
@@ -358,11 +358,11 @@ Write calibration:
 
 Plug these six values into the `mx6_mmdc_calib` struct in `ddr.c` (§14.7). **Do not** copy these specific numbers from one board to another, they reflect trace lengths, PCB stack-up, and the specific DDR3L chip. Always re-derive them on your own board.
 
-**For this book**, we copy the values the DDR Stress Tool emits. Treat them as a black box you can re-derive at any time by running the tool. If your DRAM begins to fail occasionally during DRAM workloads, re-run the tool, calibration drifts with temperature.
+**For this book**, we copy the values the DDR Stress Tool emits. Treat them as measured board data that you can generate again by running the tool. If your DRAM begins to fail occasionally during DRAM workloads, re-run the tool. Calibration changes with temperature.
 
-### The 10–15 % overclock heuristic
+### The 10-15% overclock heuristic
 
-A useful design-validation trick: after calibration, the stress tool can attempt to run DRAM at increasing clock rates above the nominal 396 MHz. **If your board can sustain 10–15 % overclock** (i.e., DDR working clean at ~440–460 MHz), the PCB routing and termination are healthy. **If it fails at less than 10 % over**, the board has signal-integrity issues, likely mismatched trace lengths, missing termination, or excessive cross-talk. The fix is in hardware, not software.
+A useful design-validation trick: after calibration, the stress tool can attempt to run DRAM at increasing clock rates above the nominal 396 MHz. **If your board can sustain 10-15% overclock** (i.e., DDR working clean at ~440-460 MHz), the PCB routing and termination are healthy. **If it fails at less than 10% over**, the board has signal-integrity issues, likely mismatched trace lengths, missing termination, or excessive cross-talk. The fix is in hardware, not software.
 
 This is the cheapest pre-production sanity check available for embedded boards with DDR.
 
@@ -524,11 +524,11 @@ The reference open-source tool is `memtester` (a Linux user-space program in Par
 
 ## 14.12  Why the DCD is the elegant alternative
 
-In Chapter 7 we discussed how the Boot ROM walks a DCD before loading your image. A DCD that initializes DRAM is just our function above expressed as `(address, value)` pairs, no procedural logic, just writes.
+In Chapter 7 we discussed how the Boot ROM reads and executes a DCD before loading your image. A DCD that initializes DRAM is our function above expressed as `(address, value)` pairs. It has no loops or branches, only register writes.
 
 In production, you ship a DCD inside your `.imx`. The ROM brings up DRAM. Then it loads U-Boot (which is multi-megabyte) *into* DRAM. U-Boot, in turn, loads the kernel.
 
-For *learning*, doing it in C (as we did) is better, you see the logic. For *deployment*, the DCD is better, it lets you load larger images.
+For *learning*, doing it in C is better because you see the logic. For *deployment*, the DCD is better because it lets the ROM load larger images.
 
 We will update `mkimx.py` in **Chapter 19** to support DCDs so that we can re-use our DDR init values when we want to load a >100 KB image. Until then, our bare-metal images are small enough to fit in OCRAM and bootstrap DRAM themselves.
 

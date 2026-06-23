@@ -159,7 +159,7 @@ Goal: build trustworthy embedded systems.
 
 ---
 
-> **End of the book.**
+> **End of the main i.MX6ULL path.**
 
 > You started with a question: *"How do I become an embedded-Linux engineer when my background is microcontrollers and bare-metal?"*
 
@@ -170,3 +170,5 @@ Goal: build trustworthy embedded systems.
 > Build something. Ship it. Watch a customer use it for years. That is embedded Linux.
 
 > Good luck. Send your first patch.
+
+> Optional next path: **Part IX, Applied virtualization and mixed-criticality systems**, starts with QEMU as a lab bench, then moves through Xen, real i.MX6ULL constraints, Jailhouse, and STM32MP1 Linux + RTOS patterns.

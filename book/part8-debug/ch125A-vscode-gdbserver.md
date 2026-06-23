@@ -252,4 +252,4 @@ VSCode's IntelliSense on the kernel source works but is slower (~5 minutes to in
 
 ---
 
-> Next chapter: **Chapter 126: Closing: what to read next**. End of the book.
+> Next chapter: **Chapter 126: Closing: what to read next**. This closes the main i.MX6ULL bring-up path; Part IX continues with optional virtualization labs.
