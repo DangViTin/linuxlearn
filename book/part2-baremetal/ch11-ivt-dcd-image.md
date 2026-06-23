@@ -1,11 +1,3 @@
----
-chapter: 11
-title: Hand-building a Boot ROM-acceptable image
-part: II - Bare-metal i.MX6ULL
-estimated_pages: 22
-status: draft
----
-
 # Chapter 11: Hand-building a Boot ROM-acceptable image
 
 > **What:** a real Python tool, `mkimx.py`, that turns a flat `.bin` into a Boot-ROM-loadable `.imx`. We then `dd` the result to an SD card and boot from it, with no `mkimage` and no NXP tools.
@@ -148,7 +140,6 @@ The script is 60 lines but does everything the U-Boot `mkimage -T imximage` tool
 - **The length field in the IVT header is big-endian.** Everything else in the IVT is little-endian. The `struct.pack('>BHB', ...)` line handles this difference. This is the most common "I wrote my own mkimage and the ROM rejects it" bug.
 - **`BootData.length` includes the IVT and the 4 KB padding.** It is not only the code size. If you forget the `IMAGE_OFFSET` part of the addend, the ROM stops loading before your `.text` even starts.
 - **`csf_addr = 0`** disables **HAB** (High Assurance Boot, NXP's signed-boot framework. Ch 124) signature checking. Setting it to a non-zero address would point the ROM at a CSF (Command Sequence File) it must verify.
-> **HAB:** High Assurance Boot, NXP's ROM-enforced secure boot mechanism on i.MX SoCs.
 
 ## 11.3  Building and inspecting
 

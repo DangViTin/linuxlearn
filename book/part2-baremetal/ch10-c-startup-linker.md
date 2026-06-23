@@ -28,10 +28,6 @@ So we, ourselves, must:
 Optionally, also: set up exception vectors, configure caches, enable the FPU. We do these later as we need them.
 
 ## 10.2  A linker script worth keeping
-
-> **Template warning:** This block contains placeholder values.
-> Replace compatible strings, GPIO numbers, addresses, and paths with values from your board before using it.
-
 The Chapter 9 program had no `.data` and no `.bss`. We slapped `-Ttext=0x00907400` on the command line and let it ride. For C code, we need a real script. Save it as `link.ld`:
 
 ```text
@@ -174,7 +170,6 @@ A few notes on the assembly choices:
 - The vector table at the top is placeholder `b .` (branch-to-self). In Chapter 15 we replace those self-loops with real handlers.
 
 ## 10.4  `main.c`, the LED, again
-
 ```c
 #include <stdint.h>
 
@@ -209,7 +204,6 @@ int main(void)
 Three things that look small but matter:
 
 - **`volatile` on the cast.** Without `volatile`, the optimizer is free to assume `REG(GPIO1_DR)` reads always return the same value, and to elide the second read entirely in a tight loop. With `volatile`, the compiler emits a real load-store every time. Every MMIO access in this book is `volatile`.
-> **MMIO:** memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 - **`volatile` on `delay`'s argument.** Same reason: prevents the compiler from observing that the loop has no side effects and deleting it. The `asm volatile ("nop")` inside is belt-and-braces, even if the optimizer somehow folded the decrement, the nop forces a barrier.
 - **`(3u << 26)` not `(3 << 26)`.** `26` plus a signed `3` is fine on 32-bit but the `u` suffix silences certain `-Wconversion` warnings cleanly. House style.
 
@@ -386,8 +380,6 @@ Rule: **every memory-mapped register access uses `volatile`. Every one.** Macroi
 - `arm-none-eabi-gcc -E -P -x c /dev/null -include <stdint.h>`: see what `stdint.h` actually defines on your target.
 - *Mastering ARM Embedded Programming* (Marwedel, 2018), the chapter on startup code is excellent.
 - The U-Boot source's `arch/arm/lib/crt0.S`, read it after this chapter. The patterns are the same.
-> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ## Sidebar, `REG(addr)` macro vs the NXP SDK header
 

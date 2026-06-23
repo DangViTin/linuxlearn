@@ -1,21 +1,10 @@
----
-chapter: 13
-title: CCM clock tree bring-up
-part: II - Bare-metal i.MX6ULL
-estimated_pages: 22
-status: draft
----
-
 # Chapter 13: CCM clock tree bring-up
 
 > **What:** code that takes the i.MX6ULL from its 396 MHz reset default to 696 MHz, with explicit configuration of the bus clocks. By the end we can read back, from registers, exactly what the chip is running at and verify with a hardware measurement.
 >
 > **Why:** every later chapter (DDR especially) depends on knowing the bus clocks precisely. The Boot ROM leaves clocks in a known but conservative state. We must own them before we trust their values in initialization tables.
-> **DDR:** external DRAM that must be configured and trained before most software can run from it.
 >
 > **Focus:** the four-layer clock tree from Chapter 5: XTAL → PLL → root mux+divider → CCGR gate. Each peripheral hangs off one root clock. Each root clock hangs off one PLL. Trace a frequency through these four hops and most clock bugs become obvious.
-> **MCU bridge:** Think of a PLL like the clock multiplier setup you used on STM32, but with more clock roots, gates, and consumers that Linux later needs to describe.
-> **PLL:** Phase-Locked Loop, a clock block that multiplies a reference clock to create faster clocks.
 
 
 ## 13.1  What we want to set up
@@ -32,8 +21,6 @@ By the end of this chapter, the clock tree looks like:
 | MMDC (DDR) | 396 MHz | PLL2 (528 MHz) PFD or direct |
 
 This matches what U-Boot will set up in Chapter 19.
-> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ## 13.2  The ANATOP block, PLLs and PFDs
 
@@ -94,7 +81,6 @@ UART can be fed either from PLL3 directly with a /6 divider (giving 80 MHz, what
 ## 13.3  The CCM block, root clocks and gates
 
 CCM base = `0x020C4000`. The registers we touch:
-> **CCM:** Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
 
 | Register | Offset | Purpose |
 |----------|--------|---------|
@@ -388,9 +374,6 @@ At 696 MHz a million-iteration empty loop takes ~5 million cycles (~7 ns per ite
 ### Hardware check: scope a GPIO
 
 Toggle a GPIO in a tight loop:
-> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-
 ```c
 for (;;) {
     REG(GPIO1_DR) ^= LED_BIT;
@@ -424,7 +407,6 @@ So this chapter and Chapter 14 are connected. Get clocks right here, and DDR ini
 - **Wrong PFD FRAC formula.** It's `f_PLL × 18 / FRAC`, not `f_PLL / FRAC`. The 18× makes the math counterintuitive.
 - **CCM_CBCDR divider fields off-by-one.** "Divider N" = "field value (N-1)". For divider 3, write 2.
 - **Boot ROM did something useful that you undid.** The ROM configures DDR (via DCD if present) and sometimes the USB PLL. If you overwrite those settings, you may break code that depended on them. Only modify what you understand.
-> **DCD:** Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
 
 ## 13.10  Going deeper
 
