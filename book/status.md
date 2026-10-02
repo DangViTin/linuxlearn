@@ -20,13 +20,13 @@ The full first draft is present in this repository. Part IX is drafted as an adv
   - 9–18 + 18A–18C
   - Drafted
 * - Part III — U-Boot, deeply
-  - 19–24 + 22A, 23A
+  - 19–24 + 24A–24J
   - Drafted
 * - Part IV — The Kernel
-  - 25–30 + 27A, 30A
+  - 25–30 + 26A, 27A, 27B, 29A, 30A, 30B
   - Drafted
 * - Part V — Root filesystem & user space
-  - 31–35 + 35A–35C
+  - 31–35 + 35A–35I
   - Drafted
 * - Part VI — Driver development
   - 36–55 + 51A, 51B, 52A, 54A, 54B, 55A–55I
@@ -44,4 +44,4 @@ The full first draft is present in this repository. Part IX is drafted as an adv
 
 The current phase is technical review and copy edit, plus lab validation for Part IX. Treat command sequences, register tables, production/security flows, and all Part IX virtualization labs as draft material until they have a tested-environment note in the chapter itself.
 
-See the [home page](index.md) for the reading order and the [full table of contents](toc.md) for the full scope.
+Start with [Chapter 1](part1-foundations/ch01-preface.md) for the reading order; the [full table of contents](toc.md) gives the full scope.

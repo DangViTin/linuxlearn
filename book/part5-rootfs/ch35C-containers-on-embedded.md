@@ -273,19 +273,40 @@ $ cp myapp.tar $TARGET_ROOTFS/opt/preloaded-images/
 [root@pa-mini:~]# podman run -d --restart=always myapp:v1.0
 ```
 
-### `podman generate systemd`
+### Quadlet systemd units
 
-Generate a systemd unit file for a container:
+For systemd-based products, prefer **Quadlet**. A Quadlet file is a small declarative file that systemd turns into a Podman service.
 
+Save this as `/etc/containers/systemd/myapp.container`:
+
+```ini
+[Unit]
+Description=My application container
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+Image=localhost/myapp:v1.0
+ContainerName=myapp
+Volume=/data/myapp:/data:rw
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
 ```
-[root@pa-mini:~]# podman generate systemd --new --name myapp --files
-$ ls
-container-myapp.service
-[root@pa-mini:~]# cp container-myapp.service /etc/systemd/system/
-[root@pa-mini:~]# systemctl enable --now container-myapp.service
+
+Then enable it:
+
+```sh
+[root@pa-mini:~]# systemctl daemon-reload
+[root@pa-mini:~]# systemctl enable --now myapp.service
+[root@pa-mini:~]# systemctl status myapp.service
 ```
 
-The systemd unit handles auto-start, dependencies, log capture, and restart-on-failure.
+The systemd unit handles auto-start, dependencies, log capture, and restart-on-failure. Older examples use `podman generate systemd`; that command still exists, but Podman now marks it deprecated and recommends Quadlet for new systems.
 
 ### Updates via image swap
 
@@ -296,8 +317,10 @@ podman stop myapp
 podman rm myapp
 podman run -d --name myapp --restart=always registry.example.com/myapp:v1.1
 
-# If it crashes immediately:
-podman rollback ...    # or pull v1.0 again
+# If it crashes immediately, return to the previous tag:
+podman stop myapp || true
+podman rm myapp || true
+podman run -d --name myapp --restart=always registry.example.com/myapp:v1.0
 ```
 
 Image swap is atomic at the container level: either the new image is running or the old one is. Much cleaner than "extract a tarball into /opt/myapp/" updates.
@@ -310,7 +333,7 @@ Image swap is atomic at the container level: either the new image is running or 
 4. **Bind-mount sysfs.** Build the LED blinker container and run it with `--v` mounting `/sys/class/leds/`. Verify LED toggles.
 5. **Measure overhead.** `podman info` reports memory. Do a `free -h` before and after `podman run`. Quantify the cost.
 6. **Pre-bake an image.** `podman save` on the host, copy to the target, `podman load` on first boot. Verify no network calls happen.
-7. **Systemd integration.** Generate a unit file via `podman generate systemd`. Enable it. Reboot. Verify the container starts.
+7. **Systemd integration.** Write a Quadlet `.container` file. Enable it. Reboot. Verify the container starts.
 
 ## 35C.11  Pitfalls
 

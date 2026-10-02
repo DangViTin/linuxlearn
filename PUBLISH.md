@@ -48,12 +48,11 @@ The single `gh repo create` line creates the GitHub repo, sets `origin`, and pus
 Open `book/conf.py` and find:
 
 ```python
-html_context = {
-    "display_github": True,
-    "github_user": "DangViTin",      # <— change to your username
-    "github_repo": "linuxlearn",
-    "github_version": "main",
-    "conf_py_path": "/book/",
+html_theme_options = {
+    "source_repository": "https://github.com/DangViTin/linuxlearn/",
+    "source_branch": "main",
+    "source_directory": "book/",
+    # Keep the other theme options already present in conf.py.
 }
 ```
 
@@ -61,7 +60,7 @@ Replace `DangViTin` with your GitHub username. Commit and push:
 
 ```sh
 git add book/conf.py
-git commit -m "Update github_user for site"
+git commit -m "Update source_repository for site"
 git push
 ```
 
@@ -148,7 +147,7 @@ deactivate
 | Theme colors | `book/_static/custom.css` (already wired in) |
 | Sidebar header background | `book/conf.py` → `html_theme_options.style_nav_header_background` |
 | Navigation depth | `book/conf.py` → `html_theme_options.navigation_depth` |
-| Add a new chapter | drop the `.md` in `book/partX-.../` and add the filename (without `.md`) under the matching `toctree` in `book/index.md` |
+| Add a new chapter | add its `.md` under `book/partX-.../` and an absolute document path (without `.md`) under the matching toctree in `book/_navigation.md` |
 | Sidebar logo / favicon | drop files into `book/_static/`, then set `html_logo` and `html_favicon` in `conf.py` |
 
 ---
@@ -158,7 +157,9 @@ deactivate
 | File | Purpose |
 |------|---------|
 | `book/conf.py` | Sphinx configuration |
-| `book/index.md` | Site landing page + sidebar toctree |
+| `book/part1-foundations/ch01-preface.md` | Sphinx root document and first reading page |
+| `book/_navigation.md` | Hidden sidebar/reading-order trees included by Chapter 1 |
+| `book/_templates/start.html.jinja` | Site-root `index.html` redirects directly to Chapter 1 |
 | `book/_static/custom.css` | Theme tweaks (font sizes, sidebar color, etc.) |
 | `book/part*-*/ch*.md` | Chapter content (Markdown, untouched) |
 | `book/toc.md` | Auto-generated each build from `BOOK_TOC.md` |
@@ -179,7 +180,7 @@ If you have your own domain:
 
 ## If something goes wrong
 
-- **Build fails: "could not find file foo"** — a path in `book/index.md`'s `toctree` doesn't match an actual file. Check the spelling (no `.md` extension in toctree entries).
+- **Build fails: "could not find file foo"** — a path in `book/_navigation.md`'s toctree doesn't match an actual file. Paths start with `/` from the book root, with no `.md` extension.
 - **Build fails: "duplicate toctree"** — a chapter is listed in two different toctrees. Each file may appear in exactly one toctree.
 - **Site shows but looks unstyled** — Pages enabled before the first successful build. Re-run the workflow: `gh workflow run docs.yml`.
 - **Action fails with "Pages not enabled"** → finish step 4.

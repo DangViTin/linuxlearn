@@ -359,7 +359,7 @@ In U-Boot:
                     root=/dev/nfs nfsroot=192.168.7.1:/home/you/imx6ull/rootfs,vers=3,nolock,tcp \
                     ip=192.168.7.2:192.168.7.1:192.168.7.1:255.255.255.0::eth0:off \
                     rw rootwait'
-=> setenv bootcmd 'tftp 0x82000000 zImage; tftp 0x83000000 imx6ull.dtb; bootz 0x82000000 - 0x83000000'
+=> setenv bootcmd 'tftp 0x82000000 zImage && tftp 0x83000000 imx6ull.dtb && bootz 0x82000000 - 0x83000000'
 => saveenv
 => boot
 ```

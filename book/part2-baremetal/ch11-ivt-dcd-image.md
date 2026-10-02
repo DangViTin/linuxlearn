@@ -2,7 +2,7 @@
 
 > **What:** a real Python tool, `mkimx.py`, that turns a flat `.bin` into a Boot-ROM-loadable `.imx`. We then `dd` the result to an SD card and boot from it, with no `mkimage` and no NXP tools.
 >
-> **Why:** the Chapter 9 `wrap.sh` worked, but you will edit this tool again. A 60-line Python script you understand beats a 3-line shell command you don't.
+> **Why:** the Chapter 9 `wrap.py` worked, but it was fixed to one input file and one memory layout. Here we turn it into a reusable command-line tool.
 >
 > **Focus:** the **byte-for-byte layout** of the `.imx` file at offset `0x400` of the boot media, and the precise meaning of every word in IVT and BootData. Also: where to write the image on an SD card so the ROM finds it.
 
@@ -30,9 +30,9 @@ file offset    content                                size
 0x1000+N       end of code
 ```
 
-In SDP mode, `uuu` skips the first `0x400` bytes of the file (the ROM never reads them on USB-SDP). It uploads everything from offset `0x0400` onward to the RAM address in `BootData.start`. On the SD-card path, the **whole** file is `dd`'d to the card starting at sector 2 (LBA 2 = byte offset `0x400`), and the ROM reads the IVT directly from the card.
+In SDP mode, `uuu` finds the IVT, skips the first `0x400` bytes, and uploads the IVT to its `self` address. In SD-card mode, we write the whole file at byte 0 of the card. The `0x400` bytes of padding in the file place the IVT at LBA 2, where the ROM expects it.
 
-> **Two boot paths, one image, one IVT.** The `.imx` is built once. The IVT it contains works for SDP, for SD boot, and for eMMC boot. The only thing that differs is where the file lives: RAM for `uuu`, or LBA 2 of the SD card. The IVT works in either case because all its addresses are absolute physical RAM addresses.
+> **Two boot paths, one image, one IVT.** The `.imx` is built once. With SDP, UUU reads its structures and uploads it. With SD or eMMC, the file starts at byte 0 of the boot area and its IVT lands at LBA 2.
 
 ## 11.2  `mkimx.py`, our own image builder
 Save as `~/imx6ull/scripts/mkimx.py`:
@@ -50,16 +50,17 @@ The output is a file that:
   - Then the user binary at file offset 0x1000.
 
 Usage:
-  mkimx.py <input.bin> <output.imx> --load 0x00907400 --entry 0x00908000
+  mkimx.py <input.bin> <output.imx>
 """
-import argparse, os, struct, sys
+import argparse
+import struct
 
 IVT_TAG       = 0xD1
 IVT_LENGTH    = 0x0020   # 32 bytes, big-endian per spec
 IVT_VERSION   = 0x40
 
-PRE_PAD       = 0x400    # before the IVT
-IMAGE_OFFSET  = 0x1000   # start of user binary, relative to IVT
+IVT_OFFSET    = 0x400    # IVT offset from the beginning of the file
+CODE_OFFSET   = 0x1000   # user binary offset from the beginning of the file
 
 def ivt_header():
     # The IVT header is 4 bytes:
@@ -68,16 +69,16 @@ def ivt_header():
     #   byte 3 = version (0x40 = HAB v4)
     return struct.pack('>BHB', IVT_TAG, IVT_LENGTH, IVT_VERSION)
 
-def build(input_bin: str, output_imx: str, load: int, entry: int):
+def build(input_bin: str, output_imx: str, image_start: int):
     with open(input_bin, 'rb') as f:
         code = f.read()
 
-    ivt_addr        = load                       # IVT lives at the load address
-    bootdata_addr   = ivt_addr + 0x20            # immediately after IVT
-    entry_addr      = entry
+    ivt_addr        = image_start + IVT_OFFSET
+    bootdata_addr   = ivt_addr + 0x20
+    entry_addr      = image_start + CODE_OFFSET
     csf_addr        = 0
     dcd_addr        = 0
-    image_size      = IMAGE_OFFSET + len(code)   # IVT+BootData+pad+code
+    image_size      = CODE_OFFSET + len(code)
 
     # IVT: header (4) + 7 little-endian words = 32 bytes
     ivt  = ivt_header()
@@ -93,25 +94,28 @@ def build(input_bin: str, output_imx: str, load: int, entry: int):
     assert len(ivt) == 0x20, len(ivt)
 
     # BootData: start, length, plugin
-    bootdata = struct.pack('<III', load, image_size, 0)
+    bootdata = struct.pack('<III', image_start, image_size, 0)
     assert len(bootdata) == 12
 
-    # Lay out the IVT+BootData region (the first 0x1000 of the image proper)
-    header = bytearray(IMAGE_OFFSET)            # zero-filled
-    header[0x00:0x20]    = ivt
-    header[0x20:0x2C]    = bootdata
+    # Lay out the complete file header, including the leading 0x400 bytes.
+    header = bytearray(CODE_OFFSET)
+    header[IVT_OFFSET:IVT_OFFSET + 0x20] = ivt
+    header[IVT_OFFSET + 0x20:IVT_OFFSET + 0x2C] = bootdata
 
-    # Final .imx = 0x400 pre-pad  ||  header (0x1000)  ||  code
-    out  = bytes(PRE_PAD) + bytes(header) + code
+    out = bytes(header) + code
+
+    # UUU uploads the IVT at ivt_addr. The code must then land at entry_addr.
+    loaded_code_addr = ivt_addr + (CODE_OFFSET - IVT_OFFSET)
+    assert loaded_code_addr == entry_addr
 
     with open(output_imx, 'wb') as f:
         f.write(out)
 
-    print(f"  load   = 0x{load:08X}")
-    print(f"  entry  = 0x{entry:08X}")
-    print(f"  IVT    @ 0x{ivt_addr:08X}  (file offset 0x{PRE_PAD:04X})")
+    print(f"  image  = 0x{image_start:08X}")
+    print(f"  entry  = 0x{entry_addr:08X}")
+    print(f"  IVT    @ 0x{ivt_addr:08X}  (file offset 0x{IVT_OFFSET:04X})")
     print(f"  bdata  @ 0x{bootdata_addr:08X}")
-    print(f"  code   @ 0x{ivt_addr + IMAGE_OFFSET:08X}  (file offset 0x{PRE_PAD+IMAGE_OFFSET:04X})")
+    print(f"  code   @ 0x{entry_addr:08X}  (file offset 0x{CODE_OFFSET:04X})")
     print(f"  total  = {len(out)} bytes")
     print(f"  wrote  {output_imx}")
 
@@ -119,12 +123,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('input')
     ap.add_argument('output')
-    ap.add_argument('--load',  type=lambda s: int(s, 0), required=True,
-                    help='Physical load address (IVT.self and BootData.start)')
-    ap.add_argument('--entry', type=lambda s: int(s, 0), required=True,
-                    help='IVT.entry (where ROM jumps after load)')
+    ap.add_argument('--image-start', type=lambda s: int(s, 0),
+                    default=0x00907000,
+                    help='RAM address corresponding to file offset 0')
     args = ap.parse_args()
-    build(args.input, args.output, args.load, args.entry)
+    build(args.input, args.output, args.image_start)
 
 if __name__ == '__main__':
     main()
@@ -135,10 +138,11 @@ Make it executable:
 ```sh
 $ chmod +x ~/imx6ull/scripts/mkimx.py
 ```
-The script is 60 lines but does everything the U-Boot `mkimage -T imximage` tool does for the simple case. The only feature we left out is DCD support, which we add in Chapter 14 once we need it.
+The script does the essential work of U-Boot's `mkimage -T imximage` for this simple case. We leave out DCD and signed-image support.
 
 - **The length field in the IVT header is big-endian.** Everything else in the IVT is little-endian. The `struct.pack('>BHB', ...)` line handles this difference. This is the most common "I wrote my own mkimage and the ROM rejects it" bug.
-- **`BootData.length` includes the IVT and the 4 KB padding.** It is not only the code size. If you forget the `IMAGE_OFFSET` part of the addend, the ROM stops loading before your `.text` even starts.
+- **`BootData.start` is `0x00907000`.** File offset `0` corresponds to that address. The IVT at file offset `0x400` therefore corresponds to `0x00907400`.
+- **`BootData.length` includes all bytes through the end of the code.** It is not only the code size. If you forget the `CODE_OFFSET` part, the ROM stops loading before your `.text` begins.
 - **`csf_addr = 0`** disables **HAB** (High Assurance Boot, NXP's signed-boot framework. Ch 124) signature checking. Setting it to a non-zero address would point the ROM at a CSF (Command Sequence File) it must verify.
 
 ## 11.3  Building and inspecting
@@ -148,39 +152,26 @@ Rebuild Chapter 10's LED:
 ```sh
 $ cd ~/imx6ull/src/ch10-c-startup
 $ make
-$ ~/imx6ull/scripts/mkimx.py led.bin led.imx --load 0x00907400 --entry 0x00908000
-  load   = 0x00907400
+$ ~/imx6ull/scripts/mkimx.py led.bin led.imx
+  image  = 0x00907000
   entry  = 0x00908000
   IVT    @ 0x00907400  (file offset 0x0400)
   bdata  @ 0x00907420
-  code   @ 0x00908400  (file offset 0x1400)
-  total  = 5572 bytes
+  code   @ 0x00908000  (file offset 0x1000)
+  total  = 4384 bytes
   wrote  led.imx
 ```
 
-Wait, entry is `0x00908000` but the code is *placed* at `0x00908400`? That's wrong.
-
-Yes, it is wrong, and it is the second-most-common bug. With `IMAGE_OFFSET = 0x1000` and load `0x00907400`, the code lands at `0x00908400`. The `--entry` we pass must agree. Either:
-
-- Pass `--entry 0x00908400` so it matches where code actually lands, **or**
-- Change `IMAGE_OFFSET` so `load + IMAGE_OFFSET = entry`.
-
-We'll use the first option. The cleaner invocation:
-
-```sh
-$ ~/imx6ull/scripts/mkimx.py led.bin led.imx --load 0x00907400 --entry 0x00908400
-```
-
-Since `entry` always equals `load + IMAGE_OFFSET` for our convention, we could compute it in the script and drop the `--entry` flag. We leave it explicit because later you may want the IVT separated from the code, with a DCD in between.
+The total size depends on your `led.bin`. The address lines must match this example. The script computes the entry address from `image_start + CODE_OFFSET`, so an entry and code-location mismatch cannot be requested accidentally.
 
 Verify the IVT with raw `xxd`:
 
 ```sh
 $ xxd -s 0x400 -l 32 led.imx
-00000400: d100 2040 0084 9000 0000 0000 0000 0000  .. @............
+00000400: d100 2040 0080 9000 0000 0000 0000 0000  .. @............
 00000410: 2074 9000 0074 9000 0000 0000 0000 0000   t...t..........
-$ xxd -s 0x420 -l 12 led.imx
-00000420: 0074 9000 c416 0000 0000 0000             .t..........
+$ xxd -s 0x420 -l 4 led.imx
+00000420: 0070 9000                                .p..
 ```
 
 Decode:
@@ -188,25 +179,25 @@ Decode:
 | Word | Bytes (LE) | Value | Field |
 |------|-----------|-------|-------|
 | `0x400` | `D1 00 20 40` | tag/length/version (big-endian length!) | IVT header |
-| `0x404` | `00 84 90 00` | `0x00908400` | entry ✓ |
+| `0x404` | `00 80 90 00` | `0x00908000` | entry ✓ |
 | `0x408` | `00 00 00 00` | 0 | reserved1 |
 | `0x40C` | `00 00 00 00` | 0 | dcd (none) |
 | `0x410` | `20 74 90 00` | `0x00907420` | boot_data ✓ |
 | `0x414` | `00 74 90 00` | `0x00907400` | self ✓ |
 | `0x418` | `00 00 00 00` | 0 | csf |
 | `0x41C` | `00 00 00 00` | 0 | reserved2 |
-| `0x420` | `00 74 90 00` | `0x00907400` | BootData.start ✓ |
-| `0x424` | `C4 16 00 00` | `0x000016C4` = 5828 | BootData.length |
+| `0x420` | `00 70 90 00` | `0x00907000` | BootData.start ✓ |
+| `0x424` | Varies | Complete file size | BootData.length |
 | `0x428` | `00 00 00 00` | 0 | BootData.plugin |
 
-`BootData.length` = 5828 bytes covers the 4 KB header + ~1.4 KB of code, plus some alignment slack. Looks right.
+`BootData.length` must equal the complete file size. It covers the leading pad, IVT, BootData, padding, and program code.
 
 ## 11.4  Path A, SDP push, again
 
 Push to the board exactly as in Chapter 9:
 
 ```sh
-$ uuu -b sdp led.imx
+$ sudo "$IMX6ULL_HOME/build/mfgtools/uuu/uuu" led.imx
 1:18    1/ 1 [Done                                  ] SDP: boot -f led.imx
 ```
 
@@ -220,45 +211,26 @@ LED blinks. We verified our new tool produces a working SDP image.
 
 Now the part we have not yet done in this book: boot from the SD card itself.
 
-On the i.MX6ULL with `BOOT_CFG` set for SD card, the ROM reads from **LBA 2** (byte offset `0x400`) of the boot device, looking for an IVT. Our `.imx` file has the IVT at exactly offset `0x400`, by construction. So: `dd if=led.imx of=/dev/sdX bs=1k seek=1`.
+On the i.MX6ULL with `BOOT_CFG` set for SD card, the ROM looks for an IVT at **LBA 2**, which is byte offset `0x400`. Our `.imx` file already contains `0x400` bytes before its IVT. Therefore the file must be written starting at byte 0 of the card.
 
-`seek=1` with `bs=1k` skips the first 1 KB of the SD card, so our IVT lands at LBA 2 (offset `0x400`), exactly where the ROM looks. The first 1 KB of the SD card is left untouched. On a freshly-formatted card it is zeros, which is fine.
+Use Chapter 3's manual identification flow, not a disk-letter filter. Run `lsblk -o NAME,PATH,SIZE,MODEL,SERIAL,TRAN,RM,TYPE,MOUNTPOINTS` before and after insertion. Match the spare card by identity and capacity; reject host/system/data disks. Recheck every time: `/dev/sdc` below is only an example. Unmount each mounted card partition with its actual path, then inspect `lsblk` again. Stop if any identity or mountpoint is uncertain.
 
-Use the helper from Chapter 3:
-
-```sh
-$ ls -l led.imx
--rw-r--r-- 1 you you 5828 May 25 14:30 led.imx
-
-$ ~/imx6ull/scripts/sd-write.sh led.imx /dev/sdc
-Wipe /dev/sdc (size 7.5G)? [y/N] y
-...
-$ sync
-```
-
-`sd-write.sh` does `dd if=$IMG of=$DEV bs=1M`, which writes from byte 0. That overwrites the IVT-at-offset-0x400 layout and puts our IVT at offset 0. That is wrong for this image.
-
-Two fixes:
-
-### Option 1, patch the script
-
-Add `seek=1` and `bs=1k` modes, or build a wrapper. Simplest:
-
-```sh
-$ sudo dd if=led.imx of=/dev/sdc bs=1k seek=1 conv=fsync
-$ sync
-```
-
-The `seek=1` means we do not write the first 1 KB. That is intentional because the ROM never reads it.
-
-### Option 2, pre-pad the .imx so it starts at offset 0
-
-Our `mkimx.py` already prepends `0x400` of zero. So `bs=1M conv=fsync` from offset 0 works if you accept that the first 1 KB on the card becomes zeros. The `0x400` pad inside the `.imx` is the first 1 KB of the SD card. Both options are equivalent. Option 2 with our specific `.imx` is the one we will use. Replace the second line above with:
+From the directory containing the built `led.imx`, check the input with `ls -l led.imx`, then write from byte zero to the **identified whole card**:
 
 ```sh
 $ sudo dd if=led.imx of=/dev/sdc bs=1M conv=fsync status=progress
 $ sync
 ```
+
+Do not add `seek=1`. The image already includes the first 1 KB. Adding another 1 KB would move the IVT to byte offset `0x800`, and the ROM would not find it.
+
+After flushing, remove/reinsert the card and identify it again. Compare exactly the image's byte count, substituting the newly confirmed device path:
+
+```sh
+$ sudo cmp -n "$(stat -c %s led.imx)" led.imx /dev/sdc
+```
+
+`stat -c %s` prints the file size; `cmp -n` compares that many bytes. Success is silent with exit status zero. A difference/read error means stop and investigate. This tiny raw image creates no filesystem or Linux partitions, so a partition listing is not its verification. Readback proves stored bytes, not ROM execution. Use a dedicated spare card; this layout is not a generic GPT-compatible image.
 
 Now:
 
@@ -268,13 +240,13 @@ Now:
 4. Power on.
 5. Watch the LED.
 
-If it blinks, you have booted an i.MX6ULL from an SD card you produced byte by byte. No U-Boot, no mkimage, no Yocto. The image came from 60 lines of Python and 50 lines of C/assembly.
+If it blinks, you have booted an i.MX6ULL from an SD card you produced byte by byte. No U-Boot, no `mkimage`, and no Yocto were involved.
 
 ## 11.6  Lab
 
-1. **Build and SDP-boot.** Confirm `mkimx.py` produces the same working blink as Chapter 9's `wrap.sh`.
+1. **Build and SDP-boot.** Confirm `mkimx.py` produces the same working blink as Chapter 9's `wrap.py`.
 2. **Build and SD-boot.** Eject the card, insert into the board with the switch set to SD. Confirm the LED blinks without `uuu` involvement.
-3. **Make a deliberate mistake.** Set `--entry` to the wrong address (off by `0x100`). Build, SDP-push. The board does nothing. Confirm `uuu` reported success, i.e., the failure is invisible from the host side. Restore.
+3. **Study an entry mismatch.** Temporarily add `0x100` to `entry_addr` inside `mkimx.py`. Build and SDP-push. The board does nothing even though `uuu` reports success. Restore the calculation afterward.
 4. **Find another mistake.** Make `mkimx.py` emit `IVT_LENGTH` little-endian instead of big-endian. Build, SDP-push. The ROM rejects it silently. Restore.
 5. **Dissect a vendor image.** Pick any `u-boot*.imx` you have on hand. Decode every IVT/BootData field. Identify whether a DCD is present and roughly how large it is.
 
@@ -282,7 +254,7 @@ If it blinks, you have booted an i.MX6ULL from an SD card you produced byte by b
 
 - **Endianness of IVT header length.** Big-endian. The rest of the IVT is little-endian. Easy to miss.
 - **`BootData.length` shorter than the file.** Tail bytes are not loaded. We always set it to "everything from start of image to end of code, including the 4 KB header gap."
-- **`entry` not matching where code actually lands.** Discussed in §11.3. Most common cause: changing `IMAGE_OFFSET` and forgetting to pass a new `--entry`.
+- **Changing one offset without changing the address calculation.** Keep the assertion in the script. It catches a code-location and entry mismatch before the image reaches the board.
 - **Writing to the wrong block device.** Discussed in Chapter 3. Use the helper.
 - **`sync` forgotten after `dd`.** Linux's page cache is fast. A "complete" `dd` may still have a buffer in RAM. Always `sync` (or `dd conv=fsync`) before pulling the card.
 - **Booting the same SD card on a different SoC.** This image is i.MX6ULL-specific. Reusing it on another i.MX6 variant may or may not work. The IVT is the same format but load addresses change. Build per board.

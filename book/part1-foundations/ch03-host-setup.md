@@ -2,28 +2,31 @@
 
 > **What:** a Linux development host that can cross-compile for ARMv7-A, serve files over TFTP and NFS, communicate with the board over serial and USB-OTG, and recover a board that cannot boot from storage.
 >
-> **Why:** for the next sixty chapters, the host is your lever. A flaky host wastes more of your time than any bug in your code.
+> **Why:** the host builds images, inspects their contents, and communicates with the board. Checking it first separates host setup failures from later firmware failures.
 >
-> **Focus:** the iteration loop. By the end of this chapter, the loop "change a file, see it run on the board" must take under thirty seconds. If it is slower, you will iterate less, and you will learn less.
+> **Focus:** know which compiler and device each command uses. This chapter checks the host; Chapter 9 proves that a program runs on the board. Network boot services are preparation for later U-Boot/Linux labs, not prerequisites for the LED lab.
 
 
 ## 3.1  Choosing the host
 
-The book assumes **native / VM(VirtualBox/VMware) Ubuntu 22.04 LTS** running on bare-metal hardware. Other options work but cost you time, sometimes a lot:|
-The remainder of this book assumes Ubuntu 22.04. Commands shown with the `$` prompt run as your normal user. Commands with `#` run as root via `sudo`.
+The reference host is **native x86_64 Ubuntu 22.04 LTS**, using its default Bash terminal. The compiler archives below run on x86_64 Linux, not Windows or an ARM64 host. Commands shown with `$` run as your normal user; do not type the prompt marker. `sudo` requests root credentials for that command and may ask for your login password. Password typing is not echoed.
+
+A dedicated Ubuntu VM can isolate package and service changes from your everyday system. Before using one, arrange:
+
+- USB attachment to the guest for the serial bridge, ROM SDP device, and card reader. Confirm each appears inside Ubuntu with `lsusb`/`lsblk`, not just in Windows. Reattach devices after re-enumeration if necessary.
+- A bridged or passed-through Ethernet adapter on the board's lab link. Default VM NAT alone does not make guest TFTP/NFS servers reachable by the board.
+- Only one owner for each serial port: close a Windows terminal before attaching its bridge to the guest.
+
+Compiler files and selection are project-local. Package installation and the optional `/etc` service/network configuration are host changes; this chapter does not call those portable. If you want them confined to a lab machine, use the dedicated VM.
 
 ## 3.2  Workspace layout
-
-> **Driver choice:** Use the in-tree, maintained driver first.
-> Use out-of-tree, spidev, or custom-driver paths only after you accept the kernel-version maintenance cost and document who owns updates.
-
 
 Create the workspace before installing anything. The layout you set now will be referred to by every chapter:
 
 ```sh
 $ mkdir -p ~/imx6ull/{src,build,boot,rootfs,scripts,toolchains,notes}
 $ cd ~/imx6ull
-$ tree -L 1
+$ ls
 .
 ├── boot       # bootable artefacts staged here, then dd'd to SD
 ├── build      # all out-of-tree build outputs (kernel, U-Boot, BusyBox)
@@ -34,34 +37,29 @@ $ tree -L 1
 └── toolchains # prebuilt Arm compilers kept local to this project
 ```
 
-Two rules about this layout. Both matter for the rest of the book:
+`~` means your home directory; `$HOME` is its shell-variable form. `mkdir -p` creates missing directories. Bash's `{src,build,...}` expands to one path per name. `cd` changes this terminal's working directory; `ls` lists its contents. The annotated tree above describes the resulting layout, not literal output from `ls`.
 
-1. **Sources are read-only.** We never edit inside `src/u-boot/`. We patch and build out-of-tree into `build/u-boot/`. This is the only way to keep a clean diff against upstream and keep cross-chapter reproducibility honest.
-**U-Boot** - the bootloader that initializes enough hardware to load and start the Linux kernel.
-2. **`rootfs/` is the live NFS root.** Anything you copy into `rootfs/` is visible to the board after the next boot, with no flashing step. This is the central iteration trick of embedded Linux.
+Two rules about this layout:
+
+1. **Sources and outputs have different roles.** Edit tracked sources in `src/`, including your own bare-metal files. Git records source changes against upstream. Where a project supports `O=`, place generated output in `build/`; this does not move or apply source patches for you.
+2. **`rootfs/` is the future NFS root.** Once the later lab exports it and Linux mounts it, the board uses files from this host directory without reflashing storage. Creating the directory alone does not configure NFS or boot the target.
 
 ## 3.3  Host packages
 
-> Verify the removable card by size and model, unmount its partitions, and stop if the path is not the target card. Writing the wrong /dev node can destroy the host disk.
-
-> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
-
-
-Install in one shot:
+`apt update` refreshes Ubuntu's package catalog; `apt install` installs named packages and dependencies. These commands change the host. Read the proposed installation before answering its confirmation prompt. `-dev` packages contain headers/libraries needed to compile other programs.
 
 ```sh
 $ sudo apt update
-$ sudo apt install -y \
+$ sudo apt install \
     build-essential bison flex libssl-dev libncurses-dev \
     bc kmod cpio rsync wget curl git unzip xz-utils \
     device-tree-compiler u-boot-tools \
-    nfs-kernel-server tftpd-hpa tftp-hpa \
     minicom picocom \
     qemu-user-static binfmt-support \
     gdb-multiarch \
     pkg-config libusb-1.0-0-dev libftdi1-dev \
     libgmp-dev libmpfr-dev libmpc-dev libisl-dev \
-    fakeroot dosfstools mtools parted
+    fakeroot dosfstools mtools parted nano usbutils python3
 ```
 
 What the main packages provide:
@@ -70,7 +68,7 @@ What the main packages provide:
 - **`bc`** provides arithmetic used by parts of the kernel build.
 - **`device-tree-compiler`** provides `dtc`, the device-tree compiler.
 - **`u-boot-tools`** provides `mkimage`, `mkenvimage`, `dumpimage`, and `mkeficapsule`.
-- **`nfs-kernel-server`, `tftpd-hpa`** provide the server side of network boot.
+- **`nfs-kernel-server`, `tftpd-hpa`** provide network boot services; install them later in Sections 3.6-3.7 when needed, because package installation can start daemons.
 - **`minicom`, `picocom`** are serial terminals. This book uses `picocom`.
 - **`qemu-user-static`, `binfmt-support`** let the host run ARM user-space binaries. This is useful when preparing a root filesystem with `chroot`.
 - **`gdb-multiarch`** is a GDB build that supports multiple architectures, including ARM.
@@ -78,7 +76,7 @@ What the main packages provide:
 - **OpenOCD** is the host program that controls a JTAG adapter and exposes a GDB server.
 - **`fakeroot`, `dosfstools`, `mtools`, `parted`** manipulate filesystem and SD-card images.
 
-If `apt` complains about any package on your distribution, search for the closest equivalent and note the substitution in your journal.
+If `apt` cannot find a package on the reference Ubuntu release, stop and record the exact error and release. Check that `apt update` succeeded; do not substitute a similarly named package without checking what it provides.
 
 ## 3.4  The cross toolchain
 
@@ -91,12 +89,12 @@ We need two prebuilt Arm toolchains:
 
 We will install both toolchains in one project-local directory, give them unambiguous paths, and select the required toolchain explicitly for each build.
 
-Download these two Arm GNU Toolchain packages from Arm's official page:
+Use the **13.2.Rel1** release of both official Arm GNU Toolchains for this edition, rather than choosing different latest releases. This is a selected baseline, not a claim that every lab has been hardware-validated with it. Obtain the archives and their checksum manifests from [Arm's release downloads](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads); the [13.2 release notes](https://documentation-service.arm.com/static/666180bfd72aaf32efecd262) list the host/target packages.
 
 <https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads>
 
-- `arm-gnu-toolchain-*-x86_64-arm-none-linux-gnueabihf.tar.xz`
-- `arm-gnu-toolchain-*-x86_64-arm-none-eabi.tar.xz`
+- `arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz`
+- `arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi.tar.xz`
 
 Save both tarballs in `~/imx6ull/src/toolchains/`. Keeping the original tarballs there makes it easy to see exactly what was installed later.
 
@@ -112,12 +110,12 @@ Extract both under the project workspace, not `/opt`. This keeps the setup porta
 
 ```sh
 $ mkdir -p ~/imx6ull/toolchains
-$ tar -xf arm-gnu-toolchain-*-x86_64-arm-none-linux-gnueabihf.tar.xz \
+$ tar -xf arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz \
     -C ~/imx6ull/toolchains
-$ tar -xf arm-gnu-toolchain-*-x86_64-arm-none-eabi.tar.xz \
+$ tar -xf arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi.tar.xz \
     -C ~/imx6ull/toolchains
 ```
-After extract, we have:
+Before extracting, compare `sha256sum <archive-name>` with the matching Arm checksum manifest. Replace the placeholder with one actual filename; do not type angle brackets. Keep the manifests with the archives. After extraction, keep the directory names Arm supplied, including their capitalization:
 
 ```text
 ~/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-linux-gnueabihf/bin/arm-none-linux-gnueabihf-gcc
@@ -140,8 +138,8 @@ The names `arm-none-linux-gnueabihf` and `arm-none-eabi` are long because each p
 
 The practical rule:
 
-- Use `arm-none-linux-gnueabihf-` when the output is meant to run with Linux or link against Linux user-space libraries.
-- Use `arm-none-eabi-` when the output is a freestanding image with no OS underneath it.
+- Use `arm-none-linux-gnueabihf-` for this book's U-Boot, kernel, and Linux user-space builds. Only user-space builds use its glibc runtime; U-Boot/kernel choose their own freestanding build rules.
+- Use `arm-none-eabi-` for our no-OS Part II experiments. Keep these two selections explicit even though some freestanding objects can be ABI-compatible across compiler families.
 
 ### Environment script
 
@@ -156,13 +154,26 @@ $ nano ~/imx6ull/scripts/env.sh
 Put this in the file:
 
 ```sh
-#!/bin/sh
+#!/bin/bash
 
-export IMX6ULL_HOME="$HOME/imx6ull"
-export ARM_LINUX_TOOLCHAIN="$(ls -d "$IMX6ULL_HOME"/toolchains/arm-gnu-toolchain-*-x86_64-arm-none-linux-gnueabihf)"
-export ARM_BAREMETAL_TOOLCHAIN="$(ls -d "$IMX6ULL_HOME"/toolchains/arm-gnu-toolchain-*-x86_64-arm-none-eabi)"
+IMX6ULL_HOME="$HOME/imx6ull"
+linux_dirs=("$IMX6ULL_HOME"/toolchains/arm-gnu-toolchain-*-x86_64-arm-none-linux-gnueabihf)
+bare_dirs=("$IMX6ULL_HOME"/toolchains/arm-gnu-toolchain-*-x86_64-arm-none-eabi)
 
-export PATH="$ARM_LINUX_TOOLCHAIN/bin:$ARM_BAREMETAL_TOOLCHAIN/bin:$PATH"
+if [ "${#linux_dirs[@]}" -ne 1 ] || [ ! -x "${linux_dirs[0]}/bin/arm-none-linux-gnueabihf-gcc" ]; then
+    echo "Keep one extracted Linux toolchain in $IMX6ULL_HOME/toolchains."
+    return 1
+fi
+if [ "${#bare_dirs[@]}" -ne 1 ] || [ ! -x "${bare_dirs[0]}/bin/arm-none-eabi-gcc" ]; then
+    echo "Keep one extracted bare-metal toolchain in $IMX6ULL_HOME/toolchains."
+    return 1
+fi
+
+export IMX6ULL_HOME
+export ARM_LINUX_TOOLCHAIN="${linux_dirs[0]}"
+export ARM_BAREMETAL_TOOLCHAIN="${bare_dirs[0]}"
+
+export PATH="$ARM_LINUX_TOOLCHAIN/bin:$ARM_BAREMETAL_TOOLCHAIN/bin:$IMX6ULL_HOME/build/mfgtools/uuu:$PATH"
 
 export ARCH=arm
 export CROSS_COMPILE=arm-none-linux-gnueabihf-
@@ -177,7 +188,17 @@ export BOARD_IP=192.168.7.2
 export HOST_IP=192.168.7.1
 ```
 
-This script assumes there is exactly one Linux toolchain folder and exactly one bare-metal toolchain folder in `~/imx6ull/toolchains/`. If you later upgrade the toolchains, remove the old extracted folders first.
+This file is sourced by **Bash**, not `sh`. It discovers the unchanged folder names and refuses missing or multiple matches before changing `PATH`. If a check fails, stop: inspect `toolchains/` and move old installations elsewhere before sourcing again. A failed re-source does not erase an environment already selected in this terminal.
+
+The unfamiliar syntax has a small purpose:
+
+- `name=value` assigns a variable; `$name` reads it. Quotes keep a path with spaces together.
+- `*` matches the release part of the directory name. Each `(... )` collects matches into a Bash list. `${#linux_dirs[@]}` counts them; `${linux_dirs[0]}` reads the first.
+- `[ ... ]` tests a condition. `-ne 1` means not equal to one, `-x` checks for an executable, and `||` means "or". `return 1` stops this sourced file with failure.
+- `export` makes a variable available to programs started by this terminal. `PATH` is the colon-separated list of directories searched for commands, in order. The `uuu` directory is populated in Section 3.8.
+- `TFTPROOT` and `NFSROOT` are convenient shell names; they do not configure the servers. `/etc` configuration must still be edited manually.
+
+In `nano`, save with Ctrl-O, Enter, then exit with Ctrl-X.
 
 Every time you open a new terminal for this book, run:
 
@@ -185,18 +206,18 @@ Every time you open a new terminal for this book, run:
 $ . ~/imx6ull/scripts/env.sh
 ```
 
-That leading dot matters. It means "source this file into the current shell." Running `~/imx6ull/scripts/env.sh` without the dot would run it in a child shell, then throw the environment away when the script exits.
+That leading dot means "read this file into the current shell." Running `bash ~/imx6ull/scripts/env.sh` starts a child shell whose exports cannot change its parent; it is not the setup command. Direct execution may also fail because the file has not been made executable. Sourcing needs read permission, not an executable bit.
 
 Verify both compilers and both prefixes:
 
 ```sh
-$ which arm-none-linux-gnueabihf-gcc
+$ command -v arm-none-linux-gnueabihf-gcc
 /home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-linux-gnueabihf/bin/arm-none-linux-gnueabihf-gcc
 
 $ arm-none-linux-gnueabihf-gcc --version | head -1
 arm-none-linux-gnueabihf-gcc (Arm GNU Toolchain ...)
 
-$ which arm-none-eabi-gcc
+$ command -v arm-none-eabi-gcc
 /home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc
 
 $ arm-none-eabi-gcc --version | head -1
@@ -225,23 +246,17 @@ $ ls /dev/ttyUSB*
 If that file does not exist, check `dmesg | tail`:
 
 ```sh
-$ dmesg | tail
+$ sudo dmesg | tail
 [...] usb 1-1.2: new full-speed USB device number 5 using xhci_hcd
 [...] usb 1-1.2: New USB device found, idVendor=10c4, idProduct=ea60
 [...] cp210x 1-1.2:1.0: cp210x converter detected
 [...] usb 1-1.2: cp210x converter now attached to ttyUSB0
 ```
 
-Serial devices are normally owned by the `dialout` group. Add your user to that group once:
+On this host, the serial device normally restricts access to root and a group such as `dialout`. We leave user groups unchanged and use an explicit privileged command for each session. This is a teaching choice, not a rule that all hardware requires root. Log inspection may also need `sudo` on Ubuntu.
 
 ```sh
-$ sudo usermod -aG dialout "$USER"
-```
-
-Log out and back in so the new group membership takes effect. Then open the console without `sudo`:
-
-```sh
-$ picocom -b 115200 /dev/ttyUSB0
+$ sudo picocom -b 115200 /dev/ttyUSB0
 picocom v3.1
 port is        : /dev/ttyUSB0
 flowcontrol    : none
@@ -253,7 +268,7 @@ stopbits are   : 1
 Terminal ready
 ```
 
-Quit with Ctrl-A Ctrl-X. To send Ctrl-C to the board, press Ctrl-A and then Ctrl-C because picocom uses Ctrl-A as its command key.
+Quit with Ctrl-A then Ctrl-X. Plain Ctrl-C sends the interrupt character to the target; Ctrl-A then Ctrl-C instead toggles local echo. These keys follow [picocom's manual](https://raw.githubusercontent.com/npat-efault/picocom/master/picocom.1.md).
 
 At this stage, a silent console is normal because we have not built a bootable image. If later output is unreadable, confirm 115200 8N1, check that you opened the correct serial device, and try another USB data cable.
 
@@ -261,7 +276,9 @@ If a board revision has no built-in USB-TTL bridge, use a separate **3.3 V** USB
 
 ### 3.5a  Windows-side serial terminals (for Windows-mainly readers)
 
-If your host is Windows (WSL2 or dual-boot Linux), or if you sometimes connect from a Windows laptop in the field, the most-used serial-terminal options are:
+For an optional Windows-side serial session, PuTTY provides a serial connection: select the bridge's COM port in Device Manager, choose Serial, and set 115200 8N1 with no flow control. This does not substitute for attaching USB devices to Ubuntu when using the Linux build/transfer commands.
+
+Other optional terminals include:
 
 - **MobaXterm** (`mobaxterm.mobatek.net`, free Home Edition) combines SSH, serial, X server, saved sessions, and SFTP.
 - **SecureCRT** (`vandyke.com`, commercial) provides fast scrollback, saved sessions, and a configurable keymap.
@@ -285,41 +302,45 @@ For this book, we do not require any of them. But if you find yourself spending 
 
 ## 3.6  TFTP server
 
+**Needed later, before network-loading from U-Boot.** You may skip Sections 3.6, 3.7, and 3.10 until Chapter 24. These services persist beyond the terminal; record existing configuration before editing it, and preserve unrelated settings. Do not expose them on a public or shared network.
+
 The board's U-Boot will fetch kernel images from your host over TFTP.
 
 Install the server package if you have not already:
 
 ```sh
-$ sudo apt install -y tftpd-hpa tftp-hpa
+$ sudo apt install tftpd-hpa tftp-hpa
 ```
 
 Now open the server configuration:
 
 ```sh
-$ sudoedit /etc/default/tftpd-hpa
+$ SUDO_EDITOR=nano sudoedit /etc/default/tftpd-hpa
 ```
+
+`SUDO_EDITOR=nano` chooses the familiar editor for this command only. `sudoedit` lets you edit a temporary copy as your normal user, then writes it back with authorization. Save and exit with the same nano keys used earlier; your shell's default editor is not changed.
 
 Make the file look like this:
 
 ```text
 TFTP_USERNAME="tftp"
 TFTP_DIRECTORY="/srv/tftp"
-TFTP_ADDRESS=":69"
-TFTP_OPTIONS="--secure --create"
+TFTP_ADDRESS="192.168.7.1:69"
+TFTP_OPTIONS="--secure"
 ```
 
 What each line means:
 
 - `TFTP_USERNAME="tftp"` runs the daemon as the unprivileged `tftp` user.
 - `TFTP_DIRECTORY="/srv/tftp"` is the directory U-Boot will read files from.
-- `TFTP_ADDRESS=":69"` listens on the standard TFTP UDP port.
-- `TFTP_OPTIONS="--secure --create"` keeps the daemon rooted inside `/srv/tftp` and permits file creation.
+- `TFTP_ADDRESS="192.168.7.1:69"` listens only on the host lab address and standard UDP port. Configure that address using Section 3.10 before restarting; router mode must use the actual host address.
+- `TFTP_OPTIONS="--secure"` roots requests inside `/srv/tftp`. This book downloads existing files, so it does not enable new-file uploads with `--create`; that option would not grant filesystem write permission anyway.
 
 Create the directory, make your normal user its owner, and keep it readable by the TFTP daemon:
 
 ```sh
 $ sudo mkdir -p /srv/tftp
-$ sudo chown $USER:$USER /srv/tftp
+$ sudo chown "$USER:$(id -gn)" /srv/tftp
 $ chmod 755 /srv/tftp
 ```
 
@@ -327,9 +348,9 @@ Why the permission change matters:
 
 - `/srv` is a system directory. Without `sudo`, a normal user usually cannot create `/srv/tftp`.
 - After `sudo mkdir`, the new directory is owned by `root`, so your normal user would need `sudo` every time you copy a kernel, device tree, or U-Boot image into it.
-- `sudo chown $USER:$USER /srv/tftp` changes the owner to your user. Now you can write files there with normal commands like `cp zImage /srv/tftp/`.
+- `sudo chown "$USER:$(id -gn)" /srv/tftp` selects your user and actual primary group. `$()` substitutes command output; `id -gn` prints that group. Now you can stage files with normal `cp` commands. Change ownership only for this dedicated lab directory, not an existing shared service directory.
 - The TFTP server does not run as your user. `TFTP_USERNAME="tftp"` means it runs as the low-privilege `tftp` user, so a bug in the TFTP server has less power on the host.
-- `chmod 755 /srv/tftp` means: owner can read/write/enter, everyone else can read/enter but not write. That lets the `tftp` user read files from the directory while only you can add or replace files.
+- `chmod 755 /srv/tftp` grants the owner read/write/execute and others read/execute. For a directory, read lists names and execute permits traversal to a named file; the file itself must separately be readable. Other ordinary users cannot add files, though root still can.
 
 Files you copy into `/srv/tftp` also need to be readable by the TFTP daemon. Normal files created by `cp` or `echo` are usually readable already. If U-Boot gets "permission denied" from TFTP, check with:
 
@@ -337,27 +358,35 @@ Files you copy into `/srv/tftp` also need to be readable by the TFTP daemon. Nor
 $ ls -l /srv/tftp
 ```
 
-Restart and enable the service:
+If a staged file is not readable by `tftp`, change that file's mode, not the whole tree. The smoke test below demonstrates `chmod 644`: owner read/write, others read.
+
+Restart for this lab session, without enabling automatic startup:
 
 ```sh
 $ sudo systemctl restart tftpd-hpa
-$ sudo systemctl enable tftpd-hpa
 ```
 
 Smoke-test:
 
 ```sh
 $ echo "hello tftp" > /srv/tftp/test.txt
-$ tftp localhost -c get test.txt
+$ chmod 644 /srv/tftp/test.txt
+$ tftp 192.168.7.1 -c get test.txt
 $ cat test.txt
 hello tftp
 ```
 
-The test writes a small file into the TFTP root, then asks the local TFTP server for that file. The final `cat` proves the file came back.
+The test writes a small file into the TFTP root, then asks this host's lab-address listener for it. Substitute your configured host address in router mode. The final `cat` proves the file came back; this is still a host-local test, not a board transfer.
 
-If that round-trip works, U-Boot will be able to do the same thing.
+This proves only the local daemon, path, and file permissions. It does not test the board, cable, VM reachability, or firewall path. The target TFTP test comes after U-Boot runs in Chapter 24.
 
-**Pitfall:** Ubuntu's `ufw` firewall, if enabled, blocks UDP/69. Either disable `ufw` on the dev host or `sudo ufw allow tftp`.
+**Firewall:** keep the existing firewall enabled. Inspect `sudo ufw status`; where UFW is active, allow the board only on the dedicated lab interface, substituting the interface name found in Section 3.10:
+
+```sh
+$ sudo ufw allow in on enp0s31f6 from 192.168.7.2 to 192.168.7.1 port 69 proto udp
+```
+
+TFTP uses additional UDP transfer ports; a stateful firewall must track the exchange or have a lab-interface rule appropriate to its policy. If the transfer stalls, inspect that path rather than disabling workstation protection. Stop the service with `sudo systemctl stop tftpd-hpa` after the lab; restore only the settings/rules you changed.
 
 ## 3.7  NFS server
 
@@ -366,19 +395,19 @@ The Linux kernel can mount its root filesystem over NFS during development. That
 Install the server package if needed:
 
 ```sh
-$ sudo apt install -y nfs-kernel-server
+$ sudo apt install nfs-kernel-server
 ```
 
 Open the export table:
 
 ```sh
-$ sudoedit /etc/exports
+$ SUDO_EDITOR=nano sudoedit /etc/exports
 ```
 
 Add one line at the end. Replace `<you>` with your Linux username:
 
 ```text
-/home/<you>/imx6ull/rootfs *(rw,sync,no_root_squash,no_subtree_check)
+/home/<you>/imx6ull/rootfs 192.168.7.2(rw,sync,no_root_squash,no_subtree_check)
 ```
 
 Then apply and verify:
@@ -388,14 +417,14 @@ $ sudo exportfs -ar
 $ sudo systemctl restart nfs-kernel-server
 $ sudo showmount -e localhost
 Export list for localhost:
-/home/<you>/imx6ull/rootfs *
+/home/<you>/imx6ull/rootfs 192.168.7.2
 ```
 
 What the commands do:
 
 - `exportfs -ar` asks the NFS server to re-read `/etc/exports` and apply the export table.
 - `systemctl restart nfs-kernel-server` restarts the NFS daemon so the kernel-side service is using the current config.
-- `showmount -e localhost` lists what this host exports over NFS. Seeing the `rootfs` path here is the sanity check.
+- `showmount -e localhost` checks the advertised export, not whether the target can mount or boot it. That requires the later kernel/rootfs lab.
 
 The flags decoded:
 
@@ -404,7 +433,9 @@ The flags decoded:
 - `no_root_squash` maps the target's root user to host UID 0. This is convenient for a development root filesystem but unsafe on an untrusted network.
 - `no_subtree_check` disables a subtree validation step that is not useful for this dedicated export.
 
-**Security:** these are dev-host settings. Do not run an NFS server with these flags on a network you do not control.
+**Security:** the client address narrows access; `*` would allow any matching client and is not used here. `no_root_squash` grants that client's root identity host-root access within the export, so use expendable lab files only, on an isolated link. IP restrictions are not authentication. Router mode must substitute the reserved board address and restrict firewall access to that board/interface. NFSv3 also uses RPC services; inspect the active ports with `rpcinfo -p localhost` rather than opening arbitrary ports to everyone. See [exports(5)](https://man7.org/linux/man-pages/man5/exports.5.html).
+
+To undo this lab export, remove only its line from `/etc/exports` with `sudoedit`, then run `sudo exportfs -ar`. Stop `nfs-kernel-server` if no other exports need it. Do not erase a pre-existing export table or stop services other users require.
 
 ## 3.8  USB-OTG flashing tools
 
@@ -412,87 +443,30 @@ The i.MX6ULL Boot ROM speaks **SDP** (Serial Download Protocol) over its USB-OTG
 
 ### `uuu` (Universal Update Utility)
 
-NXP's official tool. Download the latest release from <https://github.com/nxp-imx/mfgtools>:
+Use NXP's [uuu_1.5.201 release](https://github.com/nxp-imx/mfgtools/releases/tag/uuu_1.5.201), pinned instead of a moving branch. Build as your normal user into the workspace:
 
 ```sh
 $ cd ~/imx6ull/src
-$ git clone https://github.com/nxp-imx/mfgtools
-$ cd mfgtools
-$ sudo apt install -y libusb-1.0-0-dev libzip-dev libbz2-dev pkg-config cmake libzstd-dev libtinyxml2-dev
-$ cmake . && make -j$(nproc)
-$ sudo cp uuu/uuu /usr/local/bin/
+$ git clone --branch uuu_1.5.201 --depth 1 https://github.com/nxp-imx/mfgtools
+$ sudo apt install libusb-1.0-0-dev zlib1g-dev libbz2-dev pkg-config cmake libzstd-dev libtinyxml2-dev
+$ cmake -S ~/imx6ull/src/mfgtools -B ~/imx6ull/build/mfgtools
+$ cmake --build ~/imx6ull/build/mfgtools -j "$(nproc)"
+$ . ~/imx6ull/scripts/env.sh
+$ command -v uuu
+/home/<you>/imx6ull/build/mfgtools/uuu/uuu
 $ uuu -h
-uuu (Universal Update Utility) for nxp imx chips -- 1.5.x-0-gxxxxxxx
+... help text and the selected release version ...
 ```
-Now add a udev rule so your normal user can talk to the board over USB without running `uuu` as root.
 
-You *can* type `sudo uuu ...` every time, but do not make that your normal workflow. `uuu` is a host-side flashing tool that opens USB devices and writes boot images. It does not need full root access to your workstation. Giving it root privileges hides the real permission problem and increases the damage if you point a command at the wrong file or run a broken script.
+`-S` selects source files; `-B` selects build output. `nproc` prints the available CPU count for parallel building. No binary is installed in `/usr/local/bin`. The dependency list follows this release's [CMake requirements](https://github.com/nxp-imx/mfgtools/blob/uuu_1.5.201/uuu/CMakeLists.txt), including zlib and TinyXML2 development files.
 
-The cleaner model is:
-
-- Root owns system configuration such as the udev rule.
-- Your user belongs to a hardware-access group.
-- `uuu` runs as your user and can open only the matching USB devices.
-
-First check whether the group already exists:
+We leave USB groups and udev rules unchanged. Use the full local path with `sudo`, because sudo's command search path may omit your workspace:
 
 ```sh
-$ getent group plugdev
+$ sudo "$IMX6ULL_HOME/build/mfgtools/uuu/uuu" -lsusb
 ```
 
-If that prints a `plugdev:...` line, the group already exists and you do not need to create it. Add yourself to it:
-
-```sh
-$ sudo usermod -aG plugdev "$USER"
-```
-
-If `getent` prints nothing, create the group first:
-
-```sh
-$ sudo groupadd plugdev
-$ sudo usermod -aG plugdev "$USER"
-```
-
-You will also see this shorter form in many setup notes:
-
-```sh
-$ sudo groupadd -f plugdev
-$ sudo usermod -aG plugdev "$USER"
-```
-
-The `-f` means "succeed even if the group already exists", so the command is safe to run on both cases.
-
-Log out and back in after `usermod`. Group membership is read when your login session starts.
-
-Open a new rule file:
-
-```sh
-$ sudoedit /etc/udev/rules.d/99-imx.rules
-```
-
-Put these two lines in it:
-
-```text
-SUBSYSTEM=="usb", ATTR{idVendor}=="15a2", ATTR{idProduct}=="0080", MODE="0660", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTR{idVendor}=="1fc9", ATTR{idProduct}=="0145", MODE="0660", GROUP="plugdev"
-```
-
-Then reload udev:
-
-```sh
-$ sudo udevadm control --reload-rules
-$ sudo udevadm trigger
-```
-
-`15a2:0080` is the i.MX6ULL ROM SDP enumeration. `1fc9:0145` is the same after a board enters the second-stage download (different VID/PID once U-Boot SPL takes over).
-
-After reloading the rules, unplug and replug the board. Then test without `sudo`:
-
-```sh
-$ uuu -lsusb
-```
-
-If `uuu -lsusb` sees the board as your normal user, the setup is correct. Use `sudo` only while installing host packages, copying binaries into `/usr/local/bin`, or editing `/etc` files, do not use it as a workaround for USB permissions.
+Run this device check only after Chapter 8's power and USB-mode checks. `15a2:0080` is the ROM SDP identity. Enumeration proves device visibility, not successful image transfer or code execution. Read any flashing command before running it with root credentials.
 
 ## 3.9  SD card preparation for later chapters
 
@@ -501,17 +475,16 @@ Use a spare 4-32 GB SD card, class 10 or better, dedicated to this project. We w
 Identify which device it is, **carefully**:
 
 ```sh
-$ lsblk
-NAME    MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS
-sda       8:0    0   1.0T  0 disk
-└─sda1    8:1    0   1.0T  0 part /
-sdc       8:32   1   7.5G  0 disk         <-- this is the SD card
-└─sdc1    8:33   1   7.5G  0 part
+$ lsblk -o NAME,PATH,SIZE,MODEL,SERIAL,TRAN,RM,TYPE,MOUNTPOINTS
 ```
+
+Read your actual output: `PATH` is the device path, `TYPE` distinguishes a whole `disk` from a `part` partition, and `MOUNTPOINTS` shows what is mounted. The later examples use `/dev/sdc` with a `/dev/sdc1` partition, but your card may have different names.
 
 If you wipe the wrong block device you will lose your operating system. Check the size and the mount points twice before running `dd`.
 
-The manual write flow is short, and you should understand it before using any helper script. In later chapters the image name will be the image you built, for example `~/imx6ull/build/images/sdcard.img`.
+Compare the device list before and after insertion. Match size, model/serial, and the newly appearing reader/card; `RM=1` alone is not proof. Reject a device containing `/`, `/boot`, swap, or unrelated mounted data. A host disk can be `/dev/sdb`; a card can be `/dev/sda` or `/dev/mmcblkN`. Disk letters do not establish safety.
+
+**Preview only: do not run the following write commands in Chapter 3.** No image exists yet. Chapter 11 gives a real artifact and repeats identification. `/dev/sdc` below is an example observation, not a fixed name. Re-identify after every insertion.
 
 First unmount any mounted partition on the card. Unmount the partition path, not the whole-disk path:
 
@@ -527,7 +500,7 @@ $ sudo umount /dev/sdc1
 $ sudo umount /dev/sdc2
 ```
 
-Then write the image to the whole card:
+When a later chapter supplies a full partitioned `sdcard.img`, its whole-card write has this form:
 
 ```sh
 $ sudo dd if=~/imx6ull/build/images/sdcard.img of=/dev/sdc bs=4M status=progress conv=fsync
@@ -548,39 +521,10 @@ Read that command carefully:
 After `sync` returns, remove and reinsert the card, then check the result:
 
 ```sh
-$ lsblk /dev/sdc
+$ lsblk -o NAME,PATH,SIZE,MODEL,SERIAL,TYPE,MOUNTPOINTS
 ```
 
-You should see the partitions created by the image. If `lsblk` still shows the old partitions, you probably wrote the wrong device or the image path was wrong.
-
-After you understand the manual flow, a small helper script can save you from repeat typing mistakes. Create this file:
-
-```sh
-$ nano ~/imx6ull/scripts/sd-write.sh
-```
-
-Paste the script below, then read it before saving. The important part is the safety check that refuses `/dev/sda`.
-
-```sh
-#!/bin/bash
-# Usage: sd-write.sh <image> <device>
-set -euo pipefail
-IMG="$1"; DEV="$2"
-[ -b "$DEV" ] || { echo "Not a block device: $DEV" >&2; exit 1; }
-[[ "$DEV" =~ ^/dev/sd[b-z]$ ]] || { echo "Refusing $DEV (must be /dev/sd[b-z])" >&2; exit 1; }
-read -p "Wipe $DEV (size $(lsblk -bdno SIZE "$DEV" | numfmt --to=iec))? [y/N] " r
-[ "$r" = y ] || exit 1
-sudo dd if="$IMG" of="$DEV" bs=1M conv=fsync status=progress
-sync
-```
-
-Make it executable:
-
-```sh
-$ chmod +x ~/imx6ull/scripts/sd-write.sh
-```
-
-That regex on `/dev/sd[b-z]` is the seatbelt: it refuses to write to `/dev/sda`, which is almost always your host's root disk.
+Identify the card again before interpreting its partitions. A partitioned Linux image should show the expected partition layout. The small Part II `.imx` image is different: it is a raw boot payload, not a filesystem/partitioned card image, so a partition listing does not verify it. Chapter 11 uses a byte-level readback. We do not supply an automatic disk-selection helper.
 
 ## 3.10  Host IP plan
 
@@ -597,7 +541,7 @@ In this book, the clean lab network is:
 - Host: **192.168.7.1**
 - Board: **192.168.7.2**
 
-This private `192.168.7.0/24` network is separate from your home or office LAN. It avoids DHCP changes, router settings, and IP conflicts. That is why many embedded Linux labs use a dedicated direct link.
+Use this private `192.168.7.0/24` subnet only if it does not overlap an existing LAN or VPN route. It avoids router DHCP changes when assigned to a dedicated adapter.
 
 If you use NetworkManager:
 
@@ -608,20 +552,13 @@ $ sudo nmtui
 In the text UI:
 
 1. Choose **Edit a connection**.
-2. Select the Ethernet interface connected to the board.
+2. Create a separate Ethernet connection named `imx-link` for the board adapter rather than overwriting your everyday connection. Find that adapter with `ip -br link`.
 3. Set **IPv4 CONFIGURATION** to **Manual**.
 4. Add address `192.168.7.1/24`.
 5. Leave gateway and DNS empty for this direct board link.
-6. Save and activate the connection.
+6. Save and activate the connection. This creates a persistent host profile. After the lab, deactivate it and reactivate your previous profile; remove only `imx-link` if it is no longer needed.
 
-The same setup can be done from the command line:
-
-```sh
-$ sudo nmcli con add type ethernet con-name imx-link ifname enp0s31f6 ipv4.method manual ipv4.addresses 192.168.7.1/24
-$ sudo nmcli con up imx-link
-```
-
-Substitute your NIC name from `ip a`. The `nmtui` path is slower, but it makes the fields visible the first time.
+`enp0s31f6` below is an example host interface name, not the board interface. Substitute your adapter's actual name.
 
 Verify:
 
@@ -648,7 +585,7 @@ $ ip -4 addr
 
 Look for the address on the interface connected to the router. In later U-Boot commands, this host address becomes `serverip`.
 
-For the board address, use one of these:
+Reserve the host address as well as the board address in the router, or use documented unused static addresses outside its DHCP pool. Update `HOST_IP`/`BOARD_IP` in `env.sh`, the TFTP bind address, and the NFS client address consistently. For the board address:
 
 - Reserve a fixed DHCP address for the board in your router.
 - Let U-Boot request DHCP, then read the assigned address.
@@ -673,11 +610,11 @@ serverip=<your host IP, for example 192.168.1.23>
 ipaddr=<your board IP, for example 192.168.1.50>
 ```
 
-We test the link to the board in Chapter 8 after the board has U-Boot on it.
+Chapter 8 checks physical Ethernet presence only. Target ping and TFTP tests wait until U-Boot runs; NFS-root acceptance waits until Linux and a complete rootfs exist.
 
 ## 3.11  Sanity check
 
-End-of-chapter checklist. Run every command, get every expected result:
+Required-now checklist: compiler commands must resolve inside the workspace. Output below is schematic; record your actual release strings and paths.
 
 ```sh
 $ . ~/imx6ull/scripts/env.sh
@@ -698,11 +635,7 @@ $ which dtc mkimage picocom uuu
 /usr/bin/dtc
 /usr/bin/mkimage
 /usr/bin/picocom
-/usr/local/bin/uuu
-
-$ systemctl is-active tftpd-hpa nfs-kernel-server
-active
-active
+/home/<you>/imx6ull/build/mfgtools/uuu/uuu
 
 $ ls -d ~/imx6ull/{src,build,boot,rootfs,scripts,toolchains,notes}
 /home/<you>/imx6ull/boot
@@ -714,7 +647,9 @@ $ ls -d ~/imx6ull/{src,build,boot,rootfs,scripts,toolchains,notes}
 /home/<you>/imx6ull/toolchains
 ```
 
-If any of these fail, do not move on. Subsequent chapters silently assume each.
+Before Part II, also identify the serial bridge and confirm Chapter 8's ROM USB enumeration. A silent UART is not a failed host setup. Record card identity without writing it.
+
+For later network labs only, check both services with `systemctl is-active tftpd-hpa nfs-kernel-server`, the host address, host-local TFTP retrieval at that address, and the narrowed NFS export. These host checks do not replace target transfers/boots and need not block Chapter 9.
 
 ## 3.12  Lab
 
@@ -740,21 +675,21 @@ $ command -v arm-none-eabi-gcc
 /home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc
 ```
 
-Open another terminal and run `echo "$CROSS_COMPILE"` before sourcing the script. It should be empty. That is intentional: the book environment appears only when you ask for it.
+Open another terminal from the desktop, not from the already-configured shell, and run `echo "$CROSS_COMPILE"` before sourcing. With no prior setup it should be empty. A child terminal can inherit its parent's exported variables, so an inherited value is not evidence of a `.bashrc` change.
 
 ## 3.13  Pitfalls
 
 - **`tftp` blocked by firewall.** Ubuntu's UFW, if enabled, drops UDP/69 silently. `sudo ufw status` first.
-- **NFS over Wi-Fi to a slow board.** Booting a kernel over NFS-root on Wi-Fi works but is brittle. If you see "VFS: Unable to mount root fs", it is almost always NFS timing out, not a real kernel bug. Use wired.
+- **NFS-root failure.** Prefer the wired lab link. For "VFS: Unable to mount root fs", inspect the full preceding error, `root=`/`nfsroot=`/`ip=` arguments, built-in NFS/network support, host exports/firewall, and rootfs contents. That message alone does not identify a timeout.
 - **Forgot to source `env.sh`.** If `arm-none-linux-gnueabihf-gcc` or `arm-none-eabi-gcc` is not found, run `. ~/imx6ull/scripts/env.sh` in that terminal.
 - **Wrong compiler on `PATH`.** `which arm-none-linux-gnueabihf-gcc` and `which arm-none-eabi-gcc` must both point inside `/home/<you>/imx6ull/toolchains/`. If either points into `/usr/bin`, fix the environment before building.
-- **`dd` to the wrong device.** Every embedded engineer has done this once. Use the helper from §3.9 and you will only do it once.
-- **`sudo` and environment variables.** `sudo CROSS_COMPILE=arm-none-linux-gnueabihf- make` does *not* pass `CROSS_COMPILE` unless `sudo`'s `env_reset` is disabled. Build without `sudo`. Install with `sudo`.
+- **Wrong storage destination.** Stop if identity is uncertain. No disk-letter filter can distinguish a spare card from a host disk; repeat identification and unmount checks at each write.
+- **Building with `sudo`.** Build as the normal user. Plain `sudo make` may lose inherited compiler selection and creates root-owned output. Explicit assignments such as `sudo CROSS_COMPILE=...` can work subject to sudo policy, but are not a reason to build as root or disable `env_reset`. Use `sudo` only for the specific restricted operation.
 
 ## 3.14  Going deeper
 
-- `man 8 exportfs`, `man 5 exports`, `man 8 tftpd`, and `man 5 udev` explain the services configured in this chapter.
-- `picocom`'s `-l` (lock-file) and `-i` (initstring) options are useful for scripting boot.
+- `man 8 exportfs`, `man 5 exports`, and `man 8 tftpd` explain the optional services configured in this chapter.
+- In picocom, `-l` disables locking, `-i` skips initialization, and `-t` sends an initialization string. They are not needed for the normal console command; do not add options without checking the manual.
 - *The TCP/IP Guide* (Charles Kozierok) on TFTP and NFS protocols if you want to know what is on the wire.
 - If you intend to run a lot of cross-builds, look at `ccache` (`sudo apt install ccache`) and prepend it to `CROSS_COMPILE`: `CROSS_COMPILE="ccache arm-none-linux-gnueabihf-"`. We do *not* use it in this book because it occasionally masks subtle dependency bugs in Makefiles we're trying to read.
 

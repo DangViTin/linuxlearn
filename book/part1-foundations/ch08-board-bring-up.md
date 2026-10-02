@@ -1,6 +1,6 @@
 # Chapter 8: Hardware bring-up checklist
 
-> **What:** the physical, hands-on first contact with the Point Atom MINI. By the end you have checked power, opened the built-in USB-TTL serial console, identified the boot-mode switch, confirmed the USB-OTG recovery path, and prepared the SD-card workflow.
+> **What:** inspect the MINI, document its power arrangement, open its serial bridge, confirm ROM SDP enumeration, and identify the spare card. Image transfer and code execution are later milestones.
 >
 > **Why:** at this point we do **not** have a known-good boot image yet. That is normal. The goal of this chapter is not to boot Linux. The goal is to prove the board can power up, expose its debug ports, and use USB mode to enter the Boot ROM's SDP recovery path.
 >
@@ -19,7 +19,7 @@ At the start of this book, we have:
 So this chapter does **not** ask you to boot a stock image. It asks you to verify the things that do not require a boot image:
 
 - The board has no obvious physical damage.
-- The power rails are not shorted.
+- An unpowered resistance screen shows no suspected short; this is not proof that every rail is healthy.
 - The built-in USB-TTL serial bridge appears on the host.
 - The boot-mode selector can select USB mode, where the Boot ROM starts SDP.
 - The i.MX6ULL Boot ROM enumerates as a USB SDP device.
@@ -33,37 +33,54 @@ Before connecting power, put the board on an anti-static mat and do a visual pas
 
 1. **Visible damage.** Look at every connector. Are any pins bent? Are any solder joints cracked or incomplete? Are any capacitors discolored? Did any screw hole damage a trace? Reject and return the board if you find serious damage.
 2. **Connectors.** Locate the USB-OTG port, the built-in USB-TTL debug port, Ethernet RJ45, microSD slot, 40-pin expansion header, LCD ribbon connector, JTAG header, and any power input.
-3. **Boot-mode selector.** Locate the selector and identify its four labeled modes: **SD**, **eMMC**, **NAND**, and **USB**. Record the switch pattern for each mode.
+3. **Boot-mode selector.** Match your PCB revision to the MINI v2.2 schematic. Record switch numbering/ON direction and compare the patterns in Section 8.5. Do not infer positions from mode names alone.
 
 Photograph the top and bottom of the board. Also photograph the boot switch in each position. These photos save time later when the board is inside a case or under cables.
 
 ## 8.3  Power rails, measure before applying power
 
+### Choose the power arrangement before any cable
+
+The reference MINI v2.2 power sheet (sheet 3, PDF page 4) has a DC converter, `USB_TTL` VBUS (`VUSB`), OTG VBUS circuitry, K1, and rail headers JP2/JP3. The schematic's `DCDC_5V` rail is **not** a specification for the barrel input. Do not plug a guessed 5 V/12 V supply into that input.
+
+Use the supplier's arrangement for your **exact baseboard and core revision**. Record the input connector, rated voltage/current/polarity, K1 position, and any jumper settings before applying power. Attach the two USB data cables only if that arrangement documents their VBUS paths. If you have only the schematic and cannot establish those details, stop and obtain the matching board power guide; the book does not provide an electrically validated universal jumper recipe.
+
+| Connection | Role | Power check before attachment |
+|---|---|---|
+| Supplier-approved supply input | Main board supply in the selected arrangement | Rating, polarity, selector/jumpers match the guide |
+| USB-TTL / DEBUG USB | Host serial bridge | Cable carries VBUS; determine whether `VUSB` can feed the board in the selected K1 state |
+| USB-OTG | ROM SDP data link | Cable also carries VBUS; check the documented OTG isolation/power path |
+| External TTL adapter, if used | UART data only | 3.3 V signal levels; leave adapter VCC disconnected |
+
+A power switch may leave the bridge or other circuitry partly supplied through USB. For a **cold power cycle**, disconnect the main input and every USB/power-capable adapter, allow rails to discharge, then reconnect in the documented order. Never move power jumpers on a powered board. This conservative prerequisite is deliberate: the schematic has been inspected, but simultaneous-input behavior has not been measured here.
+
 If you are a hardware engineer, this is normal practice. If you are not, do it once here and keep the habit.
 
 Before any USB cable goes in:
 
-1. Put a multimeter on **continuity** mode.
-2. Probe **3V3** to **GND** on a header or test point. Expected: open circuit or several kOhm. **Direct short = do not power.**
-3. Probe **5V** to **GND**. Expected: open circuit or several kOhm.
+1. Disconnect all supplies, USB cables, and adapters; allow capacitors to discharge. Use known labeled test points, not guessed adjacent pins.
+2. Select **resistance** mode and measure 3V3-to-GND, then 5V-to-GND where accessible. Record settled values. A brief continuity beep can be capacitors charging; the beep threshold is meter-dependent.
+3. A persistent near-zero reading suggests a short: stop and investigate. No normal-resistance threshold is specified here without measurements for this revision. A higher reading alone does not certify every rail.
 
-After connecting power:
+After connecting the documented supply arrangement, switch the meter to **DC voltage**, with the black probe on known GND. Secure the probe so it cannot slip across nearby pins:
 
 1. Probe **3V3** to **GND**. Expected: about 3.30 V.
 2. Probe **5V** to **GND** if accessible. Expected: about 5 V.
 
 A board that resets after a few minutes is often a power problem. It is better to catch this before writing any boot code.
 
+These external-rail readings do not validate core/DDR rail sequencing or every supply. If values are unexpected, disconnect power before investigating.
+
 ## 8.4  Built-in USB-TTL serial console
 
 The Point Atom MINI already includes a USB-to-TTL serial bridge for the debug UART. You do **not** need an external CP2102, CH340, FTDI, or jumper wires for normal use.
 
-Connect the board's **USB-TTL** or **DEBUG USB** port to the host. This is separate from the USB-OTG recovery port. Check the silkscreen.
+After Section 8.3's power-path check, attach USB-TTL/DEBUG USB. It is separate from the USB-OTG port; check the silkscreen.
 
 On Linux, check which serial device appeared:
 
 ```sh
-$ dmesg | tail -20
+$ sudo dmesg | tail -20
 ```
 
 You should see something like one of these:
@@ -75,16 +92,18 @@ ch341-uart converter now attached to ttyUSB0
 Open it at 115200 8N1:
 
 ```sh
-$ picocom -b 115200 /dev/ttyUSB0
+$ sudo picocom -b 115200 /dev/ttyUSB0
 ```
 
 If your host reports `/dev/ttyACM0`, use that instead:
 
 ```sh
-$ picocom -b 115200 /dev/ttyACM0
+$ sudo picocom -b 115200 /dev/ttyACM0
 ```
 
 At this point, silence is normal. We do not yet have a bootable SD image, and the Boot ROM does not print a banner on UART. The important test here is that the host can open the serial port and keep it open.
+
+Opening the bridge does not prove the SoC's UART TX pin or baud setup. A factory image in eMMC/NAND may print in its storage mode: record that output rather than erasing it. If no device appears inside an Ubuntu VM, attach the bridge to the guest and close any Windows-side serial session. Permission denied on logs is handled by the explicit `sudo dmesg`; restricted device access uses `sudo` without changing groups.
 
 Later, when our own image prints text, this is where it will appear.
 
@@ -111,16 +130,27 @@ The Point Atom MINI exposes four boot modes:
 
 The board normally has either eMMC or NAND fitted, depending on the core-board version. A storage mode cannot boot if that device is not fitted or does not contain a valid image. Record all four switch patterns even if your core board does not contain both storage types.
 
-The Boot ROM samples boot pins at reset. Do not expect a switch change to take effect while the board is already running.
+For the **MINI v2.2 schematic's printed D1-D8 order**, its BOOT table gives:
+
+| Board selection | D1 | D2 | D3 | D4 | D5 | D6 | D7 | D8 |
+|---|---|---|---|---|---|---|---|---|
+| USB | OFF | ON | OFF | OFF | OFF | OFF | OFF | OFF |
+| MicroSD | ON | OFF | OFF | OFF | OFF | OFF | ON | OFF |
+| eMMC | ON | OFF | ON | OFF | OFF | ON | ON | OFF |
+| NAND | ON | OFF | OFF | OFF | ON | OFF | OFF | OFF |
+
+This is transcribed from the schematic, not a hardware-tested table for every MINI/ALPHA revision. Match D1 to the PCB's actual switch number 1 and use its printed ON mark; do not reverse the row because the board is rotated. D1/D2 route BOOT_MODE1/0; the remaining switches configure storage-related straps. USB must result in SoC mode `01`; storage selections use Internal Boot with additional configuration. Confirm your core's fuse state and routing rather than assuming an unprovisioned board.
+
+Straps are latched on the documented reset event [RM 8.2.1]. Change them only while fully unpowered and use the cold-cycle procedure above; a warm reset button need not re-sample every setting.
 
 ## 8.6  Confirm USB mode and SDP enumeration
 
-This test verifies that the Boot ROM and USB-OTG recovery path are available.
+This checks **ROM SDP enumeration**, not a recovery download or execution.
 
-1. Power off the board.
+1. Disconnect all sources for a cold cycle as in Section 8.3.
 2. Set the boot-mode switch to **USB** mode.
-3. Connect the board's **USB-OTG** port to the host.
-4. Power on the board.
+3. Verify the power-guide arrangement permits the USB-OTG cable's VBUS connection.
+4. Reconnect the documented power/USB arrangement with the switch already set.
 5. On the host, run:
 
 ```sh
@@ -138,10 +168,10 @@ The exact text can vary, but `15a2:0080` is the key. It means the i.MX6ULL Boot 
 You can also ask `uuu` to list visible i.MX devices:
 
 ```sh
-$ uuu -lsusb
+$ sudo "$IMX6ULL_HOME/build/mfgtools/uuu/uuu" -lsusb
 ```
 
-If you see the SDP device, USB mode works. We are not pushing an image yet because we have not built one. Later chapters will use this same path to load our bare-metal `.imx` images.
+Seeing SDP proves visibility of the ROM interface. It does not prove command acceptance, image transfer, authentication, or entry-point execution. Chapter 9's observed LED is the first execution check.
 
 If you do not see `15a2:0080`:
 
@@ -149,7 +179,7 @@ If you do not see `15a2:0080`:
 2. Confirm you are using the USB-OTG port, not the USB-TTL debug port.
 3. Try another USB data cable.
 4. Power-cycle the board with the switch already in **USB** mode.
-5. Check `dmesg` for USB errors.
+5. Check `sudo dmesg` for USB errors and, in a VM, confirm the ROM device is attached to Ubuntu rather than Windows.
 
 ## 8.7  Prepare the SD-card workflow
 
@@ -158,18 +188,12 @@ We are not writing a boot image yet. We only prepare the safe workflow so that C
 Insert a microSD card into the host and identify it:
 
 ```sh
-$ lsblk
+$ lsblk -o NAME,PATH,SIZE,MODEL,SERIAL,TRAN,RM,TYPE,MOUNTPOINTS
 ```
 
-Example:
+Read the `PATH`, `TYPE`, and `MOUNTPOINTS` columns in your actual output. For a card observed as `/dev/sdc`, the whole card is that `disk` row, not a `part` row such as `/dev/sdc1`. This is an example name, not a promised result.
 
-```text
-sdc       8:32   1   7.5G  0 disk
-|-sdc1    8:33   1   256M  0 part
-`-sdc2    8:34   1   7.2G  0 part
-```
-
-Write the device name in your notes. In this example the device is `/dev/sdc`, not `/dev/sdc1`.
+Record capacity, model/serial, reader connection, and today's device name. Names can change after reconnecting; a note is not future authorization to write that path. Where available, also record `/dev/disk/by-id/` identity.
 
 Do **not** run `dd` casually. A wrong device name can erase your host disk. Before every SD write in this book:
 
@@ -177,11 +201,11 @@ Do **not** run `dd` casually. A wrong device name can erase your host disk. Befo
 2. Insert or remove the SD card.
 3. Run `lsblk` again.
 4. Confirm which device appeared or disappeared.
-5. Only then write to that device.
+5. Match capacity/model/serial, reject host/system/data disks, and unmount every mounted card partition. Write only when the later chapter supplies a real image and the identity is unambiguous.
 
 The first real SD write happens later when we build an image. For now, the task is to know the device name and make sure the card reader works.
 
-> **SD-card rule:** write to the whole device, such as `/dev/sdc`, not to a partition such as `/dev/sdc1`.
+> **Raw/full-card image rule:** the images used by these labs are written to the whole card. That is not a universal rule for every block-device operation or filesystem image.
 
 ## 8.8  What `uuu` will do later
 
@@ -190,7 +214,7 @@ The first real SD write happens later when we build an image. For now, the task 
 When the board selector is in **USB** mode, the Boot ROM enters SDP. Later chapters will use commands like:
 
 ```sh
-$ uuu -b sdp_recovery led.imx
+$ sudo "$IMX6ULL_HOME/build/mfgtools/uuu/uuu" led.imx
 ```
 
 Conceptually, that command does two things:
@@ -222,7 +246,7 @@ Suitable adapters include:
 - FT2232H-based adapters, which work with OpenOCD.
 - J-Link EDU or J-Link Plus, which provide commercial tooling and device support.
 
-Setup is deferred to Chapter 56. For now, only confirm where the header is and whether you need to solder pins.
+Setup is deferred to [JTAG/OpenOCD/GDB](../part8-debug/ch118-jtag-openocd-gdb.md). Header location is optional now. Before connecting an adapter later, verify the exact pinout: voltage sense is normally a reference input, not permission to power the target from the probe.
 
 > **OpenOCD:** the host program that talks to a JTAG adapter and exposes a GDB server.
 
@@ -240,29 +264,24 @@ Do not treat a dark link LED as a board failure yet. Some PHYs need software con
 
 ## 8.11  End-of-chapter checklist
 
-| Item | Status |
-|------|--------|
-| Board revision recorded | [ ] |
-| Connectors and boot switch photographed | [ ] |
-| 3V3 and 5V rails checked for shorts before power | [ ] |
-| 3V3 and 5V measured after power | [ ] |
-| Built-in USB-TTL serial bridge appears on host | [ ] |
-| `picocom` opens the serial port at 115200 8N1 | [ ] |
-| USB mode confirmed by SDP device `15a2:0080` | [ ] |
-| SD, eMMC, NAND, and USB switch patterns recorded | [ ] |
-| SD-card device identification practiced with `lsblk` | [ ] |
-| JTAG header located | [ ] |
+| Required-now record | Observation / failure reason |
+|---|---|
+| Base/core PCB revision and matching guide | |
+| Supply input, rating/polarity, selector/jumpers, USB power paths | |
+| Unpowered resistance screen, settled values | |
+| Accessible powered 3V3/5V readings | |
+| Serial bridge identity and port opened at 115200 8N1 | |
+| USB switch pattern and ROM VID:PID `15a2:0080` | |
+| Spare card capacity/model/serial and today's device path | |
+| Photographs of connectors, switch order, and cabling | |
+
+Optional: locate JTAG and observe Ethernet. Neither is a prerequisite for the first LED image. Serial opening and ROM enumeration are access checks; transfer and execution are not yet checked.
 
 When the checklist is complete, the board is ready for Part II. It may still have no bootable image. That is expected because this chapter verifies access paths, not a previously built system.
 
 ## 8.12  Lab
 
-Complete these four tasks:
-
-1. Photograph the board, connectors, boot switch, and cable positions.
-2. Record the serial device name, for example `/dev/ttyUSB0` or `/dev/ttyACM0`.
-3. Record the exact `lsusb` or `uuu -lsusb` output while the selector is in USB mode.
-4. Insert an SD card into the host and practice identifying the whole-card device with `lsblk`.
+Complete the required-now table in `~/imx6ull/notes/ch08-bring-up.md`, including actual readings and any reason a step cannot proceed. Attach your board/cabling photos, serial identity, exact ROM enumeration output, and card identity. Mark unperformed checks as unperformed rather than filling a box from an expected-output example.
 
 Keep these results as the recovery checklist for later chapters.
 
@@ -273,18 +292,18 @@ Keep these results as the recovery checklist for later chapters.
 - **Changing boot switches while powered.** Power off first. Boot pins are sampled at reset.
 - **Using a charge-only USB cable.** The board may power up but never enumerate. Use a data cable.
 - **Writing to the wrong SD device.** Always compare `lsblk` before and after inserting the card.
-- **Powering the board from two sources.** Use one power source unless the board schematic explicitly permits both inputs at the same time.
+- **Assuming a data cable cannot supply power.** USB-TTL and OTG carry VBUS. Use only the revision-specific documented combination; unplug all supply paths for a real cold cycle.
 - **Assuming Ethernet is broken because no link LED appears.** Full Ethernet testing waits until software configures the PHY.
 
 ## 8.14  Going deeper
 
 - The Point Atom MINI schematic. Print the pages for power, boot mode, USB-OTG, USB-TTL, and SD card.
-- NXP AN12085, *Designing a Hardware Solution Based on the i.MX 6UL/6ULL*.
+- **IMX6ULLHDG**, *i.MX6ULL Hardware Development Guide*, in [NXP's documentation catalog](https://www.nxp.com/products/i.MX6ULL?linkline=Data+Sheet). It is a SoC guide, not the MINI barrel-supply specification.
 - The `uuu` README at <https://github.com/nxp-imx/mfgtools>.
-- An oscilloscope-based board bring-up guide. A 2-channel 100 MHz scope covers the measurements used in this book.
+- An oscilloscope is optional for the checks here. Select probes/bandwidth for a later specific signal measurement; a generic scope rating does not certify DDR or every interface.
 
 ---
 
-> Part I ends here. You have a host that can build, a board whose physical access paths are known, and a Boot ROM recovery path you have tested.
+> Part I ends with a configured host, recorded physical checks, and confirmed ROM SDP enumeration. Recovery transfer/execution remains to be tested.
 >
 > Part II begins with a blinking LED in pure ARM assembly. We will create the first image ourselves, then use the serial console and USB-OTG recovery path from this chapter to run it.

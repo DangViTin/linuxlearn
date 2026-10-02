@@ -217,15 +217,17 @@ mount --bind /merged/etc  /merged-root/etc
 mount --bind /merged/var  /merged-root/var
 mount --bind /merged/home /merged-root/home
 
-# Pivot
-mkdir -p /merged-root/oldroot
-pivot_root /merged-root /merged-root/oldroot
+# Move the virtual filesystems into the new root.
+mkdir -p /merged-root/proc /merged-root/sys /merged-root/dev
+mount --move /proc /merged-root/proc
+mount --move /sys  /merged-root/sys
+mount --move /dev  /merged-root/dev
 
 # Exec the real init
-exec /sbin/init
+exec switch_root /merged-root /sbin/init
 ```
 
-That `/init` is ~30 lines but does the whole dance: mount RO rootfs, mount overlay storage, overlay-mount the writable subdirs, pivot the root, exec real init.
+That `/init` is small but does the whole dance: mount RO rootfs, mount overlay storage, overlay-mount the writable subdirs, move `/proc` `/sys` `/dev`, switch root, exec real init.
 
 A simpler approach (no initramfs) that works for some setups: a small `S00-overlay` script in `/etc/init.d/` that runs *before* `S01-mountall` (BusyBox runs them alphabetically). But mounting overlay over a partial filesystem is fragile. Initramfs is cleaner.
 
@@ -276,7 +278,10 @@ Compare with the same test on a RW rootfs: half the time you get a clean boot. H
 A nice property of Pattern B: **factory reset is trivial**. Erase the overlay partition:
 
 ```
-[root@pa-mini:~]# rm -rf /overlay/upper-*/*
+[root@pa-mini:~]# for d in /overlay/upper-etc /overlay/upper-var /overlay/upper-home; do
+>   [ -d "$d" ] && find "$d" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+> done
+[root@pa-mini:~]# sync
 [root@pa-mini:~]# reboot
 ```
 
@@ -289,7 +294,7 @@ A common production button-combination is "hold the recovery button at boot for 
 1. **Convert your Chapter 31/35 rootfs to RO + tmpfs (Pattern A).** Test that writes to `/tmp/` work but writes to `/etc/` fail. Power-cycle 10 times. Verify no `fsck` errors.
 2. **Set up Pattern B.** Partition an SD card with `rootfs` + `overlay` partitions. Build the initramfs. Boot. Verify `/etc/test` persists across reboots.
 3. **Power-cycle stress test.** Write a script that creates a counter file in the overlay, increments it once per second, and `sync`s. Run it. Power-cycle 100 times at random intervals. After 100 cycles, the counter should be roughly accurate (within ~2 per cycle of slack for sync timing) and the rootfs should never have needed `fsck`.
-4. **Factory reset.** Trigger from inside a running shell (`rm -rf /overlay/upper-*. reboot`). Verify pristine state on next boot.
+4. **Factory reset.** Trigger from inside a running shell by clearing only the known overlay upper directories, then `sync && reboot`. Verify pristine state on next boot.
 5. **Quantify the cost.** What's the boot-time overhead of the overlay setup? (Time the initramfs's overlay mounts.) What's the RAM cost?
 
 ## 35B.8  Pitfalls
@@ -300,7 +305,7 @@ A common production button-combination is "hold the recovery button at boot for 
 - **Overlay `workdir` must be on the same filesystem as `upperdir`.** Different filesystems for `workdir` and `upperdir` is an immediate mount failure.
 - **Tmpfs filling up.** `/var/log` on tmpfs without log rotation, plus a chatty daemon, eats your RAM. Set `size=` explicitly and use `logrotate` (or just `> /var/log/messages` from cron).
 - **Apps writing to `/etc/` expecting persistence.** If your app does `fopen("/etc/myapp.conf", "w")` to save settings, with Pattern A those settings are lost on reboot. Either use Pattern B (overlay) or move the writable file to `/data/` (a real persistent partition).
-- **`pivot_root` failing in initramfs.** `pivot_root` requires the new root to not be `/`. Always operate on `/merged-root` or similar, never directly on `/`.
+- **`switch_root` missing.** The initramfs must include a `switch_root` applet, usually from BusyBox. Without it, the overlay setup works but cannot hand off to the real rootfs.
 
 ## 35B.9  Going deeper
 
@@ -310,4 +315,4 @@ A common production button-combination is "hold the recovery button at boot for 
 - **`squashfs`**: another RO filesystem, slower but more compact than erofs. Common on initramfs images.
 - **`A/B partition schemes`**: pair this chapter with Ch 63 (Field updates). Two RO rootfs partitions, switch atomically on update.
 
-> Next chapter: **Chapter 35C: Container runtimes on embedded.** With a stable RO rootfs base, container engines like Podman become an attractive way to ship the variable application layer.
+> Next chapter: **Chapter 35H: Rootfs security basics.** A read-only rootfs helps reliability. Before containers or release images, we remove the lab shortcuts that should not ship.

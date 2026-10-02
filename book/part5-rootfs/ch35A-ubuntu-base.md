@@ -41,22 +41,22 @@ The headline cost is ~25× the disk and ~3× the RAM vs Buildroot. On i.MX6ULL w
 
 ```sh
 $ cd ~/imx6ull
-$ wget http://cdimage.ubuntu.com/ubuntu-base/releases/22.04/release/ubuntu-base-22.04.5-base-armhf.tar.gz
+$ wget https://cdimage.ubuntu.com/ubuntu-base/releases/26.04/release/ubuntu-base-26.04-base-armhf.tar.gz
 $ mkdir ubuntu-rootfs
-$ sudo tar -xzf ubuntu-base-22.04.5-base-armhf.tar.gz -C ubuntu-rootfs/
+$ sudo tar -xzf ubuntu-base-26.04-base-armhf.tar.gz -C ubuntu-rootfs/
 $ ls ubuntu-rootfs/
 bin   dev  etc   home  lib    media  mnt  opt
 proc  root  run   sbin  srv    sys    tmp  usr
 var
 ```
 
-That's already a minimal Ubuntu 22.04 LTS rootfs for ARM. Total size: ~80 MB. Use `20.04` or `24.04` if you prefer, same workflow.
+That's already a minimal Ubuntu 26.04 LTS rootfs for ARM. Total size before extra packages is around a few dozen MB compressed and about 80 MB after extraction. Use `24.04` if you need the older LTS, same workflow.
 
-Three release tracks Ubuntu publishes:
+Three useful Ubuntu LTS choices:
 
-- **20.04 LTS**: supported through April 2025 (and ESM through 2030).
-- **22.04 LTS**: supported through April 2027 (ESM 2032). Current LTS recommended for new work.
-- **24.04 LTS**: supported through April 2029 (ESM 2034).
+- **22.04 LTS**: standard security maintenance through May 2027.
+- **24.04 LTS**: standard security maintenance through May 2029.
+- **26.04 LTS**: standard security maintenance through May 2031.
 
 Pick the most-recent LTS unless something specific requires older.
 
@@ -141,20 +141,20 @@ The default `sources.list` in `ubuntu-base` is empty. Add the official Ubuntu po
 
 ```sh
 root@host:/# cat > /etc/apt/sources.list <<'EOF'
-deb http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
-deb http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
-deb http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+deb http://ports.ubuntu.com/ubuntu-ports resolute main restricted universe multiverse
+deb http://ports.ubuntu.com/ubuntu-ports resolute-updates main restricted universe multiverse
+deb http://ports.ubuntu.com/ubuntu-ports resolute-security main restricted universe multiverse
 EOF
 ```
 
-(`jammy` is the codename for 22.04. Use `focal` for 20.04 or `noble` for 24.04.)
+(`resolute` is the codename for 26.04. Use `noble` for 24.04 or `jammy` for 22.04.)
 
 For users in China who find the official mirrors slow, the Tsinghua or USTC mirror is much faster:
 
 ```sh
-deb http://mirrors.ustc.edu.cn/ubuntu-ports jammy main restricted universe multiverse
-deb http://mirrors.ustc.edu.cn/ubuntu-ports jammy-updates main restricted universe multiverse
-deb http://mirrors.ustc.edu.cn/ubuntu-ports jammy-security main restricted universe multiverse
+deb http://mirrors.ustc.edu.cn/ubuntu-ports resolute main restricted universe multiverse
+deb http://mirrors.ustc.edu.cn/ubuntu-ports resolute-updates main restricted universe multiverse
+deb http://mirrors.ustc.edu.cn/ubuntu-ports resolute-security main restricted universe multiverse
 ```
 
 ### Install essential packages
@@ -237,11 +237,11 @@ After kernel boot:
 ```
 [OK] Started Serial Getty on ttymxc0.
 
-Ubuntu 22.04.5 LTS pa-mini ttymxc0
+Ubuntu 26.04 LTS pa-mini ttymxc0
 
 pa-mini login: dev
 Password:
-Welcome to Ubuntu 22.04.5 LTS (GNU/Linux 6.6.0 armv7l)
+Welcome to Ubuntu 26.04 LTS (GNU/Linux 6.6.0 armv7l)
 ...
 
 dev@pa-mini:~$ uname -a
@@ -328,4 +328,4 @@ For our continuing work in this book, **Buildroot** is the default. **Ubuntu-bas
 - **`Ubuntu Core`**: Ubuntu's official "embedded" variant. Uses snaps instead of apt. Immutable rootfs. Different philosophy from this chapter. Worth knowing about.
 - **`Yocto-meta-ubuntu`** layer, combines Yocto-style builds with Ubuntu's package archive.
 
-> Next chapter: **Chapter 35B: Read-only rootfs + overlayfs.** Whichever rootfs you chose, when you ship to the field, you want it mounted read-only. Here is how.
+> Next chapter: **Chapter 35F: Your application as a service.** Now that you have several rootfs choices, we make the actual product application start, stop, log, and restart cleanly.

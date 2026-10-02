@@ -1,12 +1,12 @@
 ---
-chapter: 23A
+chapter: 24E
 title: Multi-variant FIT images and DT overlays
 part: III - U-Boot, deeply (inserted v1.2)
 estimated_pages: 14
 status: draft
 ---
 
-# Chapter 23A: Multi-variant FIT images and DT overlays
+# Chapter 24E: Multi-variant FIT images and DT overlays
 
 > **What:** one FIT image that boots correctly on three different board variants, same kernel, different DTBs, with the variant selected at boot time from a strap pin or an EEPROM ID.
 > **FIT:** Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
@@ -17,7 +17,7 @@ status: draft
 > **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 
-## 23A.1  The scenario
+## 24E.1  The scenario
 
 Picture a shipping product on the i.MX6ULL with three hardware revs:
 
@@ -27,7 +27,7 @@ Picture a shipping product on the i.MX6ULL with three hardware revs:
 
 You have one rootfs (the application code is the same), one kernel (the same drivers compile in, just probe-as-needed), but **three different DTBs** because each board has different peripherals enabled. You want one OTA package.
 
-## 23A.2  The .its file with three configurations
+## 24E.2  The .its file with three configurations
 
 Extend the Chapter 23 single-config FIT to three:
 
@@ -126,7 +126,7 @@ ls -lh multi.itb
 
 The kernel is stored once, no matter how many configurations reference it. Same for the rootfs. FIT does not duplicate payloads.
 
-## 23A.3  Booting a specific configuration
+## 24E.3  Booting a specific configuration
 
 From U-Boot:
 
@@ -148,7 +148,7 @@ The `bootm` flow:
 
 The whole thing is one command.
 
-## 23A.4  Detecting which variant we are running on
+## 24E.4  Detecting which variant we are running on
 
 The interesting part is *automating* the selection. Three common patterns.
 
@@ -230,7 +230,7 @@ One-time programmable, hard to copy, tamper-resistant. Used in security-critical
 
 For dev work, strap pins or EEPROM. For shipping security-critical products, eFuse.
 
-## 23A.5  DT overlays, the alternative
+## 24E.5  DT overlays, the alternative
 
 Instead of N full DTBs, you can have **one base DTB** and **N overlay files** that patch it. An overlay is a small DTS fragment that says "add this node, modify this property, delete this other thing." U-Boot applies the overlay before passing the DT to the kernel.
 
@@ -305,7 +305,7 @@ For a dev board with ~5 variants, separate DTBs are simpler. For a product line 
 
 For a dev board, you can usually ship one image per board model and call it done. This chapter exists because real product lines outgrow that approach: once you have three or more variants, the per-variant build matrix and OTA-channel overhead push you toward the multi-DTB or overlay model described above.
 
-## 23A.6  Putting it together, the full multi-variant boot script
+## 24E.6  Putting it together, the full multi-variant boot script
 
 ```
 # In U-Boot environment, set once:
@@ -332,7 +332,7 @@ That's an in-U-Boot embedded script. It probes the EEPROM, reads the ID byte, ma
 
 When you receive a unit, you don't have to ask which rev it is. The unit identifies itself at boot.
 
-## 23A.7  Lab
+## 24E.7  Lab
 
 1. **Build a multi-config FIT** with two configurations differing only in a model-string change in the DT. Verify both boot.
 2. **Add a strap-pin reader** in your custom `board_late_init`. Tie a GPIO high or low on the board. Verify U-Boot reads it correctly and `env_set`s the right `variant`.
@@ -340,7 +340,7 @@ When you receive a unit, you don't have to ask which rev it is. The unit identif
 4. **Make a deliberately broken overlay** (reference a label that doesn't exist in the base). Observe the `fdt apply` failure and the fallback to the base DT.
 5. **Read U-Boot's `fdt apply` source.** `cmd/fdt.c` and `common/fdt_support.c`. Trace what happens when an overlay references a symbol that doesn't exist.
 
-## 23A.8  Pitfalls
+## 24E.8  Pitfalls
 
 - **Hash mismatch in FIT.** If you forget `hash-1 { algo = "sha256"; };` on an image, `bootm` may print a warning and proceed (depending on config). For production, *always* hash. For signed FIT (Chapter 124), hashes are mandatory.
 - **Strap pin floats.** If your strap GPIO has no pull resistor and your board mounting position can leave it floating, you may read a different rev on every boot. Always pull explicitly.
@@ -349,13 +349,13 @@ When you receive a unit, you don't have to ask which rev it is. The unit identif
 - **`fdt resize` skipped.** Without it, applying an overlay can run out of space and silently truncate. Resize generously before `apply`.
 - **Configurations missing a `kernel` reference.** Boot fails. Every configuration must specify at minimum `kernel` and `fdt`.
 
-## 23A.9  Going deeper
+## 24E.9  Going deeper
 
 - **`doc/usage/fit/` and `doc/uImage.FIT/`** in U-Boot source, FIT spec, signing, multi-config.
 - **Linux Documentation `Documentation/devicetree/overlay-notes.txt`**: what overlays can and cannot do.
 - **DENX FIT guide**: concise + practical.
 - **`tools/mkimage.c`** for FIT details. Particularly the `-r` (required) and `-K` (key) flags for signed-FIT prep.
 
-> Next chapter: **Chapter 24: Workflows: TFTP, NFS, USB-OTG.** With U-Boot fully under our control, we wire it into a fast development loop, edit on host, network-boot on target, no SD-card reflashing.
-> **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
-> **TFTP:** Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
+**Previous:** [Chapter 24D: Board identity and variant selection in U-Boot](ch24D-uboot-board-identity-variants.md)
+
+**Next:** [Chapter 24F: Watchdog, bootcount, and rollback in U-Boot](ch24F-uboot-bootcount-watchdog-rollback.md)

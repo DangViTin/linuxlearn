@@ -17,7 +17,7 @@ int   y;               // uninitialized → .bss
 const int z = 42;      // const + initialized → .rodata
 ```
 
-On a hosted system (your Linux laptop), the loader reads the ELF, mmaps `.data` and `.rodata` from disk, allocates and zero-fills `.bss`, and your program starts. On bare-metal, *there is no loader*. We are loaded as a flat blob into OCRAM (or DRAM, later). Whoever loaded us is done. The rest is on us.
+On a hosted system (your Linux laptop), the loader reads the ELF, mmaps `.data` and `.rodata` from disk, allocates and zero-fills `.bss`, and your program starts. On bare-metal, *there is no loader*. We are loaded as a flat blob into OCRAM (or DRAM, later).
 
 So we, ourselves, must:
 - **Set a stack pointer.** Without it, the first C function call crashes.
@@ -28,24 +28,25 @@ So we, ourselves, must:
 Optionally, also: set up exception vectors, configure caches, enable the FPU. We do these later as we need them.
 
 ## 10.2  A linker script worth keeping
-The Chapter 9 program had no `.data` and no `.bss`. We slapped `-Ttext=0x00907400` on the command line and let it ride. For C code, we need a real script. Save it as `link.ld`:
+The Chapter 9 program had no `.data` and no `.bss`. We placed its `.text` at `0x00908000` with one linker option. For C code, we need a real script. Save it as `link.ld`:
 
 ```text
 ENTRY(_start)
 
 MEMORY
 {
-    OCRAM (rwx) : ORIGIN = 0x00907400, LENGTH = 0x00018C00  /* ~99 KB */
+    OCRAM (rwx) : ORIGIN = 0x00908000, LENGTH = 0x00018000  /* 96 KB */
 }
 
 SECTIONS
 {
     . = ORIGIN(OCRAM);
 
-    .text : ALIGN(4) {
+    .text ALIGN(4) : {
         KEEP(*(.vectors))      /* room for vector table later (Ch 15) */
         *(.text*)
         *(.rodata*)
+        . = ALIGN(4);
     } > OCRAM
 
     /* Mark the end of .text -- LMA of .data begins here. */
@@ -59,13 +60,14 @@ SECTIONS
      *   (a) we want startup.S to work unchanged when we move .data to DRAM in Ch 14,
      *   (b) habit is cheap, and bugs from "we will never need this" are expensive.
      */
-    .data : ALIGN(4) AT(_etext) {
+    .data ALIGN(4) : AT(_etext) {
         _sdata = .;
         *(.data*)
         _edata = .;
     } > OCRAM
+    _sidata = LOADADDR(.data);
 
-    .bss (NOLOAD) : ALIGN(4) {
+    .bss ALIGN(4) (NOLOAD) : {
         _sbss = .;
         *(.bss*)
         *(COMMON)
@@ -81,21 +83,23 @@ SECTIONS
 Decoded line by line:
 
 - **`ENTRY(_start)`**: names the symbol that `objdump` and `gdb` will treat as the executable entry. The Boot ROM does not consult this. It uses the IVT's `entry` field. But debuggers do, and getting it right keeps `gdb` from being puzzled.
-- **`MEMORY { OCRAM ... }`**: describes our one available region. ORIGIN is the load address. LENGTH is conservative: 128 KB total OCRAM, minus the first 28 KB the ROM uses for its working area = ~99 KB free starting at `0x00907400`.
+- **`MEMORY { OCRAM ... }`**: describes our one available region. `ORIGIN` is where the wrapper places the first program byte. `LENGTH` covers the remaining 96 KB up to the end of OCRAM at `0x00920000`.
 - **`. = ORIGIN(OCRAM);`**: the location counter starts at the region's base.
-- **`.text` section**: gathers all `.text*`, `.rodata*`, plus a `KEEP(*(.vectors))` placeholder for a future vector table. `KEEP` tells the linker not to remove this as unused, even if no symbol references it. `ALIGN(4)` keeps us word-aligned.
+- **`.text` section**: gathers all `.text*`, `.rodata*`, plus a `KEEP(*(.vectors))` placeholder for a future vector table. `KEEP` tells the linker not to remove this as unused, even if no symbol references it. The final `. = ALIGN(4);` makes `_etext` word-aligned.
 - **`_etext = .;`**: captures the location counter. This is where `.text` ends. It is also where the `.data` *load image* will be placed (see next line).
-- **`.data` section with `AT(_etext)`**: the important line. `AT(addr)` specifies a different LMA for the section. The VMA still flows from the location counter, immediately after `.text` in this case. The initial bytes for `.data` start at `_etext`. In our current layout the VMA and LMA are equal, so this is a no-op for now. The setup is ready for when we move `.data` to DRAM later.
+- **`.data ALIGN(4) : AT(_etext)`**: `ALIGN(4)` aligns the runtime address. `AT(_etext)` sets the load address. Notice their positions around the colon. GNU `ld` rejects `.data : ALIGN(4) AT(_etext)` because `AT(...)` must come before a post-colon `ALIGN(...)`.
+- **`_sidata = LOADADDR(.data)`**: asks the linker for `.data`'s actual load address. Startup code uses this symbol as its copy source.
 - **`_sdata` / `_edata`**: boundary symbols our startup uses to know how much to copy.
 - **`.bss (NOLOAD)`**: `NOLOAD` means: the linker does not write any bytes into the image for this section. The boundary symbols `_sbss` / `_ebss` are still exported so startup can zero the region.
 - **`_stack_top`**: computed at link time as the high water mark. The startup loads SP from this.
 - **`/DISCARD/`**: throws away ELF notes and attributes that have no place in a bare-metal binary.
 
-Three things in this script are easy to get wrong. Check them now.
+Four things in this script are easy to get wrong. Check them now.
 
-1. **Forgetting `KEEP` around the vector table.** When you later link with `-gc-sections`, the linker removes the table because nothing in C references it. `KEEP` prevents this.
-2. **Forgetting `AT(_etext)` for `.data`.** Then VMA = LMA always, and you don't notice anything is missing, until you move `.data` to DRAM and your initial values turn out to be whatever was in DRAM at boot.
-3. **Forgetting `NOLOAD` for `.bss`.** Without it, the linker may emit zero bytes for `.bss` into the image, inflating it from 200 bytes to 64 KB the moment you declare a global array.
+1. **Putting `ALIGN` and `AT` in the wrong order.** Use `.data ALIGN(4) : AT(_etext)`. Linker-script keywords have a fixed grammar, and `ld` reports only a line number when this order is wrong.
+2. **Forgetting `KEEP` around the vector table.** When you later link with `-gc-sections`, the linker removes the table because nothing in C references it. `KEEP` prevents this.
+3. **Forgetting `AT(_etext)` for `.data`.** Then VMA = LMA always, and you don't notice anything is missing, until you move `.data` to DRAM and your initial values turn out to be whatever was in DRAM at boot.
+4. **Forgetting `NOLOAD` for `.bss`.** Without it, the linker may emit zero bytes for `.bss` into the image, inflating it from 200 bytes to 64 KB the moment you declare a global array.
 
 ## 10.3  startup.S, the bridge from reset to `main`
 
@@ -139,10 +143,10 @@ _start:
     strlo   r2, [r0], #4
     blo     1b
 
-    /*  Copy .data from LMA to VMA.  In our current layout they are equal,
-        so this loop copies zero bytes.  Keep it.  When we move .data to
-        DRAM, this loop becomes necessary. */
-    ldr     r0, =_etext             @ source (LMA)
+    /*  Copy .data from LMA to VMA. In our current layout they are equal,
+        so each word is copied onto itself. When .data moves to another
+        memory region, this same loop performs the required relocation. */
+    ldr     r0, =_sidata            @ source (LMA)
     ldr     r1, =_sdata             @ destination (VMA)
     ldr     r2, =_edata
 2:  cmp     r1, r2
@@ -191,12 +195,12 @@ int main(void)
 {
     REG(CCM_CCGR1) |= (3u << 26);   /* GPIO1 clock on */
     REG(IOMUX_MUX) = 5;             /* ALT5 = GPIO */
-    REG(IOMUX_PAD) = 0x10B0;        /* standard low-speed output */
+    REG(IOMUX_PAD) = 0x17059;       /* vendor LED pad setting */
     REG(GPIO1_GDIR) |= LED_BIT;     /* output */
 
     for (;;) {
         REG(GPIO1_DR) ^= LED_BIT;
-        delay(2000000);
+        delay(500000);
     }
 }
 ```
@@ -255,12 +259,12 @@ A couple of flags worth highlighting:
 
 ```sh
 $ make
-arm-none-eabi-gcc ... -c -o startup.o startup.S
-arm-none-eabi-gcc ... -c -o main.o main.c
+arm-none-eabi-gcc -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -ffreestanding -fno-builtin -nostdlib -fno-common -O2 -g -Wall -Wextra -Werror=implicit-function-declaration -c -o startup.o startup.S
+arm-none-eabi-gcc -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -ffreestanding -fno-builtin -nostdlib -fno-common -O2 -g -Wall -Wextra -Werror=implicit-function-declaration -c -o main.o main.c
 arm-none-eabi-gcc -T link.ld -nostdlib -o led.elf startup.o main.o
 arm-none-eabi-size led.elf
    text    data     bss     dec     hex filename
-    288       0       0     288     120 led.elf
+    248       0       0     248      f8 led.elf
 arm-none-eabi-objcopy -O binary led.elf led.bin
 $ wc -c led.bin
 288 led.bin
@@ -268,7 +272,7 @@ $ wc -c led.bin
 
 A few observations:
 
-- **`text` grew from ~160 bytes (Ch 9) to 288 bytes.** We added a vector table (32 bytes) and the C function-call prologue/epilogue. Cheap.
+- **`text` grew from ~128 bytes (Ch 9) to 288 bytes.** We added a vector table (32 bytes) and the C function-call prologue/epilogue.
 - **`data` is 0.** No initialized globals in our C.
 - **`bss` is 0.** No uninitialized globals.
 
@@ -290,11 +294,11 @@ $ arm-none-eabi-size led.elf
 
 `data` is 4. The copy loop in `startup.S` now copies 4 bytes from LMA to VMA. Same end behavior. Meaningful test of the machinery.
 
-Wrap into `.imx` (same `wrap.sh` from Chapter 9) and push:
+Wrap into `.imx` with the same `wrap.py` from Chapter 9 and push:
 
 ```sh
-$ ./wrap.sh
-$ uuu -b sdp led.imx
+$ python3 wrap.py
+$ uuu led.imx
 ```
 
 LED blinks. We're now running compiled C on bare metal.
@@ -317,7 +321,7 @@ Find `_start`. You will see the four blocks:
 
 The literal pool follows the function. You can see the resolved addresses there.
 
-If you change the linker script's `OCRAM` origin, *every* literal-pool address changes, and that is what `ldr ... =const` is for. Try it: change ORIGIN to `0x00908000`, rebuild, redump. Confirm the literals updated. Then change it back.
+If you change the linker script's `OCRAM` origin, every code address changes. The image wrapper's entry and code placement must change with it. Try changing `ORIGIN` to `0x00909000`, rebuild, and inspect the new addresses. Then restore `0x00908000` before wrapping the image.
 
 ## 10.8  What if `main()` returns?
 
@@ -405,4 +409,4 @@ Both styles compile to identical machine code. The trade-offs:
 
 In Chapter 18A we refactor a few chapters' code to show the SDK style side-by-side. For learning, we recommend the raw style. For production, the SDK style.
 
-> Next chapter: **Chapter 11: Hand-building a Boot ROM-acceptable image.** We promote `wrap.sh` into a real tool, decode every byte of the IVT, and `dd` an SD card by hand.
+> Next chapter: **Chapter 11: Hand-building a Boot ROM-acceptable image.** We extend `wrap.py` into a reusable tool, decode every byte of the IVT, and `dd` an SD card by hand.

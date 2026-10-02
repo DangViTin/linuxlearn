@@ -265,9 +265,9 @@ mkimage -f boot.its boot.itb
 
 The `#conf-mini` selects the configuration. With no `#`, the default applies.
 
-### Why this matters in Chapter 23A
+### Why this matters in Chapter 24E
 
-A FIT can hold several DTBs and several configurations. That is what we use in Chapter 23A to ship one image for several board variants, strap pins or an EEPROM ID pick which `conf-xxx` to invoke at boot time.
+A FIT can hold several DTBs and several configurations. That is what we use in Chapter 24E to ship one image for several board variants, strap pins or an EEPROM ID pick which `conf-xxx` to invoke at boot time.
 
 For now, get one config working.
 
@@ -323,7 +323,7 @@ Useful for installer media and rescue boots.
 => bootz 0x82000000 - 0x83000000
 ```
 
-The kernel doesn't care. It accepts whichever DTB it's handed. Trade-off: two DT files on disk vs the cleaner single-FIT approach in Ch 23A.
+The kernel doesn't care. It accepts whichever DTB it's handed. Trade-off: two DT files on disk vs the cleaner single-FIT approach in Ch 24E.
 
 ## 23.7  Common kernel-boot failure modes (and which line of bootargs to blame)
 
@@ -364,4 +364,4 @@ The kernel doesn't care. It accepts whichever DTB it's handed. Trade-off: two DT
 - **Bootlin training: "Boot Time Reduction"**: practical techniques for shaving seconds off boot via cmdline and FIT tuning.
 - **AN5096**: *Configuring U-Boot for the i.MX 6/7 Series* (NXP). Procedural. Good cross-check.
 
-> Next chapter: **Chapter 23A: Multi-variant FIT images and DT overlays.** Now that one FIT works, we extend it to carry several DTBs for several board revisions and switch between them at runtime.
+> Next chapter: **Chapter 24: Workflows: TFTP, NFS, USB-OTG.** Now that U-Boot can describe and start the kernel, we wire it into a fast development loop.

@@ -32,11 +32,14 @@ source_suffix = {
     ".rst": "restructuredtext",
 }
 
-master_doc = "index"
+root_doc = "part1-foundations/ch01-preface"
+templates_path = ["_templates"]
+html_additional_pages = {"index": "start.html.jinja"}
 
 # Patterns to exclude
 exclude_patterns = [
     "_build",
+    "_navigation.md",  # included by Chapter 1, not a separate reading page
     "Thumbs.db",
     ".DS_Store",
 ]

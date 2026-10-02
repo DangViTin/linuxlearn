@@ -1,12 +1,12 @@
 ---
-chapter: 22A
+chapter: 24A
 title: Building i.MX6ULL U-Boot from nothing
 part: III - U-Boot, deeply
 estimated_pages: 76
 status: draft
 ---
 
-# Chapter 22A: Building i.MX6ULL U-Boot from nothing
+# Chapter 24A: Building i.MX6ULL U-Boot from nothing
 
 > **What:** add a new Cortex-A SoC and its first board to U-Boot. We will show every file that belongs to the port and every line of low-level code that we write.
 >
@@ -22,7 +22,7 @@ This chapter follows one rule:
 
 We still reuse U-Boot's architecture startup, driver model, MMC protocol state machine, block layer, and command shell. Those are frameworks, not i.MX6ULL hardware drivers. We write every driver that touches i.MX6ULL peripheral registers in this chapter, including UART1, GPT1, and USDHC2.
 
-## 22A.1  The exact hardware used in this chapter
+## 24A.1  The exact hardware used in this chapter
 
 A real low-level port cannot use a fictional chip. Register values that are "close enough" produce a silent board.
 
@@ -58,7 +58,7 @@ Do not use this image unchanged on an i.MX6ULL board with a different DDR part o
 
 The SoC register addresses do not change between boards that use the same i.MX6ULL silicon.
 
-## 22A.2  The complete first boot path
+## 24A.2  The complete first boot path
 
 The i.MX6ULL has 128 KiB of OCRAM. A normal full U-Boot image does not fit there. We have two possible designs:
 
@@ -111,7 +111,7 @@ There is no SPL in this first image. There is no unmentioned DDR function. The D
 
 `CONFIG_TEXT_BASE` and the `mkimage -e` argument must both be `0x87800000`. If they differ, the ROM can load the bytes correctly and still jump to the wrong place.
 
-## 22A.3  What we write, edit, and reuse
+## 24A.3  What we write, edit, and reuse
 
 Create these files:
 
@@ -175,7 +175,7 @@ Reuse these existing U-Boot files without changing their C code:
 
 This ownership matters. Our code performs every i.MX6ULL register access. Generic U-Boot supplies the ARM startup framework, relocation, command shell, and the hardware-independent MMC protocol.
 
-## 22A.4  Start from a clean U-Boot tree
+## 24A.4  Start from a clean U-Boot tree
 
 Run these commands on the Linux build host:
 
@@ -205,7 +205,7 @@ $ mkdir -p board/point-atom/imx6ull-mini
 
 The other parent directories already exist in U-Boot.
 
-## 22A.5  Build a hardware ledger before writing C
+## 24A.5  Build a hardware ledger before writing C
 
 The table below is the bridge from the reference manual and Part II into U-Boot.
 
@@ -239,7 +239,7 @@ The first visible code uses these UART1 registers:
 
 For first bring-up, `arch_cpu_init()` selects the 24 MHz oscillator as the UART root clock. This is slower than the 80 MHz PLL-derived clock used in Chapter 12, but it removes a PLL dependency. The baud-rate registers are calculated from the actual selected rate.
 
-## 22A.6  Connect the new platform to the ARM build
+## 24A.6  Connect the new platform to the ARM build
 
 ### Edit `arch/arm/Kconfig`
 
@@ -317,7 +317,7 @@ obj-y += early_uart.o
 
 Each object is built into full U-Boot whenever `ARCH_IMX6ULL` is selected.
 
-## 22A.7  Define the hardware addresses
+## 24A.7  Define the hardware addresses
 
 Create `arch/arm/mach-imx6ull/include/mach/hardware.h`:
 
@@ -362,7 +362,7 @@ Create `arch/arm/mach-imx6ull/include/mach/hardware.h`:
 
 This header contains addresses and sizes only. It does not initialize anything. The `UL` suffix makes each constant an unsigned long, which avoids signed-address warnings on 32-bit ARM.
 
-## 22A.8  Write the clock code
+## 24A.8  Write the clock code
 
 Create `arch/arm/mach-imx6ull/include/mach/clock.h`:
 
@@ -468,7 +468,7 @@ The first call to `imx6ull_clock_init()` forces the UART source to 24 MHz, so th
 
 The USDHC root uses PLL2 PFD2. The Boot ROM has already enabled that clock path because it needs the same clock family to read the SD image. We select PFD2 and set the USDHC2 divider to two. `imx6ull_get_usdhc2_clock()` reads the PLL multiplier and PFD fraction instead of assuming a fixed PLL rate. With the normal PLL2 rate of 528 MHz and PFD2 fraction of 24, it reports 198 MHz. Our USDHC driver divides that root again to produce the 400 kHz identification clock and the later eMMC transfer clocks.
 
-## 22A.9  Expose the early UART code
+## 24A.9  Expose the early UART code
 
 Create `arch/arm/mach-imx6ull/include/mach/uart.h`:
 
@@ -597,7 +597,7 @@ baud = reference_clock / 16 * (UBIR + 1) / (UBMR + 1)
 
 `UFCR` divides the 24 MHz input by two. `UBIR` is 15, so `(UBIR + 1)` cancels the `/16`. At 115200 baud, `UBMR` is approximately `24000000 / (2 * 115200)`, which is 104. Small integer rounding is normal.
 
-## 22A.10  Write the SoC entry hooks
+## 24A.10  Write the SoC entry hooks
 
 Create `arch/arm/mach-imx6ull/cpu.c`:
 
@@ -667,7 +667,7 @@ Common U-Boot calls `arch_cpu_init()` from `common/board_f.c` before relocation.
 
 That one line removes a very large part of the search space.
 
-## 22A.11  Add the board directory
+## 24A.11  Add the board directory
 
 The SoC code above is valid for every board built around this silicon. The next files describe this board.
 
@@ -775,7 +775,7 @@ F:      include/configs/imx6ull_point_atom_mini.h
 
 Replace the name and email before sending a real patch. `MAINTAINERS` tells `get_maintainer.pl` who owns these files. It does not affect the binary.
 
-## 22A.12  Turn the UART code into a U-Boot driver
+## 24A.12  Turn the UART code into a U-Boot driver
 
 The early UART proves the hardware works. U-Boot's command shell cannot call that private print function directly. The serial uclass expects a driver with `putc`, `getc`, `pending`, and `setbrg` operations.
 
@@ -928,7 +928,7 @@ Add this line beside the other serial-driver object lines:
 
 Kconfig decides whether the feature exists. The Makefile decides which object implements it. Enabling only one side does not work.
 
-## 22A.13  Write the timer driver
+## 24A.13  Write the timer driver
 
 Common U-Boot needs a monotonically increasing counter for delays, timeouts, and commands such as `sleep`. GPT1 can use the 24 MHz oscillator independently of the main CPU clock.
 
@@ -1048,7 +1048,7 @@ Add this line beside the other timer-driver object lines:
 +obj-$(CONFIG_IMX6ULL_GPT_TIMER) += imx6ull_gpt_timer.o
 ```
 
-## 22A.14  Write the complete Boot ROM DCD table
+## 24A.14  Write the complete Boot ROM DCD table
 
 The 53 DDR-related writes below are the 512 MiB factory values for this Point Atom board. They were compared line by line with the board's factory U-Boot image configuration. DDR calibration values are measured board data, not a software driver, so we must preserve them. They are not example values and they are not suitable for a different DDR layout without calibration and memory stress testing.
 
@@ -1215,7 +1215,7 @@ static void apply_dcd(const struct dcd_write *table, unsigned int count)
 
 An SPL-based port would place every DDR-related address and value from `imximage.cfg` into such a table and call it while running in OCRAM. In this first design, the Boot ROM is the small program that executes the table. The register values do not disappear behind U-Boot.
 
-## 22A.15  Describe the SoC and board with Device Tree
+## 24A.15  Describe the SoC and board with Device Tree
 
 The Device Tree describes hardware instances and board wiring. It does not initialize DDR. U-Boot needs DDR before it can safely access the Device Tree appended to `u-boot.bin`.
 
@@ -1328,7 +1328,7 @@ Add this line beside the other 32-bit ARM DTB selections:
 
 This line tells U-Boot's build which DTB belongs to our architecture. The defconfig later chooses this exact filename as the default Device Tree.
 
-## 22A.16  Write the USDHC2 eMMC driver from scratch
+## 24A.16  Write the USDHC2 eMMC driver from scratch
 
 U-Boot's MMC core knows the standard MMC and eMMC protocol. It knows that identification starts with CMD0, CMD1, CMD2, and CMD3. It does not know how the i.MX6ULL USDHC2 controller sends one of those commands. Our driver must provide that hardware layer.
 
@@ -1966,7 +1966,7 @@ Add:
 
 The protocol decisions remain in U-Boot's MMC core. The i.MX6ULL register work is entirely in the driver shown above.
 
-## 22A.17  Add the small legacy configuration header
+## 24A.17  Add the small legacy configuration header
 
 Create `include/configs/imx6ull_point_atom_mini.h`:
 
@@ -2006,7 +2006,7 @@ OCRAM base + OCRAM size - generated global-data size
 
 We do not choose an unexplained stack constant.
 
-## 22A.18  Create the complete defconfig
+## 24A.18  Create the complete defconfig
 
 Create `configs/imx6ull_point_atom_mini_defconfig`:
 
@@ -2100,7 +2100,7 @@ Cache is disabled only for the first known-good port. This avoids needing a corr
 
 `ENV_IS_NOWHERE` is equally deliberate. A wrong environment offset can overwrite an SD partition or eMMC boot area. Persistent environment storage belongs after block access and the storage layout are verified.
 
-## 22A.19  Check the source tree before building
+## 24A.19  Check the source tree before building
 
 The final port-owned tree should be:
 
@@ -2142,7 +2142,7 @@ $ git diff --check
 
 No output means the check passed.
 
-## 22A.20  Configure and build U-Boot
+## 24A.20  Configure and build U-Boot
 
 Start from an empty build directory so an older board configuration cannot leak into this port:
 
@@ -2194,7 +2194,7 @@ $ ls -l u-boot u-boot.bin u-boot.map dts/dt.dtb tools/mkimage
 
 Do not respond to the first compiler error by enabling unrelated Kconfig symbols. Follow the filename and symbol named by the error.
 
-## 22A.21  Build the i.MX Boot ROM image
+## 24A.21  Build the i.MX Boot ROM image
 
 `u-boot.bin` alone is not bootable on this SoC. It has no i.MX IVT, Boot Data, or DCD. Build those around it in two visible commands.
 
@@ -2253,7 +2253,7 @@ u-boot-imx6ull.imx
 
 The IVT field named `self` contains the RAM address where the ROM sees that IVT. It does not mean that the IVT executes code. The ROM reads the structure and follows its pointers.
 
-## 22A.22  Write the image to an SD card
+## 24A.22  Write the image to an SD card
 
 Insert a removable SD card into the build host and identify it carefully:
 
@@ -2284,7 +2284,7 @@ $ head -c 64 u-boot-imx6ull.imx | hexdump -C
 
 The two dumps must match.
 
-## 22A.23  Connect the built-in console and boot
+## 24A.23  Connect the built-in console and boot
 
 The board already contains the USB-to-TTL bridge. Do not connect an external USB-to-TTL adapter.
 
@@ -2323,7 +2323,7 @@ imx6ull=>
 
 Some common U-Boot lines and their order can change between releases. The two bracketed markers, the 512 MiB DDR report, and the `imx6ull=>` prompt are our important checkpoints.
 
-## 22A.24  Test one subsystem at a time
+## 24A.24  Test one subsystem at a time
 
 ### Test the timer
 
@@ -2376,7 +2376,7 @@ Expected behavior:
 
 Do not run `mmc write` during first discovery. Reading identification and partition data proves the controller path without changing storage.
 
-## 22A.25  Diagnose silence by the last completed stage
+## 24A.25  Diagnose silence by the last completed stage
 
 | Last visible result | What has already worked | Check next |
 |---------------------|-------------------------|------------|
@@ -2409,7 +2409,7 @@ imx6ull_usdhc
 
 If a device is absent, first check its Kconfig symbol and Device Tree `compatible`. If it is present but not probed, inspect its `reg`, status, and required clock setup.
 
-## 22A.26  What is complete and what is deliberately absent
+## 24A.26  What is complete and what is deliberately absent
 
 This chapter's image is a complete, bootable U-Boot port for the stated first milestone. It contains:
 
@@ -2439,7 +2439,7 @@ These features are not silently assumed. They are deliberately postponed:
 
 Postponed does not mean optional forever. It means the feature is outside the first dependency chain and has a named later step.
 
-## 22A.27  The porting method to carry to a truly new SoC
+## 24A.27  The porting method to carry to a truly new SoC
 
 The names and register values will change on another chip, but the method remains:
 
@@ -2459,6 +2459,6 @@ The core skill is not copying a vendor directory. It is making every dependency 
 
 ---
 
-**Previous:** [Chapter 22: Porting U-Boot to the board](ch22-uboot-board-port.md)
+**Previous:** [Chapter 24: Workflows: TFTP, NFS, USB-OTG](ch24-workflows-tftp-nfs-usb.md)
 
-**Next:** [Chapter 23: `bootcmd`, `bootargs`, and FIT images](ch23-bootcmd-bootargs-fit.md)
+**Next:** [Chapter 24B: U-Boot board policy with GPIO and I2C](ch24B-uboot-board-policy-i2c-gpio.md)

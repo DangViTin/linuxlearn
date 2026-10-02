@@ -368,8 +368,8 @@ In another host terminal, build and load the image through the board's USB-OTG p
 
 ```sh
 $ make
-$ ~/imx6ull/scripts/mkimx.py led.bin led.imx --load 0x00907400 --entry 0x00908400
-$ uuu -b sdp led.imx
+$ ~/imx6ull/scripts/mkimx.py led.bin led.imx
+$ uuu led.imx
 ```
 
 In the terminal connected through the integrated USB-TTL bridge:

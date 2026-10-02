@@ -1,25 +1,25 @@
 # Embedded Linux on i.MX6ULL — From First Boot to First Driver
-### The Raw Approach: Build It Yourself, Understand It Forever
+**The Raw Approach: Build It Yourself, Understand It Forever**
 
-**Target board:** Point Atom (正点原子) MINI — i.MX6ULL (Cortex-A7, 696 MHz, 512 MB DDR3L). ALPHA and many other i.MX6ULL boards work with minor DT/IOMUX adjustments.
+**Target board:** Point Atom (正点原子) MINI, with revision-specific schematics: i.MX6ULL Cortex-A7 and a documented 512 MiB DDR3L core-board example. Check the fitted chip's speed grade before selecting clocks. Other boards require their own power, DDR, storage, pin, and peripheral configuration; a pin change alone is not a port.
 **Target reader:** Embedded engineer fluent in MCU / bare-metal / RTOS, new to Linux.
-**Host environment:** Native Linux (Ubuntu 22.04 LTS or Debian stable).
+**Host environment:** Native x86_64 Ubuntu 22.04 LTS is the Chapter 3 baseline. A VM needs working USB passthrough and a reachable board Ethernet connection.
 **Linux kernel target:** v6.6 LTS. Driver-API signatures (`class_create`, `i2c_driver.probe`, `i2c_driver.remove`) and DTS paths (`arch/arm/boot/dts/nxp/imx/`) in this book follow v6.6 conventions.
-**Philosophy:** No Yocto. No vendor BSP magic. No `defconfig && make` until you've already done it the long way. The only black box we allow ourselves is the C compiler — and even *that* we open up in Part VIII (Ch 122).
+**Philosophy:** Understand the boot and build layers before relying on integrated build systems. Mainline sources, vendor documentation, and board schematics are reference material. Part VIII later covers toolchain construction and Yocto.
 
 ---
 
 ## Scope
 
-**9 Parts, 160 chapters (131 numbered + 29 supplementary, "letter-suffix" convention), ~2,870 pages.** The supplementary chapters (letter-suffixed: `18A`, `18B`, `35A`, `52A`, etc.) expand specific topics where the numbered chapter's default depth isn't enough for production work — they share a parent number and can be read independently. The numbered chapters are the required path; the supplementary chapters are recommended. Part IX is drafted but still needs hardware and QEMU lab validation.
+**9 Parts, 178 chapters (131 numbered + 47 supplementary, "letter-suffix" convention), ~3,185 pages.** The supplementary chapters (letter-suffixed: `18A`, `18B`, `35A`, `52A`, etc.) expand specific topics where the numbered chapter's default depth isn't enough for production work — they share a parent number and can be read independently. The numbered chapters are the required path; the supplementary chapters are recommended. Part IX is drafted but still needs hardware and QEMU lab validation.
 
 ## What the book covers
 
 - **Part I — Foundations.** Host setup, the ARMv7-A architecture as it differs from Cortex-M, the i.MX6ULL SoC, the GNU toolchain, the Boot ROM's `IVT` / `DCD` / `BootData` contract, and a hardware bring-up checklist.
 - **Part II — Bare-metal i.MX6ULL.** Build the entire stack from the reset vector up: LED in pure assembly; a C runtime with hand-written startup and linker script; a Boot-ROM-acceptable image built by our own Python tool; UART + `printf`; CCM clocks; DDR3 + MMDC; exceptions and GIC; timers; MMU + caches; one chapter each of bare-metal I²C/SPI/LCD, button input, and bare-metal RTC.
-- **Part III — U-Boot, deeply.** Build mainline U-Boot, recognize Part II inside its source, understand SPL, trace the boot flow line by line, port U-Boot to a custom board, bring up U-Boot on a previously unsupported SoC, master `bootcmd` / `bootargs` / FIT, build a multi-variant FIT image, set up the TFTP + NFS + USB-OTG development loop.
-- **Part IV — The Kernel.** Build mainline Linux for i.MX6ULL, boot it from U-Boot, deep-dive on the Device Tree, trace `start_kernel()` to PID 1, build an initramfs from scratch, master `make menuconfig`, learn the kernel-lifecycle decision framework (mainline / LTS / vendor BSP), validate DT bindings against YAML schemas.
-- **Part V — Root filesystem & user space.** A `busybox`-based hand-built rootfs; `/proc` `/sys` `devtmpfs`; init systems; libc and dynamic linking; Buildroot; Ubuntu-base as a fully-featured alternative; read-only root + overlayfs for industrial deployments; containers on embedded.
+- **Part III — U-Boot, deeply.** Build mainline U-Boot, recognize Part II inside its source, understand SPL, trace the boot flow line by line, port U-Boot to a custom board, bring up U-Boot on a previously unsupported SoC, add real pre-boot policies with GPIO, I2C, display, network, board identity, rollback, factory recovery, and power checks, master `bootcmd` / `bootargs` / FIT, build a multi-variant FIT image, set up the TFTP + NFS + USB-OTG development loop.
+- **Part IV — The Kernel.** Build mainline Linux for i.MX6ULL, boot it from U-Boot, debug failed boots, describe a custom board with Device Tree, validate DT bindings, trace `start_kernel()` to PID 1, build an initramfs, turn it into a recovery system, manage product configs, and choose a kernel lifecycle.
+- **Part V — Root filesystem & user space.** A `busybox`-based hand-built rootfs; `/proc` `/sys` `devtmpfs`; init systems; libc and dynamic linking; Buildroot; bootable SD/eMMC and SPI NOR images; product board directories; Ubuntu-base as a fully-featured alternative; services, networking, time, logging, security, read-only root + overlayfs, and containers on embedded.
 - **Part VI — Driver development.** ~33 chapters covering every common subsystem from char devices and platform drivers through I²C/SPI/PWM/RTC/IIO/regmap/DMA/Net/Sound/DRM/USB, with deeper treatment of CAN, multi-touch, block devices, WIFI, cellular modems, HDMI bridges, kernel timers, async notification, watchdog, power management, PREEMPT_RT real-time, MTD/UBI, V4L2/GStreamer, and a Rust-for-Linux sidebar. **One canonical example per subsystem** — depth on real chips lives in Part VII.
 - **Part VII — Device cookbook.** 54 chapters, one per common device class, with 2–4 real chips compared side-by-side: schematic + DT example + driver code (or existing-driver enablement) + user-space access + lab + chip-specific pitfalls. Storage, environmental & motion sensors, ADCs/DACs, displays, cameras, audio codecs, WiFi/BT modules, LoRa/UWB/ZigBee/cellular, industrial buses (RS-485, LIN, CAN), RFID/NFC, fingerprint, smart LEDs (WS2812), motor drivers, external RTC. *This is the go-to reference Part.*
 - **Part VIII — Debug, production, advanced.** JTAG/OpenOCD/GDB across layers; kernel debugging without JTAG (ftrace, eBPF, kgdb); user-space debugging; a capstone custom-board port; build your own toolchain with crosstool-NG; Yocto layer development; secure boot (HAB) and OP-TEE; field updates (RAUC, SWUpdate, Mender); the mainline patch-submission workflow; CI/CD for embedded; BSP → mainline migration playbook; VSCode + gdbserver remote debug.
@@ -29,26 +29,26 @@
 
 ## How to read this book
 
-Each chapter is structured the same way, so the reader always knows where to look:
+Start with Chapter 1. Chapters use these recurring elements where they fit the subject; not every chapter has seven identical sections:
 
 1. **What** — the concrete artifact this chapter builds.
 2. **Why** — what problem motivates this artifact; what the world looks like without it.
 3. **How** — the mechanics, register-by-register or function-by-function.
 4. **Focus** — the one or two ideas that, once internalized, unlock the next several chapters.
-5. **Lab** — a hands-on deliverable. If you can't reproduce it from a clean shell, you have not finished the chapter.
+5. **Lab** — a hands-on or conceptual checkpoint. Record the result and diagnose a failed prerequisite before continuing.
 6. **Pitfalls** — the specific traps real engineers fall into here.
 7. **Going deeper** — pointers to the Linux source tree, NXP reference manual sections, and seminal papers.
 
 ---
 
-# PART I — FOUNDATIONS
+## PART I — FOUNDATIONS
 
 > *You are an MCU engineer. You know what a vector table is, what a linker script is, what `volatile` is for. This part exists to give you names for the things Linux adds on top.*
 
 ### Chapter 1 — Preface and how to use this book
 - Who this book is for (the MCU/bare-metal engineer)
-- What we mean by "raw" and why we refuse Yocto for ~50 chapters
-- The lab discipline: every chapter has a deliverable; you don't skip
+- What we mean by "raw" and where integrated build systems fit later
+- Required checkpoints, optional tracks, and when to stop a failed or unsafe step
 - How chapters depend on each other (dependency graph)
 - Conventions: prompt symbols, register notation, file paths
 - **Pages:** ~8
@@ -64,23 +64,24 @@ Each chapter is structured the same way, so the reader always knows where to loo
 
 ### Chapter 3 — Host environment setup
 - Choosing a host OS (Ubuntu 22.04 LTS); why native Linux beats WSL/VM for this work
-- Required host packages: `build-essential`, `bison`, `flex`, `libssl-dev`, `bc`, `device-tree-compiler`, `u-boot-tools`, `nfs-kernel-server`, `tftpd-hpa`, `minicom`, `picocom`, `qemu-user-static`
+- Essential build/inspection packages first; TFTP/NFS services are a separate later-preparation track
 - Installing two project-local Arm GNU toolchains: `arm-none-linux-gnueabihf-` for Linux and `arm-none-eabi-` for bare metal
-- Setting up TFTP, NFS, and a serial console on the host
-- USB-OTG flashing tools: `imx_usb_loader`, NXP `uuu` (Universal Update Utility)
+- A short, explicitly sourced environment script; no global compiler installation or shell-startup changes
+- Manual TFTP/NFS configuration with scoped access and undo instructions; explicit privileged serial/USB access
+- Project-local NXP `uuu` (Universal Update Utility), pinned to a named release
 - A reproducible workspace layout for the rest of the book
-- **Lab:** flash a stock image to SD with `dd`, boot, log in over UART — prove the pipeline
+- **Lab:** verify both compiler paths, workspace, serial access, and local `uuu`; identify removable storage without writing it. No board image exists yet.
 - **Pages:** ~16
 
 ### Chapter 4 — ARMv7-A and the Cortex-A7, for the MCU engineer
 - ARMv7-A vs ARMv7-M: what Cortex-A adds (MMU, privilege levels, generic timer, NEON, multicore option)
 - Exception model: USR / SYS / SVC / IRQ / FIQ / ABT / UND (and how this maps to Linux's user/kernel split)
 - Banked registers, the program status register, mode switching
-- The generic timer and how it differs from SysTick
+- Generic-timer architecture versus the actual timer enabled by the selected Linux configuration
 - Cache hierarchy: L1 I/D, integrated L2 inside the Cortex-A7 MPCore (128 KB on i.MX6ULL — no external PL310), inner/outer shareable, MESI
 - MMU concepts: virtual address, page table walk, TLB, ASIDs, domains
 - NEON / VFP overview
-- **Focus:** MMU + privilege levels. Linux *cannot exist* without them.
+- **Focus:** MMU + privilege modes on this Cortex-A7 Linux path, with worked exception/register examples
 - **Pages:** ~22
 
 ### Chapter 5 — A tour of the i.MX6ULL SoC
@@ -90,18 +91,18 @@ Each chapter is structured the same way, so the reader always knows where to loo
 - Power domains and the PMU
 - IOMUX: the universal-multiplexer pattern (and how `iomuxc.h` is generated)
 - Boot fuses (eFuses) and BOOT_MODE pins
-- The reference manual: how to navigate ~5000 pages without drowning
+- The supplied 4,127-page reference manual: a verified chapter catalog and worked UART1 lookup
 - **Pages:** ~18
 
 ### Chapter 6 — The toolchain
 - `gcc` is *not* one tool: cpp, cc1, as, collect2, ld
 - `binutils`: `as`, `ld`, `objcopy`, `objdump`, `nm`, `readelf`, `strip`, `ar`, `addr2line`
-- The C library: glibc vs musl vs uClibc-ng vs newlib (and why bare-metal needs none of them)
+- The C library: glibc vs musl vs uClibc-ng vs newlib; why our first bare-metal builds use no C library
 - ABI: EABI vs hard-float vs soft-float; `arm-none-linux-gnueabihf` decoded
 - ELF format: program headers vs section headers; what the loader actually reads
 - Linker scripts: `MEMORY`, `SECTIONS`, `VMA` vs `LMA`, `ENTRY`, `KEEP`
 - Make basics that matter: implicit rules, pattern rules, automatic variables, `.PHONY`, recursive vs non-recursive
-- **Lab:** compile a "hello world" for the host *and* for the target, compare `readelf -a` output
+- **Lab:** inspect host/ARM Linux hello executables, then build a complete OCRAM-only skeleton with startup, BSS, reserved stack, and Make dependencies. The skeleton is not ROM-bootable yet.
 - **Pages:** ~24
 
 ### Chapter 7 — The Boot ROM, IVT, DCD, and BootData
@@ -111,24 +112,25 @@ Each chapter is structured the same way, so the reader always knows where to loo
 - The **IVT (Image Vector Table)**: layout, every field decoded
 - The **DCD (Device Configuration Data)**: a tiny scripting language the ROM executes to bring up DDR and clocks *before your code runs*
 - The **BootData** structure: load address and image length
-- USB-SDP (Serial Download Protocol): how `uuu` and `imx_usb_loader` talk to a brand-new chip
+- USB-SDP (Serial Download Protocol): command IDs and the later `uuu` transfer path
 - HAB (High Assurance Boot) introduction (deep-dived in Ch. 124)
-- **Focus:** the DCD is the *most under-explained* feature of i.MX SoCs. Understand it and U-Boot SPL becomes obvious.
+- **Focus:** distinguish image placement, linked addresses, DCD initialization, and the alternative SPL-first path
 - **Pages:** ~22
 
 ### Chapter 8 — Hardware bring-up checklist
 - Unboxing the Point Atom board: physical inspection, jumpers, SD slot, OTG cable
-- Power rails to probe with a multimeter before applying power
+- Establish the exact input rating, polarity, selector/jumper settings, and USB power interactions from the matching supplier guide before applying power
+- Unpowered short screening is not proof of healthy rails; powered measurements need documented test points and limits
 - UART1 wiring (TXD/RXD/GND), correct voltage levels, 115200 8N1
-- First-time SD card preparation (raw layout we will use throughout)
+- Identify the removable card and record its identity; re-identify it before every later write
 - Optional: JTAG header pinout, OpenOCD interface adapter (FT2232H, J-Link)
-- The "I bricked it" recovery flow via USB-OTG SDP
-- **Lab:** prove you can reflash a bricked board purely over USB-OTG. *You will need this skill.*
+- Revision-specific USB boot selector and ROM SDP enumeration; transfer/execution are later milestones
+- **Lab:** record board revision, verified power arrangement, serial access, ROM VID/PID, and current card identity. No flashing or recovery-load claim yet.
 - **Pages:** ~12
 
 ---
 
-# PART II — BARE-METAL i.MX6ULL
+## PART II — BARE-METAL i.MX6ULL
 
 > *This is the chapter set MCU engineers love and most Linux books skip. You will write a complete bare-metal stack from reset vector to interrupt-driven UART, in **OCRAM and then DDR**, with **no help from U-Boot**. By the end you will have built, by hand, every primitive U-Boot relies on.*
 
@@ -247,7 +249,7 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 
 ---
 
-# PART III — U-BOOT, DEEPLY
+## PART III — U-BOOT, DEEPLY
 
 > *We now switch to using U-Boot — but only after re-implementing, by hand, everything it does. You will read U-Boot's source and recognize every step.*
 
@@ -289,15 +291,6 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 - **Lab:** even if you use the Point Atom board, *pretend* it's a custom one — change the model string, hostname, default bootcmd
 - **Pages:** ~22
 
-### Chapter 22A — Supplementary: Building i.MX6ULL U-Boot from nothing
-- Create every architecture, board, driver, Device Tree, and configuration file for a teaching i.MX6ULL platform
-- Expose the complete direct-register UART, clock, timer, watchdog, pin-routing, and DDR initialization code
-- Build the Boot ROM IVT and DCD image, write it to SD, and follow the boot path to the first prompt
-- Write UART1, GPT1, and USDHC2 PIO drivers directly from the i.MX6ULL register descriptions
-- Explain every defconfig option, build artifact, test command, and failure checkpoint
-- **Lab:** recreate i.MX6ULL support under a teaching architecture without selecting the existing i.MX6 platform
-- **Pages:** ~76
-
 ### Chapter 23 — `bootcmd`, `bootargs`, FIT images
 - `bootm`, `bootz`, `booti` — what each expects
 - The kernel cmdline syntax: `console=`, `root=`, `rootfstype=`, `rw`, `ip=`, `nfsroot=`, `init=`
@@ -307,15 +300,6 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 - **Lab:** boot kernel with three different `bootargs` (NFS root, ramdisk root, SD root) without recompiling anything
 - **Pages:** ~18
 
-### Chapter 23A — Supplementary: Multi-variant FIT images and DT overlays at runtime
-In modern shipping products one binary often serves several board variants (different displays, different I/O headers, different sensors). The mainline pattern is one FIT image carrying multiple DTBs, plus optional DT overlays applied at boot time based on a strap pin or an EEPROM-read variant ID.
-- Building a FIT with `images { kernel { ... } fdt-1 { ... } fdt-2 { ... } } configurations { conf-rev-a { ... } conf-rev-b { ... } }`
-- U-Boot `bootm` selecting `#conf-rev-a` from the cmdline
-- DT overlays applied by U-Boot `fdt apply`
-- Reading a variant ID from EEPROM at boot (the `i2c md` → `setenv variant` → `bootm` chain)
-- **Lab:** one image boots correctly on three different "virtual variants" (LCD enabled, LCD disabled, alt-I²C address) selected by a U-Boot env var
-- **Pages:** ~14
-
 ### Chapter 24 — Workflows: TFTP, NFS, USB-OTG
 - Iterating fast: don't reflash, network-boot
 - Setting up `tftpd-hpa` on the host
@@ -324,27 +308,129 @@ In modern shipping products one binary often serves several board variants (diff
 - Recovery flow: USB-OTG SDP if SD/eMMC is corrupted
 - **Pages:** ~14
 
+## Optional deep dive
+
+### Chapter 24A — Supplementary: Building i.MX6ULL U-Boot from nothing
+- Create every architecture, board, driver, Device Tree, and configuration file for a teaching i.MX6ULL platform
+- Expose the complete direct-register UART, clock, timer, watchdog, pin-routing, and DDR initialization code
+- Build the Boot ROM IVT and DCD image, write it to SD, and follow the boot path to the first prompt
+- Write UART1, GPT1, and USDHC2 PIO drivers directly from the i.MX6ULL register descriptions
+- Explain every defconfig option, build artifact, test command, and failure checkpoint
+- **Lab:** recreate i.MX6ULL support under a teaching architecture without selecting the existing i.MX6 platform
+- **Pages:** ~76
+
+## Applied U-Boot scenarios
+
+### Chapter 24B - Supplementary: U-Boot board policy with GPIO and I2C
+- Start from the Chapter 22 board port and add pre-boot decisions instead of making a new port
+- Enable GPIO, I2C, board late init, and test commands
+- Read an I2C temperature sensor and block Linux boot when the board is too hot
+- Add a GPIO recovery button check
+- Explain fail-open vs fail-closed behavior for each policy
+- **Lab:** boot normally below 50 C, then force the blocked path and confirm U-Boot stops at the prompt
+- **Pages:** ~18
+
+### Chapter 24C - Supplementary: Ethernet fallback boot in U-Boot
+- Bring up FEC Ethernet enough to prove MAC, PHY, MDIO, and link
+- Handle `ethaddr`, static IP, DHCP, `serverip`, and TFTP variables
+- Write a `bootcmd` that tries local MMC first, then falls back to TFTP
+- Use TFTP for kernel and DTB while keeping the rootfs on local storage
+- Optionally fetch a temporary `boot.scr` from the host for service work
+- **Lab:** remove local `zImage`, confirm U-Boot falls back to TFTP, then restore local boot
+- **Pages:** ~18
+
+### Chapter 24D - Supplementary: Board identity and variant selection in U-Boot
+- Read board identity from EEPROM, strap GPIOs, or fuses
+- Define a small EEPROM layout for hardware revision, LCD option, MAC address, and serial number
+- Set `fdtfile` or `fitconf` from board code before `bootcmd` runs
+- Choose between separate DTBs, FIT configurations, and DT overlays
+- Define safe behavior when identity data is missing or corrupt
+- **Lab:** boot two fake variants by changing only the identity byte, then prove the safe fallback
+- **Pages:** ~18
+
+### Chapter 24E — Supplementary: Multi-variant FIT images and DT overlays at runtime
+In modern shipping products one binary often serves several board variants (different displays, different I/O headers, different sensors). The mainline pattern is one FIT image carrying multiple DTBs, plus optional DT overlays applied at boot time based on a strap pin or an EEPROM-read variant ID.
+- Building a FIT with `images { kernel { ... } fdt-1 { ... } fdt-2 { ... } } configurations { conf-rev-a { ... } conf-rev-b { ... } }`
+- U-Boot `bootm` selecting `#conf-rev-a` from the cmdline
+- DT overlays applied by U-Boot `fdt apply`
+- Reading a variant ID from EEPROM at boot (the `i2c md` → `setenv variant` → `bootm` chain)
+- **Lab:** one image boots correctly on three different "virtual variants" (LCD enabled, LCD disabled, alt-I²C address) selected by a U-Boot env var
+- **Pages:** ~14
+
+### Chapter 24F - Supplementary: Watchdog, bootcount, and rollback in U-Boot
+- Enable bootcount and watchdog support
+- Build a simple A/B boot environment
+- Use `bootlimit` and `altbootcmd` to roll back after failed candidate boots
+- Let Linux mark a boot good only after user space is healthy
+- Explain why watchdog reset and bootcount must work together
+- **Lab:** mark slot B as candidate, simulate repeated failure, and confirm U-Boot returns to slot A
+- **Pages:** ~20
+
+### Chapter 24G - Supplementary: Factory and recovery modes in U-Boot
+- Add a recovery key path before normal boot
+- Use USB mass storage mode for simple human recovery
+- Use DFU for controlled factory flashing with named targets
+- Add a small factory test command that prints parseable pass/fail lines
+- Explain recovery layers: ROM SDP, U-Boot recovery, Linux recovery, normal Linux
+- **Lab:** hold a key at reset and make U-Boot enter USB recovery instead of booting Linux
+- **Pages:** ~18
+
+### Chapter 24H - Supplementary: PMIC and power policy in U-Boot
+- Read a PMIC, power monitor, or battery gauge before Linux starts
+- Check fault bits, input voltage, and critical rail state
+- Block boot or updates when power is unsafe
+- Keep long-term charging and thermal policy in Linux
+- Define fail-open vs fail-closed behavior for each power condition
+- **Lab:** force a low-power threshold and confirm U-Boot blocks boot with a clear reason
+- **Pages:** ~18
+
+### Chapter 24I - Supplementary: U-Boot display and boot screen
+- Enable U-Boot video, BMP decoding, FAT loading, and optional splash support
+- Add an eLCDIF panel node and LCD pin group to the U-Boot Device Tree
+- Create a simple 24-bit `splash.bmp` and load it from the boot partition
+- Test `fatload`, `bmp info`, and `bmp display` manually before changing `bootcmd`
+- Add `show_splash` to the default environment
+- **Lab:** show a boot screen before Linux starts, then continue into the normal boot path
+- **Pages:** ~16
+
+### Chapter 24J - Supplementary: SPI LCD and I2C OLED displays in U-Boot
+- Compare RGB LCD, SPI LCD, and I2C OLED display paths
+- Bring up an SPI LCD by checking reset, backlight, D/C GPIO, chip select, and panel init commands
+- Add the Device Tree shape for an SPI LCD module
+- Bring up an SSD1306-style I2C OLED with a tiny U-Boot command
+- Decide when to use U-Boot video and when to keep a small board-specific status path
+- **Lab:** show a recovery, rollback, or power-fault status on a small SPI LCD or I2C OLED
+- **Pages:** ~14
+
 ---
 
-# PART IV — THE KERNEL
+## PART IV — THE KERNEL
 
 > *The kernel is large but knowable. We boot mainline first; vendor BSPs come later, as a comparison exercise.*
 
 ### Chapter 25 — Building mainline Linux for i.MX6ULL
-- `git clone git.kernel.org/.../linux.git`
-- `make ARCH=arm imx_v7_defconfig`
-- The build artifacts: `vmlinux`, `Image`, `zImage`, `arch/arm/boot/dts/*.dtb`
+- Clone the stable tree at the book's pinned tag, `v6.6`
+- `make ARCH=arm imx_v6_v7_defconfig`
+- The build artifacts: `vmlinux`, `Image`, `zImage`, `arch/arm/boot/dts/nxp/imx/*.dtb`
 - `vmlinux` vs `zImage`: who decompresses, when, where
 - Modules: `make modules && make modules_install INSTALL_MOD_PATH=...`
 - **Lab:** produce a `zImage` and `imx6ull-14x14-evk.dtb` that match the U-Boot you built
 - **Pages:** ~16
 
 ### Chapter 26 — Booting the kernel from U-Boot
-- Loading via TFTP into RAM: `tftp 0x80800000 zImage; tftp 0x83000000 imx6ull.dtb`
-- `bootz 0x80800000 - 0x83000000`
+- Loading via TFTP into RAM with `&&`, so failed downloads stop the boot
+- `bootz 0x82000000 - 0x83000000`
 - The first 30 lines of kernel boot log — every line decoded
 - "Uncompressing Linux... done, booting the kernel." — *where* in the kernel source this happens (`arch/arm/boot/compressed/head.S`)
 - **Pages:** ~14
+
+### Chapter 26A — Supplementary: Kernel boot failure playbook
+- Keep one known-good `bootz` command and one known-good `bootargs`
+- Classify failures: no output, early output then silence, VFS panic, init panic, or driver probe failure
+- Use `earlycon`, `loglevel=8`, `ignore_loglevel`, and `initcall_debug`
+- Debug wrong DTB, wrong console, bad rootfs, missing init, and NFS root hangs
+- **Lab:** break one thing at a time and identify the failure from the last visible line
+- **Pages:** ~12
 
 ### Chapter 27 — Device Tree: the contract between firmware and kernel
 - What problem DT solves (no more board-files, no more #ifdefs)
@@ -367,6 +453,15 @@ A 2018+ mainline-hygiene requirement. Since kernel v4.18 every new device-tree b
 - **Lab:** write a binding for the Chapter 39 LED driver; pass `dt_binding_check`; deliberately break a property and watch the error fire
 - **Pages:** ~14
 
+### Chapter 27B — Supplementary: Device Tree for a custom i.MX6ULL board
+- Start from `imx6ull.dtsi` and write the board `.dts`
+- Add memory, `/chosen`, aliases, UART console, regulators, SD/eMMC, Ethernet, I2C, SPI, LEDs, and keys
+- Update the kernel DTS Makefile so the board DTB is built
+- Bring up one peripheral at a time and check each driver from the boot log
+- Use `dtbs_check` to catch binding mistakes before hardware testing
+- **Lab:** create and boot a minimal custom-board DTB, then add SD, Ethernet, I2C, and SPI step by step
+- **Pages:** ~22
+
 ### Chapter 28 — Kernel startup, traced
 - `start_kernel()` — read it function-by-function
 - `setup_arch()`, `setup_machine_fdt()`, memblock, paging_init, mm_init
@@ -383,6 +478,15 @@ A 2018+ mainline-hygiene requirement. Since kernel v4.18 every new device-tree b
 - The handoff: kernel mounts initramfs as `/`, runs `/init`
 - **Lab:** boot to a shell with literally one file (`/init`) in the rootfs. Nothing simpler exists.
 - **Pages:** ~16
+
+### Chapter 29A — Supplementary: Initramfs as a recovery system
+- Turn the Chapter 29 BusyBox initramfs into a small recovery environment
+- Add a recovery `/init` with shell, read-only rootfs mount, log collection, and reset/update placeholders
+- Boot a raw `initramfs.cpio.gz` with `bootz kernel initrd_addr:initrd_size dtb`
+- Add safe update rules: checksum, target confirmation, unmounted partition, and factory-data protection
+- Connect recovery selection to U-Boot bootmode, button, bootcount, or failed normal boot
+- **Lab:** boot recovery, mount the real rootfs read-only, and collect logs
+- **Pages:** ~18
 
 ### Chapter 30 — Kernel configuration deep-dive
 - `make menuconfig` — but reading the `.config`, not clicking blindly
@@ -407,9 +511,18 @@ The decision framework most readers never see laid out explicitly. Six release t
 - **Lab:** decide-and-defend exercise — given three product scenarios (consumer toy, factory PLC, medical device), pick a kernel track for each and write the argument
 - **Pages:** ~16
 
+### Chapter 30B — Supplementary: Product kernel configs
+- Split kernel configuration into base, development, production, and recovery fragments
+- Use `scripts/kconfig/merge_config.sh`, separate `O=` build directories, and `olddefconfig`
+- Decide which drivers must be built in and which can be modules
+- Use `scripts/diffconfig` and `savedefconfig` before release
+- Set `CONFIG_LOCALVERSION` so the board reports the exact kernel flavor
+- **Lab:** build dev, prod, and recovery kernels from shared fragments and compare them
+- **Pages:** ~16
+
 ---
 
-# PART V — ROOT FILESYSTEM & USER SPACE
+## PART V — ROOT FILESYSTEM & USER SPACE
 
 ### Chapter 31 — A root filesystem, by hand
 - The FHS (Filesystem Hierarchy Standard) cheat sheet
@@ -452,8 +565,61 @@ The decision framework most readers never see laid out explicitly. Six release t
 - Comparing the generated rootfs against your hand-built one
 - **Pages:** ~20
 
+### Chapter 35D — Supplementary: Bootable SD and eMMC image layout
+- Split storage into boot, rootfs, and data partitions
+- Use filesystem labels instead of guessed `/dev/mmcblkXpY` names
+- Manually partition and format an SD card once, so the image builder is understandable
+- Add `/data` to `/etc/fstab`
+- Automate the layout with `genimage`
+- **Lab:** boot from a local SD/eMMC rootfs and prove `/data` survives reboot
+- **Pages:** ~18
+
+### Chapter 35I — Supplementary: Boot from SPI NOR flash
+- Explain when the Boot ROM can really boot from SPI/QSPI NOR
+- Compare block devices with MTD devices
+- Design a small SPI NOR partition map for U-Boot, env, kernel, DTB, rootfs, and data
+- Add Device Tree fixed partitions
+- Build a SquashFS rootfs and flash it with U-Boot `sf update`
+- **Lab:** boot a SquashFS rootfs from SPI NOR and verify `/proc/mtd`
+- **Pages:** ~18
+
+### Chapter 35E — Supplementary: Buildroot product board directory
+- Build a product-style `board/<vendor>/<board>/` directory
+- Use `rootfs-overlay`, `post-build.sh`, `post-image.sh`, and `genimage.cfg`
+- Add kernel and BusyBox config fragments
+- Save and rebuild from a product defconfig
+- Decide what to commit and what to leave as generated output
+- **Lab:** build a flashable `sdcard.img` from a board directory
+- **Pages:** ~18
+
+### Chapter 35A — Supplementary: Ubuntu-base rootfs as a peer to BusyBox/Buildroot
+For projects where binary size is not the constraint but **familiarity is** (engineers used to `apt install` on their dev machines), an Ubuntu-base rootfs gives you a fully-fledged Debian-family userland on the target — `apt`, `bash`, full `coreutils`, glibc. We unpack Ubuntu-base, `chroot` into it under `qemu-user-static` to install packages on the host, then NFS-mount it from the target.
+- When to choose this vs BusyBox (size, cold-start) or Buildroot (reproducibility)
+- The `chroot` + `qemu-user-static` trick for installing target packages from the host
+- DHCP and `apt` on the target
+- **Lab:** boot a target with a 600 MB Ubuntu-base rootfs and `apt install htop` from the board itself
+- **Pages:** ~16
+
+### Chapter 35F — Supplementary: Your application as a service
+- Write an app that behaves well under an init system
+- Add a BusyBox init script with start, stop, and restart
+- Add a systemd unit for Ubuntu-base or systemd Buildroot images
+- Decide where config, logs, runtime files, and data belong
+- Add simple health checks
+- **Lab:** install `myapp`, restart it after failure, and move writable data to `/data`
+- **Pages:** ~16
+
+### Chapter 35G — Supplementary: Networking, time, and logging
+- Bring up Ethernet manually and with DHCP
+- Debug gateway vs DNS failures
+- Configure hostname and `/etc/hosts`
+- Start NTP and explain why wrong time breaks TLS and package managers
+- Configure BusyBox syslog and persistent logs under `/data`
+- **Lab:** break and fix IP, DNS, time, and logging one at a time
+- **Pages:** ~18
+
 ### Chapter 35B — Supplementary: Read-only rootfs + overlayfs (the industrial pattern)
-Every shipping industrial product does this. A read-only rootfs means: power-cycle anywhere, corrupt nothing. The overlayfs trick lets `/var/log/`, `/etc/`, and other writable subtrees live in tmpfs (lost on reboot, by design) or on a separate persistent partition.
+Every shipping industrial product should consider this. A read-only rootfs means: power-cycle anywhere, corrupt nothing. The overlayfs trick lets `/var/log/`, `/etc/`, and other writable subtrees live in tmpfs or on a separate persistent partition.
 - Mounting `ext4` with `ro`; what fails (`/etc/resolv.conf`, `/var/run/utmp`, `/tmp`)
 - `overlayfs` mount syntax: `lowerdir`, `upperdir`, `workdir`
 - `/etc/fstab` for an RO root + writable overlays
@@ -462,22 +628,23 @@ Every shipping industrial product does this. A read-only rootfs means: power-cyc
 - **Lab:** convert a Buildroot rootfs to RO-with-overlays; survive 100 randomly-timed power yanks
 - **Pages:** ~16
 
-### Chapter 35C — Supplementary: Container runtimes on embedded (Podman + OCI)
-Increasingly, shipping products use containers to isolate the application from the base system — so the same vendor BSP can host many app updates without rebuilding the rootfs. We bring up rootless Podman on the i.MX6ULL, run a tiny Alpine container, talk to a host GPIO from inside it.
-- Why containers on embedded: app/OS split for OTA, sandboxing, reproducibility
-- Podman vs Docker on small devices (footprint, rootless)
-- Kernel namespaces (`CONFIG_USER_NS`, etc.) and what your kernel needs
-- Bind-mounting `/sys/class/gpio` into a container to talk to hardware
-- OCI image format; how to build one without docker on the host
-- **Lab:** boot an Alpine container on the board; from inside, blink a host LED via sysfs
+### Chapter 35H — Supplementary: Rootfs security basics
+- Remove lab shortcuts before release
+- Lock root login and use SSH keys
+- Run the product app as a non-root user
+- Review file permissions, setuid files, secrets, and listening services
+- Use read-only rootfs and `/data` mount options as part of defense
+- **Lab:** disable root SSH, run `myapp` as a service user, and list every open socket
 - **Pages:** ~16
 
-### Chapter 35A — Supplementary: Ubuntu-base rootfs as a peer to BusyBox/Buildroot
-For projects where binary size is not the constraint but **familiarity is** (engineers used to `apt-get install` on their dev machines), an Ubuntu-base rootfs gives you a fully-fledged Debian-family userland on the target — `apt`, `bash`, full `coreutils`, glibc. We unpack `ubuntu-base-22.04-arm.tar.gz`, `chroot` into it under `qemu-user-static` to install packages on the host, then NFS-mount it from the target.
-- When to choose this vs BusyBox (size, cold-start) or Buildroot (reproducibility)
-- The `chroot` + `qemu-user-static` trick for installing target packages from the host
-- DHCP and `apt` on the target
-- **Lab:** boot a target with a 600 MB Ubuntu-base rootfs and `apt install htop` from the board itself
+### Chapter 35C — Supplementary: Container runtimes on embedded (Podman + OCI)
+Some products use containers to isolate the application from the base system, so the same base rootfs can host many app updates. We bring up Podman on the i.MX6ULL, run a tiny Alpine container, talk to a host GPIO from inside it, and manage the container with Quadlet.
+- Why containers on embedded: app/OS split for OTA, sandboxing, reproducibility
+- Podman vs Docker on small devices
+- Kernel namespaces, cgroups, and overlayfs requirements
+- Bind-mounting `/sys/class/leds` into a container to talk to hardware
+- OCI image format; how to build one without Docker on the host
+- **Lab:** boot an Alpine container on the board; from inside, blink a host LED via sysfs
 - **Pages:** ~16
 
 ### Appendix — Userspace tooling reference
@@ -489,7 +656,7 @@ For projects where binary size is not the constraint but **familiarity is** (eng
 
 ---
 
-# PART VI — DRIVER DEVELOPMENT
+## PART VI — DRIVER DEVELOPMENT
 
 > *This is the longest and most lab-heavy Part. Each driver chapter has the same six-section shape: hardware, DT binding, driver code, user-space test, "what if I remove line X" experiment, pitfalls.*
 
@@ -771,7 +938,7 @@ Since Linux 6.1, Rust is a supported language for kernel modules. As of 2026 the
 
 ---
 
-# PART VII — DEVICE COOKBOOK
+## PART VII — DEVICE COOKBOOK
 
 > *Part VI taught you the kernel's driver frameworks with one good example each. This Part is the reference: for each common device class, two or three real chips compared side-by-side, with schematics, DT bindings, driver code or kernel-driver enablement, user-space access, and the pitfalls specific to each chip.*
 >
@@ -1311,7 +1478,7 @@ Since Linux 6.1, Rust is a supported language for kernel modules. As of 2026 the
 
 ---
 
-# PART VIII — DEBUG, PRODUCTION, ADVANCED
+## PART VIII — DEBUG, PRODUCTION, ADVANCED
 
 ### Chapter 118 — JTAG, OpenOCD, GDB at every layer
 - Connecting a JTAG adapter (FT2232H / J-Link) to the Point Atom JTAG header
@@ -1435,7 +1602,7 @@ Many readers came here from VSCode and would rather debug there than learn `tui`
 
 ---
 
-# PART IX — APPLIED VIRTUALIZATION AND MIXED-CRITICALITY SYSTEMS
+## PART IX — APPLIED VIRTUALIZATION AND MIXED-CRITICALITY SYSTEMS
 
 > *This part is optional and advanced. It exists for readers who want real hypervisor experiments, not only HYP-mode vocabulary. The path starts in QEMU, moves to Xen on the i.MX6ULL, then uses Jailhouse and STM32MP1 where the hardware model is a better fit.*
 
@@ -1552,14 +1719,14 @@ Many readers came here from VSCode and would rather debug there than learn `tui`
 |------|---------:|--------------:|------:|
 | I — Foundations                | 8   | —                                  | 136 |
 | II — Bare-metal i.MX6ULL       | 10  | +3 (18A–C)                         | 252 |
-| III — U-Boot                   | 6   | +2 (22A, 23A)                      | 204 |
-| IV — Kernel                    | 6   | +2 (27A, 30A)                      | 148 |
-| V — Rootfs & user space        | 5   | +3 (35A, 35B, 35C)                 | 140 |
+| III — U-Boot                   | 6   | +10 (24A-J)                        | 344 |
+| IV — Kernel                    | 6   | +6 (26A, 27A, 27B, 29A, 30A, 30B) | 216 |
+| V — Rootfs & user space        | 5   | +9 (35A-I)                         | 243 |
 | VI — Driver development        | 20  | +14 (51A/B, 52A, 54A/B, 55A–I)     | 644 |
 | **VII — Device cookbook**      | **54** | —                               | **~735** |
 | VIII — Debug & advanced        | 9   | +5 (120A, 121A, 122A, 123A, 125A)  | 290 |
 | IX — Applied virtualization     | 13  | —                                  | 320 |
-| **Total**                      | **131** | **+29**                        | **~2,869 pages** |
+| **Total**                      | **131** | **+47**                        | **~3,185 pages** |
 
 ---
 
@@ -1609,8 +1776,16 @@ Ch10 ──┬──► Ch18A (project organization)  ──► informs every su
        └──► Ch11..Ch16 (proceed normally)
 Ch16 ──► Ch18B (button+beep)  ──► Ch17 MMU
 Ch18 ──► Ch18C (bare-metal RTC)
-Ch22 ──► Ch22A (optional new-SoC bring-up path) ──► Ch23
-Ch35 ──► Ch35A (Ubuntu-base, optional alternative to Ch31/35)
+Ch24 ──► Ch24A (optional deep dive) ──► Ch24B..Ch24J (applied U-Boot scenarios)
+Ch26 ──► Ch26A (kernel boot failure playbook) ──► Ch27
+Ch27A ──► Ch27B (custom-board Device Tree)
+Ch29 ──► Ch29A (initramfs recovery system)
+Ch30A ──► Ch30B (product kernel configs)
+Ch35 ──► Ch35D (bootable SD/eMMC layout) ──► Ch35I (boot from SPI NOR)
+Ch35I ──► Ch35E (Buildroot board directory)
+Ch35E ──► Ch35A (Ubuntu-base, optional alternative) ──► Ch35F (app as service)
+Ch35F ──► Ch35G (network/time/logging) ──► Ch35B (read-only rootfs)
+Ch35B ──► Ch35H (rootfs security basics) ──► Ch35C (containers)
 Ch43 ──► any of Ch55A..Ch55H (siblings, independent)
 Ch44..Ch55I ──► any chapter of Part VII Device Cookbook (Ch 64..Ch 117) — pick the chip class you need
 Ch120 ──► Ch125A (VSCode workflow; can be read after any driver chapter)
@@ -1621,9 +1796,9 @@ Ch126 ──► Ch127..Ch139 (optional virtualization and mixed-criticality path
 
 ## Project decisions
 
-1. **Target board.** Point Atom MINI (i.MX6ULL @ 696 MHz, 512 MiB DDR3L) is the primary reference. The guide deliberately stays general where it can — most chapters work on any i.MX6ULL board, and Parts IV–VIII (kernel, rootfs, drivers, debug, production) transfer to any Linux-capable ARM SoC. Board-specific divergences are called out inline.
+1. **Target board.** Point Atom MINI with a revision-specific 512 MiB DDR3L core-board example is the primary reference. Clock limits come from the actual chip marking and electrical conditions, not the board name. Parts IV–VIII teach concepts applicable to other Linux-capable ARM SoCs, but their board configuration and drivers still need porting.
 2. **Language.** English only. No bilingual edition planned.
-3. **Versions targeted throughout.** Linux kernel **v6.6 LTS**; U-Boot **v2026.04** (or latest stable at read-time); GCC **13.x** for the cross-toolchain; Buildroot **2026.02**; Yocto **scarthgap (5.0)** / **kirkstone (4.0)** on the Buildroot/Yocto side. Driver-API signatures and DTS paths follow v6.6 conventions; pre-v6.5 kernels use different DTS layout (no `nxp/imx/` prefix) and earlier driver-API forms.
+3. **Versions targeted throughout.** Linux kernel **v6.6 LTS**; U-Boot **v2026.04** (or latest stable at read-time); GCC **13.x** for the cross-toolchain; Buildroot **2025.02 LTS** for long-lived examples and **2026.05** for latest-stable checks; Yocto **scarthgap (5.0)** / **kirkstone (4.0)** on the Buildroot/Yocto side. Driver-API signatures and DTS paths follow v6.6 conventions; pre-v6.5 kernels use different DTS layout (no `nxp/imx/` prefix) and earlier driver-API forms.
 4. **Code-listing license.** MIT. Snippets in chapters are copy-paste-into-your-project friendly; no attribution required.
-5. **Tooling.** Markdown sources + **Sphinx + Furo + MyST-Parser** rendered to a modern, dark-mode-aware site with hideable sidebar and VS-Code-style code highlighting. Hosted on GitHub Pages, auto-rebuilt on push. See [PUBLISH.md](PUBLISH.md).
-6. **Code delivery.** **Inline in the chapters.** There is no companion `code/` repository. The drivers, scripts, and configurations shown are complete enough to read, type, and adapt; the lab sections describe what to build but do not ship a reference solution.
+5. **Tooling.** Markdown sources + **Sphinx + Furo + MyST-Parser**, hosted on GitHub Pages and auto-rebuilt on push. The reading path begins at Chapter 1. Publishing instructions live in the repository's `PUBLISH.md`.
+6. **Code delivery.** **Inline in the chapters.** There is no companion `code/` repository. Distinguish complete lab listings from explanatory snippets and previews. Record the selected versions and actual results; not every later hardware lab has been validated.

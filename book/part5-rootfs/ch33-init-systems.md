@@ -129,7 +129,7 @@ What you get:
   ExecStart=/usr/bin/my-daemon
   Restart=on-failure
   RestartSec=5s
-  
+
   [Install]
   WantedBy=multi-user.target
   ```

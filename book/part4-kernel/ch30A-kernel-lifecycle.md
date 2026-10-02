@@ -80,19 +80,18 @@ Releases come out daily-to-weekly with version tags like `v6.6.1`, `v6.6.2`, ...
 
 ## 30A.4  Long-Term Support (LTS)
 
-Selected mainline releases are designated **LTS** and get stable-tree backports for years instead of weeks. The current pattern, as of 2026:
+Selected mainline releases are designated **LTS** and get stable-tree backports for years instead of weeks. The current list changes, so always check kernel.org before choosing for a product. As of June 2026, kernel.org lists:
 
-| LTS | Released | Support ends | Notes |
-|-----|----------|--------------|-------|
-| 6.6 | Oct 2023 | Dec 2026 | Default LTS pick for new 2024+ products |
-| 6.1 | Dec 2022 | Dec 2026 | Heavily used by Android, several distros |
-| 5.15 | Oct 2021 | Oct 2026 | Still common in embedded |
-| 5.10 | Dec 2020 | Dec 2026 | Android 11/12 ABI baseline |
-| 5.4 | Nov 2019 | Dec 2025 | Aging; many vendor BSPs are pinned here |
-| 4.19 | Oct 2018 | Dec 2024 | EOL imminent |
-| 4.14 | Nov 2017 | Jan 2024 | EOL'd |
+| LTS | Released | Projected EOL | Notes |
+|-----|----------|---------------|-------|
+| 6.18 | Nov 2025 | Dec 2028 | Newest longterm line at this revision. |
+| 6.12 | Nov 2024 | Dec 2028 | Strong default for new products if your BSP and drivers are ready. |
+| 6.6 | Oct 2023 | Dec 2027 | Good teaching baseline and still common in embedded. |
+| 6.1 | Dec 2022 | Dec 2027 | Heavily used by Android and several distros. |
+| 5.15 | Oct 2021 | Dec 2026 | Still common, but aging. |
+| 5.10 | Dec 2020 | Dec 2026 | Old baseline, mostly for legacy products. |
 
-**LTS lifetime is the lifetime of the product, in practice.** A product shipping in 2025 on LTS 6.6 has fixes flowing in until Dec 2026, by which time you should already be migrating to a newer LTS (LTS 6.12 will likely be the next one, supported until ~2030).
+**LTS lifetime is the lifetime of the product, in practice.** A product shipping in 2026 should normally start from the newest longterm line that supports the hardware and vendor stack. If you ship on an older LTS, write the migration date into the product plan before release.
 
 **The "extended LTS" track** (sometimes called "Civil Infrastructure Platform" or CIP) backports security fixes for **6+ years** on selected LTS releases, funded by industrial users (Toshiba, Siemens, others). Less drama-prone than mainline LTS but slower-moving.
 
@@ -166,7 +165,7 @@ For our i.MX6ULL on Point Atom MINI:
 - **Q2: Product life?** Assume 5 years for an industrial product.
 - **Q3: Maintainer?** This book exists to teach you to be one.
 
-→ **Current LTS, with a mid-lifecycle migration plan.** As of 2025, that means LTS 6.6 (or 6.1 if you want extra runway). Plan a 6.6 → 6.12 (or 6.1 → 6.6) migration in year 3.
+→ **Current LTS, with a mid-lifecycle migration plan.** As of this revision, that usually means 6.12 or 6.18 for a new product, unless your vendor stack requires 6.6. If you choose 6.6, plan the next LTS migration before manufacturing.
 
 ## 30A.7  The 4.1.15 trap
 
@@ -193,7 +192,7 @@ Three scenarios:
 
 - Need: low-power Wi-Fi, BLE, a custom LED-strip driver, OTA updates.
 - All hardware supported in mainline (the Wi-Fi via standard mainline drivers, BLE via Bluetooth subsystem, LED strip via SPI).
-- **Decision: LTS 6.6.** Migrate to next LTS (~6.12) in year 2 alongside any major firmware bump. Set up an OTA pipeline (Ch 63) so kernel upgrades reach the field.
+- **Decision: current LTS.** Pick the newest longterm line that supports the Wi-Fi and BLE stack. Set up an OTA pipeline (Ch 63) so kernel upgrades reach the field.
 
 ### Scenario B, Industrial PLC, 10-year product life, IEC 61131 certified
 
@@ -220,7 +219,7 @@ The pattern across all three: **the product's field life and the security level 
 
 ## 30A.10  Pitfalls
 
-- **"Just stay on 5.4 forever."** 5.4 ends in Dec 2025. That is not forever.
+- **"Just stay on 5.4 forever."** 5.4 is already outside the current kernel.org longterm list. That is not forever.
 - **"We'll upgrade the kernel later."** "Later" never comes if your code is so deeply intertwined with vendor BSP internals that migration is a major rewrite. Budget the migration *now*, even if you delay execution.
 - **"LTS = no breaking changes."** LTS gets bug fixes and security patches. Behavior fixes can change semantics. Test before deploying.
 - **"Mainline is unstable."** Modern mainline is *very* stable. What's unstable is mainline tip *between releases*. Pick a tagged release (`v6.6` not `master`) and you have what was tested.
@@ -237,5 +236,5 @@ The pattern across all three: **the product's field life and the security level 
 - **`drm/kernel-doc-rst` discussions on `linux-rt-users` mailing list** for PREEMPT_RT-specific lifecycle considerations.
 > **PREEMPT_RT:** the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 
-> Next part: **Part V, Root filesystem & user space.** With the kernel sorted, we turn to what runs on top. BusyBox by hand, then Buildroot, then Ubuntu-base, and the production patterns (read-only root, containers) that real shipping products use.
+> Next chapter: **Chapter 30B: Product kernel configs.** Before leaving the kernel, we split development, production, and recovery configs so kernel configuration becomes a maintained product asset.
 > **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.

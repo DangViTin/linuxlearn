@@ -1,6 +1,6 @@
 # Chapter 9: First LED, pure assembly
 
-> **What:** code that blinks an LED on the Point Atom MINI. No C. No libc. No bootloader. ~25 lines of ARM assembly, < 1 KB image, loaded into OCRAM by the Boot ROM over USB-OTG.
+> **What:** code that blinks an LED on the Point Atom MINI. No C. No libc. No bootloader. The program is under 1 KB and is loaded into OCRAM by the Boot ROM over USB-OTG.
 >
 > **Why:** This is the moment you control the chip directly. Higher layers exist to make hard things easy, but you can only judge them if you have done the low-level version once.
 >
@@ -29,6 +29,8 @@ No linker script this chapter. The program is small enough to hand-place. Chapte
 
 > **Which pin?** On both Point Atom ALPHA and MINI, the user LED is on **GPIO1_IO03**. The wiring is active-low: the anode goes to 3.3 V through a current-limiting resistor. The GPIO pulls the cathode low to turn the LED on. *Confirm against your board's schematic for safety.* If your LED is on a different pin, every register address in this chapter changes, but the pattern does not. Because we only toggle the bit, active-low wiring does not change our code. The LED blinks with inverted phase.
 
+The vendor Linux device tree confirms this mapping. It names the device `sys-led` and declares GPIO bank 1, bit 3, active-low.
+
 ## 9.2  The three-write pattern, explained
 
 To make any pin output a level under software control on i.MX6ULL, you do exactly three things:
@@ -37,7 +39,7 @@ To make any pin output a level under software control on i.MX6ULL, you do exactl
 2. **Route the pin to its GPIO function**, by writing the ALT number to `IOMUXC_SW_MUX_CTL_PAD_<padname>`. Without this, the pin still belongs to whatever default function the silicon picked at reset (often a different peripheral).
 3. **Make it an output**, by setting the corresponding bit in `GPIO<bank>_GDIR`. **Then** write 0/1 to the same bit position in `GPIO<bank>_DR` to drive the level.
 
-Optionally, you also write to `IOMUXC_SW_PAD_CTL_PAD_<padname>` to set drive strength, slew rate, pull, etc. For an LED you can usually leave this at reset defaults.
+You can also write `IOMUXC_SW_PAD_CTL_PAD_<padname>` to set drive strength, slew rate, and pulls. We use `0x17059`, the pad value from the vendor Linux device tree for this LED pin.
 
 Addresses for GPIO1_IO03, from the Reference Manual:
 
@@ -82,7 +84,7 @@ _start:
      *     We set SP just below that.  An LED blink doesn't actually
      *     touch the stack, but it's hygienic.
      * -------------------------------------------------------------- */
-    ldr     sp, =0x00920000
+    ldr     sp, =0x0091FFF0
 
     /* --------------------------------------------------------------
      *  2. Enable the GPIO1 clock gate.
@@ -101,11 +103,11 @@ _start:
     str     r1, [r0]
 
     /* --------------------------------------------------------------
-     *  4. (Optional) configure pad: 50 MHz slew, push-pull, no pull.
-     *     0x10B0 = typical "low-speed digital output" stanza.
+     *  4. Configure the pad with the value used by the vendor Linux
+     *     device tree for this board's LED pin.
      * -------------------------------------------------------------- */
     ldr     r0, =0x020E02F4         @ &IOMUXC_SW_PAD_CTL_PAD_GPIO1_IO03
-    ldr     r1, =0x000010B0
+    ldr     r1, =0x00017059
     str     r1, [r0]
 
     /* --------------------------------------------------------------
@@ -117,19 +119,19 @@ _start:
     str     r1, [r0]
 
     /* --------------------------------------------------------------
-     *  6. Blink loop.  Toggle bit 3 in GPIO1_DR, delay, repeat.
-     *     A delay loop of ~1.5M iterations at 396 MHz is about 8 ms.
-     *     Doesn't have to be precise; we just want a visible blink.
+     *  6. Blink loop. Toggle bit 3 in GPIO1_DR, delay, repeat.
+     *     This is only a rough delay. It is intentionally long enough
+     *     to remain visible when the CPU clock is faster than expected.
      * -------------------------------------------------------------- */
     ldr     r4, =0x0209C000         @ &GPIO1_DR
     ldr     r5, [r4]                @ current value
     mov     r6, #(1 << 3)           @ bit mask for pin 3
 
 blink:
-    eor     r5, r5, r6              @ toggle bit 3 in cached value
+    eor     r5, r5, r6              @ toggle bit 3 in our saved copy of GPIO1_DR
     str     r5, [r4]                @ write back
 
-    ldr     r7, =1500000            @ delay counter
+    ldr     r7, =500000           @ rough visible delay
 1:  subs    r7, r7, #1
     bne     1b
 
@@ -149,7 +151,7 @@ A few notes on what's there and what isn't:
 
 ## 9.4  Building the image
 
-Two files: `led.S` (above) and a one-line `Makefile`.
+Two files: `led.S` and a small `Makefile`.
 
 ```make
 # Makefile
@@ -157,113 +159,124 @@ CROSS := arm-none-eabi-
 
 all: led.bin
 
-led.elf: led.S
-	$(CROSS)gcc -mcpu=cortex-a7 -nostdlib -Wl,-Ttext=0x00907400 -o $@ $<
+led.o: led.S
+	$(CROSS)gcc -mcpu=cortex-a7 -marm -ffreestanding -c -o $@ $<
+
+led.elf: led.o
+	$(CROSS)ld -Ttext=0x00908000 -e _start -o $@ $<
 
 led.bin: led.elf
-	$(CROSS)objcopy -O binary $< $@
+	$(CROSS)objcopy -O binary --only-section=.text $< $@
 
 clean:
-	rm -f led.elf led.bin
+	rm -f led.o led.elf led.bin led.imx
 
 .PHONY: all clean
 ```
 
 What is going on:
 
-- **`-Wl,-Ttext=0x00907400`** tells the linker "place `.text` at virtual address `0x00907400`". This is the address where the image will live after loading into OCRAM (well above the ROM's bookkeeping at the bottom of OCRAM). The assembled `ldr r0, =0x...` constants are relocated relative to this base when the pool is materialized.
-- **`-nostdlib`** keeps `crt0` and libc out. We have no startup code to call ours.
-- We do *not* pass `-Wl,-e _start` because GCC's default entry is `_start` already.
+- **`-c`** assembles `led.S` into `led.o` without linking it.
+- **`-Ttext=0x00908000`** tells the linker that `.text` will run from address `0x00908000`. The image wrapper below places the first byte of `led.bin` at exactly that address.
+- **`-e _start`** records `_start` as the ELF entry point. The i.MX IVT also uses this same address.
+- **`--only-section=.text`** copies only our code and its literal pool into `led.bin`.
 
 Build:
 
 ```sh
 $ make
-arm-none-eabi-gcc -mcpu=cortex-a7 -nostdlib -Wl,-Ttext=0x00907400 -o led.elf led.S
-arm-none-eabi-objcopy -O binary led.elf led.bin
+arm-none-eabi-gcc -mcpu=cortex-a7 -marm -ffreestanding -c -o led.o led.S
+arm-none-eabi-ld -Ttext=0x00908000 -e _start -o led.elf led.o
+arm-none-eabi-objcopy -O binary --only-section=.text led.elf led.bin
 $ wc -c led.bin
-160 led.bin
+128 led.bin
 ```
 
-About 160 bytes. Now we know how small bare-metal can be.
-
-Inspect to make sure we got what we expect:
+Check the ELF before wrapping it:
 
 ```sh
-$ arm-none-eabi-objdump -d led.elf | head -30
+$ arm-none-eabi-readelf -h led.elf | grep 'Entry point'
+  Entry point address:               0x908000
 
-led.elf:     file format elf32-littlearm
-
-Disassembly of section .text:
-
-00907400 <_start>:
-  907400:   e59fd054    ldr sp, [pc, #84]   ; 0x90745c
-  907404:   e59f0054    ldr r0, [pc, #84]   ; 0x907460
-  907408:   e5901000    ldr r1, [r0]
-  90740c:   e3811cc0    orr r1, r1, #49152, 6  ; 0xc000000
-  ...
+$ arm-none-eabi-objdump -d led.elf | head
+00908000 <_start>:
 ```
 
-`pc, #84` is the offset to the literal pool, where the constants `0x00920000`, `0x020C406C`, etc., live. That is the assembler's translation of our `ldr r0, =0x...`.
+Both commands must show `0x00908000`. If they show another address, stop and fix the build before using `uuu`.
 
 ## 9.5  Wrapping the .bin in an .imx
 
 `led.bin` is raw machine code. The Boot ROM in SDP mode does *not* execute raw bins, it executes images that present an IVT (Chapter 7). We need to wrap.
 
-For this chapter we use the simplest possible wrapper: a 3-line shell command that builds an IVT and BootData in front of our code. We will write a Python tool that does this cleanly in **Chapter 11**. For now, use this temporary wrapper and focus on the LED path.
+For this chapter, a short Python script places each structure at an exact file offset. Chapter 11 explains and extends this image builder.
 
-Save as `wrap.sh`:
+Save as `wrap.py`:
 
-```sh
-#!/bin/bash
-# Build led.imx = [pad-to-0x400][IVT 32B][BootData 12B][pad to 0x1000][led.bin]
-# IVT.self  = 0x00907400  (where the IVT lives after load)
-# IVT.entry = 0x00908000  (where led.bin starts)
-# BootData.start  = 0x00907400  (load the whole image here)
-# BootData.length = file size
-set -euo pipefail
-LOAD_ADDR=0x00907400
-ENTRY=0x00908000
-BIN_OFFSET=0x1000   # entry is at file_offset 0x1000 from start of image
-                    # IVT is at file_offset 0x000 of image (=0x400 in .imx file)
-
-# Build header in Python (saves us from messy printf-hex)
-python3 - <<EOF > header.bin
+```python
+#!/usr/bin/env python3
 import struct
-hdr = struct.pack('<BBBB', 0xD1, 0x00, 0x20, 0x40)           # IVT tag/len/ver
-hdr += struct.pack('<IIIIIII',
-    0x00908000,    # entry
-    0x00000000,    # reserved
-    0x00000000,    # dcd (none)
-    0x00907420,    # boot_data (right after IVT)
-    0x00907400,    # self
-    0x00000000,    # csf (no HAB)
-    0x00000000)    # reserved
-# BootData immediately follows IVT (offset +0x20)
-import os
-codesize = os.path.getsize('led.bin')
-total = codesize + 0x1000   # code + 4 KB headroom for IVT+pad
-hdr += struct.pack('<III', 0x00907400, total, 0x00000000)    # start, length, plugin
-# pad header region to 0x1000 (so led.bin starts at offset 0x1000)
-hdr += b'\xff' * (0x1000 - len(hdr))
-import sys
-sys.stdout.buffer.write(hdr)
-EOF
+from pathlib import Path
 
-# Assemble: 0x400 of leading pad, then header.bin (0x1000), then led.bin
-( head -c 0x400 /dev/zero
-  cat header.bin
-  cat led.bin
-) > led.imx
+IMAGE_START = 0x00907000
+IVT_OFFSET  = 0x00000400
+CODE_OFFSET = 0x00001000
 
-rm -f header.bin
-ls -l led.imx
+IVT_ADDR  = IMAGE_START + IVT_OFFSET   # 0x00907400
+ENTRY_ADDR = IMAGE_START + CODE_OFFSET # 0x00908000
+BOOT_ADDR  = IVT_ADDR + 0x20           # 0x00907420
+
+code = Path('led.bin').read_bytes()
+image_size = CODE_OFFSET + len(code)
+
+# IVT header: tag, 16-bit big-endian length, version.
+ivt = struct.pack('>BHB', 0xD1, 0x0020, 0x40)
+ivt += struct.pack('<IIIIIII',
+    ENTRY_ADDR, # entry
+    0,          # reserved1
+    0,          # dcd, none for this OCRAM program
+    BOOT_ADDR,  # boot_data
+    IVT_ADDR,   # self
+    0,          # csf, image is not signed
+    0)          # reserved2
+
+# BootData describes the complete image, including the bytes before the IVT.
+boot_data = struct.pack('<III', IMAGE_START, image_size, 0)
+
+image = bytearray(b'\x00' * CODE_OFFSET)
+image[IVT_OFFSET:IVT_OFFSET + len(ivt)] = ivt
+image[IVT_OFFSET + 0x20:IVT_OFFSET + 0x20 + len(boot_data)] = boot_data
+image += code
+
+# UUU loads file offset 0x400 at IVT_ADDR. Therefore file offset 0x1000
+# lands at IVT_ADDR + (0x1000 - 0x400), which must equal ENTRY_ADDR.
+loaded_code_addr = IVT_ADDR + (CODE_OFFSET - IVT_OFFSET)
+assert loaded_code_addr == ENTRY_ADDR
+assert image[CODE_OFFSET:] == code
+
+Path('led.imx').write_bytes(image)
+print(f'IVT:  file 0x{IVT_OFFSET:04X} -> RAM 0x{IVT_ADDR:08X}')
+print(f'code: file 0x{CODE_OFFSET:04X} -> RAM 0x{ENTRY_ADDR:08X}')
+print(f'size: {len(image)} bytes')
 ```
 
 ```sh
-$ chmod +x wrap.sh && ./wrap.sh
--rw-r--r-- 1 you you 5536 May 25 14:02 led.imx
+$ python3 wrap.py
+IVT:  file 0x0400 -> RAM 0x00907400
+code: file 0x1000 -> RAM 0x00908000
+size: 4256 bytes
 ```
+
+Your size may differ slightly. The two addresses must match the output above.
+
+The important layout is:
+
+| File offset | Loaded RAM address | Content |
+|-------------|--------------------|---------|
+| `0x0000` to `0x03FF` | Not uploaded by UUU | Padding used by SD and eMMC boot images |
+| `0x0400` | `0x00907400` | IVT |
+| `0x0420` | `0x00907420` | BootData |
+| `0x042C` to `0x0FFF` | `0x0090742C` onward | Padding |
+| `0x1000` | `0x00908000` | First instruction in `led.bin`, `_start` |
 
 If you decode the IVT now you should see exactly the values we set:
 
@@ -290,31 +303,36 @@ Bus 001 Device 010: ID 15a2:0080 Freescale SemiConductor Inc i.MX 6 SystemOnChip
 5. Push the image:
 
 ```sh
-$ uuu -b sdp led.imx
-uuu (Universal Update Utility) for nxp imx chips -- 1.5.x-0
-1:18    1/ 1 [Done                                  ] SDP: boot -f led.imx
+$ sudo "$IMX6ULL_HOME/build/mfgtools/uuu/uuu" led.imx
+... release/banner output varies; the following is the expected command shape ...
+
 Success 1    Failure 0
+3:2-         2/ 2 [Done                                  ] SDP: done
 ```
 
-That `uuu -b sdp` invocation runs a built-in script that does, in essence:
+When the argument is an image instead of a UUU command file, `uuu` automatically creates this command:
 
 ```
 SDP: boot -f <image>
 ```
+UUU then performs these steps:
 
-which translates into:
+1. Find the IVT at file offset `0x400`.
+2. Upload from that offset to `IVT.self`, which is `0x00907400`.
+3. Ask the ROM to process the IVT at `0x00907400`.
+4. The ROM reads `IVT.entry` and branches to `_start` at `0x00908000`.
 
-- `WRITE_FILE`: push `led.imx` (starting at offset `0x400`, the IVT) to the IVT.self address in RAM.
-- `JUMP_ADDRESS`: jump to IVT.self. The ROM there interprets the IVT, transfers control to IVT.entry.
+`Success 1 Failure 0` means that the USB transfer and ROM commands succeeded. It does not prove that `_start` contains valid code at the entry address.
 
 Watch the LED. It should blink.
 
 If it does not:
 
-1. **Check the LED's polarity.** If your board's LED is active-low, our toggle still blinks it but the on/off pattern is inverted from what you might expect.
-2. **Check the IOMUX value.** Did your board's schematic say GPIO1_IO03 or a different pin? If different, every register address in §9.2 changes.
-3. **Confirm `uuu` reported success.** If `uuu` reported failure, the image was rejected by the ROM, most often because IVT.self does not match the load address. Re-decode the IVT and confirm.
-4. **Power-cycle and retry.** The ROM, once it jumps to user code, will not accept another SDP push without a reset.
+1. **Check all three execution addresses.** `readelf`, `objdump`, and `wrap.py` must all show `_start` at `0x00908000`.
+2. **Check the image layout.** `wrap.py` must report code at file offset `0x1000` and RAM address `0x00908000`.
+3. **Check the LED's pin.** This code controls `GPIO1_IO03`. Confirm that this is the user LED in your exact board revision.
+4. **Check the blink delay.** A very short delay will makes the LED look continuously on or dim.
+5. **Power-cycle and retry.** After the ROM jumps to your program, it cannot accept another SDP upload until the board resets.
 
 ## 9.7  What happened, step by step
 
@@ -327,10 +345,11 @@ Power on
     → enumerates as USB device 15a2:0080
     → waits for host commands
 host: uuu pushes led.imx over USB
-  → ROM receives WRITE_FILE: payload at RAM offset 0x00907400+
+  → UUU skips the file's first 0x400 bytes
+  → ROM receives the IVT and following bytes at RAM 0x00907400
   → ROM receives JUMP_ADDRESS: 0x00907400
 ROM:
-  → finds IVT signature 0xD1 at 0x00907400 ✓
+  → finds IVT signature 0xD1 at 0x00907400
   → reads IVT.dcd (zero, skip DCD)
   → reads IVT.entry = 0x00908000, jumps there
 Your code:
@@ -348,7 +367,7 @@ No software layer sits between your code and the chip. The next chapters add lay
 
 You have already done the lab if the LED blinked. To deepen:
 
-1. **Change the blink rate** by editing the delay constant. Measure the resulting frequency with a scope or with a phone's slow-motion camera. The CPU's reset clock is 396 MHz, so an inner-loop body of 4 instructions and a counter of 1.5M is ~15 ms per half-period. Verify experimentally.
+1. **Change the blink rate** by editing the delay constant. Measure the resulting frequency with a scope or with a phone's slow-motion camera. This busy loop is not a precise timer because its speed depends on the CPU clock and instruction timing.
 2. **Use a different pin.** Look up the schematic. Find a second LED, or an unused GPIO that goes to a header pin you can probe. Modify the source to use that pin instead. *Do not* read register addresses from the previous example. Look them up in the RM yourself.
 3. **Add a second LED** that blinks at half the rate. Now you have a counter.
 4. **Measure image size growth.** Run `wc -c led.bin` before and after. Observe the marginal cost.
@@ -357,7 +376,8 @@ You have already done the lab if the LED blinked. To deepen:
 
 - **Forgetting the CCGR write.** Symptoms: register reads return 0, writes have no effect. *Always* enable the clock before touching a peripheral. Always.
 - **Wrong IOMUX ALT.** Symptom: writes to GPIO_DR succeed but the pin doesn't move. Some pads default to "GPIO" in their reset ALT. Many do not. Always set ALT explicitly.
-- **`IVT.self` ≠ load address.** Symptoms: `uuu` reports success, board does nothing, no blink. The ROM jumped, but to the wrong place. Decode the IVT again. Ensure `self` and the load argument match.
+- **Entry address does not match code location.** Symptom: `uuu` reports success, but the board does nothing. The host cannot tell whether valid instructions exist at `IVT.entry`. Check the file-to-RAM map in Section 9.5.
+- **Delay is too short.** The LED may look continuously on even though the pin is toggling quickly.
 - **Leaving the boot-mode switch in SDP.** After your image runs, if you reset the board, it goes back into SDP and does nothing visible. Move the switch back to SD when you are done with SDP work for the day.
 - **Push-pull vs open-drain.** If your LED is wired to VCC through a resistor (common for active-low LEDs), driving the GPIO high turns it off, not on. Read the schematic.
 - **Optimization eating your loop.** GCC with `-O2` may unroll or completely eliminate a delay loop with no side-effects. We avoided this here by leaving the loop in raw asm. If you port to C, mark the counter `volatile`.
@@ -367,7 +387,6 @@ You have already done the lab if the LED blinked. To deepen:
 - **IMX6ULLRM Chapter 28, GPIO**: Specifically Table 28-1 (register summary) and Table 28-3 (GPIOx_DR bit layout).
 - **IMX6ULLRM Chapter 32, IOMUXC**: Look up GPIO1_IO03 in the IOMUX table.
 - **IMX6ULLRM Chapter 18, CCM**: Table 18-5 (CCGR bit definitions).
-> **CCM:** Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
 - **ARM DDI 0406** Section A8.8.62, `LDR (literal)` form, which is what `ldr Rn, =const` expands into.
 - The GNU Assembler manual, "ARM Dependent Features", `.syntax unified`, `.cpu`, `.global`, literal pools.
 - Your **Point Atom MINI schematic**, the only authoritative source for which LED is on which pin on *your* board.

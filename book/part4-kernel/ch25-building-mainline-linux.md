@@ -29,30 +29,25 @@ The Linux kernel ships under several release tracks:
 
 - **Mainline** at `git.kernel.org/torvalds/linux.git`, Linus's tree. The current development tip. New releases roughly every 9 weeks (the "x.y" releases like 6.6, 6.7).
 - **Stable**: Greg KH backports bug fixes to each mainline release for about 6 weeks. Tags look like `6.6.1`, `6.6.2`, and so on.
-- **Long-Term Support (LTS)**: selected mainline releases get fix backports for 2 or 6 years. As of 2026 the active LTS lines are `6.6`, `6.1`, `5.15`, `5.10`, `5.4`.
+- **Long-Term Support (LTS)**: selected mainline releases get fix backports for years. Check `kernel.org/category/releases.html` before choosing for a product. As of June 2026, active longterm lines include `6.18`, `6.12`, `6.6`, `6.1`, `5.15`, and `5.10`.
 - **Vendor BSPs**: NXP, ST, TI, and other silicon vendors ship forks pinned to a specific kernel minor with thousands of patches on top. NXP forks mainline into `linux-imx`. Active branches are pinned to `5.15` and `6.6`. Older branches exist for legacy products.
 
-We build from **mainline** (or LTS where stability matters). The i.MX6ULL has had full support in mainline since v4.10 (released 2017). Every silicon revision and DT change is upstreamed. Chapter 30A goes deeper on when each track is appropriate.
+We build from upstream Linux, not from a vendor BSP. For source-reading stability, the chapter examples pin to the `v6.6` tag. For a shipping product, start from the current longterm branch that supports your hardware. The i.MX6ULL has had full support in mainline since v4.10 (released 2017). Chapter 30A goes deeper on when each track is appropriate.
 
 ## 25.2  Clone the source
 
 ```sh
 $ cd ~/imx6ull/src
-$ git clone --depth=20 https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
-$ cd linux
-$ git log --oneline -1
+$ git clone --depth=1 --branch v6.6 \
+      https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-v6.6
+$ cd linux-v6.6
+$ git describe --tags --always
+v6.6
 ```
 
-`--depth=20` pulls just the recent history (about 30 MB) instead of the full ~5 GB tree. Drop it if you want to bisect.
+`v6.6` is an exact tag, so every reader sees the same source layout and similar line numbers. If you want the maintained longterm branch instead, clone `--branch linux-6.6.y` or, better, the newest longterm branch listed on kernel.org. That branch receives fixes, so line numbers drift over time.
 
-Tag-based checkout for reproducibility:
-
-```sh
-$ git fetch --tags --depth=1
-$ git checkout v6.6     # latest LTS as of this writing
-```
-
-The chapter examples assume v6.6 unless otherwise noted. Newer minors (6.7, 6.8, …) work identically for our purposes.
+The chapter examples assume `v6.6` unless otherwise noted. Newer longterm kernels work similarly for our purposes, but command output and source line numbers will differ.
 
 ### Directory layout (the parts you'll touch)
 
@@ -132,6 +127,15 @@ $ make imx_v6_v7_defconfig
 # configuration written to .config
 #
 ```
+
+All `make` commands in Part IV assume `env.sh` exported:
+
+```sh
+export ARCH=arm
+export CROSS_COMPILE=arm-none-linux-gnueabihf-
+```
+
+If you did not source that script, write those two variables directly on each `make` command.
 
 Inspect `.config`:
 
@@ -293,8 +297,9 @@ A practical workspace recipe:
 ```sh
 $ mkdir -p ~/imx6ull/{src,build,rootfs}
 $ cd ~/imx6ull/src
-$ git clone --depth=20 https://git.kernel.org/.../linux.git
-$ cd linux
+$ git clone --depth=1 --branch v6.6 \
+      https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-v6.6
+$ cd linux-v6.6
 
 # Build out-of-tree to keep the source clean (optional but recommended)
 $ make O=~/imx6ull/build/kernel imx_v6_v7_defconfig

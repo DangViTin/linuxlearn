@@ -54,7 +54,7 @@ What each does:
 You can save these as an env one-shot:
 
 ```
-=> setenv bootnet 'tftp 0x82000000 zImage; tftp 0x83000000 imx6ull.dtb; bootz 0x82000000 - 0x83000000'
+=> setenv bootnet 'tftp 0x82000000 zImage && tftp 0x83000000 imx6ull.dtb && bootz 0x82000000 - 0x83000000'
 => setenv bootcmd 'run bootnet'
 => saveenv
 ```
@@ -236,6 +236,4 @@ With earlycon active, you'll see ~5 extra lines printed *before* the normal "Boo
 - **`Documentation/arch/arm/booting.rst`**: the boot contract (`r0`/`r1`/`r2`) in the canonical place.
 - **The kernel's `printk` format**: `<5>` (KERN_NOTICE), `<6>` (KERN_INFO), `<7>` (KERN_DEBUG) prefix codes. Mostly invisible at boot. Visible when you use `dmesg --level=info` etc.
 
-> Next chapter: **Chapter 27: Device Tree: the contract between firmware and kernel.** We open `imx6ull-14x14-evk.dts` and walk every node from the root down. The DT is the single biggest mental shift for an MCU engineer. We spend extra time here.
-> **MCU bridge:** Think of Device Tree like a board-level hardware description table that replaces hard-coded #define LED_PORT GPIOA decisions. Unlike an MCU header, the kernel parses it at boot and matches it to drivers.
-> **Device Tree:** a data file that describes board hardware to the Linux kernel instead of hard-coding it in C.
+> Next chapter: **Chapter 26A: Kernel boot failure playbook.** Before we move deeper into Device Tree, we learn how to debug the common failures between `bootz` and the first shell.

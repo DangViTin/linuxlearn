@@ -43,6 +43,7 @@ A single binary that prints "hello", waits a moment, and reboots:
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/reboot.h>
+#include <sys/syscall.h>
 #include <linux/reboot.h>
 
 int main(void)
@@ -108,15 +109,17 @@ Drop `initramfs.cpio.gz` into your TFTP server, then:
 => tftp 0x82000000 zImage
 => tftp 0x83000000 imx6ull.dtb
 => tftp 0x84000000 initramfs.cpio.gz
+=> setenv initrd_size ${filesize}
 => setenv bootargs 'console=ttymxc0,115200 earlycon rdinit=/init'
-=> bootz 0x82000000 0x84000000 0x83000000
+=> bootz 0x82000000 0x84000000:${initrd_size} 0x83000000
 ```
 
 Notice the new things:
 
 - **`tftp 0x84000000 initramfs.cpio.gz`**: load the initramfs at a third DRAM address.
 - **`rdinit=/init`**: tells `kernel_init` to run `/init` from the initramfs (instead of `/sbin/init` from a disk rootfs).
-- **`bootz 0x82000000 0x84000000 0x83000000`**: the second argument is now the initrd address (no longer `-`). U-Boot writes both `linux,initrd-start` and `linux,initrd-end` into the DT.
+- **`setenv initrd_size ${filesize}`**: after `tftp`, U-Boot stores the loaded byte count in `filesize`. Raw initramfs images need both address and size.
+- **`bootz 0x82000000 0x84000000:${initrd_size} 0x83000000`**: the second argument is now `initrd_address:initrd_size` (no longer `-`). U-Boot writes both `linux,initrd-start` and `linux,initrd-end` into the DT.
 
 You should see:
 
@@ -166,18 +169,18 @@ Now build a rootfs around it:
 
 ```sh
 $ cd ~/imx6ull
-$ mkdir -p initramfs/{bin,sbin,etc,proc,sys,dev,tmp,var,root,lib,usr/bin,usr/sbin}
-$ cp ~/imx6ull/src/busybox-1.36.1/busybox initramfs/bin/
+$ rm -rf initramfs
+$ mkdir -p initramfs/{etc/init.d,proc,sys,dev,tmp,var,root}
 
-# Create busybox symlinks for every applet (ls, sh, cp, ...)
-$ cd initramfs/bin
-$ for app in $(./busybox --list); do
-    ln -s busybox $app
-  done
-$ cd ../..
+# Install BusyBox and all applet symlinks.
+# This uses the BusyBox build system, so the host never tries to execute
+# the ARM busybox binary.
+$ make -C ~/imx6ull/src/busybox-1.36.1 \
+      ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- \
+      CONFIG_PREFIX=$PWD/initramfs install
 
-# Symlink /sbin/init → /bin/busybox; busybox knows to run as init when called this way.
-$ ln -s /bin/busybox initramfs/sbin/init
+# If your BusyBox config did not install /sbin/init, add it.
+$ test -e initramfs/sbin/init || ln -s /bin/busybox initramfs/sbin/init
 
 # A minimal inittab for busybox's init
 $ cat > initramfs/etc/inittab <<'EOF'
@@ -209,7 +212,9 @@ $ ls -lh ../initramfs.cpio.gz
 
 ```
 => setenv bootargs 'console=ttymxc0,115200 earlycon'
-=> bootz 0x82000000 0x84000000 0x83000000
+=> tftp 0x84000000 initramfs.cpio.gz
+=> setenv initrd_size ${filesize}
+=> bootz 0x82000000 0x84000000:${initrd_size} 0x83000000
 ```
 
 After kernel boots, you should see:
@@ -277,6 +282,7 @@ For embedded, **BusyBox init** is the default. We use it in this book through Ch
 - **`/init` must exist at the root and be executable.** Forget either and the kernel panics with "No filesystem could mount root, tried: ramfs". Cpio archives don't error on missing init.
 - **`/init` linked dynamically.** If `/init` depends on `libc.so.6` and `libc.so.6` isn't in the cpio, exec fails silently. Either statically link (recommended) or include the needed `.so` files in `/lib/` of the initramfs.
 - **`init=` vs `rdinit=`.** `init=path` tells the kernel to look on the *root filesystem* (the one specified by `root=`). `rdinit=path` tells it to look on the *initramfs*. For initramfs-only boots, use `rdinit=` or just rely on the default `/init` lookup.
+- **Forgetting the initramfs size in `bootz`.** For a raw `initramfs.cpio.gz`, use `bootz kernel_addr initrd_addr:initrd_size fdt_addr`. The size usually comes from U-Boot's `${filesize}` after `tftp` or `load`.
 - **cpio archive built without `-H newc`.** Default cpio format isn't what the kernel expects. The unpacker reports an error and gives up. Always `-H newc`.
 - **Trailing slash on `find .`.** `find .` gives relative paths like `./init`, which is what cpio wants. `find /home/you/initramfs` gives absolute paths, so the archive ends up with `/home/you/initramfs/init` and the kernel cannot find `/init`. Always `cd` into the rootfs first.
 - **BusyBox not statically linked.** Built dynamic by default. Forgetting to set static causes the binary to need glibc shared objects you don't have in the initramfs. Symptom: `Kernel panic - not syncing: Attempted to kill init!` because `exec` fails.
@@ -290,4 +296,4 @@ For embedded, **BusyBox init** is the default. We use it in this book through Ch
 - **`init/initramfs.c`**: the kernel's cpio extractor. Short and readable.
 - **`klibc`**: an even smaller libc-replacement than musl, designed specifically for in-kernel-cpio-initramfs static binaries.
 
-> Next chapter: **Chapter 30: Kernel configuration deep-dive.** We've used `imx_v6_v7_defconfig` blindly through Part IV. Now we open `make menuconfig` and learn the major knobs that decide what's compiled in.
+> Next chapter: **Chapter 29A: Initramfs as a recovery system.** Now that a minimal initramfs boots, we turn it into a practical recovery environment for broken root filesystems and field updates.

@@ -435,14 +435,14 @@ void relocate_to_dram(void)
     uint32_t img_size = (uint32_t)&_text_end - (uint32_t)&_text_start;
     img_size += (uint32_t)&_data_end - (uint32_t)&_data_start;
 
-    uint32_t *src = (uint32_t *)0x00907400;   /* OCRAM load address */
+    uint32_t *src = (uint32_t *)0x00908000;   /* OCRAM program address */
     uint32_t *dst = (uint32_t *)0x80100000;   /* DRAM target */
     for (uint32_t i = 0; i < (img_size + 3) / 4; i++) dst[i] = src[i];
 
     /* The DRAM copy is identical to the OCRAM copy.  The 'jump' is just
        calling a function pointer to the DRAM-resident entry. */
     typedef void (*entry_t)(void) __attribute__((noreturn));
-    entry_t entry = (entry_t)(0x80100000 + ((uint32_t)main - 0x00907400));
+    entry_t entry = (entry_t)(0x80100000 + ((uint32_t)main - 0x00908000));
     entry();
 }
 ```

@@ -46,12 +46,12 @@ Buildroot is the right tool for learning, and for single-purpose products with s
 
 ```sh
 $ cd ~/imx6ull/src
-$ wget https://buildroot.org/downloads/buildroot-2024.02.tar.gz
-$ tar xzf buildroot-2024.02.tar.gz
-$ cd buildroot-2024.02
+$ wget https://buildroot.org/downloads/buildroot-2025.02.15.tar.xz
+$ tar xJf buildroot-2025.02.15.tar.xz
+$ cd buildroot-2025.02.15
 ```
 
-LTS releases are tagged `<year>.02` and `<year>.08`. Use the latest LTS for a real project. The latest non-LTS for personal experiments.
+Buildroot has LTS and short stable branches. As of June 2026, `2025.02.x` is the active LTS line, supported until March 2028. `2026.05.x` is the latest stable line, supported for a shorter window. Use LTS for a product unless you need a package or fix that only exists in a newer stable branch.
 
 ```sh
 $ ls
@@ -174,7 +174,7 @@ The `.stamp_*` files are Buildroot's idea of "what stage of the build is this pa
 $ head -40 .config
 #
 # Automatically generated file; DO NOT EDIT.
-# Buildroot 2024.02 Configuration
+# Buildroot 2025.02 Configuration
 #
 BR2_HAVE_DOT_CONFIG=y
 BR2_HOST_GCC_AT_LEAST_4_9=y
@@ -195,14 +195,14 @@ BR2_PACKAGE_BUSYBOX_SHOW_OTHERS=y
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.6"
-BR2_LINUX_KERNEL_DEFCONFIG="imx_v7"
+BR2_LINUX_KERNEL_DEFCONFIG="imx_v6_v7"
 BR2_LINUX_KERNEL_DTS_SUPPORT=y
 BR2_LINUX_KERNEL_INTREE_DTS_NAME="nxp/imx/imx6ull-14x14-evk"   # v6.5+ path; pre-v6.5 was just "imx6ull-14x14-evk"
 ...
 BR2_TARGET_UBOOT=y
 BR2_TARGET_UBOOT_BOARDNAME="mx6ull_14x14_evk"
 BR2_TARGET_UBOOT_CUSTOM_VERSION=y
-BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE="2023.10"
+BR2_TARGET_UBOOT_CUSTOM_VERSION_VALUE="2026.04"
 BR2_TARGET_UBOOT_FORMAT_IMX=y
 ```
 
@@ -398,4 +398,4 @@ The hand-built path taught the structure. Buildroot is what you ship. The rest o
 - **`Bootlin's Buildroot training`**: free online materials, very thorough.
 - **`Yocto vs Buildroot: A Comparison`** articles on LWN, when you outgrow Buildroot's limitations, this is the case for switching to Yocto.
 
-> Next chapter: **Chapter 35A: Ubuntu-base rootfs as a peer to BusyBox/Buildroot.** A radically different approach: take a pre-built Ubuntu and run it.
+> Next chapter: **Chapter 35D: Bootable SD and eMMC image layout.** NFS is for development. A product needs a real boot partition, rootfs partition, and data partition.

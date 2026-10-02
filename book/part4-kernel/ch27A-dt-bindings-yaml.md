@@ -366,4 +366,4 @@ These parents define standard properties common to the *class* (e.g., `current-s
 - **JSON Schema spec** at `json-schema.org/specification`. DT bindings use JSON Schema vocabulary. This is the underlying spec.
 - **`grep -r "unevaluatedProperties" Documentation/devicetree/bindings/`**: read a few real-world bindings end-to-end before writing your own.
 
-> Next chapter: **Chapter 28: Kernel startup, traced.** With DT understood, we can now trace `start_kernel()` from its first instruction to the moment it `exec`s `/sbin/init`.
+> Next chapter: **Chapter 27B: Device Tree for a custom i.MX6ULL board.** With DTS grammar and bindings understood, we now turn a board schematic into a Linux board `.dts`.

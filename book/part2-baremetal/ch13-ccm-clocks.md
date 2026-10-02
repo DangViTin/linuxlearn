@@ -1,5 +1,7 @@
 # Chapter 13: CCM clock tree bring-up
 
+> **Speed-grade prerequisite:** read the fitted chip marking using Chapter 5 before running this clock example. The 696 MHz setting is not permitted on a 528 MHz-grade (`05`) part, including the marking shown in the supplied core schematic. Use an allowed, documented frequency/voltage configuration for your actual part; do not treat the board name or a PLL setting as permission to overclock.
+
 > **What:** code that takes the i.MX6ULL from its 396 MHz reset default to 696 MHz, with explicit configuration of the bus clocks. By the end we can read back, from registers, exactly what the chip is running at and verify with a hardware measurement.
 >
 > **Why:** every later chapter (DDR especially) depends on knowing the bus clocks precisely. The Boot ROM leaves clocks in a known but conservative state. We must own them before we trust their values in initialization tables.

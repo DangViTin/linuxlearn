@@ -47,7 +47,7 @@ Four file extensions you will see:
 - **`.dts`**: Device Tree Source. Human-readable text. One file describes one board.
 - **`.dtsi`**: Device Tree Source Include. A `.dts` fragment that gets `#include`'d. Used for SoC-wide content shared by every board with that SoC.
 - **`.dtb`**: Device Tree Blob. Binary form. What the kernel actually consumes at boot.
-- **`.dtbo`**: Device Tree Overlay. A binary fragment that patches a base `.dtb` at runtime (Ch 23A).
+- **`.dtbo`**: Device Tree Overlay. A binary fragment that patches a base `.dtb` at runtime (Ch 24E).
 
 The compiler is `dtc` (Device Tree Compiler), in `scripts/dtc/`:
 
@@ -56,7 +56,7 @@ $ make dtbs           # compile every DTS the current arch defines
 $ make dtbs_check     # additionally validate against YAML schemas (Ch 27A)
 ```
 
-Each `dts` file lists itself in `arch/arm/boot/dts/Makefile`:
+On v6.6 and newer, the i.MX DTS files live under `arch/arm/boot/dts/nxp/imx/`, and each board DTB is listed in `arch/arm/boot/dts/nxp/imx/Makefile`:
 
 ```make
 dtb-$(CONFIG_SOC_IMX6ULL) += \
@@ -453,7 +453,7 @@ Suppose you wire a new I²C sensor (a Texas Instruments TMP102 thermometer) to I
 
 `/plugin/;` marks this as an overlay (vs a standalone DT). The `&i2c2` references the I²C2 node in the base DT (defined in `imx6ull.dtsi`). The new `tmp102@48` becomes a child of `i2c2`.
 
-Compile and apply (from U-Boot, see Ch 23A):
+Compile and apply (from U-Boot, see Ch 24E):
 
 ```
 => load mmc 0:1 0x84000000 tmp102-overlay.dtbo

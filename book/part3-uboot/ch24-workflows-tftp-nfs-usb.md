@@ -332,8 +332,8 @@ sdboot=load mmc 0:1 ${loadaddr} zImage; \
 
 ---
 
-**End of Part III.**
+**Core U-Boot path complete.**
 
-You can build mainline U-Boot, you can port it to a custom board, you understand its boot flow line-by-line, you can write commands and drivers within it, and you have a development loop that doesn't involve reflashing. Everything from here on assumes you can boot to a U-Boot prompt, network-boot a kernel, and NFS-mount a rootfs.
+You can build mainline U-Boot, you can port it to a custom board, you understand its boot flow, and you have a development loop that does not involve reflashing for every test. The remaining Part III chapters are optional deep dives and real product scenarios.
 
-> **Part IV begins with Chapter 25, Building mainline Linux for i.MX6ULL.** We leave the bootloader behind and start working on the kernel itself.
+> Next chapter: **Chapter 24A: Building i.MX6ULL U-Boot from nothing.** This is the deep version: instead of adapting an existing SoC port, we derive the platform support from the hardware manual, schematic, and our bare-metal code.
