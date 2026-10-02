@@ -1,5 +1,233 @@
-/* Custom styles for the Furo theme.
- *
- * Intentionally empty — Furo's defaults handle theming, dark mode, sidebar,
- * search, navigation, and responsive layout. Add overrides here when needed.
- */
+body {
+  --sidebar-tree-space-above: 0.75rem;
+  --sidebar-caption-font-size: 0.75rem;
+  --sidebar-item-font-size: 0.875rem;
+  --sidebar-item-line-height: 1.3rem;
+  --code-font-size: 0.875rem;
+  --toc-font-size: 0.8125rem;
+  letter-spacing: 0;
+}
+
+.main {
+  min-width: 0;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  max-width: 46rem;
+}
+
+.sidebar-container {
+  width: 18rem;
+}
+
+.sidebar-drawer {
+  min-width: 18rem;
+}
+
+.sidebar-brand {
+  padding: 1.25rem 1.25rem 0.5rem;
+}
+
+.sidebar-brand-text {
+  font-size: 1.25rem;
+  font-weight: 650;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.sidebar-search-container {
+  margin: 0.75rem 1rem;
+  border: 1px solid var(--color-background-border);
+  border-radius: 6px;
+  background: var(--color-background-primary);
+}
+
+.sidebar-search {
+  border: 0;
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+}
+
+.sidebar-search-container:focus-within {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}
+
+.sidebar-scroll {
+  scroll-behavior: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.sidebar-tree .caption {
+  padding: 0.6rem 1.25rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  text-transform: none;
+  color: var(--color-foreground-secondary);
+}
+
+.sidebar-tree > ul {
+  margin-bottom: 0.75rem;
+}
+
+.sidebar-tree .reference {
+  padding: 0.5rem 1.25rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.sidebar-tree .current-page > a.reference {
+  background: var(--color-sidebar-item-background--current);
+  color: var(--color-sidebar-link-text--top-level--current);
+  box-shadow: inset 3px 0 var(--color-brand-primary);
+  font-weight: 650;
+}
+
+.sidebar-tree a:focus-visible,
+.related-pages a:focus-visible,
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: -2px;
+}
+
+article {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  overflow-wrap: break-word;
+}
+
+article h1 {
+  margin-top: 1.5rem;
+  font-size: 2rem;
+  line-height: 1.25;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+article h2 {
+  margin-top: 2.25rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--color-background-border);
+  font-size: 1.5rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+article h3 {
+  font-size: 1.1875rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+article p,
+article li {
+  line-height: 1.75;
+}
+
+article a:not(.headerlink) {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+article blockquote {
+  margin: 1.25rem 0;
+  padding: 0.2rem 1rem;
+  border-left: 3px solid var(--color-brand-primary);
+  background: transparent;
+  color: var(--color-foreground-secondary);
+}
+
+.highlight {
+  border: 1px solid var(--color-background-border);
+  border-radius: 6px;
+}
+
+.highlight pre {
+  padding: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+
+article table.docutils {
+  width: 100%;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  border-color: var(--color-background-border);
+}
+
+article table.docutils th,
+article table.docutils td {
+  padding: 0.65rem 0.85rem;
+  border-color: var(--color-background-border);
+}
+
+article table.docutils th {
+  background: var(--color-background-secondary);
+}
+
+article table.docutils tbody tr:nth-child(even) {
+  background: var(--color-background-secondary);
+}
+
+.toc-tree {
+  line-height: 1.5;
+}
+
+.toc-tree .scroll-current > a {
+  color: var(--color-brand-content);
+  font-weight: 600;
+}
+
+.related-pages {
+  gap: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-background-border);
+}
+
+.related-pages a {
+  min-width: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 63em) {
+  .sidebar-drawer {
+    width: 18rem;
+    min-width: 0;
+    max-width: calc(100vw - 3rem);
+    left: -18rem;
+  }
+
+  .sidebar-container {
+    width: 100%;
+  }
+}
+
+@media (max-width: 46em) {
+  .mobile-header .brand {
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
+
+  article h1 {
+    font-size: 1.75rem;
+  }
+
+  article h2 {
+    font-size: 1.375rem;
+  }
+
+  .related-pages {
+    gap: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-drawer,
+  .toc-drawer {
+    transition: none;
+  }
+}

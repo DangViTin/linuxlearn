@@ -8,6 +8,8 @@ import os
 import sys
 from datetime import datetime
 
+from bs4 import BeautifulSoup
+
 # ---------------------------------------------------------------------------
 # Project metadata
 # ---------------------------------------------------------------------------
@@ -87,16 +89,35 @@ html_theme_options = {
     "source_repository": "https://github.com/DangViTin/linuxlearn/",
     "source_branch": "main",
     "source_directory": "book/",
-    # A subtle accent for both light + dark — readable, low saturation.
     "light_css_variables": {
-        "color-brand-primary": "#2563eb",      # blue-600
-        "color-brand-content": "#2563eb",
-        "color-admonition-background": "#f5f7fb",
+        "color-brand-primary": "#126b5e",
+        "color-brand-content": "#0c6859",
+        "color-foreground-primary": "#242b30",
+        "color-foreground-secondary": "#52616b",
+        "color-background-primary": "#ffffff",
+        "color-background-secondary": "#f3f6f7",
+        "color-background-border": "#dfe5e8",
+        "color-sidebar-background": "#f5f7f8",
+        "color-sidebar-background-border": "#dfe5e8",
+        "color-sidebar-item-background--current": "#e3f1eb",
+        "color-sidebar-link-text--top-level": "#35434c",
+        "color-sidebar-link-text--top-level--current": "#0b5b4c",
+        "color-admonition-background": "#f3f6f7",
     },
     "dark_css_variables": {
-        "color-brand-primary": "#60a5fa",      # blue-400 — easier on dark BG
-        "color-brand-content": "#60a5fa",
-        "color-admonition-background": "#1c2434",
+        "color-brand-primary": "#78dbbd",
+        "color-brand-content": "#78dbbd",
+        "color-foreground-primary": "#e6ecef",
+        "color-foreground-secondary": "#b8c3ca",
+        "color-background-primary": "#171b1e",
+        "color-background-secondary": "#21272b",
+        "color-background-border": "#364148",
+        "color-sidebar-background": "#1c2226",
+        "color-sidebar-background-border": "#364148",
+        "color-sidebar-item-background--current": "#253c34",
+        "color-sidebar-link-text--top-level": "#c3cdd3",
+        "color-sidebar-link-text--top-level--current": "#9be8cd",
+        "color-admonition-background": "#21272b",
     },
     # Behaviour
     "sidebar_hide_name": False,
@@ -151,3 +172,33 @@ pygments_dark_style = "github-dark"
 # as some specific language.  Code blocks that DO specify a language (```c,
 # ```sh, ```make, ```asm, ...) still get highlighted normally.
 highlight_language = "none"
+
+
+def include_first_chapter(app, pagename, templatename, context, doctree):
+    # Adding the root to Sphinx's toctree would create a circular reading order.
+    navigation = context.get("furo_navigation_tree")
+    if not navigation:
+        return
+    tree = BeautifulSoup(navigation, "html.parser")
+    foundations = tree.find("ul")
+    if foundations is None:
+        return
+    current = pagename == app.config.root_doc
+    item = tree.new_tag("li", attrs={"class": ["toctree-l1", "book-start"]})
+    link = tree.new_tag("a", href=context["pathto"](app.config.root_doc), attrs={"class": ["reference", "internal"]})
+    link.string = app.env.titles[app.config.root_doc].astext()
+    if current:
+        item["class"] += ["current", "current-page"]
+        link["class"].append("current")
+        foundations["class"] = foundations.get("class", []) + ["current"]
+    item.append(link)
+    foundations.insert(0, item)
+    for active in tree.select(".current-page > a"):
+        active["aria-current"] = "page"
+    for heading in tree.select('.caption[role="heading"]'):
+        heading["aria-level"] = "2"
+    context["furo_navigation_tree"] = str(tree)
+
+
+def setup(app):
+    app.connect("html-page-context", include_first_chapter, priority=600)
