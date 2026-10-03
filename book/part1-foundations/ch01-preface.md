@@ -2,79 +2,71 @@
 
 ## 1.1  Why this book exists
 
-Many books and tutorials show how to get embedded Linux running on a board. Most follow the same process: install a vendor BSP, run `bitbake` or `make`, flash an SD card, and log in. This can produce a Linux prompt quickly.
+If you have brought up a microcontroller board, you know the satisfaction of the first working LED. There is not much software between the reset handler and the GPIO register, so you can usually follow the whole path. Moving to embedded Linux changes that. Before your application runs, several programs have already configured memory, loaded other programs, and decided which hardware they can use.
 
-But this process does not explain how the system works. The BSP set up DDR, Yocto built the toolchain, U-Boot's defconfig selected its configuration, and the kernel's `imx_v7_defconfig` enabled drivers. If a different DRAM chip or custom IOMUX setting causes a failure, you may not know which layer to debug.
+A vendor board-support package, usually shortened to **BSP**, can get all of this running for you. Install its tools, build an image, write an SD card, and you may soon have a Linux prompt. That is useful, especially when you need to evaluate a board. But a successful build does not tell you why the board boots, or where to look when a modified board stops booting.
 
-This book explains the path from power on to a running Linux system on the i.MX6ULL. You will implement selected mechanisms yourself: a boot-image header, startup code, a linker script, a page table, and a device tree. You will then build existing U-Boot and Linux sources rather than reimplement them. The first root filesystem contains a single statically-linked program.
+Suppose the DDR chip changes, or a UART moves to a different pair of pins. Which setting belongs to the bootloader? Which belongs to Linux? Why does a program that compiled successfully produce nothing on the board? These are the questions we will work through on the i.MX6ULL.
 
-After doing this work directly, we use the higher-level tools: Buildroot in Chapter 35, our own toolchain in Chapter 122, Yocto in Chapter 123, and secure boot in Chapter 124. You will know what each tool does because you have already performed the underlying steps.
+We begin with small programs whose behavior we can follow from start to finish. We write startup code, place it with a linker script, and give the Boot ROM the header it expects. Later we build a page table and describe the board with a device tree. Then we build U-Boot and Linux from their existing sources; we are learning how they work, not writing replacements for them. Our first root filesystem contains just one statically-linked program.
 
-This takes patience, but it gives you the knowledge needed to diagnose failures in those tools later.
+Buildroot enters in Chapter 35, toolchain construction in Chapter 122, Yocto in Chapter 123, and secure boot in Chapter 124. By then, their inputs and outputs will be familiar. When a large build fails, you will have smaller pieces you can inspect and test separately.
 
 ## 1.2  Who this book is for
 
-You are an embedded engineer with microcontroller experience. You have written firmware in C for Cortex-M or similar parts, read a reference manual, and configured pin multiplexers and clock trees.
+This book is written for someone who has worked with microcontrollers and now wants to understand embedded Linux. You should be comfortable reading C, finding a register in a reference manual, and following a signal through a schematic. Experience with a Cortex-M part, such as an STM32, gives us useful comparisons throughout the early chapters.
 
-You can read a schematic, solder a wire, and you know what a power rail is.
+Linux experience is not required. Perhaps you have never opened a Linux terminal. Perhaps you have built a vendor image but still cannot explain the difference between `vmlinux` and `zImage`. We will introduce those details when there is a reason to use them.
 
-You may have used Linux on an embedded target or followed a vendor BSP through a Yocto build, but you want to understand each layer in detail.
-
-You are not a Linux expert. You may not know what a "wait queue" is, or whether `/sys/class/gpio` is a real filesystem, or what the difference between `vmlinux` and `zImage` is. By Chapter 30, you will.
-
-No prior Linux shell experience is assumed. Chapter 3 explains the shell operations used during setup. Keep a notebook of unfamiliar commands and their effects.
+Chapter 3 explains the shell operations needed for setup. When a new command appears, read the explanation beside it and note what changed: a file, a directory, this terminal's environment, or a setting on the host. That habit matters more at the beginning than remembering every option.
 
 ## 1.3  What "raw" means in this book
 
-A few concrete commitments:
+Here, "raw" means making the early steps visible. We start with two official prebuilt Arm compilers: one for bare metal and one for Linux. They stay in the project directory, and we choose between them explicitly. Building a compiler is a separate subject, covered in Chapter 122.
 
-- We begin with two official prebuilt Arm compilers, one for bare metal and one for Linux. Chapter 122 explains toolchain construction.
-- We use **mainline** sources for U-Boot and Linux. [BSP-to-mainline migration](../part8-debug/ch122A-bsp-mainline-migration.md) is a later comparison study.
-- Runnable labs give input files, a working directory, build commands, and a result to check. Reproduction means following the documented versions and prerequisites; it does not imply byte-identical output across hosts.
-- Configuration is edited explicitly, with explanations of the fields used. Repeated register settings can refer back to an earlier explanation.
-- We **avoid Yocto, Buildroot, and other build frameworks** until we have performed the same work by hand.
+For U-Boot and Linux, we use **mainline** sources: the upstream projects rather than a board vendor's modified distribution. The later [BSP-to-mainline migration](../part8-debug/ch122A-bsp-mainline-migration.md) chapter compares the two approaches. Configuration files are edited by hand, with the relevant fields explained beside the example. We postpone Yocto, Buildroot, and similar frameworks until we have done the underlying work ourselves.
+
+A runnable lab supplies the input files, working directory, commands, and an observation to check. Follow its selected versions and prerequisites. Your output need not be byte-for-byte identical to another host's output; what matters is that it has the properties the lab asks you to inspect.
 
 ## 1.4  Scope and optional extensions
 
-- **Main path:** one i.MX6ULL board, from bare metal through Linux drivers. Board-specific registers and DDR settings do not transfer unchanged to another SoC.
-- **Optional extensions:** [PREEMPT_RT](../part6-drivers/ch52A-preempt-rt.md), [containers](../part5-rootfs/ch35C-containers-on-embedded.md), and Part IX's QEMU/STM32MP1 targets come after the fundamentals. They are not prerequisites for the first Linux boot.
-- **Android.** It is a wholly separate userspace stack on top of the same kernel, different init (`init.rc`), different libc (Bionic), different IPC (Binder), different build (Soong). The kernel chapters of this book apply directly. The userspace chapters do not. If your target is Android, follow this book through Chapter 35 and then branch to AOSP documentation.
-- **Kubernetes at the edge:** not a deployment guide covered here.
-- **Application programming on Linux.** You will use a shell and write a few C test programs, but we are not teaching POSIX threads or `select`/`epoll` as such.
+The main route follows one i.MX6ULL board from bare metal to Linux drivers. Staying with one target lets us return to the same LED, UART, and memory controller as the software grows. The reasoning is useful on other boards, but register addresses, DDR settings, and electrical requirements must be checked again.
+
+There are optional routes into [PREEMPT_RT](../part6-drivers/ch52A-preempt-rt.md), [containers](../part5-rootfs/ch35C-containers-on-embedded.md), and Part IX's QEMU and STM32MP1 experiments. None is needed for the first Linux boot. Leave them until the main route makes sense, unless one directly matches your work.
+
+This is not a Linux application-programming book. We use a shell and small C test programs, but do not teach POSIX threads or `select`/`epoll` in depth. Nor is this a Kubernetes deployment guide. Android also has its own userspace, including Bionic, Binder, and a different init and build system. The kernel material provides useful background for Android work, but the root-filesystem chapters here are not an AOSP setup guide.
 
 ## 1.5  How each chapter is organized
 
-Practical chapters use recurring teaching elements, but their section counts and order vary with the task. Conceptual chapters may produce an explanation rather than an executable artifact.
+A chapter starts with a question or a practical task, then develops the explanation needed to work through it. Sometimes the result is a bootable image or a driver. Sometimes it is an understanding we need before touching the board. The section order follows that task rather than a fixed template.
 
-1. **What**: the concrete artifact this chapter builds. *Object first.* A bootable image, a working driver, a measurable behavior change.
-2. **Why**: the problem that motivates the artifact. What does the system look like *without* this chapter's work? What breaks?
-3. **How**: the mechanics. Register-by-register, function-by-function, with the exact NXP reference-manual section or Linux source file cited.
-4. **Focus**: one or two ideas needed by the next several chapters.
-5. **Lab**: a deliverable with explicit prerequisites and an observable check.
-6. **Pitfalls**: failure mechanisms, symptoms, and checks to distinguish them.
-7. **Going deeper**: pointers to the i.MX6ULL Reference Manual, Linux source paths, LWN articles, mailing-list threads, and academic papers for readers who want to go past what the chapter covers.
+Code and register descriptions are accompanied by explanations of what to look for. The labs give you a chance to check that understanding against a build, a hardware observation, or a manual lookup. The pitfalls sections collect symptoms worth recognizing when an experiment does not work.
+
+The references at the end are for a second pass. You do not need to read every linked manual or source file before continuing. Use them when you want a fuller explanation or need to settle a specific question.
 
 ## 1.6  Lab discipline
 
-The main path's labs are checkpoints for the next practical step. Optional tracks have their own prerequisites; they do not block the first-image path.
+Reading and experimenting teach different things. Chapter 14 can explain DDR calibration, but watching a memory test fail gives those settings a different meaning. Where you have the hardware, complete the main-route labs before depending on their results in a later chapter. Optional experiments have their own prerequisites and can wait.
 
-If you read Chapter 14 without bringing up DDR on a board, you will learn the names of steps such as ZQ calibration and write leveling, but not how to diagnose a failing memory test. The lab provides that practical experience.
+Keep a short lab journal: what you built, what you expected, and what actually happened. A useful entry includes the working directory, compiler path, exact command, and complete error or observation. These details make a failed experiment much easier to revisit.
 
-To get the most out of the book:
+A few habits are worth keeping from the first lab:
 
-- Run every command yourself. **Do not** paste a snippet from a chapter without first reading what it does.
+- When a lab asks you to run a command, read it first and enter it yourself. A preview or an illustrative listing is not an instruction to execute it now.
 - Stop immediately if power wiring, a storage destination, or an irreversible operation is uncertain. Do not experiment past a safety warning.
-- For other failures, find the last successful checkpoint, confirm the working directory and environment, and record the exact command and complete error. Consult the relevant pitfalls section, then seek help with that evidence. A missing prerequisite or book error is not a test of persistence.
+- For other failures, return to the last working step and check its prerequisites. Use the pitfalls section to narrow the problem, then ask for help with your recorded evidence. A missing prerequisite or an error in the book will not be fixed by repeating the same command.
 
 ## 1.7  Code listings
 
-Lab code is **included in the chapters**; there is no separate code download. Create the named files in your workspace. Listings labeled pseudocode, fragments, or illustrative output explain a concept and are not standalone runnable programs.
+The lab code is **included in the chapters**. There is no separate download to unpack: create each named file in the workspace and save the corresponding listing there. Reading the explanation as you enter the code helps you see which parts belong to startup, the application, and the build.
+
+Not every listing is a program to run. Pseudocode shows an idea; a fragment shows part of a larger implementation; illustrative output shows what a tool may report. Those labels are there to distinguish them from complete lab inputs.
 
 ## 1.8  Conventions
 
 ### Prompts
 
-We distinguish two machines and several command contexts:
+Once the board runs software, you will often have two terminals open: one on the host and one connected to the board. The prompt tells you where a command belongs:
 
 ```
 $        a regular user prompt on the host PC
@@ -84,7 +76,7 @@ target$  a regular user prompt on the i.MX6ULL board
 target#  a root prompt on the i.MX6ULL board
 ```
 
-Prompt markers are not part of the command: do not type `$`, `#`, `target#`, or `=>`. In prompt examples, `#` means a root shell; inside a shell script it starts a comment. Commands using `sudo` still start at the normal user's `$` prompt. A block without prompts is file content or an explicitly identified command block.
+Type the command after the prompt, not the prompt itself. For example, `$ sudo picocom ...` means enter `sudo picocom ...` in your normal host terminal. The `#` in a root-prompt example is different from the `#` that begins a comment inside a shell script. Blocks without prompts are file contents or command blocks identified in the surrounding text.
 
 ### Registers and bits
 
@@ -116,15 +108,17 @@ References to the i.MX6ULL Reference Manual are written as **\[RM §28.5.3\]**. 
 
 ### Diagrams
 
-ASCII. We do not require any rendering tools to read the book.
+The diagrams are drawn with text, so they remain readable in the Markdown source as well as on the website. No separate diagram-rendering tool is needed.
 
 ## 1.9  How the chapters depend on each other
 
-For the first pass, follow Chapters 1-8, then build the first LED image in Chapter 9 and the UART program in Chapter 12 with their intervening prerequisites. Chapters 3, 6, and 8 prepare or inspect; they do not yet prove that your code runs on the board. The first Linux boot comes after U-Boot and the kernel builds.
+On a first reading, follow Chapters 1-8 in order. They prepare the host, explain the chip and its boot format, and check access to the board. Chapter 9 then puts those pieces together in the first LED image. Continue through the intervening chapters to the UART program in Chapter 12. U-Boot and the kernel builds come later, before the first Linux boot.
+
+There is a useful distinction along this route: a successful build tells us about the host tools and the image; a visible response from our program tells us it executed on the board. Chapters 3, 6, and 8 prepare for that response but do not substitute for it.
 
 Experienced readers can skip Part II if they already have a working board and can complete Chapter 19's U-Boot build/transfer prerequisites. Part II explains the clocks, DDR, exceptions, and MMU work otherwise performed by U-Boot and Linux.
 
-A pruning guide for readers in different situations:
+If you already have experience in part of this route, the table below suggests a shorter reading path. Check the practical prerequisites before skipping a lab:
 
 | If you... | Read | Skim | Skip |
 |-----------|------|------|------|
@@ -133,23 +127,25 @@ A pruning guide for readers in different situations:
 | Already shipped Linux on a different SoC, want i.MX6ULL specifics | 1, 5, 7, 19-24, 27 | 25-35 | 9-18 |
 | Maintain an existing BSP, want driver depth | 1, 27, 36+ | 25-35 | 2-24 |
 
-Even with these shorter reading paths, each chapter's *Why* and *Focus* sections provide the context needed to start in the middle of the book.
+When starting in the middle, read the chapter's opening and check which earlier results it uses. Knowing a similar mechanism on another chip does not necessarily give you the board configuration this lab needs.
 
 ## 1.10  A note on the i.MX 6ULL Reference Manual
 
-Keep revision 1 (11/2017) of the *i.MX 6ULL Applications Processor Reference Manual* open beside you. The supplied PDF has 4,127 pages. You will not read it cover to cover; use its contents and register index to locate:
+Keep revision 1 (11/2017) of the *i.MX 6ULL Applications Processor Reference Manual* nearby. Its 4,127 pages can look intimidating, but we will usually be looking for an answer about one block, not reading it from beginning to end.
 
-1. The register base address (the system memory map chapter).
-2. The clock input to the block (the CCM chapter).
-3. The IOMUX requirements for any external pins (the IOMUXC chapter).
-4. The interrupt vector number, if any (the GIC SPI table).
-5. The initialization sequence the manufacturer recommends (usually a numbered list at the start of the block's chapter).
+For a new peripheral, start with these five questions:
 
-Use this five-item check for every new peripheral. It provides a repeatable starting point for custom-board bring-up.
+1. Where are its registers? Start with the system memory map.
+2. Which clock reaches the block? Follow the CCM clock path and gate.
+3. Which pads carry its signals? Check the IOMUXC tables against the schematic.
+4. Which interrupt ID identifies it? Look in the GIC SPI table if the block generates interrupts.
+5. In what order should it be initialized? Look for the manufacturer's sequence near the start of the block's chapter.
+
+The answers give you a starting point for both the code and the schematic. Chapter 5 walks through this search for UART1, and the later peripheral chapters repeat it in context. With practice, the manual becomes a place to answer questions rather than a document you have to memorize.
 
 ---
 
-> This book is intentionally detailed. Take time to complete the labs and verify the expected results before moving on.
+We begin with the part of Linux that changes the familiar MCU picture most: the separation between the kernel and an application. Once that distinction is clear, the tools and boot stages in the following chapters have a place to fit.
 
 > Next: [Chapter 2: What embedded Linux is](ch02-what-is-embedded-linux.md). The [full table of contents](../toc.md) and [draft status](../status.md) are reference pages, not prerequisites before Chapter 1.
 

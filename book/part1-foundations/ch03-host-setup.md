@@ -1,27 +1,28 @@
 ﻿# Chapter 3: Host environment setup
 
-> **What:** a Linux development host that can cross-compile for ARMv7-A, serve files over TFTP and NFS, communicate with the board over serial and USB-OTG, and recover a board that cannot boot from storage.
->
-> **Why:** the host builds images, inspects their contents, and communicates with the board. Checking it first separates host setup failures from later firmware failures.
->
-> **Focus:** know which compiler and device each command uses. This chapter checks the host; Chapter 9 proves that a program runs on the board. Network boot services are preparation for later U-Boot/Linux labs, not prerequisites for the LED lab.
+In an MCU IDE, selecting a project often selects the compiler and download tool for you. Here we will make those choices ourselves. The computer on your desk is the **host**: it edits and builds the code, inspects the result, and sends it to the i.MX6ULL **target** board.
 
+Our immediate needs are modest: a workspace, two known compilers, a serial terminal, and a USB download tool. We will also prepare a spare SD card without writing it. TFTP, NFS, and the Ethernet address plan are for later network-boot labs; you can leave Sections 3.6, 3.7, and 3.10 until Chapter 24.
+
+As you work through setup, keep asking two questions: where did this file go, and which program will this terminal run? Being able to answer them is more useful than having a long list of commands that happened to finish successfully.
 
 ## 3.1  Choosing the host
 
-The reference host is **native x86_64 Ubuntu 22.04 LTS**, using its default Bash terminal. The compiler archives below run on x86_64 Linux, not Windows or an ARM64 host. Commands shown with `$` run as your normal user; do not type the prompt marker. `sudo` requests root credentials for that command and may ask for your login password. Password typing is not echoed.
+We use **x86_64 Ubuntu 22.04 LTS** and its default Bash terminal as the reference host. The compiler archives in this chapter run on x86_64 Linux, so they cannot be launched directly in Windows or on an ARM64 host. Start with Ubuntu installed, either natively or in a dedicated virtual machine.
 
-A dedicated Ubuntu VM can isolate package and service changes from your everyday system. Before using one, arrange:
+Open Ubuntu's Terminal application. This is where the host commands in the book belong. A `$` at the start of a listing is a prompt marker, not a character to type. Most commands run as your normal user. When a command needs authorization to change a system file or access a restricted device, we show `sudo` explicitly. It may ask for your login password; the terminal displays no characters while you type it.
+
+A dedicated VM keeps package and service changes inside that lab system. It still needs access to the physical board. Before relying on one, check these connections:
 
 - USB attachment to the guest for the serial bridge, ROM SDP device, and card reader. Confirm each appears inside Ubuntu with `lsusb`/`lsblk`, not just in Windows. Reattach devices after re-enumeration if necessary.
 - A bridged or passed-through Ethernet adapter on the board's lab link. Default VM NAT alone does not make guest TFTP/NFS servers reachable by the board.
 - Only one owner for each serial port: close a Windows terminal before attaching its bridge to the guest.
 
-Compiler files and selection are project-local. Package installation and the optional `/etc` service/network configuration are host changes; this chapter does not call those portable. If you want them confined to a lab machine, use the dedicated VM.
+We can keep compiler files and compiler selection local to the project. Ubuntu packages and the optional service settings under `/etc` are different: they change the host system and remain after the terminal closes. Use the dedicated VM if you want those changes kept off your everyday installation.
 
 ## 3.2  Workspace layout
 
-Create the workspace before installing anything. The layout you set now will be referred to by every chapter:
+First give the work a home. We use `~/imx6ull` so source files, generated files, and downloaded compilers do not get mixed together. Later chapters will refer to these directory names:
 
 ```sh
 $ mkdir -p ~/imx6ull/{src,build,boot,rootfs,scripts,toolchains,notes}
@@ -37,16 +38,20 @@ $ ls
 └── toolchains # prebuilt Arm compilers kept local to this project
 ```
 
-`~` means your home directory; `$HOME` is its shell-variable form. `mkdir -p` creates missing directories. Bash's `{src,build,...}` expands to one path per name. `cd` changes this terminal's working directory; `ls` lists its contents. The annotated tree above describes the resulting layout, not literal output from `ls`.
+Read the first command before entering it. `~` means your home directory, and Bash expands `{src,build,...}` into one path for each name. `mkdir -p` creates those directories if they are missing. Then `cd` moves this terminal into the workspace and `ls` lists what is there. The annotated tree shows what the names mean; ordinary `ls` does not print that tree or its comments.
 
-Two rules about this layout:
+You will also see `$HOME`, the shell-variable form of your home-directory path. It lets the environment file below refer to your directory without embedding a particular username.
+
+Two distinctions will save confusion later:
 
 1. **Sources and outputs have different roles.** Edit tracked sources in `src/`, including your own bare-metal files. Git records source changes against upstream. Where a project supports `O=`, place generated output in `build/`; this does not move or apply source patches for you.
 2. **`rootfs/` is the future NFS root.** Once the later lab exports it and Linux mounts it, the board uses files from this host directory without reflashing storage. Creating the directory alone does not configure NFS or boot the target.
 
 ## 3.3  Host packages
 
-`apt update` refreshes Ubuntu's package catalog; `apt install` installs named packages and dependencies. These commands change the host. Read the proposed installation before answering its confirmation prompt. `-dev` packages contain headers/libraries needed to compile other programs.
+The Arm compilers are not enough on their own. Large projects also need host tools to process configuration, generate source, and package files. Ubuntu supplies these through its package manager, `apt`.
+
+`apt update` refreshes the package catalog; `apt install` installs the named packages and their dependencies. Read the proposed installation before answering its confirmation prompt. Packages ending in `-dev` generally supply headers and libraries needed to compile another program. These installations change Ubuntu, rather than just the project directory.
 
 ```sh
 $ sudo apt update
@@ -62,7 +67,7 @@ $ sudo apt install \
     fakeroot dosfstools mtools parted nano usbutils python3
 ```
 
-What the main packages provide:
+The list is long because it covers several later builds. You do not need to learn every package now, but the main groups have recognizable jobs:
 
 - **`build-essential`, `bison`, `flex`, `libssl-dev`, `libncurses-dev`** provide tools and libraries needed to build the kernel and U-Boot. The kernel uses OpenSSL during build for features such as module signing.
 - **`bc`** provides arithmetic used by parts of the kernel build.
@@ -80,18 +85,18 @@ If `apt` cannot find a package on the reference Ubuntu release, stop and record 
 
 ## 3.4  The cross toolchain
 
-We need two prebuilt Arm toolchains:
+Ubuntu's ordinary `gcc` builds programs for the host PC. Our board needs Arm instructions, so we also need a compiler that runs on the PC but produces code for Arm. That is a **cross-compiler**. Its accompanying linker, assembler, and inspection tools form a **toolchain**.
+
+We use two official prebuilt Arm toolchains because the target environments differ:
 
 - **Linux target toolchain:** `arm-none-linux-gnueabihf-`
   Builds U-Boot, the Linux kernel, BusyBox, and target user-space programs. It targets 32-bit Arm Linux with the hard-float glibc ABI.
 - **Bare-metal toolchain:** `arm-none-eabi-`
   Builds the small no-OS experiments in Part II. It does not assume Linux, glibc, processes, or a dynamic loader.
 
-We will install both toolchains in one project-local directory, give them unambiguous paths, and select the required toolchain explicitly for each build.
+Both archives go into the workspace, with their original directory names. We will not install another Arm compiler through `apt` or rename these folders. Keeping the two paths visible makes it easier to check which tool a build actually used.
 
-Use the **13.2.Rel1** release of both official Arm GNU Toolchains for this edition, rather than choosing different latest releases. This is a selected baseline, not a claim that every lab has been hardware-validated with it. Obtain the archives and their checksum manifests from [Arm's release downloads](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads); the [13.2 release notes](https://documentation-service.arm.com/static/666180bfd72aaf32efecd262) list the host/target packages.
-
-<https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads>
+Use **13.2.Rel1** for both targets in this edition. A fixed release gives us the same starting point when comparing build results; it is not a claim that every lab has been tested on hardware with that release. Download these two archives and their matching checksum manifests from [Arm's release page](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads). The [13.2 release notes](https://documentation-service.arm.com/static/666180bfd72aaf32efecd262) identify the host and target packages.
 
 - `arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz`
 - `arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi.tar.xz`
@@ -106,7 +111,9 @@ arm-gnu-toolchain-<version>-x86_64-arm-none-linux-gnueabihf.tar.xz
 arm-gnu-toolchain-<version>-x86_64-arm-none-eabi.tar.xz
 ```
 
-Extract both under the project workspace, not `/opt`. This keeps the setup portable and avoids changing the host machine more than necessary.
+Before extracting, use `sha256sum <archive-name>` to calculate each archive's checksum and compare it with the matching Arm manifest. Here `<archive-name>` is a placeholder: replace it with the actual filename and omit the angle brackets. Keep the manifests beside the archives.
+
+Then extract them into `~/imx6ull/toolchains`, not a system directory such as `/opt`. The compiler files remain part of the workspace, and removing this workspace does not remove a compiler another project installed globally.
 
 ```sh
 $ mkdir -p ~/imx6ull/toolchains
@@ -115,43 +122,45 @@ $ tar -xf arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-linux-gnueabihf.tar.xz \
 $ tar -xf arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi.tar.xz \
     -C ~/imx6ull/toolchains
 ```
-Before extracting, compare `sha256sum <archive-name>` with the matching Arm checksum manifest. Replace the placeholder with one actual filename; do not type angle brackets. Keep the manifests with the archives. After extraction, keep the directory names Arm supplied, including their capitalization:
+
+After extraction, keep the directory names Arm supplied, including their capitalization. The two compiler executables are inside the corresponding `bin` directories:
 
 ```text
 ~/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-linux-gnueabihf/bin/arm-none-linux-gnueabihf-gcc
 ~/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc
 ```
 
-Those are the paths to remember when debugging build problems.
+If a later build reports the wrong compiler, these are the paths to check first.
 
 ### Decoding the triplets
 
-The names `arm-none-linux-gnueabihf` and `arm-none-eabi` are long because each part describes the target environment.
+The long prefixes tell us more than "this is an Arm compiler." They describe the environment the output is intended to use. **ABI**, or Application Binary Interface, means the agreement about calling conventions, register use, binary format, and runtime libraries that lets separately built code work together.
 
 - `arm` means the target CPU family is 32-bit Arm.
 - The middle `none` is the vendor field. Here it means no specific silicon vendor.
 - `linux` means the generated program expects a Linux target environment.
 - `gnu` means GNU userland and glibc ABI.
 - `eabi` means Embedded ABI v5.
-**ABI** - Application Binary Interface: the calling convention, register use, binary format, and library contract that let separately built code run together.
 - `hf` means hard-float: floating-point arguments are passed in VFP registers.
 
-The practical rule:
+You do not need to reconstruct these names at every build. For this book, the selection is:
 
 - Use `arm-none-linux-gnueabihf-` for this book's U-Boot, kernel, and Linux user-space builds. Only user-space builds use its glibc runtime; U-Boot/kernel choose their own freestanding build rules.
 - Use `arm-none-eabi-` for our no-OS Part II experiments. Keep these two selections explicit even though some freestanding objects can be ABI-compatible across compiler families.
 
 ### Environment script
 
-Do not edit `~/.bashrc` for this book. Hidden global shell state is convenient after you understand it, but it is bad for learning and can break unrelated projects.
+Having the files on disk does not yet tell Bash where to find them. Bash searches the directories in a variable named `PATH` when you enter a command. We will add our compiler directories for the current terminal through one small file, `env.sh`.
 
-Create one explicit environment script:
+Leave `~/.bashrc` unchanged. Putting the setup there would select these tools automatically in future terminals, including terminals used for other work. Instead, we will make the selection visible each time we begin a book session.
+
+Create the file with the editor:
 
 ```sh
 $ nano ~/imx6ull/scripts/env.sh
 ```
 
-Put this in the file:
+Enter the following contents. The first part finds one directory for each target; the remaining lines give this terminal the paths and names used by later builds:
 
 ```sh
 #!/bin/bash
@@ -188,9 +197,9 @@ export BOARD_IP=192.168.7.2
 export HOST_IP=192.168.7.1
 ```
 
-This file is sourced by **Bash**, not `sh`. It discovers the unchanged folder names and refuses missing or multiple matches before changing `PATH`. If a check fails, stop: inspect `toolchains/` and move old installations elsewhere before sourcing again. A failed re-source does not erase an environment already selected in this terminal.
+Use this file with **Bash**, not `sh`. The two checks catch a common setup mistake: having no matching compiler, or having several releases and accidentally choosing one. If a check fails, inspect `toolchains/` and move old installations elsewhere before trying again. The file stops before changing `PATH`; it does not clear a selection already present in the terminal.
 
-The unfamiliar syntax has a small purpose:
+There is no need to learn Bash scripting in full to understand this file. Read its parts in order:
 
 - `name=value` assigns a variable; `$name` reads it. Quotes keep a path with spaces together.
 - `*` matches the release part of the directory name. Each `(... )` collects matches into a Bash list. `${#linux_dirs[@]}` counts them; `${linux_dirs[0]}` reads the first.
@@ -198,7 +207,7 @@ The unfamiliar syntax has a small purpose:
 - `export` makes a variable available to programs started by this terminal. `PATH` is the colon-separated list of directories searched for commands, in order. The `uuu` directory is populated in Section 3.8.
 - `TFTPROOT` and `NFSROOT` are convenient shell names; they do not configure the servers. `/etc` configuration must still be edited manually.
 
-In `nano`, save with Ctrl-O, Enter, then exit with Ctrl-X.
+In `nano`, press Ctrl-O and then Enter to save. Press Ctrl-X to return to the terminal.
 
 Every time you open a new terminal for this book, run:
 
@@ -206,9 +215,11 @@ Every time you open a new terminal for this book, run:
 $ . ~/imx6ull/scripts/env.sh
 ```
 
-That leading dot means "read this file into the current shell." Running `bash ~/imx6ull/scripts/env.sh` starts a child shell whose exports cannot change its parent; it is not the setup command. Direct execution may also fail because the file has not been made executable. Sourcing needs read permission, not an executable bit.
+The leading dot matters. It tells Bash to read the file **into this shell**, which is called *sourcing* the file. Its exported values then apply to commands you run in this terminal.
 
-Verify both compilers and both prefixes:
+If you instead enter `bash ~/imx6ull/scripts/env.sh`, the file runs in a child shell. That child's settings cannot change the terminal you return to afterward. We also do not need to make `env.sh` executable: sourcing reads it as a file rather than launching it as a separate program.
+
+Now ask the terminal what it selected. `command -v` reports the executable found through `PATH`; the version commands identify it. Both paths should lead into this workspace:
 
 ```sh
 $ command -v arm-none-linux-gnueabihf-gcc
@@ -230,11 +241,13 @@ $ echo "$BAREMETAL_CROSS_COMPILE"
 arm-none-eabi-
 ```
 
-`CROSS_COMPILE` is the prefix U-Boot's, the kernel's, and BusyBox's Makefiles look for. We reserve `BAREMETAL_CROSS_COMPILE` for our own bare-metal Makefiles so the two worlds stay visible.
+The trailing hyphen in each prefix is intentional. Build systems append names such as `gcc` or `objcopy` to it. U-Boot, Linux, and BusyBox use `CROSS_COMPILE`; our own bare-metal Makefiles use the separate `BAREMETAL_CROSS_COMPILE` name. You can now see both selections without guessing from a global installation.
 
 ## 3.5  Serial console
 
-The Point Atom MINI includes a USB-to-TTL bridge connected to its debug UART. Connect the board's **USB-TTL** or **DEBUG USB** port to the host. Do not add an external serial adapter for the normal setup.
+The serial console will be our way to see what the board prints. The MINI already has a USB-to-TTL bridge connected to its debug UART, so normal setup does not need an external adapter or jumper wires. Use the port labeled **USB-TTL** or **DEBUG USB**, not USB-OTG.
+
+Before attaching a cable to an unfamiliar board, follow Chapter 8's power-arrangement check. A USB cable carries power as well as data. Once that arrangement is established, the following commands identify and open the bridge on the host.
 
 After connecting it, check which serial device appeared:
 
@@ -253,7 +266,7 @@ $ sudo dmesg | tail
 [...] usb 1-1.2: cp210x converter now attached to ttyUSB0
 ```
 
-On this host, the serial device normally restricts access to root and a group such as `dialout`. We leave user groups unchanged and use an explicit privileged command for each session. This is a teaching choice, not a rule that all hardware requires root. Log inspection may also need `sudo` on Ubuntu.
+Finding the device and having permission to open it are separate steps. On this host, access is normally restricted to root and a group such as `dialout`. We leave your groups unchanged and show `sudo` for each serial session. Ubuntu may also restrict the kernel log read by `dmesg`.
 
 ```sh
 $ sudo picocom -b 115200 /dev/ttyUSB0
@@ -270,7 +283,7 @@ Terminal ready
 
 Quit with Ctrl-A then Ctrl-X. Plain Ctrl-C sends the interrupt character to the target; Ctrl-A then Ctrl-C instead toggles local echo. These keys follow [picocom's manual](https://raw.githubusercontent.com/npat-efault/picocom/master/picocom.1.md).
 
-At this stage, a silent console is normal because we have not built a bootable image. If later output is unreadable, confirm 115200 8N1, check that you opened the correct serial device, and try another USB data cable.
+"Terminal ready" means the host opened the port; it does not promise a message from the board. Our own bootable image does not exist yet, so silence is normal. A pre-installed factory image may print something; save that output if it does. Later, when our UART program is supposed to print, unreadable text is a reason to check 115200 8N1, the device path, and the USB cable.
 
 If a board revision has no built-in USB-TTL bridge, use a separate **3.3 V** USB-TTL adapter on the UART header. Connect board TX to adapter RX, board RX to adapter TX, and GND to GND. Leave the adapter VCC pin disconnected.
 
@@ -291,20 +304,20 @@ When configuring any of these tools, the settings are the same we used for `pico
 
 ### 3.5b  Source Insight as a kernel-source navigation aid (optional)
 
-The Linux kernel source tree is ~80,000 files. Tools that index it on a fast SSD beat ones that don't.
+When we reach the kernel sources, following a function across many files can be slow in an ordinary editor. A source-navigation tool can help with that later; it is not another prerequisite for host setup.
 
 - **Source Insight 4** (`sourceinsight.com`, commercial Windows) provides source indexing, Go to Definition, and call graphs.
 - **VS Code + C/C++ extension** (Microsoft) is free and cross-platform. Use `compile_commands.json` from a kernel build so IntelliSense follows the correct include paths.
 - **`cscope` + `ctags`** provide terminal-based source navigation and can be scripted.
 - **`elixir.bootlin.com`** provides a web-based Linux source cross-reference without a local installation.
 
-For this book, we do not require any of them. But if you find yourself spending more than five minutes hunting a kernel symbol, install one.
+Use whichever of these you already know, or defer the choice until you need it. For the small files in Part I, `nano` is enough.
 
 ## 3.6  TFTP server
 
-**Needed later, before network-loading from U-Boot.** You may skip Sections 3.6, 3.7, and 3.10 until Chapter 24. These services persist beyond the terminal; record existing configuration before editing it, and preserve unrelated settings. Do not expose them on a public or shared network.
+Once U-Boot is running, copying every test image through an SD card becomes tedious. **TFTP** lets U-Boot fetch a file from the host over Ethernet. This section prepares the host end of that transfer; it can wait until Chapter 24.
 
-The board's U-Boot will fetch kernel images from your host over TFTP.
+Unlike `env.sh`, a network service continues independently of this terminal. Keep a record of the existing configuration, preserve unrelated settings, and use an isolated lab link. Work through the address plan in Section 3.10 before restarting a server bound to that address. Do not expose these services on a public or shared network.
 
 Install the server package if you have not already:
 
@@ -320,7 +333,7 @@ $ SUDO_EDITOR=nano sudoedit /etc/default/tftpd-hpa
 
 `SUDO_EDITOR=nano` chooses the familiar editor for this command only. `sudoedit` lets you edit a temporary copy as your normal user, then writes it back with authorization. Save and exit with the same nano keys used earlier; your shell's default editor is not changed.
 
-Make the file look like this:
+Set the four fields as follows for the direct-link address plan:
 
 ```text
 TFTP_USERNAME="tftp"
@@ -329,7 +342,7 @@ TFTP_ADDRESS="192.168.7.1:69"
 TFTP_OPTIONS="--secure"
 ```
 
-What each line means:
+Each line answers one setup question:
 
 - `TFTP_USERNAME="tftp"` runs the daemon as the unprivileged `tftp` user.
 - `TFTP_DIRECTORY="/srv/tftp"` is the directory U-Boot will read files from.
@@ -344,7 +357,7 @@ $ sudo chown "$USER:$(id -gn)" /srv/tftp
 $ chmod 755 /srv/tftp
 ```
 
-Why the permission change matters:
+There are two users involved here: you, who copy images into the directory, and the `tftp` service, which reads them. Ownership and permissions need to accommodate both:
 
 - `/srv` is a system directory. Without `sudo`, a normal user usually cannot create `/srv/tftp`.
 - After `sudo mkdir`, the new directory is owned by `root`, so your normal user would need `sudo` every time you copy a kernel, device tree, or U-Boot image into it.
@@ -366,7 +379,7 @@ Restart for this lab session, without enabling automatic startup:
 $ sudo systemctl restart tftpd-hpa
 ```
 
-Smoke-test:
+Before involving the board, retrieve one small file from the host's own server:
 
 ```sh
 $ echo "hello tftp" > /srv/tftp/test.txt
@@ -376,9 +389,9 @@ $ cat test.txt
 hello tftp
 ```
 
-The test writes a small file into the TFTP root, then asks this host's lab-address listener for it. Substitute your configured host address in router mode. The final `cat` proves the file came back; this is still a host-local test, not a board transfer.
+`echo` creates the test file; the TFTP client then requests it through the configured host address. Finally, `cat` displays the downloaded contents. Use your actual host address in router mode.
 
-This proves only the local daemon, path, and file permissions. It does not test the board, cable, VM reachability, or firewall path. The target TFTP test comes after U-Boot runs in Chapter 24.
+If this works, the local service can read and serve the file. The board-to-host cable, firewall path, and VM reachability still need a target transfer. We make that check after U-Boot runs in Chapter 24.
 
 **Firewall:** keep the existing firewall enabled. Inspect `sudo ufw status`; where UFW is active, allow the board only on the dedicated lab interface, substituting the interface name found in Section 3.10:
 
@@ -390,7 +403,9 @@ TFTP uses additional UDP transfer ports; a stateful firewall must track the exch
 
 ## 3.7  NFS server
 
-The Linux kernel can mount its root filesystem over NFS during development. That lets you edit files on the host and reboot the board without rebuilding an SD-card image.
+TFTP transfers individual files. **NFS**, the Network File System, lets Linux use a directory on the host as its root filesystem. During development, you can edit a target file on the host and use the changed version without rebuilding an SD-card image.
+
+We will not boot that way until the later kernel and root-filesystem labs. For now, if you are preparing networking, tell the host which directory the board may access.
 
 Install the server package if needed:
 
@@ -426,7 +441,7 @@ What the commands do:
 - `systemctl restart nfs-kernel-server` restarts the NFS daemon so the kernel-side service is using the current config.
 - `showmount -e localhost` checks the advertised export, not whether the target can mount or boot it. That requires the later kernel/rootfs lab.
 
-The flags decoded:
+The options in the export line determine what that access means:
 
 - `rw` lets the target write to the exported filesystem.
 - `sync` commits writes before the server replies. This is slower but reduces the chance of losing recent writes.
@@ -439,11 +454,11 @@ To undo this lab export, remove only its line from `/etc/exports` with `sudoedit
 
 ## 3.8  USB-OTG flashing tools
 
-The i.MX6ULL Boot ROM speaks **SDP** (Serial Download Protocol) over its USB-OTG port. When the board's boot selector is in **USB mode**, the chip enumerates as a USB device and waits for the host to send an image. Two tools speak SDP:
+We also need a route into a board that has no working storage image. The i.MX6ULL Boot ROM provides **SDP**, the Serial Download Protocol, through USB-OTG. In USB boot mode, it appears as a USB device and waits for a host tool to send an image. We use NXP's `uuu` for that job.
 
 ### `uuu` (Universal Update Utility)
 
-Use NXP's [uuu_1.5.201 release](https://github.com/nxp-imx/mfgtools/releases/tag/uuu_1.5.201), pinned instead of a moving branch. Build as your normal user into the workspace:
+Build NXP's [uuu_1.5.201 release](https://github.com/nxp-imx/mfgtools/releases/tag/uuu_1.5.201) inside the workspace. Selecting a release keeps these instructions tied to known sources. The package-install command needs `sudo`; the source checkout and build run as your normal user:
 
 ```sh
 $ cd ~/imx6ull/src
@@ -458,9 +473,9 @@ $ uuu -h
 ... help text and the selected release version ...
 ```
 
-`-S` selects source files; `-B` selects build output. `nproc` prints the available CPU count for parallel building. No binary is installed in `/usr/local/bin`. The dependency list follows this release's [CMake requirements](https://github.com/nxp-imx/mfgtools/blob/uuu_1.5.201/uuu/CMakeLists.txt), including zlib and TinyXML2 development files.
+`cmake -S ... -B ...` reads sources from one directory and generates the build in another. The next command performs that build; `nproc` supplies the available CPU count for parallel jobs. The result stays under `build/mfgtools`, with no installation into `/usr/local/bin`. The dependency list comes from this release's [CMake requirements](https://github.com/nxp-imx/mfgtools/blob/uuu_1.5.201/uuu/CMakeLists.txt), including zlib and TinyXML2 development files.
 
-We leave USB groups and udev rules unchanged. Use the full local path with `sudo`, because sudo's command search path may omit your workspace:
+The final path is worth noticing: the build directory contains a subdirectory named `uuu`, and the executable inside it is also named `uuu`. For restricted USB access, we leave groups and udev rules unchanged and use `sudo`. Give it the full local path because its command search path may not include our workspace:
 
 ```sh
 $ sudo "$IMX6ULL_HOME/build/mfgtools/uuu/uuu" -lsusb
@@ -470,7 +485,7 @@ Run this device check only after Chapter 8's power and USB-mode checks. `15a2:00
 
 ## 3.9  SD card preparation for later chapters
 
-Use a spare 4-32 GB SD card, class 10 or better, dedicated to this project. We will overwrite it many times. Do not write an image in this chapter.
+Choose a spare 4-32 GB SD card, class 10 or better, with no data you need to keep. Later we will write images over its contents. Today's task is only to recognize the card on the host; there is no image to write yet.
 
 Identify which device it is, **carefully**:
 
@@ -480,11 +495,11 @@ $ lsblk -o NAME,PATH,SIZE,MODEL,SERIAL,TRAN,RM,TYPE,MOUNTPOINTS
 
 Read your actual output: `PATH` is the device path, `TYPE` distinguishes a whole `disk` from a `part` partition, and `MOUNTPOINTS` shows what is mounted. The later examples use `/dev/sdc` with a `/dev/sdc1` partition, but your card may have different names.
 
-If you wipe the wrong block device you will lose your operating system. Check the size and the mount points twice before running `dd`.
+This check deserves care. `dd` writes to the destination you give it, even if that destination is your system disk. Compare size and mount points before every write, not just during this first setup.
 
 Compare the device list before and after insertion. Match size, model/serial, and the newly appearing reader/card; `RM=1` alone is not proof. Reject a device containing `/`, `/boot`, swap, or unrelated mounted data. A host disk can be `/dev/sdb`; a card can be `/dev/sda` or `/dev/mmcblkN`. Disk letters do not establish safety.
 
-**Preview only: do not run the following write commands in Chapter 3.** No image exists yet. Chapter 11 gives a real artifact and repeats identification. `/dev/sdc` below is an example observation, not a fixed name. Re-identify after every insertion.
+**The following write commands are a preview; do not run them in Chapter 3.** They explain the manual workflow we will use when Chapter 11 supplies an image. `/dev/sdc` is an example, not a destination to copy from the book. Re-identify the card after every insertion.
 
 First unmount any mounted partition on the card. Unmount the partition path, not the whole-disk path:
 
@@ -528,15 +543,15 @@ Identify the card again before interpreting its partitions. A partitioned Linux 
 
 ## 3.10  Host IP plan
 
-For TFTP, NFS, and U-Boot experiments, the board must know how to reach the host. The important thing is not the exact address. The important thing is that the address stays stable.
+For TFTP, NFS, and U-Boot experiments, the board needs an address for the host. That address must stay stable so a working command does not suddenly point to the wrong machine.
 
-There are two common setups.
+Choose the arrangement that matches your desk. The direct link is the isolated lab setup used in our examples; a router-connected setup needs its own consistent addresses.
 
 ### Option A: direct host-to-board link
 
 Use this when your computer has a spare Ethernet port, a USB-to-Ethernet adapter, or Wi-Fi for internet plus Ethernet for the board.
 
-In this book, the clean lab network is:
+For the direct link, our example addresses are:
 
 - Host: **192.168.7.1**
 - Board: **192.168.7.2**
@@ -589,7 +604,7 @@ Reserve the host address as well as the board address in the router, or use docu
 
 - Reserve a fixed DHCP address for the board in your router.
 - Let U-Boot request DHCP, then read the assigned address.
-- choose an unused static address outside the router's DHCP pool.
+- Choose an unused static address outside the router's DHCP pool.
 
 Router mode is practical, but it has two drawbacks:
 
@@ -614,7 +629,7 @@ Chapter 8 checks physical Ethernet presence only. Target ping and TFTP tests wai
 
 ## 3.11  Sanity check
 
-Required-now checklist: compiler commands must resolve inside the workspace. Output below is schematic; record your actual release strings and paths.
+Return to the tools we need before Part II. In a fresh terminal, source `env.sh` and check where both compilers and `uuu` come from. The listings below show the shape of the output; record your own paths and version strings rather than trying to match the placeholders.
 
 ```sh
 $ . ~/imx6ull/scripts/env.sh
@@ -659,7 +674,7 @@ Open a new terminal and source the environment script:
 $ . ~/imx6ull/scripts/env.sh
 ```
 
-Then prove the environment is local to this terminal:
+Check that this terminal has selected the two project-local compilers:
 
 ```sh
 $ echo "$CROSS_COMPILE"
@@ -675,7 +690,9 @@ $ command -v arm-none-eabi-gcc
 /home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc
 ```
 
-Open another terminal from the desktop, not from the already-configured shell, and run `echo "$CROSS_COMPILE"` before sourcing. With no prior setup it should be empty. A child terminal can inherit its parent's exported variables, so an inherited value is not evidence of a `.bashrc` change.
+Now open another terminal from the desktop, rather than launching it from the configured shell. Before sourcing the file, try `echo "$CROSS_COMPILE"` there. With no prior setup, it should be empty. Source `env.sh` and check again.
+
+This small comparison shows what the environment file changes. A child terminal can inherit its parent's exported values, so an inherited value alone does not mean `.bashrc` was edited. In your notes, record the two compiler paths and the sourcing command you will use at the start of each session.
 
 ## 3.13  Pitfalls
 
@@ -691,6 +708,6 @@ Open another terminal from the desktop, not from the already-configured shell, a
 - `man 8 exportfs`, `man 5 exports`, and `man 8 tftpd` explain the optional services configured in this chapter.
 - In picocom, `-l` disables locking, `-i` skips initialization, and `-t` sends an initialization string. They are not needed for the normal console command; do not add options without checking the manual.
 - *The TCP/IP Guide* (Charles Kozierok) on TFTP and NFS protocols if you want to know what is on the wire.
-- If you intend to run a lot of cross-builds, look at `ccache` (`sudo apt install ccache`) and prepend it to `CROSS_COMPILE`: `CROSS_COMPILE="ccache arm-none-linux-gnueabihf-"`. We do *not* use it in this book because it occasionally masks subtle dependency bugs in Makefiles we're trying to read.
+- For frequent cross-builds, `ccache` can reuse previous compilation results. Leave it out of the first experiments so the compile commands and rebuild decisions remain easy to follow. Add it later only after checking how the project's build system selects its compiler.
 
-> Next chapter: **Chapter 4: ARMv7-A and the Cortex-A7 for the MCU engineer.** We leave the host and examine the CPU architecture we will program.
+The workspace is ready, and we can identify the tools each build will use. Before writing the first startup instructions, we need to understand the CPU that will execute them. Chapter 4 compares the Cortex-A7 with the Cortex-M model you already know.
