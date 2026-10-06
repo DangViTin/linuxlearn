@@ -1,18 +1,20 @@
 # Chapter 2: What "Embedded Linux" actually is
 
-Suppose you want to turn on an LED. In a familiar MCU project, your application calls a GPIO function, and that function writes a register. On Linux, an application normally asks a driver to do the job. The register is still there, and someone still writes it, but the route from your C code to that register has changed.
+You already know how to turn on an LED. Choose the pad, enable the clock, set the direction, and write the GPIO register. If your board runs MCU firmware, your application can usually follow that path itself.
 
-Why put more software in the way of such a small operation? To answer that, we need to look at what Linux is responsible for. We will start with the firmware model you know, then follow the changes that let several independent programs share one board.
+Now imagine putting the same register-writing function in a Linux application. The C may compile. The physical address may be correct. Neither fact gives the application permission or a mapping to use that register.
+
+The LED has not become more complicated. The board has become a shared machine. A shell, a network service, and your application can run independently, and one bad pointer should not casually overwrite the others' memory. Linux changes the rules around the operation so those programs can coexist. Let us follow what that means, starting with the firmware model you know.
 
 ## 2.1  The system you already understand
 
 Think back to the startup code in a Cortex-M project. At reset, the CPU obtains its initial stack pointer and reset-handler address from the device's vector arrangement. The vector table contains those values; it is not itself a sequence of instructions. The reset handler prepares RAM, copies `.data`, clears `.bss`, and calls `main()`. Your program then enters its main loop or starts an RTOS scheduler.
 
-In a typical project, the application, its drivers, and the RTOS are linked into one image. Tasks may have different stacks and priorities, but they commonly share one physical address space. If a task passes a buffer pointer to an I2C driver, both use the same address to reach the same bytes.
+In a typical project, the application, its drivers, and the RTOS are linked into one image. Tasks may have different stacks and priorities, but they commonly share one physical address space. Pass a buffer pointer to an I2C driver, and both pieces of code use the same address to reach the same bytes. Both can use the pointer directly.
 
 Most such projects also let application code access peripheral registers directly. Cortex-M does support privileged and unprivileged execution, and an MPU can add protection on parts that have one, but many projects do not use that separation. A call such as `i2c_read(addr, buf, len)` goes straight into the driver's code.
 
-You may already have a filesystem through FatFS or littlefs, a network stack, and several RTOS tasks. Linux does not make those ideas new. The larger change is how it separates programs and controls their access to shared resources. Keep the shared MCU address space in mind as we examine that change.
+Add FatFS or littlefs, a network stack, and several RTOS tasks, and the project may already look quite capable. Linux does not make those ideas new. What happens if we want programs built independently, with private memory and controlled access to the devices they share? That is where the familiar direct-call model starts to change.
 
 ## 2.2  The four layers
 
@@ -41,7 +43,7 @@ An embedded Linux system can be viewed as four software layers above the hardwar
    └──────────────────────────────────────────────────────────────┘
 ```
 
-Read the diagram from the bottom upward. Each stage prepares enough of the machine for the next one to run.
+Read the diagram from the bottom upward, as a sequence of handoffs. At reset, there is no shell waiting to launch your application. The lower stages must make that possible first.
 
 **The Boot ROM runs first.** NXP puts this small firmware inside the chip during manufacture. We cannot replace it, so our first image must use the header and placement it expects. Chapter 7 explains that format and how the ROM finds our code.
 
@@ -51,7 +53,7 @@ Read the diagram from the bottom upward. Each stage prepares enough of the machi
 
 **User space is where applications run.** It includes your program, the shell, and background services, often called *daemons*. These programs use interfaces provided by the kernel rather than assuming that every peripheral register is available to them.
 
-Boot ROM, bootloader, kernel, and user space are separate pieces, even when a vendor distributes them in one image. For the LED question at the start of the chapter, the boundary we care about is the last one: how does an application ask a kernel driver to act?
+By the time your application starts, the ROM and bootloader have already done their work. Your ordinary device requests go to the running kernel, not back down through every boot stage. For our LED, the important boundary is now the last one in the diagram: the application is in user space, and the driver is in the kernel. How does a request cross that boundary?
 
 ## 2.3  The user/kernel split, made concrete
 
@@ -62,7 +64,7 @@ On our Linux system, application instructions and kernel instructions run with d
 
 The CPU enforces this distinction. A user instruction that tries to write to protected kernel memory causes an exception, rather than completing the write. The kernel handles that exception and normally terminates the offending process. We will meet processes shortly; for now, think of one as a running application with its own resources.
 
-There are two different meanings of privilege here. **Root** is a Linux user identity, while **kernel mode** describes CPU execution. Later, `sudo picocom` gives the serial-terminal program root credentials so it can open a restricted device. The program still runs in user mode. Its credentials are checked when it asks the kernel for access; `sudo` does not turn it into a driver. This is also why the need for `sudo` comes from device permissions, not from a rule that hardware always needs root.
+There is an easy trap here. If `sudo` gives a program root privileges, has it crossed into kernel mode? No. **Root** is a Linux user identity; **kernel mode** is a CPU execution state. Later, `sudo picocom` gives the serial terminal credentials to open a restricted device, but its own instructions still run in user mode. The kernel checks those credentials when the program requests access. The need for `sudo` comes from device permissions, not from a rule that hardware always needs root.
 
 An application requests a kernel service through a **system call**, usually shortened to *syscall*. On ARMv7-A, the `svc` instruction raises a Supervisor Call exception. The CPU enters the kernel handler in SVC mode, where Linux reads the syscall number from `r7` and its arguments from `r0`-`r6`. After handling the request, the kernel returns a result to the application.
 
@@ -92,13 +94,13 @@ Linux documents its syscall interfaces in section 2 of the manual. On a Linux ho
 
 ### Why the split exists
 
-For one tightly controlled firmware image, direct calls may be exactly what you want. Linux is designed to run independent programs on the same machine. A shell, a network service, and your application may all want CPU time, memory, and access to a device. Separation gives the kernel a way to manage that situation:
+Suppose a network service has a bad pointer. You would rather lose that service than let it overwrite the application's state or the kernel's scheduler. Suppose two programs want the I2C bus. Their requests need coordination, even though neither program knows the other's code. Linux's separation addresses these problems:
 
 1. **Robustness.** A bad pointer in an ordinary application is normally contained by its mappings and permissions, rather than overwriting kernel data or another program's private memory.
 2. **Isolation between programs.** A fault or unauthorized access in one user-space process is less likely to damage the kernel or another process.
 3. **Resource arbitration.** Many processes want the I²C bus, the CPU, the network. Someone must serialize and schedule. The kernel is that someone.
 
-There are good reasons to choose a smaller RTOS for a controlled application. Our subject here is Linux, so we need to understand the separation it uses rather than treating it as an extra driver-library call.
+For one tightly controlled firmware image, a smaller RTOS and direct driver calls may be the right design. Linux takes on a different job: managing independent programs and the resources between them. Its driver boundary starts to make sense once more than your one application needs the board.
 
 ## 2.4  Virtual memory, in one section
 
@@ -110,7 +112,7 @@ On an MCU, an address is usually simple:
 
 If the reference manual says the IOMUXC register is at `0x020E0000`, your firmware writes to `0x020E0000`. The CPU puts that address on the bus. The peripheral responds.
 
-Now try to carry that same pointer into a Linux application. What does the number mean there?
+Carry that same number into a Linux application and a less obvious question appears: is it still the address of that register?
 
 With the MMU enabled, a user-space pointer is usually a **virtual address**, not a direct physical bus address. Before the CPU can load or store memory, the MMU translates:
 
@@ -124,7 +126,7 @@ MMU looks in the current process page table
 physical address in RAM or in a device register block
 ```
 
-The important detail is the current process. Each process has its own address map, so two applications can use the same pointer value without reaching the same physical bytes. The following addresses are illustrative, not a required Linux memory layout:
+Consider two applications that both have a pointer with the value `0x00010000`. In the shared MCU model, the same address would normally reach the same bytes. With separate process mappings, it need not. The following illustrative addresses show the difference; they are not a required Linux memory layout:
 
 ```
 Process A:
@@ -138,7 +140,7 @@ Process B:
   virtual 0xBE000000  -> physical RAM for process B's stack
 ```
 
-When process A is running, its mapping gives `0x00010000` one meaning. When process B runs, its mapping can give that number another meaning. This is how each application can work with its own code, globals, and stack without calculating where every other application lives in physical RAM.
+Look at `0x00010000` in both lists. The numbers match, but the physical RAM can be different. The current process's mapping gives the pointer its meaning. Each application can therefore work with its own code, globals, and stack without first finding a free physical address above every other application's allocations.
 
 The **page table** is the data structure that describes this translation. You can think of it as a map owned by the kernel:
 
@@ -149,7 +151,7 @@ For process A:
   some pages     -> not mapped at all
 ```
 
-If a process touches a virtual address that is not mapped, the MMU raises a **page fault**. A page fault does not always mean a crash. It means the MMU could not complete the translation, so the kernel must decide how to handle the access.
+What if a mapping is missing when the process first touches an address? The MMU raises a **page fault**. The name sounds like a program has already gone wrong, but that is not always the case. The MMU could not complete the translation; the kernel must decide whether the access is valid and can be supplied with memory.
 
 The kernel may decide:
 
@@ -169,7 +171,7 @@ Several later Linux features build on this mechanism. Treat the names below as e
 
 Now return to the i.MX6ULL IOMUXC register block at physical address `0x020E0000`. A normal user process does not automatically have that physical address in its page table. If the process tries to treat `0x020E0000` as a pointer, the MMU interprets it as a virtual address. Unless the kernel deliberately mapped that virtual page for the process, the access faults.
 
-So the physical GPIO or UART address from the manual is not automatically a usable application pointer. The normal route is through a driver interface. The application asks for an operation, and the driver uses the mappings and register access appropriate to the hardware. That answers the LED question without making the GPIO itself any less familiar.
+We can now explain the opening puzzle. The physical GPIO address from the manual is not automatically a usable pointer in the application. The normal route is to request an operation through a driver interface. The driver reaches the hardware using the appropriate mappings and register accesses. The address was correct; our assumption about who could use it was not.
 
 You will spend Chapter 17 building, by hand, a minimal first-level page table on bare metal. After that, MMU behavior becomes much easier to reason about.
 
@@ -194,7 +196,7 @@ We now have a place for the remaining names: some describe the handles applicati
 
 ### File descriptor (fd)
 
-When an application opens a file or a device, it needs a way to refer to that open object in later requests. Linux gives it a **file descriptor**, a small non-negative integer. The descriptor belongs to the process's fd table; it is not the device's register address.
+Opening a device does not hand its register address to the application. Linux gives the process a **file descriptor**, a small non-negative integer that identifies the open object in its fd table. Suppose the result is 3. A later `read(3, ...)` means "read from the object I opened," not "read memory at address 3." The kernel can find the object and its operations from that handle.
 
 `open()`, `socket()`, and `eventfd()` return descriptors, while `pipe()` fills an array with two of them. Later calls such as `read(fd, ...)` tell the kernel which open object to use. That object may be a regular file, a socket, a pipe, or a device.
 
@@ -204,13 +206,13 @@ This common handle explains the phrase "everything is a file." The phrase is not
 
 ### inode
 
-A filename is how we look something up. An **inode** is the kernel's representation of the filesystem object, including its type, permissions, and owner. Directory entries connect names to inodes, and hard links allow several names to refer to one inode.
+A filename is how we look something up. It is tempting to treat the name as the object itself, but two names can refer to the same object through hard links. An **inode** is the kernel's representation of that filesystem object, including its type, permissions, and owner. Directory entries connect names to inodes.
 
 Keep this separate from an open file. An open *file object* records state such as the current offset, and an fd refers to that open object. How an inode locates content depends on the filesystem; a procfs entry, for instance, need not correspond to blocks on a disk.
 
 ### Virtual filesystem (VFS)
 
-An application should not need a different read function for every filesystem. The **VFS** provides the common kernel interface above ext4, FAT, tmpfs, procfs, and devtmpfs. Each filesystem supplies operations that the VFS calls. Character and block devices also connect to this framework, which is why a device can appear in a file-oriented interface.
+The application has another useful freedom: it does not need to ask whether a file is on ext4, FAT, or tmpfs before reading it. The **virtual filesystem**, or VFS, provides the common kernel interface above those filesystems, as well as procfs and devtmpfs. Each supplies operations the VFS can call. Character and block devices also connect to this framework, which brings us back to the fd used to open our device.
 
 ### syscall, libc, glibc, musl
 
@@ -243,11 +245,11 @@ BusyBox init and systemd are two possible init implementations, but the first ex
 
 A driver does not always have to be built into the kernel image. A **kernel module** stores kernel code in a separate `.ko` file that can be loaded while the system is running. `insmod foo.ko` loads it; `rmmod foo` unloads it when unloading is permitted.
 
-Loading a module does not make it an application. Its code runs inside the kernel with kernel privileges, so a faulty module can damage the whole system. We begin working with modules in Chapter 36.
+The `.ko` suffix can make a module look like one more program file, but loading it puts its code inside the kernel. A faulty module can damage the whole system; it does not get an application's private-memory protection simply because it was loaded separately. We begin working with modules in Chapter 36.
 
 ## 2.7  Linux storage and memory use
 
-You may now be wondering how much memory all these layers need. A desktop installation includes many programs we do not need on the board. A small embedded system selects only the kernel features, libraries, and applications required for its job.
+All these layers raise a fair MCU-engineer question: does this small board need the memory budget of a desktop? A desktop installation includes many programs our board will not need. An embedded system selects the kernel features, libraries, and applications for its particular job. The useful comparison is between those selected pieces, not between the board and your entire PC installation.
 
 These are example ranges, not measured requirements for every kernel configuration. Storage means file size; RAM means runtime use.
 
@@ -285,9 +287,9 @@ Return to the four-layer diagram when a later experiment fails. If the Boot ROM 
 
 ## 2.9  Before we move on
 
-We started with an LED and found two changes to the MCU model. First, an application's pointer belongs to its virtual address space; a physical register address is not automatically mapped there. Second, the application normally asks a driver for an operation through a kernel interface. A C library function can make that request through a syscall, and an fd can identify the open device.
+We have not configured a GPIO yet, but we can explain why the opening register-writing function cannot simply be carried into a Linux application. Its pointer belongs to a virtual address space, and the physical register is not automatically mapped there. The application normally asks a driver for the operation. A library wrapper, a syscall, and an fd are now recognizable parts of that request rather than three unrelated names.
 
-The hardware operation at the end is still a register access. Linux adds control over who may request it and how it is shared. If you can explain that route in your own words, you have the main idea needed for the following chapters. The less familiar filesystem and process terms will become more concrete as we use them.
+At the end of the route, someone still writes the GPIO register. Linux has changed who may request it and how the device is shared, not the electrical job of turning on the LED. Keep that distinction. We will return to this same hardware operation when we write bare-metal code and, much later, a Linux driver.
 
 ## 2.10  Lab
 
@@ -322,4 +324,4 @@ Before setting up the host, try these questions in your own words. You do not ne
 - Start with `man 2 intro`, `man 2 open`, `man 2 read`, `man 2 mmap`, and `man 7 pthreads`. See [mmap(2)](https://man7.org/linux/man-pages/man2/mmap.2.html) and [pthreads(7)](https://man7.org/linux/man-pages/man7/pthreads.7.html) for the mapping and shared-resource distinctions above.
 - The Linux source tree's `Documentation/admin-guide/` and `Documentation/process/`.
 
-We have separated the software that runs on the board into layers. Next we prepare the computer that builds and inspects those pieces. Chapter 3 sets up the host without hiding compiler selection in global shell configuration.
+Before any of those programs can run on the board, they must be built somewhere else. Open a terminal on the host PC, and another practical question appears: when you type a compiler name, which compiler does it actually find? Chapter 3 makes that choice visible.

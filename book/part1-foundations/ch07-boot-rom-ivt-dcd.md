@@ -1,10 +1,10 @@
 # Chapter 7: The Boot ROM, IVT, DCD, and BootData
 
-We ended Chapter 6 with instructions linked at `0x00908000`. They are valid Arm code, but that alone does not make a bootable image. The chip still needs to find the bytes, put them in memory, and choose the address of the first instruction.
+The name `_start` meant something to the linker in Chapter 6. The raw bytes we give the chip do not carry that symbol's name. How does the chip know that our first instruction belongs at `0x00908000`, and that it should begin executing there?
 
-On a microcontroller, the device's reset-vector arrangement often supplies that starting point. On the i.MX6ULL, NXP's Boot ROM reads an image header before handing over control. A correct program with a misplaced or inconsistent header may never reach its first instruction, and the ROM gives us no debug-UART banner explaining why.
+On a microcontroller, the reset-vector arrangement often provides the starting address. On the i.MX6ULL, NXP's Boot ROM expects an image description before it hands over control. Valid instructions are only part of the delivery. They must arrive at the right place, with a header the ROM can interpret. If those descriptions disagree, our program may never reach the code that could print an error.
 
-We will follow one small image from its SD-card offsets to its OCRAM addresses. Along the way, the names **IVT**, **BootData**, and **DCD** will describe specific pieces of information the ROM needs. Keep the Chapter 6 code address in view: the purpose of the header is to get execution there.
+Keep two questions beside the worked example: where is this byte in the file, and where will it be in RAM? The numbers will differ even when they describe the same header. Following that one image gives the names **IVT**, **BootData**, and **DCD** jobs to do, rather than leaving us with three abbreviations to memorize.
 
 ## 7.1  What the Boot ROM is
 
@@ -39,7 +39,7 @@ Three facts help us choose what to inspect when that first handoff fails:
 9. **Apply HAB authentication policy.** Closed mode rejects unauthenticated images; open mode can report authentication failures without preventing execution. SDP follows authentication policy too.
 10. **Jump to `IVT.entry`.** Control transfers to your image's entry point. From here on, your code controls the machine.
 
-The Boot ROM does not print progress messages to the debug UART. A serial message begins only when loaded code initializes the UART and prints. Silence therefore tells us very little by itself: the ROM may be waiting for an image, rejecting its layout, or running code that has not printed anything.
+Notice how much happens before our first instruction. None of these ROM steps prints a progress banner to the debug UART. A message starts only when loaded code configures that UART and prints. The silent board from the preface could therefore be waiting for an image, rejecting its layout, or executing code that simply has no serial output. We need evidence more specific than silence.
 
 | BOOT_MODE[1:0] | BT_FUSE_SEL clear | BT_FUSE_SEL set |
 |---|---|---|
@@ -52,7 +52,7 @@ A board label such as "USB" is a convenient name for a switch pattern that selec
 
 ## 7.3  The IVT, Image Vector Table
 
-The **Image Vector Table**, or IVT, is the ROM's map of the image. It is not the CPU's exception vector table. Its eight 32-bit words occupy **32 bytes**, and tell the ROM where to find the entry point and associated structures:
+The first description is small: eight 32-bit words, **32 bytes** in total. The **Image Vector Table**, or IVT, identifies the header and points to the entry and associated structures. Despite the name, it is not the CPU's exception vector table. Read it as the ROM's description of this image:
 
 | Offset | Field | Description |
 |--------|-------|-------------|
@@ -73,7 +73,7 @@ Read the fields in two groups. `header` identifies the structure and its format.
 
 ### A worked example
 
-Use the same OCRAM code address as Chapter 6. We will deliberately leave room before the code for the ROM header, then keep two views of the file beside each other: offsets in the stored image and addresses after loading.
+Our code is already linked at `0x00908000`. We need to add a header without putting it where the first instruction belongs. Leave room before the code and follow the same bytes in two views: their positions in the stored file, and their addresses after loading into OCRAM.
 
 First, the file layout for this small image:
 
@@ -103,7 +103,7 @@ Now follow what those values tell the ROM:
 5. BootData says `start = 0x00907000` and `length = total file size`. The `self - start` difference is `0x400`, matching the IVT's offset in the file.
 6. The ROM jumps to the IVT's `entry` address, `0x00908000`.
 
-The crucial distinction is visible in the table below. `0x400` locates a byte in the file; `0x00907400` locates that byte in OCRAM after the image is loaded. They refer to the same IVT in two different views:
+At first, `0x400` and `0x00907400` can look like competing answers to "where is the IVT?" They answer different questions. The first locates it in the file; the second locates it in OCRAM after loading. The same bytes have both a file position and a destination address:
 
 | File view | RAM view after ROM load |
 |-----------|-------------------------|
@@ -126,7 +126,7 @@ Offset    Field      Value
 +0x1C     reserved2  0x00000000
 ```
 
-Check the entry one more time: `0x00908000` is where Chapter 6 linked `_start`. The image header and linker script are describing the same destination. Chapter 9 supplies the first wrapper using this no-DCD layout, and Chapter 11 generalizes it. The image must still fit within Chapter 5's ROM-active OCRAM window.
+Return to the question at the start. The linker placed `_start` at `0x00908000`; the IVT's entry field now gives that address to the ROM. Two independently prepared descriptions agree. Chapter 9 supplies the first wrapper with this no-DCD layout, and Chapter 11 generalizes it. The whole image must still fit in Chapter 5's ROM-active OCRAM window.
 
 ## 7.4  BootData, telling the ROM how big the image is
 
@@ -142,7 +142,7 @@ In our padded file, `start` is the RAM address corresponding to file offset zero
 
 ## 7.5  The DCD, Device Configuration Data
 
-Our small image can run in OCRAM without setting up external memory. A larger image raises a problem: if its destination is DDR, who prepares the DDR controller before the ROM tries to load it?
+OCRAM let our small image avoid a circular problem: code destined for DDR cannot first rely on unconfigured DDR to run the code that prepares it. For a larger image, someone must initialize the controller before that transfer. Who can do the work while the main program is not yet loaded?
 
 **Device Configuration Data**, or DCD, is one answer. It contains commands the ROM performs before loading the main image, commonly register writes for clocks and DDR initialization. These are data records interpreted by the ROM, not Arm instructions compiled from our application.
 
@@ -199,13 +199,13 @@ The supplied RM specifies DCD version `0x41`, while [U-Boot v2024.01's image con
 
 ### Why DCD exists
 
-The same register setup could be done by software, but the order matters. An image destined directly for DDR needs memory prepared *before* that transfer. A DCD lets the ROM do it. Another design first loads a small SPL into OCRAM; that program initializes DDR and loads the larger stage itself.
+There are two ways out of that ordering problem. Give the ROM a DCD so it can prepare DDR before transferring the main image there. Or give it a small SPL that fits in OCRAM; the SPL initializes DDR and loads the larger stage itself. The register work can be similar, but who performs it and when are different.
 
 For our small OCRAM image, neither route is needed yet. We set the DCD pointer to zero and let later code configure DDR when we reach that experiment. Chapter 11 keeps this design because its image fits in the available OCRAM window. A DCD is an option in the loading sequence, not a compulsory block to copy from an unrelated board.
 
 ## 7.6  Boot modes, in concrete detail
 
-The image fields describe what to load. The boot-mode signals decide where the ROM looks for it. Return to the decision table in Section 7.2 while reading these two routes:
+The header cannot help if the ROM is looking on a different device. The boot-mode signals answer that earlier question: where should it look? Keep the decision table in Section 7.2 beside the two routes below, and remember that a board's switch label represents a particular signal pattern.
 
 ### Internal Boot (BOOT_MODE = 10)
 
@@ -256,7 +256,7 @@ File offset    Content
 
 The exact layout is partly your choice, within the constraint that IVT.self must equal the load address of IVT, IVT.entry must point to where the application begins, and BootData.length must cover everything up to the last byte you want loaded.
 
-This is an easy place to be off by 1 KiB. Two conventions can put the IVT at the same card location, but they require different write offsets:
+Here is an easy mistake to catch on paper. Our padded file already puts the IVT at file offset `0x400`. Writing that file at card offset `0x400` would put the IVT at `0x800`, not where the ROM expects it for this SD layout. Another generator may put the IVT first and require the `0x400` card write offset. Both conventions can be correct; mixing them is not:
 
 | Artifact | IVT file offset | Card write offset | Resulting IVT card offset |
 |---|---|---|---|
@@ -275,7 +275,7 @@ By writing the small wrapper ourselves, we can inspect exactly how its fields we
 
 ## 7.8  HAB, High Assurance Boot, briefly
 
-So far we have described whether an image can be found and loaded. A production system may also need to check who signed it. **HAB**, High Assurance Boot, is NXP's ROM secure-boot scheme. The IVT's `csf` field points to its **Command Sequence File** authentication data, produced with the Code Signing Tool, **CST**. HAB uses a fuse-stored **Super Root Key** (SRK) hash, certificates, and signatures to apply the provisioned trust policy.
+A correctly laid-out image tells the ROM where its pieces belong; it does not establish whether they are trusted. A production device may also require an answer to "who signed this?" **HAB**, High Assurance Boot, is NXP's ROM secure-boot scheme. The IVT's `csf` field points to its **Command Sequence File** authentication data, produced with the Code Signing Tool, **CST**. HAB uses a fuse-stored **Super Root Key** (SRK) hash, certificates, and signatures to apply the provisioned trust policy.
 
 Open-mode authentication failures do not necessarily block execution. Closed-mode policy requires valid authentication; closing the device is irreversible. An incorrectly signed image can sometimes be replaced through an authenticated recovery path using the provisioned trust configuration. Lost signing keys or unusable trust provisioning are different, potentially unrecoverable failures. SDP does not bypass closed-mode authentication.
 
@@ -311,7 +311,7 @@ The header stores its length bytes in big-endian order, as required by the IVT f
 | `00 00 00 00` | csf | unsigned image |
 | `00 00 00 00` | reserved2 | 0 |
 
-This is the worked example in its least abstract form: the bytes that must actually be present. Compare it with Chapter 11's output field by field, rather than only checking that a file was created.
+Pick the entry field out of the dump: `00 80 90 00` decodes to the `0x00908000` address we chose earlier. The layout has become actual bytes we can inspect. Compare Chapter 11's output field by field, remembering that the header length and the pointer words use different byte-order rules. A file appearing in the directory is only the beginning of that check.
 
 Do not use `dumpimage -l` as a promised validator for this custom padded/no-DCD file: tool support depends on header placement and format. Inspect these exact bytes and pointer relationships first; successful structural checks still do not prove execution.
 
@@ -361,4 +361,4 @@ Answer check: `self=0x00907400`, `boot_data=0x00907420`, and `entry=0x00908000`.
 - U-Boot `tools/mkimage.c` and `tools/imximage.c`, which implement the production image-generation path.
 - NXP's [imx-mkimage repository](https://github.com/nxp-imx/imx-mkimage).
 
-The linker describes where our program belongs, and the boot header tells the ROM how to get it there. Before trying that handoff, Chapter 8 checks the actual board: its power arrangement, the two USB connections, and the switch pattern that makes the ROM visible to the host.
+We have followed an instruction from its linked address to the header field that names it, and followed that header back to its position in the file. The numbers agree on paper. Next we need a physical connection to the chip that will read them. The Boot ROM can expose its USB downloader before our program runs; Chapter 8 checks that path on the actual board.

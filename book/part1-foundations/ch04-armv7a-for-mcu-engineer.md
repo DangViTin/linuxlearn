@@ -1,15 +1,15 @@
 # Chapter 4: ARMv7-A and the Cortex-A7, for the MCU engineer
 
-The last chapter prepared compilers for our board. Before using them to write startup code, we need to know what the Cortex-A7 expects from that code. Some parts are familiar: integer registers, a stack, and load/store instructions. Others change the way we handle exceptions and memory.
+An interrupt handler can return to the right instruction and still break the program it interrupted. If it overwrote a register without preserving the old value, returning to the right address does not recover that lost value.
 
-For example, a Cortex-M interrupt handler benefits from hardware stacking. On the Cortex-A7, entering an exception selects different registers, but software must save the rest of the context. That difference will matter when we write our own interrupt handler. The MMU, meanwhile, supplies the address translation behind Chapter 2's separate process address spaces.
+On Cortex-M, hardware saves a useful part of that context before your handler begins. Our Cortex-A7 does not make the same stack push. It selects some different registers on exception entry and leaves software to preserve the rest. Familiar-looking C and assembly therefore sit on top of a different arrangement. We need to know what the core did before our first handler instruction, and what it expects us to do afterward.
 
-On a first reading, follow the integer registers, SVC and IRQ modes, banked SP/LR, and physical versus virtual addresses. The detailed tables and the sections on caches, timers, security, and virtualization are also here for later reference. You can return to their register encodings when a lab actually uses them.
+Follow the integer registers, SVC and IRQ modes, banked SP/LR, and physical versus virtual addresses on a first reading. They explain the early startup and exception work. Caches, timers, security, and virtualization have their own later uses; their tables can remain reference material until a lab gives you a reason to return.
 
 
 ## 4.1  Where the Cortex-A7 sits in the ARM lineup
 
-The name "Cortex-A7" can be misleading if you already use a Cortex-M7. The matching number does not mean that the cores share an architecture. Arm names describe two different things:
+Cortex-A7, Cortex-M7: the matching number invites an assumption that the cores are close relatives with similar software requirements. The letter matters more here. Arm names describe two different things:
 
 - **Profile letter.** `A` for "Application" (smartphones, set-top boxes, embedded Linux), `R` for "Real-time" (storage controllers, automotive), `M` for "Microcontroller" (the Cortex-M0/M3/M4/M7/M33 you have worked with).
 - **Architecture version.** v6, v7, v8, v9. The version determines the instruction set and which features are present. The core implementation determines pipeline depth, cache topology, and clock ceiling.
@@ -40,11 +40,11 @@ Use the following table to place familiar MCU features beside the Cortex-A7 equi
 | Atomic ops | Exclusives on M3/M4/M7; not M0/M0+ | LDREX/STREX |
 | Instruction set | Thumb; M0/M0+ have a smaller subset than M3/M4/M7 | ARM and Thumb-2 for this book |
 
-Two rows explain much of the early learning curve. The MMU lets the operating system give processes separate memory mappings. The exception model makes software responsible for context that Cortex-M hardware stacks automatically. We will follow that exception model first. Timer and NEON support are useful later, but their presence does not mean every Linux configuration uses them.
+Start with the exception-model row. It explains how the opening handler could return correctly yet leave the program damaged. Then look at the MMU row, which explains Chapter 2's separate process mappings. These are changes to how software uses the machine, not just extra peripherals in a longer feature list. Timer and NEON support are useful later, but their presence does not mean every Linux configuration uses them.
 
 ## 4.3  Exception modes and banked registers
 
-Start with an ordinary interrupt in your MCU project. You wrote a C handler, but the core did work before its first instruction ran:
+Think of the first line in a Cortex-M C interrupt handler. It looks like an ordinary function, but the processor has already done some of the work that function relies on:
 
 On Cortex-M, the usual sequence is:
 
@@ -55,7 +55,7 @@ On Cortex-M, the usual sequence is:
 
 Our Cortex-A7 does not do that automatic stack push. Instead, an exception changes the **processor mode** and selects the register view for that mode. Some register names now refer to different physical registers. These separate copies are called **banked registers**.
 
-Consider `sp`. Code in SVC mode uses `sp_svc`; after an IRQ is accepted, `sp` refers to `sp_irq`. The old stack pointer has not been pushed anywhere. It is still in its own banked register, while the IRQ handler needs its separate stack to have been initialized already. Ordinary registers such as `r0` remain shared, so the handler must save them if it needs to use them without losing the interrupted value.
+Watch `sp` when an IRQ interrupts SVC code. Before the interrupt it refers to `sp_svc`; afterward the same name refers to `sp_irq`. The old stack pointer was not pushed anywhere. Its physical register is still there, out of the handler's current view. The IRQ stack must already have been initialized. Now watch `r0`: it has no corresponding IRQ bank. If the handler uses it, the interrupted value must be saved and restored by software.
 
 The tables below describe this Cortex-A7's nine modes. Other A-profile cores need not implement exactly the same set. First use the tables to follow SVC and IRQ; the extra security and hypervisor modes can wait.
 
@@ -127,9 +127,9 @@ MON serves security-state transitions, and HYP serves virtualization. This Corte
 
 Total physical register count exposed by Cortex-A7: **34 general-purpose**, **8 status (CPSR + 7×SPSR)**, plus `ELR_hyp`. That is 43 registers. A normal non-HYP mode sees at most 18 at once: `r0`-`r15`, `CPSR`, and its `SPSR`. HYP sees `ELR_hyp` as its extra exception-return address.
 
-To read the table as a sequence, imagine an IRQ arriving while SVC code is running. The CPU copies CPSR into `SPSR_irq`, records an exception return address in `lr_irq`, selects `sp_irq`, and enters the IRQ vector. `r0` still contains the interrupted code's value. If the handler uses it, software must save and later restore it.
+Try a small mental experiment with the table. Suppose SVC code has the value 5 in `r0` when an IRQ arrives. The CPU copies CPSR into `SPSR_irq`, records the exception return address in `lr_irq`, selects `sp_irq`, and enters the IRQ vector. Does changing the mode create a safe new copy of `r0`? It does not. If the handler overwrites that 5, it must have saved a copy to restore before returning.
 
-This gives banked registers a useful but limited job: they preserve selected exception state, not every register the handler might overwrite. Chapter 15 turns this sequence into an executable handler with the appropriate return instructions. HYP has a different return arrangement using `ELR_hyp`, which is why it has its own row above.
+That is the missing half of the opening puzzle. Banked registers preserve selected exception state, not every value the handler might overwrite. Chapter 15 turns this sequence into an executable handler with the appropriate return instructions. HYP has a different return arrangement using `ELR_hyp`, which is why it has its own row above.
 
 ### What this means in practice
 
@@ -171,7 +171,7 @@ Do not confuse HYP mode with Monitor mode:
 
 Part IX uses this distinction in real labs: Xen uses HYP mode for guests, while OP-TEE in Chapter 124 uses Monitor/Secure-world mechanisms.
 
-Return now to Chapter 2's syscall. The `svc` instruction triggers a Supervisor Call exception from USR mode to SVC mode. SP and LR select their SVC copies, and the kernel handler runs with privileged access. It follows the exception model we have just studied, even though the application requested the transition deliberately rather than a peripheral raising an IRQ.
+Chapter 2's syscall now has a more concrete explanation. Its `svc` instruction triggers a Supervisor Call exception from USR to SVC mode. SP and LR select their SVC copies, and the kernel handler runs with privileged access. The application requested this transition deliberately, but the core still enters an exception. The mode table describes something we have already seen from the caller's side.
 
 ## 4.4  The CPSR / SPSR program status registers
 
@@ -201,7 +201,7 @@ For the first labs, pay particular attention to the mode field and the I/F inter
 
 ## 4.5  Memory model and the MMU
 
-Chapter 2 described the MMU from an application's point of view. Here we can name the structures that make its translation work. On our non-virtualized path, **stage 1** translates a virtual address into a physical address using translation tables in memory.
+Recall the two processes in Chapter 2 that used the same pointer value for different physical RAM. The CPU needs a way to decide which translation applies. On our non-virtualized path, **stage 1** performs that virtual-to-physical translation using tables in memory. Here we can identify the structures that make the earlier example possible.
 
 The Cortex-A7 also supports a second translation stage for virtualization. Do not confuse a translation *stage* with a table *level*: two stages are guest and hypervisor translations, while two levels are successive table lookups within one translation. We only need stage 1 for the initial labs.
 
@@ -232,7 +232,7 @@ Each Level-1 entry can:
 - Be a **1 MB "section"** directly (no Level-2 lookup needed, saving a memory access).
 - Be a **16 MB "supersection"** (less common).
 
-An entry that points to another table has a different format from one that maps memory directly. Section and small-page mappings also differ. Rather than memorizing all the fields now, ask what each mapping must tell the MMU: the physical address, who may access it, and how accesses to that memory should behave.
+The first lookup need not send the MMU to a second table: a section entry can describe the region directly. That is why the descriptor's type matters before its other fields. Section and small-page mappings also differ. For now, ask what a completed mapping must tell the MMU: the physical address, who may access it, and how accesses to that memory should behave.
 
 The corresponding leaf fields include access permissions (AP), execute-never (XN), and memory attributes (TEX/C/B and shareability). Relevant L1 descriptors also select a domain; a domain in "client" mode applies the mapping's permissions. Chapter 17 decodes the exact section format used by its example.
 
@@ -252,7 +252,7 @@ With that default split, the user range occupies about 3 GiB of virtual address 
 
 ## 4.6  Caches
 
-A cache keeps copies of memory close to the CPU. That makes repeated instruction fetches and data accesses faster, but creates another question for low-level code: does the copy agree with the memory another agent sees? Before discussing maintenance, distinguish the two L1 caches implemented in the i.MX6ULL:
+The CPU writes a new value to a buffer. Has that value reached the memory a peripheral will read? With a write-back cached mapping, the modified bytes can still be in the CPU's cache. A cache makes repeated accesses faster by keeping copies nearby, but low-level code must also know when those copies agree with memory. First distinguish the i.MX6ULL's two L1 caches:
 
 | Cache | Size | Ways | Line size | Organization |
 |---|---|---|---|---|
@@ -300,7 +300,7 @@ Keep that separation in mind when reading the register names: SysTick is a per-c
 
 The Cortex-M NVIC was inside the core. The A-profile equivalent, the **GIC**, is outside the core. The i.MX6ULL integrates a **GIC-400** (an implementation of GIC v2).
 
-The familiar job is still deciding which pending interrupt the CPU should handle. The GIC splits that job between a system-wide distributor and a CPU interface:
+We know how IRQ entry changes the CPU state. One question is still unanswered: which peripheral caused it? The GIC supplies that part of the interrupt path. It splits the work between a system-wide distributor and a CPU interface:
 
 GICv2 has two parts:
 
@@ -321,7 +321,7 @@ Unlike the NVIC's vector selection, the GIC does not send the CPU directly to a 
 
 ## 4.9  Atomics, barriers, and memory ordering
 
-Source-code order is not always enough to describe when another agent observes memory accesses. ARMv7-A is **weakly ordered**, so low-level software uses barriers where ordering or completion matters. Three instruction names recur in later startup code:
+Writing a buffer and then announcing that it is ready looks straightforward in C. Low-level code must also ensure that the relevant observer sees the accesses in the required order. ARMv7-A is **weakly ordered**, so source order alone is not a sufficient guarantee. Three barrier instructions recur in later startup code:
 
 - `dsb` (Data Synchronization Barrier): waits for outstanding memory accesses to complete.
 - `dmb` (Data Memory Barrier): orders accesses but does not necessarily wait.
@@ -338,7 +338,7 @@ retry:
     bne     retry
 ```
 
-Cortex-M has the same exclusive-load and exclusive-store instruction family. On A-profile, use the required memory barriers when the operation must also order other memory accesses.
+Look at `r2` in that loop. It reports whether `strex` succeeded; it is not the new counter value. The branch retries when the exclusive store failed. Cortex-M parts that support exclusives use the same instruction family. On A-profile, the required barriers are still needed when this operation must also order other memory accesses.
 
 ## 4.10  NEON and VFP
 
@@ -364,7 +364,7 @@ The most important difference for this book is the instruction set. Cortex-A7 is
 
 ## 4.12  Lab
 
-The chapter introduced more names than the first program needs. This exercise gives three of them a location in the manuals: processor modes, translation tables, and interrupt IDs. Locate the sections below and bookmark them; use the titles as well as the numbers when comparing editions.
+The mode table helped us follow an interrupted register; the MMU table explained an address; the GIC supplied an interrupt ID. Locate their definitions in the manuals below so you can repeat that reasoning without depending on this chapter's summary. Use titles as well as numbers when comparing editions.
 
 1. From the **ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition** (DDI 0406C.d), locate:
    - Section B1.3: Processor modes
@@ -398,4 +398,4 @@ Answer check: the NXP interrupt table gives UART1 SPI index 26, hence GIC ID 58.
 - LWN: "An introduction to the ARM Generic Interrupt Controller" (2014).
 - Linux source: `arch/arm/include/asm/{system,memory,page,pgtable}.h`, `arch/arm/mm/proc-v7.S`, `arch/arm/kernel/entry-armv.S`.
 
-We can now distinguish CPU registers, exception state, and system-control registers. The LED and UART, however, live outside the CPU core. Chapter 5 follows the memory map, clocks, and pin routing that connect the Cortex-A7 to those peripherals.
+The opening interrupt no longer has to be mysterious: returning to the right instruction also requires restoring the state that instruction expects. Keep that habit of asking what must already be true. A GPIO write has its own prerequisites outside the CPU core: an address, a clock, and a route to the board's pin. We follow those in Chapter 5.

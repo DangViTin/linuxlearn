@@ -1,12 +1,12 @@
 # Chapter 8: Hardware bring-up checklist
 
-We have spent the last few chapters looking inside the i.MX6ULL: its registers, memory, clocks, and boot process. Now put the board on the desk. Which connector is the serial port? How should this particular board be powered? How can we reach the Boot ROM before our own program is running?
+Put the board on the desk with every cable still disconnected. After several chapters of addresses and registers, we can look at the actual connectors and switch markings those descriptions depend on. The first question is practical: how should this particular revision be connected and powered?
 
-These are small questions, but they become difficult to answer when a new program refuses to run. If we settle them now, a silent board later will leave us fewer things to investigate. In particular, we want to find the USB-OTG recovery path introduced in Chapter 7. It gives us a way to send an image without depending on a working SD boot setup.
+Then we can look for a result that does not require our own program. Chapter 7's Boot ROM is already in the chip. In the appropriate USB mode, the host should be able to see its downloader interface even though we have not built a bootable SD image. That observation will give us a known connection to return to when a later download fails.
 
 ## 8.1  What we can and cannot prove yet
 
-Our Ubuntu host has the tools from Chapter 3, and we have a Point Atom MINI board. We have not yet written our first bootable image. That does not prevent us from learning quite a lot about the hardware.
+We have the Ubuntu tools from Chapter 3 and a Point Atom MINI board. The tempting test is to connect everything and wait for a Linux prompt. That would mix too many unanswered questions together: the supply, cables, boot mode, storage image, and software. Separate them first.
 
 Without a program of our own, we can check that:
 
@@ -17,11 +17,11 @@ Without a program of our own, we can check that:
 - The i.MX6ULL Boot ROM enumerates as a USB SDP device.
 - You can identify the SD-card device on the host without guessing.
 
-Notice what is missing from that list: a running Linux system, a successful image transfer, and an LED responding to our code. Those are later tests. This chapter establishes the connections and observations we will use when we reach them.
+Each item answers a smaller question than "does the system boot?" A running Linux system, a successful image transfer, and an LED responding to our code are later tests. Keeping them separate lets us recognize real progress without mistaking a working serial bridge for a working target program.
 
 ## 8.2  Unbox and inspect
 
-Leave every cable disconnected for the moment. Put the board on an anti-static mat and look over both sides. It is much easier to spot a bent pin or identify a connector before cables cover the silkscreen.
+Set the unpowered board on an anti-static mat and look over both sides. This quiet inspection saves awkward work later: a cable can cover the switch numbering, and a second USB connector can look much like the first. Find the labels while they are still easy to see.
 
 1. **Visible damage.** Look at every connector. Are any pins bent? Are any solder joints cracked or incomplete? Are any capacitors discolored? Did any screw hole damage a trace? Reject and return the board if you find serious damage.
 2. **Connectors.** Locate the USB-OTG port, the built-in USB-TTL debug port, Ethernet RJ45, microSD slot, 40-pin expansion header, LCD ribbon connector, JTAG header, and any power input.
@@ -33,7 +33,7 @@ Photograph the top and bottom, including the printed PCB revision and switch num
 
 ### Choose the power arrangement before any cable
 
-Before choosing a supply, distinguish the voltage entering the board from the rails produced on it. The reference MINI v2.2 power sheet (sheet 3, PDF page 4) shows a DC converter, `USB_TTL` VBUS (`VUSB`), OTG VBUS circuitry, K1, and rail headers JP2/JP3. A label such as `DCDC_5V` names a rail; it is **not** a specification for the barrel input. Do not plug a guessed 5 V/12 V supply into that input.
+There is an important difference between "this board has a 5 V rail" and "this input accepts my 5 V supply." The reference MINI v2.2 power sheet (sheet 3, PDF page 4) shows a DC converter, `USB_TTL` VBUS (`VUSB`), OTG VBUS circuitry, K1, and rail headers JP2/JP3. `DCDC_5V` names a rail; it is **not** a specification for the barrel input. Do not plug a guessed 5 V/12 V supply into that input.
 
 Use the supplier's arrangement for your **exact baseboard and core revision**. Record the input connector, rated voltage/current/polarity, K1 position, and any jumper settings before applying power. Attach the two USB data cables only if that arrangement documents their VBUS paths. If you have only the schematic and cannot establish those details, stop and obtain the matching board power guide; the book does not provide an electrically validated universal jumper recipe.
 
@@ -57,7 +57,7 @@ After connecting the documented supply arrangement, switch the meter to **DC vol
 1. Probe **3V3** to **GND**. Expected: about 3.30 V.
 2. Probe **5V** to **GND** if accessible. Expected: about 5 V.
 
-Record the readings rather than just noting that the power LED is on. They give us a starting point if the board later resets or behaves inconsistently. These accessible rails do not validate core/DDR sequencing or every supply, however. If a reading is unexpected, disconnect power before investigating.
+A lit power LED is an observation, not a measurement of every rail. Record the voltages so a later reset or inconsistent result has something to compare against. These accessible rails do not validate core/DDR sequencing or every supply. If a reading is unexpected, disconnect power before investigating.
 
 ## 8.4  Built-in USB-TTL serial console
 
@@ -89,7 +89,7 @@ If your host reports `/dev/ttyACM0`, use that instead:
 $ sudo picocom -b 115200 /dev/ttyACM0
 ```
 
-A blank terminal can be the expected result. The Boot ROM does not print a UART banner, and we have not supplied a program that prints one. For now, check that `picocom` can open the bridge and keep the port open. This confirms host access, not the SoC's UART configuration. In Chapter 12 we will configure that UART ourselves and send text through this same connection.
+The terminal opens, but nothing is printed. Should we start changing the baud rate? Not yet: the Boot ROM does not print a UART banner, and we have supplied no program that prints one. Check that `picocom` can open the bridge and keep the port open. This confirms host access, not the SoC's UART configuration. In Chapter 12 we will configure that UART ourselves and send text through this same connection.
 
 Your board may already contain a factory image in eMMC or NAND. If it prints in its storage mode, keep the output in your notes; there is no need to erase it for this check. If the bridge appears on Windows but not inside an Ubuntu VM, attach it to the guest and close any Windows-side serial session. As in Chapter 3, we use explicit `sudo` for restricted logs and devices instead of changing host groups.
 
@@ -133,7 +133,7 @@ Straps are latched on the documented reset event [RM 8.2.1]. Change them only wh
 
 ## 8.6  Confirm USB mode and SDP enumeration
 
-We can now ask the Boot ROM to announce itself over USB. No SD image is needed for this test: the downloader is part of the ROM, not software we must install first.
+The UART can be quiet while USB tells us something useful. The ROM's downloader interface does not wait for us to install a Linux image or configure our own UART. Follow the power checks and USB-mode sequence below, then look for its USB identity on the host.
 
 1. Disconnect all sources for a cold cycle as in Section 8.3.
 2. Set the boot-mode switch to **USB** mode.
@@ -159,7 +159,7 @@ You can also ask `uuu` to list visible i.MX devices:
 $ sudo "$IMX6ULL_HOME/build/mfgtools/uuu/uuu" -lsusb
 ```
 
-This is an encouraging observation, but it answers only the connection question. We have not yet sent an image, checked authentication, or seen code execute. In Chapter 9 we will send our first program and look for its effect on the LED.
+If your actual output shows that identity, one of our questions has an answer: the host can see the ROM interface without a Linux image running on the board. Keep that output. It does not yet prove image transfer, authentication, or entry-point execution. Chapter 9 will add a different kind of evidence: the LED's response to our program.
 
 If you do not see `15a2:0080`:
 
@@ -206,7 +206,7 @@ For our early OCRAM image, the operation has two stages:
 1. Sends an image file over USB-OTG into OCRAM.
 2. Tells the Boot ROM to jump to the image entry point.
 
-This joins the last two chapters together: Chapter 7 explains the image fields that tell the ROM where to load and enter; this chapter establishes the USB connection that will carry those bytes.
+The two stages connect our earlier work. The bytes cross the USB connection checked here; the header from Chapter 7 tells the ROM how to handle the image. The code at the entry address must then do something observable. That last part belongs to the next experiment, not to seeing a USB device in the list.
 
 You may encounter MfgTool in older board instructions. It is NXP's older Windows manufacturing GUI. We use `uuu` throughout this book, so there is only one downloader to set up and follow.
 
@@ -261,7 +261,7 @@ The required records describe a board we can safely connect and a ROM interface 
 
 Complete the required-now table in `~/imx6ull/notes/ch08-bring-up.md`, including actual readings and any reason a step cannot proceed. Attach your board/cabling photos, serial identity, exact ROM enumeration output, and card identity. Mark unperformed checks as unperformed rather than filling a box from an expected-output example.
 
-Keep the notes beside the board as you work through Part II. When a download fails later, you can compare the current setup with the cable arrangement, switch pattern, and USB identity that worked here.
+Keep these notes beside the board during Part II. If a new program gives no response, compare the connections with the setup recorded here. To check the ROM USB identity again, first return to Section 8.6's documented USB-mode cold-start sequence; this is not a test for an arbitrary point after starting our image. Is the ROM interface visible in that known setup? The answer gives you a direction to investigate before changing code that may never have been loaded.
 
 ## 8.13  Pitfalls
 
@@ -282,6 +282,6 @@ Keep the notes beside the board as you work through Part II. When a download fai
 
 ---
 
-Part I began with a familiar MCU question: what changes when Linux runs on a processor like the i.MX6ULL? We now have enough of the answer to start building. We know which compiler to use, where our first instructions will live, how the Boot ROM finds them, and how the host reaches the board.
+Return to the silent board in the preface. We have not promised that it will now boot Linux, but the questions are more specific. Which compiler did the terminal select? Do the linked entry and image header agree? Is the documented power arrangement in use? Does the host see the ROM downloader? Completed checks in your journal give you starting points rather than a reason to repeat the whole setup.
 
-In Chapter 9 we will turn that preparation into a small ARM assembly program. Its first result will not be a Linux prompt or a serial message. It will be an LED responding to code we wrote, built, and sent ourselves.
+Chapter 9 adds the response we have been preparing for: an LED controlled by our own small ARM assembly program. No Linux prompt yet, and no serial message to rely on. Just an observable change produced by instructions whose build, placement, and loading we can follow. Later systems will have many more moving parts; this is our first chance to connect all the early steps to a result on the board.

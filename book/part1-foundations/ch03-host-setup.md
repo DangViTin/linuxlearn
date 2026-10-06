@@ -1,10 +1,10 @@
 ﻿# Chapter 3: Host environment setup
 
-In an MCU IDE, selecting a project often selects the compiler and download tool for you. Here we will make those choices ourselves. The computer on your desk is the **host**: it edits and builds the code, inspects the result, and sends it to the i.MX6ULL **target** board.
+A new terminal can look exactly like the last one and still choose a different compiler. It can even report "command not found" while the compiler files are sitting where you left them. The files and the terminal's knowledge of them are two different things.
 
-Our immediate needs are modest: a workspace, two known compilers, a serial terminal, and a USB download tool. We will also prepare a spare SD card without writing it. TFTP, NFS, and the Ethernet address plan are for later network-boot labs; you can leave Sections 3.6, 3.7, and 3.10 until Chapter 24.
+An MCU IDE usually keeps that distinction out of sight by choosing tools with the project. Here we make the choice ourselves. The computer on your desk is the **host**: it edits and builds the code, inspects the result, and sends it to the i.MX6ULL **target** board. Our first job is to give the files a known home and make each terminal's tool selection visible.
 
-As you work through setup, keep asking two questions: where did this file go, and which program will this terminal run? Being able to answer them is more useful than having a long list of commands that happened to finish successfully.
+For Part II we need a workspace, two compilers, a serial terminal, and a USB download tool. We will also identify a spare SD card without writing it. TFTP, NFS, and the Ethernet address plan serve later network-boot labs; Sections 3.6, 3.7, and 3.10 can wait until Chapter 24. As we set up the immediate tools, keep two questions in mind: where did the file go, and which program will this terminal run?
 
 ## 3.1  Choosing the host
 
@@ -22,7 +22,7 @@ We can keep compiler files and compiler selection local to the project. Ubuntu p
 
 ## 3.2  Workspace layout
 
-First give the work a home. We use `~/imx6ull` so source files, generated files, and downloaded compilers do not get mixed together. Later chapters will refer to these directory names:
+Consider the next time a build fails and you need to find the source you edited. It helps if that file is not buried among yesterday's generated objects and downloaded archives. We use `~/imx6ull` to keep those roles separate. The layout below will stay with us as the projects grow:
 
 ```sh
 $ mkdir -p ~/imx6ull/{src,build,boot,rootfs,scripts,toolchains,notes}
@@ -49,7 +49,7 @@ Two distinctions will save confusion later:
 
 ## 3.3  Host packages
 
-The Arm compilers are not enough on their own. Large projects also need host tools to process configuration, generate source, and package files. Ubuntu supplies these through its package manager, `apt`.
+Not every program used during an Arm build runs on Arm. The host also runs tools that process configuration, generate source, and package files. Ubuntu supplies these helpers through its package manager, `apt`. The long installation below prepares those host jobs; our two Arm compilers will still be downloaded separately into the workspace.
 
 `apt update` refreshes the package catalog; `apt install` installs the named packages and their dependencies. Read the proposed installation before answering its confirmation prompt. Packages ending in `-dev` generally supply headers and libraries needed to compile another program. These installations change Ubuntu, rather than just the project directory.
 
@@ -85,7 +85,7 @@ If `apt` cannot find a package on the reference Ubuntu release, stop and record 
 
 ## 3.4  The cross toolchain
 
-Ubuntu's ordinary `gcc` builds programs for the host PC. Our board needs Arm instructions, so we also need a compiler that runs on the PC but produces code for Arm. That is a **cross-compiler**. Its accompanying linker, assembler, and inspection tools form a **toolchain**.
+The name `gcc` tells you which compiler family you called, not which processor its output will run on. Ubuntu's ordinary `gcc` builds for the host PC. For our board, we need a compiler that runs on the PC but produces Arm instructions. That is a **cross-compiler**. Its linker, assembler, and inspection tools form a **toolchain**. Chapter 6 will make this difference visible by building the same C source for two targets.
 
 We use two official prebuilt Arm toolchains because the target environments differ:
 
@@ -150,7 +150,7 @@ You do not need to reconstruct these names at every build. For this book, the se
 
 ### Environment script
 
-Having the files on disk does not yet tell Bash where to find them. Bash searches the directories in a variable named `PATH` when you enter a command. We will add our compiler directories for the current terminal through one small file, `env.sh`.
+We now have the compiler files. What is still missing? When you enter a program name, Bash searches the directories listed in a variable called `PATH`; it does not search the whole disk. This is how a terminal can fail to find a compiler that is plainly present in the file manager. One small file, `env.sh`, will add the right directories for the current terminal.
 
 Leave `~/.bashrc` unchanged. Putting the setup there would select these tools automatically in future terminals, including terminals used for other work. Instead, we will make the selection visible each time we begin a book session.
 
@@ -219,7 +219,7 @@ The leading dot matters. It tells Bash to read the file **into this shell**, whi
 
 If you instead enter `bash ~/imx6ull/scripts/env.sh`, the file runs in a child shell. That child's settings cannot change the terminal you return to afterward. We also do not need to make `env.sh` executable: sourcing reads it as a file rather than launching it as a separate program.
 
-Now ask the terminal what it selected. `command -v` reports the executable found through `PATH`; the version commands identify it. Both paths should lead into this workspace:
+Ask the terminal what it selected before trusting a build. `command -v` reports the executable found through `PATH`; the version commands identify it. Both paths should lead into this workspace:
 
 ```sh
 $ command -v arm-none-linux-gnueabihf-gcc
@@ -241,7 +241,9 @@ $ echo "$BAREMETAL_CROSS_COMPILE"
 arm-none-eabi-
 ```
 
-The trailing hyphen in each prefix is intentional. Build systems append names such as `gcc` or `objcopy` to it. U-Boot, Linux, and BusyBox use `CROSS_COMPILE`; our own bare-metal Makefiles use the separate `BAREMETAL_CROSS_COMPILE` name. You can now see both selections without guessing from a global installation.
+Those paths answer the puzzle at the start of the chapter. The files live in the workspace; sourcing `env.sh` makes this terminal find them. A terminal that has not inherited those values needs its own selection. Keep that distinction when a command later works in one window and fails in another.
+
+The trailing hyphen in each prefix is intentional. Build systems append names such as `gcc` or `objcopy` to it. U-Boot, Linux, and BusyBox use `CROSS_COMPILE`; our own bare-metal Makefiles use the separate `BAREMETAL_CROSS_COMPILE` name.
 
 ## 3.5  Serial console
 
@@ -315,7 +317,7 @@ Use whichever of these you already know, or defer the choice until you need it. 
 
 ## 3.6  TFTP server
 
-Once U-Boot is running, copying every test image through an SD card becomes tedious. **TFTP** lets U-Boot fetch a file from the host over Ethernet. This section prepares the host end of that transfer; it can wait until Chapter 24.
+Once U-Boot is running, think about the next ten kernel builds. Moving the card from board to host and back for every image soon becomes more work than the small code change you wanted to test. **TFTP** lets U-Boot fetch the file from the host over Ethernet instead. This section prepares that host service; it can wait until Chapter 24.
 
 Unlike `env.sh`, a network service continues independently of this terminal. Keep a record of the existing configuration, preserve unrelated settings, and use an isolated lab link. Work through the address plan in Section 3.10 before restarting a server bound to that address. Do not expose these services on a public or shared network.
 
@@ -357,7 +359,7 @@ $ sudo chown "$USER:$(id -gn)" /srv/tftp
 $ chmod 755 /srv/tftp
 ```
 
-There are two users involved here: you, who copy images into the directory, and the `tftp` service, which reads them. Ownership and permissions need to accommodate both:
+There are two users involved here, and they want different things. You need to put new images in the directory. The `tftp` service needs to read them, but does not need your authority to change the host. The ownership and permission commands arrange that distinction:
 
 - `/srv` is a system directory. Without `sudo`, a normal user usually cannot create `/srv/tftp`.
 - After `sudo mkdir`, the new directory is owned by `root`, so your normal user would need `sudo` every time you copy a kernel, device tree, or U-Boot image into it.
@@ -403,7 +405,7 @@ TFTP uses additional UDP transfer ports; a stateful firewall must track the exch
 
 ## 3.7  NFS server
 
-TFTP transfers individual files. **NFS**, the Network File System, lets Linux use a directory on the host as its root filesystem. During development, you can edit a target file on the host and use the changed version without rebuilding an SD-card image.
+TFTP saves us a trip with the SD card, but it still transfers individual files. What if Linux could use a directory on the host as its root filesystem? **NFS**, the Network File System, allows that. During development, the host can hold the target's files, and the board can read an updated file without needing a new SD-card image.
 
 We will not boot that way until the later kernel and root-filesystem labs. For now, if you are preparing networking, tell the host which directory the board may access.
 
@@ -454,7 +456,7 @@ To undo this lab export, remove only its line from `/etc/exports` with `sudoedit
 
 ## 3.8  USB-OTG flashing tools
 
-We also need a route into a board that has no working storage image. The i.MX6ULL Boot ROM provides **SDP**, the Serial Download Protocol, through USB-OTG. In USB boot mode, it appears as a USB device and waits for a host tool to send an image. We use NXP's `uuu` for that job.
+Our first program cannot depend on a bootloader we have not built yet. Fortunately, there is already code in the chip: the Boot ROM. In USB boot mode it exposes **SDP**, the Serial Download Protocol, through USB-OTG and waits for a host tool to send an image. We use NXP's `uuu` to reach that starting point, even when storage has no working image.
 
 ### `uuu` (Universal Update Utility)
 
@@ -495,7 +497,7 @@ $ lsblk -o NAME,PATH,SIZE,MODEL,SERIAL,TRAN,RM,TYPE,MOUNTPOINTS
 
 Read your actual output: `PATH` is the device path, `TYPE` distinguishes a whole `disk` from a `part` partition, and `MOUNTPOINTS` shows what is mounted. The later examples use `/dev/sdc` with a `/dev/sdc1` partition, but your card may have different names.
 
-This check deserves care. `dd` writes to the destination you give it, even if that destination is your system disk. Compare size and mount points before every write, not just during this first setup.
+Here, a command finishing successfully can be the wrong result. `dd` can write perfectly good image bytes to a perfectly valid device path that happens to be your system disk. It cannot decide which disk you meant. Compare identity, size, and mount points before every write, not just during this first setup.
 
 Compare the device list before and after insertion. Match size, model/serial, and the newly appearing reader/card; `RM=1` alone is not proof. Reject a device containing `/`, `/boot`, swap, or unrelated mounted data. A host disk can be `/dev/sdb`; a card can be `/dev/sda` or `/dev/mmcblkN`. Disk letters do not establish safety.
 
@@ -629,7 +631,7 @@ Chapter 8 checks physical Ethernet presence only. Target ping and TFTP tests wai
 
 ## 3.11  Sanity check
 
-Return to the tools we need before Part II. In a fresh terminal, source `env.sh` and check where both compilers and `uuu` come from. The listings below show the shape of the output; record your own paths and version strings rather than trying to match the placeholders.
+Return to a fresh terminal and follow the selection from beginning to end: source `env.sh`, find both compilers, and find `uuu`. The listings below show the shape of the output. Your own paths and version strings are the evidence to keep; the placeholders are not output you need to reproduce.
 
 ```sh
 $ . ~/imx6ull/scripts/env.sh
@@ -692,7 +694,7 @@ $ command -v arm-none-eabi-gcc
 
 Now open another terminal from the desktop, rather than launching it from the configured shell. Before sourcing the file, try `echo "$CROSS_COMPILE"` there. With no prior setup, it should be empty. Source `env.sh` and check again.
 
-This small comparison shows what the environment file changes. A child terminal can inherit its parent's exported values, so an inherited value alone does not mean `.bashrc` was edited. In your notes, record the two compiler paths and the sourcing command you will use at the start of each session.
+The compiler files did not move during that comparison. Only the second terminal's selection changed. A child terminal can inherit its parent's exported values, so an inherited value alone does not mean `.bashrc` was edited. Record the two compiler paths and the sourcing command in your notes. If the tools disappear from a future window, you now have a specific setting to inspect before downloading them again.
 
 ## 3.13  Pitfalls
 
@@ -710,4 +712,4 @@ This small comparison shows what the environment file changes. A child terminal 
 - *The TCP/IP Guide* (Charles Kozierok) on TFTP and NFS protocols if you want to know what is on the wire.
 - For frequent cross-builds, `ccache` can reuse previous compilation results. Leave it out of the first experiments so the compile commands and rebuild decisions remain easy to follow. Add it later only after checking how the project's build system selects its compiler.
 
-The workspace is ready, and we can identify the tools each build will use. Before writing the first startup instructions, we need to understand the CPU that will execute them. Chapter 4 compares the Cortex-A7 with the Cortex-M model you already know.
+We can now trace a compiler name to a real file and explain why we source the environment script at the start of a session. The next uncertainty is on the other end of the build. The Cortex-A7 accepts familiar-looking instructions, but it does not enter an interrupt like a Cortex-M. That difference is where Chapter 4 begins.

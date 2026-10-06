@@ -1,12 +1,12 @@
 # Chapter 6: The toolchain
 
-What happens when you press Build in an MCU IDE? Source files become object files, those objects are linked at chosen addresses, and another tool may produce the file used for downloading. The IDE collects the steps behind one button. Here we will run and inspect them ourselves.
+Look inside a typical firmware build directory: object files, an ELF, perhaps a raw binary. They all came from the project, but they are not interchangeable copies. One still needs linking. Another contains addresses and debugging information. The raw file has shed much of that information, even though it contains the bytes we may eventually load.
 
-We already selected two toolchains in Chapter 3. Now we will use a small C program to follow the Linux-target build, then assemble a bare-metal skeleton with its own startup code and linker script. Neither build needs a board transfer yet. By the end, the different files in the build directory should have recognizable jobs rather than just different extensions.
+The Build button in an MCU IDE collected those steps for you. Here we can stop between them and inspect what changed. We begin with a tiny Linux-target program, then build a bare-metal skeleton with its own startup and linker script. Both experiments stay on the host for now. One small variable in the skeleton will give us a particularly useful question: how can it occupy four bytes in RAM without storing those four initialization bytes in the raw image?
 
 ## 6.1  `gcc` is not one program
 
-Start with a program small enough that the build machinery is easier to see than the application. Source Chapter 3's environment file, make a directory for the experiment, and open `hello.c`:
+Keep the application small enough that it cannot hide the build process from us. Source Chapter 3's environment file, make a directory for the experiment, and open `hello.c`:
 
 ```sh
 $ . ~/imx6ull/scripts/env.sh
@@ -28,7 +28,7 @@ Build it for Arm Linux with the Linux-target compiler. We will inspect this resu
 $ arm-none-linux-gnueabihf-gcc -O2 -o hello hello.c
 ```
 
-One command produced `hello`, but several kinds of work took place. The `gcc` command is a **driver**: it selects the required tools and passes the results between stages. The output uses **ELF**, the Executable and Linkable Format, which carries code together with metadata about the target and its layout.
+We gave the terminal one command and got one file, `hello`. That tidy exchange hides several stages. The `gcc` command is a **driver**: it selects tools and passes each stage's result onward. The finished file uses **ELF**, the Executable and Linkable Format. It describes the target and layout as well as carrying the code. It is not just a sequence of the instructions for `main()`.
 
 The main build stages are:
 
@@ -51,11 +51,11 @@ Target: arm-none-linux-gnueabihf
 ...
 ```
 
-If a build fails, ask which stage reported the error. A missing header belongs to preprocessing or compilation; an undefined reference or incompatible object usually belongs to linking. Knowing the stage gives you a smaller problem to investigate than "the compiler did not work."
+The distinction becomes useful the first time a build fails. A missing header points toward preprocessing or compilation. An undefined function reference points toward linking: the compiler may already have produced a valid object, but the linker could not find the function's implementation. Before changing flags, find which stage actually stopped.
 
 ## 6.2  The binutils inventory
 
-The compiler is only part of the toolchain. **Binutils** supplies tools that assemble, link, convert, and inspect binary files. The prefix selects the target family, just as it did for GCC. Use this table as a guide to which tool answers a particular question:
+An executable is no longer editable C, but it is not beyond inspection. **Binutils** supplies tools that assemble, link, convert, and examine binary files. Want to know where `_start` ended up? Ask `nm`. Want the instructions? Ask `objdump`. The prefix selects the target family, just as it did for GCC. The table collects these tools for later lookup:
 
 | Tool | What it does | When you reach for it |
 |------|-------------|----------------------|
@@ -90,13 +90,13 @@ $ arm-none-linux-gnueabihf-readelf -l hello
 
 Find the `LOAD` rows and, for a dynamically linked result, the `INTERP` row. The output identifies the required interpreter, commonly `/lib/ld-linux-armhf.so.3` for this glibc hard-float target. Record the actual output; header counts/addresses vary with toolchain options.
 
-The `INTERP` row is more than a filename in a report. It tells the target kernel which dynamic loader the executable needs. That loader arranges the shared libraries before startup reaches `main`. If the target filesystem lacks the requested loader, the program cannot start even though compilation succeeded.
+That `INTERP` filename explains one otherwise puzzling failure: an executable can be present on the board and still fail to start because the loader it requests is missing. The target kernel needs that loader to arrange shared libraries before startup reaches `main`. Successfully producing the executable did not supply the target's whole runtime.
 
 Our bare-metal ELF has no `INTERP` segment. There is no Linux loader to prepare its runtime. We must arrange startup ourselves, and the boot image must tell the ROM where to enter that code.
 
 ## 6.3  Section, segment, VMA, LMA
 
-Why does one tool report a `.text` section while another reports a `LOAD` segment? They are describing the same file for different jobs. The compiler and linker organize its contents; the loader needs to know what memory to prepare. The address terms VMA and LMA describe where those contents are used and initially stored.
+The inspection tools seem to disagree about the shape of our file. One lists `.text` and `.bss`; another lists `LOAD` segments. They are looking at it for different jobs. The linker organizes contents, while a loader needs ranges of memory to prepare. Keep those two readers of the file in mind as we distinguish sections, segments, and the addresses called VMA and LMA.
 
 | Word | Who mainly cares? | Meaning |
 |------|-------------------|---------|
@@ -112,7 +112,7 @@ If you come from MCU work, start with **sections**. You already know these:
 - `.data`: globals/statics with non-zero initial values, such as `int led = 1;`.
 - `.bss`: globals/statics that start as zero, such as `int counter;`.
 
-The linker script arranges sections. The loader does not want to reason about every tiny section. It wants bigger chunks it can load or map with permissions:
+There is a clue to the opening variable puzzle in that list. `.bss` describes zero-initialized storage; it does not need to store one zero byte for every runtime byte. Something at startup must make the storage zero. The linker arranges these sections, while the loader works with larger ranges it can load or map with permissions:
 
 ```text
 sections:  .text  .rodata  .data  .bss  .debug_*
@@ -158,7 +158,7 @@ For `.data` in that system:
 
 That is why Flash/RAM startup copies `.data` from LMA to VMA, then zeros `.bss`. `AT(addr)` gives a section a different load address. Our OCRAM-only skeleton does not need that copy: its initialized data is loaded at its runtime address. Later OCRAM-to-DDR relocation makes the distinction useful again.
 
-You may have used this arrangement for years without editing its linker script. The startup file and IDE supplied it. On the i.MX6ULL we need to recognize it explicitly, especially when code begins in OCRAM, initializes DDR, and later moves into DRAM.
+If you have used an MCU debugger to inspect a global in RAM, you have already seen the runtime side of this arrangement. Its initial value may have lived elsewhere in Flash until startup copied it. VMA and LMA put names to those two locations. The same distinction will matter when our i.MX6ULL code starts in OCRAM and later moves into DDR.
 
 ## 6.4  Linker scripts
 
@@ -207,7 +207,7 @@ Read the script from top to bottom. `ENTRY(_start)` records the entry symbol for
 
 `SECTIONS` places input sections into the output. `> OCRAM` assigns them to successive addresses in our OCRAM region. Within BSS, the dot means the current placement address, so `_sbss = .;` and `_ebss = .;` give startup the bounds it must clear.
 
-The stack symbols are addresses, not an allocation caused by naming them. The separate memory budget and `ASSERT` keep linked sections out of the stack's downward-growing region. `_stack_top` is 8-byte aligned for public function calls, and the BSS bounds are aligned for clearing whole words. When we move to DDR, we will change the regions while keeping these same placement ideas.
+Naming `_stack_top` does not reserve memory by itself. The separate memory budget and `ASSERT` do the important work of keeping linked sections out of the downward-growing stack's region. A larger program that crosses the limit should fail at link time, where we can read the error, rather than first reveal the overlap as strange behavior on the board. `_stack_top` is 8-byte aligned for public function calls, and the BSS bounds are aligned for clearing whole words.
 
 ## 6.5  The ABI: what makes function calls work
 
@@ -234,7 +234,7 @@ The core rules (simplified):
 | s0-s15 / d0-d7 | Applicable hard-float arguments/return values; allocation depends on types and signature, with different variadic-call rules. Caller-saved. |
 | s16-s31 / d8-d15 | Callee-saved FP. |
 
-The compiler follows these rules for C calls. Handwritten assembly needs to follow them too. For example, if a C caller keeps a value in a callee-saved register, an assembly function that overwrites it without restoring it can damage the caller's work. A function may return to the correct address and still be wrong because it broke this agreement.
+Chapter 4 showed that returning to the right instruction is not enough if the interrupted state was damaged. Ordinary function calls have a related, but different, agreement: the caller knows which registers may change and which the callee must preserve. If handwritten assembly overwrites a callee-saved value and returns without restoring it, the caller resumes with the wrong state. Compiled C follows the ABI; our assembly must keep its side of the agreement too.
 
 ### Hard-float vs soft-float
 
@@ -252,7 +252,7 @@ The Linux toolchain selected for this book uses the hard-float ABI. All Linux us
 
 ## 6.6  The C library, or its absence
 
-Our `hello` used `puts()` without supplying its implementation. A library provided it. That is convenient for Linux user space, but our first bare-metal program has no operating system or runtime prepared for such a call. In Part II, we begin with **no libc** and later write the small `memcpy` and `printf` routines our experiments need.
+Where did the code for `puts()` come from? We wrote a call and included a header, but supplied no function body. The header provided declarations, and a library provided the implementation. That arrangement is convenient for Linux user space. Our first bare-metal program has no operating system or runtime prepared for such a call, so Part II begins with **no libc**. Later we write the small `memcpy` and `printf` routines our experiments need.
 
 The C library, or libc, is **separate from GCC**. GCC is the compiler driver and compiler. Libc is a runtime library plus headers that the compiler links against when you build Linux user-space programs. A complete cross-toolchain usually ships all of these together:
 
@@ -293,7 +293,7 @@ Knowing a function's name is not enough to make it available. In a bare-metal bu
 
 `make` runs the builds for the bare-metal projects in Part II and for U-Boot, Linux, and Buildroot later in the book. This section explains the parts used by those builds.
 
-Before learning the syntax, consider the next edit to our program. Repeating a compile command by hand is manageable for one file. With startup assembly, several C files, headers, and a linker script, it becomes easy to forget a step or rebuild the wrong output. `make` records those relationships.
+The first build is only half the work. On the second build, what changed? If you edited `main.c`, the startup assembly did not need recompiling. If you edited the linker script, neither object may need recompiling, but the final layout must be recreated. `make` records those relationships so we do not have to reconstruct the whole command sequence after each edit.
 
 For Lab B, concentrate on rules, dependencies, automatic variables, and the complete Makefile. The assignment variants, functions, and conditionals are reference material for larger builds; you do not need to memorize them before trying the skeleton.
 
@@ -320,7 +320,7 @@ main.c    ──► main.o    ┘
 link.ld   ──────────────┘
 ```
 
-If you edit `main.c`, only `main.o`, `led.elf`, and `led.bin` need rebuilding. `startup.o` can be reused. If you edit `link.ld`, the object files can be reused, but `led.elf` and `led.bin` must be rebuilt. This is why `make` exists: it avoids rebuilding everything when only part of the input changed.
+Follow a change to `main.c` through the arrows. It reaches `main.o`, then `led.elf`, then `led.bin`; it never reaches `startup.o`. A change to `link.ld` enters further along: reuse the objects, but rebuild the linked ELF and raw binary. In Lab B, the commands that appear on the second build will let you check this diagram against actual behavior.
 
 A `Makefile` records those dependency relationships and the shell commands that produce each output. `make` decides whether to run the commands and in what order.
 
@@ -347,7 +347,7 @@ CFLAGS ?= -O2                                 # 3) only if not already set
 OBJS  += extra.o                              # 4) append
 ```
 
-The difference between `=` and `:=` is easier to see with a changing value. Read what `greet` prints after `name` changes:
+Before reading the expansion rule, predict what `greet` will print after `name` changes. The two examples differ by one character in the assignment:
 
 ```make
 name = world
@@ -363,7 +363,7 @@ name := there
 $(info $(greet))   # prints "hello world"   ← immediate expansion
 ```
 
-Our small Makefile uses `:=` where we want the value expanded as Make reads the assignment. Larger projects also use deferred `=` expansion deliberately. When reading one, ask whether the value should be fixed now or resolved when it is used.
+With `=`, the reference to `name` is resolved when `greet` is used, after `name` became `there`. With `:=`, `greet` kept the value formed at assignment time, `hello world`. Our small Makefile uses `:=` where we want that immediate expansion. Larger projects use both deliberately; ask when a value needs to become fixed.
 
 ### 6.7.3  Pattern rules and automatic variables
 
@@ -537,7 +537,7 @@ $ arm-none-linux-gnueabihf-gcc -static -o hello-stc hello.c
 $ ls -l hello-stc
 ```
 
-Compare your two files rather than expecting an exact size from the book. A dynamic hello may occupy kilobytes while a glibc static hello occupies hundreds of kilobytes, depending on versions, flags, and symbols. The dynamic executable's smaller size does not include the shared libraries it needs on the target.
+The size difference can look surprising for a program that only prints one word. A dynamic hello may occupy kilobytes while a glibc static hello occupies hundreds of kilobytes, depending on versions, flags, and symbols. The smaller file has not eliminated the library code. It relies on shared libraries already being available on the target. Compare your actual files, and include those dependencies when thinking about the complete system's size.
 
 Also keep the target environment in view: a statically-linked Linux program still needs Linux. Some library features still use external files or configuration. `-static` does not turn `hello` into firmware that the Boot ROM can start by itself.
 
@@ -599,7 +599,7 @@ Create `~/imx6ull/src/ch06-skeleton/` with:
 - `link.ld`: the minimal script from §6.4.
 - `Makefile`: from §6.7.
 
-The program below does not operate the LED yet. It increments a variable so we have code and a BSS object to inspect. Saving the four files and running `make` should produce `led.elf` and `led.bin`; Chapter 9 adds the LED operation and ROM wrapper.
+The program below increments a variable rather than operating the LED. That is enough to give us instructions, startup work, and a BSS object whose file and memory sizes we can compare. The outputs retain the names `led.elf` and `led.bin` used by the later exercise; Chapter 9 adds the LED operation and ROM wrapper.
 
 First create and enter the directory with `mkdir -p ~/imx6ull/src/ch06-skeleton` and `cd ~/imx6ull/src/ch06-skeleton`. Use `nano` to create the four named files. Save this as `startup.S`:
 
@@ -645,7 +645,7 @@ int main(void)
 }
 ```
 
-`counter` gives us a four-byte object in BSS, and `volatile` keeps its accesses present in this exercise. Build once, then run `make` again without changing a file. The second run should have no compilation or linking to do. Edit the loop and build again, watching which commands return.
+There is our four-byte variable, `counter`, in BSS. `volatile` keeps its accesses present in this exercise. Build once, then run `make` again without changing a file. The second run should have no compilation or linking to do. Edit the loop and build again, watching which commands return. We can now test both the variable's layout and Make's dependency decisions.
 
 **Do not try to boot `led.bin` yet.** The code has a linked layout, but the ROM loading header and observable LED behavior are still missing. We add them in Chapter 9.
 
@@ -665,7 +665,7 @@ In your journal, answer:
 3. What is the address of `_start`?
 4. Does `_stack_top` equal `0x00918000` and `_stack_limit` equal `0x00917800`? Is `_image_end` below the stack limit?
 
-Check `_start = 0x00908000`, `counter` inside BSS, and the two stack bounds. `.bss` has runtime space but no stored initialization bytes. Use `readelf -a` for additional details; symbol/layout checks do not prove board execution.
+Check `_start = 0x00908000`, `counter` inside BSS, and the two stack bounds. The variable puzzle has a concrete answer: the linker assigned `counter` runtime space, and the startup loop clears it before `main`; the raw file does not need to carry four stored zeros for it. Use `readelf -a` for additional details. These symbol and layout checks are host evidence, not proof of board execution.
 
 ## 6.11  Pitfalls
 
@@ -685,4 +685,4 @@ Check `_start = 0x00908000`, `counter` inside BSS, and the two stack bounds. `.b
 - `man 5 elf`, `man 1 ld`, `man 8 ld.so`.
 - LWN: "How programs get run" (the kernel `exec` path. Relevant when you write a `binfmt`).
 
-We can now inspect the instructions and addresses produced by a build. One question remains before the chip can run them: how does the Boot ROM know where to load the bytes and where to begin execution? Chapter 7 adds the image header that answers those questions.
+We can find our first instruction in the disassembly and locate it at `0x00908000`. That is a stronger result than merely seeing a file appear. But the chip has not read our linker script, and it will not read this ELF to learn what we intended. We still owe the Boot ROM a description of where to load the bytes and where to enter. Chapter 7 supplies it.

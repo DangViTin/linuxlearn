@@ -1,8 +1,8 @@
 # Chapter 5: A tour of the i.MX6ULL SoC
 
-Knowing the Cortex-A7 registers does not yet tell us how to light an LED. We also need the GPIO block's address, its clock, and the pin connected to the LED. A UART raises the same questions. On a new MCU you would look for these in its reference manual and schematic; the i.MX6ULL uses the same approach, spread across a larger chip.
+A correct register write need not produce a change at a connector. A UART can be configured while its signal is routed to a different pad. A GPIO value can change while the LED's pad is assigned to another function. The instruction did its job; the path to the outside world was incomplete.
 
-This chapter gives us a map for that search. We will separate the CPU core from the rest of the SoC, follow the clock and pin paths, then work through a UART1 lookup. The aim is not to memorize a peripheral catalog. It is to know where to start when the next lab names a block you have not used before.
+On a new MCU, you would trace that path through the reference manual and schematic. We will do the same on the i.MX6ULL: find the controller, find its clock, and follow its signal to the board. The chip is larger, but the questions are familiar. Keep an LED and a UART in mind as we move through the map; the worked UART1 lookup at the end will bring the pieces together.
 
 ## 5.1  What is the i.MX6ULL
 
@@ -21,7 +21,7 @@ Keep the following summary nearby as we examine the map. Where a resource depend
 - **Process:** 28 nm
 - **Package:** BGA289 / BGA324 (depending on variant)
 
-Before choosing a clock or a peripheral lab, read the chip's full marking. `Y` identifies i.MX6ULL, while `G` identifies i.MX6UL; those are different families, not price grades of the same part. Within ULL, the `Y0`, `Y1`, and `Y2` differentiators identify baseline, reduced-feature, and full-feature variants.
+Before we choose a clock setting, the chip marking deserves a closer look. Two boards sold under a similar name need not carry the same part. `Y` identifies i.MX6ULL, while `G` identifies i.MX6UL; those are different families, not price grades of the same part. Within ULL, `Y0`, `Y1`, and `Y2` identify baseline, reduced-feature, and full-feature variants.
 
 For example, the supplied core schematic labels U1 `MCIMX6Y2CVM05AB`:
 
@@ -36,7 +36,7 @@ For example, the supplied core schematic labels U1 `MCIMX6Y2CVM05AB`:
 | `A` | Fuse-option field |
 | `B` | Silicon revision 1.1 |
 
-The useful result of decoding this example is the `05` speed grade: 528 MHz. The schematic describes its design, but you must still check the marking fitted on your board. **Do not apply a 696 MHz example to a 528 MHz-grade part.** Even a higher-grade part needs the documented voltage and temperature conditions for its chosen frequency.
+The `05` in that long name changes a practical decision: this example is a 528 MHz-grade part. A clock value copied from another project is not made safe by the fact that both projects use a Cortex-A7. Check the marking actually fitted on your board, not just the schematic label. **Do not apply a 696 MHz example to a 528 MHz-grade part.** Even a higher-grade part needs the documented voltage and temperature conditions for its chosen frequency.
 
 ## 5.2  Block diagram
 
@@ -61,7 +61,7 @@ Here is a simplified view of how the major blocks connect. Some buses are omitte
                    (256/512 MB on MINI)
 ```
 
-The **bus matrix** carries accesses from a master, such as the CPU or a DMA engine, to a target, such as RAM or a peripheral bridge. A register write is therefore not a write into the CPU core itself: it travels to the addressed block. We rarely configure the matrix in the first labs, but this distinction helps us read the physical memory map.
+Follow a line from the CPU to OCRAM, then follow another toward the peripherals. The **bus matrix** carries those accesses from a master, such as the CPU or a DMA engine, to the selected target. A UART register write travels out of the core to the controller's block. We rarely configure the matrix in the first labs, but it makes the next table more concrete: the physical address selects where that access goes.
 
 ## 5.3  System memory map
 
@@ -82,7 +82,7 @@ Where does a CPU load or store go? The physical address selects a region in the 
 
 For the early labs, three parts of the map are especially useful. First, **DRAM begins at `0x80000000`**. A U-Boot setting such as `loadaddr=0x80800000` therefore places an image 8 MiB above that base, leaving working space around it. Remember that this is external memory and needs initialization before use.
 
-Second, **OCRAM begins at `0x00900000`**. This is on-chip SRAM, available before DDR has been configured. Our first bare-metal images use it. A small U-Boot **SPL**, or Secondary Program Loader, can also run here, initialize DDR, and load a larger next stage. The full 128 KB is not all available while the ROM is still loading, as the next section explains.
+This creates a boot problem worth noticing. A board may have hundreds of megabytes of DDR, yet our first program cannot assume it is usable. Something must configure its controller first. **OCRAM begins at `0x00900000`** and gives us on-chip SRAM before DDR is ready. Our first bare-metal images run there. A small U-Boot **SPL**, or Secondary Program Loader, can also begin there, initialize DDR, and load a larger stage.
 
 Third, most peripheral registers lie in **AIPS-1, AIPS-2, or AIPS-3**. For example, the Clock Controller Module, **CCM**, starts at `0x020C4000`, inside AIPS-1. The high address digits help you identify the containing region, but use the block's own register table for the exact address.
 
@@ -90,7 +90,7 @@ The full map is RM Chapter 2. In particular, `0x00018000-0x000FFFFF`, `0x0010000
 
 ## 5.4  OCRAM and the boot footprint
 
-Our first program needs both code space and a stack. It is tempting to budget all 128 KB of OCRAM, but the Boot ROM uses some of that memory during loading. RM 8.4.1, Figure 8-3 gives the boundaries below; it does not assign further subdivisions within the lower reservation.
+OCRAM solves the first-memory problem, but there is a catch in its budget. The chip provides 128 KB; the Boot ROM leaves only about 68 KB free while it is loading. Both numbers are correct. The ROM is a running program with its own memory needs. RM 8.4.1, Figure 8-3 gives the boundaries below; it does not assign further subdivisions within the lower reservation.
 
 | Start | End | Approx size | During Boot ROM execution | What it means for us |
 |-------|-----|-------------|---------------------------|----------------------|
@@ -102,11 +102,11 @@ During Boot ROM execution, the usable window is the ~68 KB middle range. **After
 
 That gives our loader a different limit from the physical memory limit: loaded bytes must remain below `0x00918000`, not merely below `0x00920000`. In the first padded image, we use `0x00907000` as the image base, `0x00907400` for the IVT header, and `0x00908000` for the code entry. Chapters 6 and 7 show how those choices fit together.
 
-Always budget the actual image and stack. Memory we may reclaim after the ROM has handed over control is not memory we may overwrite while it is still using it.
+The time at which we use the memory matters as much as its address. We cannot borrow the ROM's stack while the ROM is still using it to load our image. Budget the loaded bytes and our own stack explicitly; the linker script in Chapter 6 will turn that boundary into a build check.
 
 ## 5.5  The clock tree (at one level of detail)
 
-Finding a register address answers only part of the peripheral question. A block also needs its clock. Instead of beginning with the full clock tree and its roughly 200 leaf signals, follow one path from a source to a peripheral:
+Return to the UART whose correct register writes did not produce output. Finding its address tells us where to write, but the block also needs a clock. The full clock tree has roughly 200 leaf signals. We can make a useful start without following all of them: trace one source through the tree to the peripheral we need.
 
 ```
 External oscillators ─► PLLs (ANATOP) ─► Root clocks (CCM) ─► Gates (CCGR) ─► Peripherals
@@ -157,13 +157,13 @@ Every peripheral has a **gate bit** (or pair of bits) in one of seven `CCM_CCGRx
 
 Bare-metal examples often select `11`. Production code selects a state according to the peripheral's run, wakeup, and low-power requirements; `01` is not a universal production setting.
 
-The mapping of peripheral to CCGR bit lives in the reference manual's CCM chapter, Table 18-5. You will visit that table dozens of times during this book.
+The reference manual's CCM Table 18-5 connects each peripheral to its CCGR field. For UART1, this lookup will give us a specific register and two bits. We have moved from a block name to a concrete field our code can select.
 
 If a peripheral's registers give unexpected values or writes seem to have no effect, check its clock gate early. An address can be correct while the block behind it is not receiving the clock it needs.
 
 ## 5.6  IOMUX, the universal multiplexer
 
-Even a clocked UART cannot print if its signal never reaches the connected pin. Most package **pads**, the chip's external signal connections, can carry several alternate functions. A pad might offer GPIO, UART, I2C, Ethernet, or a timer signal. The **IOMUX**, the I/O multiplexer, selects which function reaches it.
+Suppose we have found the UART registers and enabled the clock. There is still no reason to expect TX at just any convenient header pin. Most package **pads**, the chip's external signal connections, offer several alternate functions: GPIO, UART, I2C, Ethernet, or a timer signal. The **IOMUX**, the I/O multiplexer, selects which function reaches a pad. A controller and a connector can both be correct while the selection between them is wrong.
 
 Do not choose a setting from another pad just because its name looks similar. Each pad has its own ALT table in the reference manual's IOMUXC chapter.
 
@@ -183,7 +183,7 @@ IOMUXC_SW_PAD_CTL_PAD_GPIO1_IO03 = 0xB0B1; /* pad electrical settings */
 
 The value `0xB0B1` appears in many NXP examples. It configures electrical properties such as pull resistance, drive strength, and slew rate. Chapter 9 decodes the fields before using a pad-control value.
 
-Notice that these controls answer separate questions. MUX_CTL selects the function, PAD_CTL sets electrical behavior, and SELECT_INPUT, where present, chooses the input route. A missing signal can come from any of them, even if the peripheral's own registers are correct. Check them after the clock path when debugging a silent device.
+We can now account for the opening example. MUX_CTL selects the function, PAD_CTL sets electrical behavior, and SELECT_INPUT, where present, chooses the input route. Setting the UART's own registers does not perform these jobs for it. When a signal is missing, check this path after the clock path instead of repeatedly changing the peripheral's data register.
 
 The IOMUX tables occupy about 300 pages, but each experiment uses only a few pads. The schematic tells you which pad to search for; its table tells you the setting to use.
 
@@ -245,7 +245,7 @@ Use this as a lookup table when one of these names appears in a lab. The chapter
 
 ## 5.9a  Board revisions and available labs
 
-The chip's catalog does not tell us what is usable on every board. There are three separate checks: whether the SoC supports the function, whether the required part is fitted on the core board, and how the baseboard connects it.
+A block in the chip diagram is not a promise that the matching connector or device is on your desk. Check three things separately: whether the SoC supports the function, whether the needed part is fitted on the core board, and how the baseboard connects it. The table is a reference for those decisions, not a list of extra hardware to buy before the first LED lab.
 
 Our reference documents are the MINI v2.2 schematic and the core schematic with internal project title `CL6Y2CB_V1.9`, distributed under a CORE v2.0 filename. Compare the internal titles with your PCB silkscreen. The table below shows what to check before using each lab:
 
@@ -277,7 +277,7 @@ We have used several parts of revision 1 (11/2017) of IMX6ULLRM. Its 4,127 pages
 
 ## 5.11  Lab
 
-Use UART1 to practice the address, clock, interrupt, and pad search as one connected task. The worked answer follows, so try the lookup first and then compare how you got there:
+Take UART1 all the way from the chip to the serial bridge. Try the lookups below before reading the worked answer. Record how you found each item, not just its value; that is the part of the exercise you can reuse for an unfamiliar peripheral.
 
 1. Open the reference manual. Locate, by chapter and page:
    - The **register base address** of UART1.
@@ -288,13 +288,13 @@ Use UART1 to practice the address, clock, interrupt, and pad search as one conne
 
 ### Worked UART1 lookup and answer check
 
-Start with **where**: RM Chapter 2 places UART1 at `0x02020000`, within AIPS-1. This locates the controller's registers, not the pins on the board.
+Start with **where**: RM Chapter 2 places UART1 at `0x02020000`, within AIPS-1. We can now locate the controller's registers. That answers an address question, but has not yet told us how to clock the block or reach its pins.
 
-Next find **its clock gate**. In the CCM chapter, UART1 uses `CCM_CCGR5.CG12`, bits 25:24, at register address `0x020C407C` [RM 18.6.28]. This is the gate field our code must select, not a UART baud-rate register.
+Next find **its clock gate**. UART1 uses `CCM_CCGR5.CG12`, bits 25:24, at register address `0x020C407C` [RM 18.6.28]. The lookup crossed into the CCM chapter because the UART does not own this control. Those bits select its gate, not its baud rate.
 
 For **the interrupt**, RM Chapter 3 gives UART1 GIC SPI index 26. Adding the GIC's architectural SPI base of 32 gives interrupt ID 58, using the distinction from Chapter 4.
 
-Finally, follow **the board connection**. In the MINI v2.2 schematic, trace UART1 TX/RX to the bridge and package pads. TX uses `IOMUXC_SW_MUX_CTL_PAD_UART1_TX_DATA`. Look up its ALT setting in RM Chapter 32 instead of inferring a mux value from the UART controller's name.
+Finally, follow **the board connection**. In the MINI v2.2 schematic, trace UART1 TX/RX to the bridge and package pads. TX uses `IOMUXC_SW_MUX_CTL_PAD_UART1_TX_DATA`. Now the schematic has given us a pad name to search in RM Chapter 32. Its ALT table supplies the mux selection; the UART controller's name alone could not do that.
 
 Use the same chain for the LED and I2C: address -> clock -> interrupt -> pad -> board net. Record both register names and manual locations so another reader can reproduce your lookup.
 
@@ -312,4 +312,4 @@ Use the same chain for the LED and I2C: address -> clock -> interrupt -> pad -> 
 - **IMX6ULLHDG**: *i.MX6ULL Hardware Development Guide*, available in [NXP's i.MX6ULL documentation](https://www.nxp.com/products/i.MX6ULL?linkline=Data+Sheet). Check the document's actual title/revision before using a cited application-note number.
 - The **Point Atom MINI schematic** (provided with your board). You will look at this constantly.
 
-We now know how to find a peripheral's place in the chip and its connection to the board. Next we turn back to the host: Chapter 6 follows a source file through compilation and linking, so we can see how the tools place our code into the memory we have just examined.
+An address such as `0x00908000` no longer needs to be an unexplained number copied from a project. It belongs to OCRAM, with space around it that must be budgeted for the ROM and our stack. How do we get our first instruction to that address? Chapter 6 takes the source file through the tools that make that placement.
