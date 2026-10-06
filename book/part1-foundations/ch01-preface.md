@@ -6,6 +6,15 @@ Imagine this: the build finishes without an error, you prepare the image as inst
 
 If you have brought up a microcontroller board, you already have a way to approach that silence. Follow reset to startup, startup to `main()`, and `main()` to the GPIO register. There may be a mistake somewhere, but the path is small enough to inspect. On an embedded Linux board, several programs run before your application gets a turn. Memory must be prepared, images must be loaded, and hardware must be described. Which of those steps did the board actually reach?
 
+```{figure} ../illustrations/part1/01-build-is-not-execution.png
+:alt: A laptop reports BUILD OK, but the board asks whether its code is running. A successful host build is not proof of execution on the board.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-build-is-not-execution
+
+The laptop is pleased with itself. We still need an answer from the board. A clean build is useful evidence about the host's work; an LED response or a message from our program supplies a different kind of evidence.
+```
+
 A vendor board-support package, usually shortened to **BSP**, can give you a working system quickly. Install its tools, build an image, write an SD card, and you may have a Linux prompt. That is a useful starting point. The harder moment comes when you change the design: a different DDR chip, a UART on different pins, a board that no longer matches the supplied image. Now you need to know which setting belongs to the bootloader, which belongs to Linux, and which assumption came from the old hardware.
 
 This book follows those questions on the i.MX6ULL. Our first visible result will be modest: an LED controlled by a program small enough to follow from its first instruction. To get there, we write startup code, choose its memory layout, and give the Boot ROM the header it expects. Each part has a job we can explain.
@@ -110,7 +119,9 @@ References to the i.MX6ULL Reference Manual are written as **\[RM §28.5.3\]**. 
 
 ### Diagrams
 
-The diagrams are drawn with text, so they remain readable in the Markdown source as well as on the website. No separate diagram-rendering tool is needed.
+The small concept sketches pause over one idea at a time. Their captions explain the important distinction in ordinary text, too. A smiling chip is a character in the explanation, not an extra component to find on your board; these drawings are not wiring instructions or to-scale memory maps.
+
+Detailed reference diagrams are also drawn with text, so they remain readable in the Markdown source as well as on the website. The sketches are ordinary image files; you do not need a separate diagram-rendering tool to read or build the book.
 
 ## 1.9  How the chapters depend on each other
 

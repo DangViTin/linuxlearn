@@ -127,6 +127,38 @@ article li {
   line-height: 1.75;
 }
 
+article figure.concept-sketch {
+  width: 100%;
+  max-width: 100%;
+  margin: 2rem 0;
+}
+
+article figure.concept-sketch img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  background: #fff;
+}
+
+article figure.concept-sketch figcaption {
+  margin-top: 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  text-align: left;
+  color: var(--color-foreground-secondary);
+}
+
+article figure.concept-sketch figcaption p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+article figure.concept-sketch a.image-reference:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 3px;
+}
+
 article a:not(.headerlink) {
   text-decoration-thickness: 1px;
   text-underline-offset: 0.18em;

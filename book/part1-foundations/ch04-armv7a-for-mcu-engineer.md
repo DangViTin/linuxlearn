@@ -129,6 +129,15 @@ Total physical register count exposed by Cortex-A7: **34 general-purpose**, **8 
 
 Try a small mental experiment with the table. Suppose SVC code has the value 5 in `r0` when an IRQ arrives. The CPU copies CPSR into `SPSR_irq`, records the exception return address in `lr_irq`, selects `sp_irq`, and enters the IRQ vector. Does changing the mode create a safe new copy of `r0`? It does not. If the handler overwrites that 5, it must have saved a copy to restore before returning.
 
+```{figure} ../illustrations/part1/04-shared-and-banked-registers.png
+:alt: The SVC and IRQ views both use the same r0 holding 5, but their banked stack pointers sp_svc and sp_irq select separate stacks. Changing modes does not save r0.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-shared-and-banked-registers
+
+Two stack pointers, but only one `r0`. The stacks stand for the memory selected by `sp_svc` and `sp_irq`; the lines show a shared register, not a copy operation. IRQ entry pushes nothing onto the stack automatically. Our handler must save and restore the shared values it overwrites.
+```
+
 That is the missing half of the opening puzzle. Banked registers preserve selected exception state, not every value the handler might overwrite. Chapter 15 turns this sequence into an executable handler with the appropriate return instructions. HYP has a different return arrangement using `ELR_hyp`, which is why it has its own row above.
 
 ### What this means in practice

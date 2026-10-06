@@ -103,7 +103,18 @@ Now follow what those values tell the ROM:
 5. BootData says `start = 0x00907000` and `length = total file size`. The `self - start` difference is `0x400`, matching the IVT's offset in the file.
 6. The ROM jumps to the IVT's `entry` address, `0x00908000`.
 
-At first, `0x400` and `0x00907400` can look like competing answers to "where is the IVT?" They answer different questions. The first locates it in the file; the second locates it in OCRAM after loading. The same bytes have both a file position and a destination address:
+At first, `0x400` and `0x00907400` can look like competing answers to "where is the IVT?" They answer different questions. The first locates it in the file; the second locates it in OCRAM after loading. The same bytes have both a file position and a destination address.
+
+```{figure} ../illustrations/part1/07-file-offset-and-address.png
+:alt: In the padded image, file offset 0 maps to OCRAM address 0x00907000, IVT offset 0x0400 maps to 0x00907400, and code offset 0x1000 maps to 0x00908000.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-file-offset-and-address
+
+The IVT has not moved twice. We are looking at the same bytes in two places: the stored file and the loaded image. For this layout, add the image base `0x00907000` to a file offset to get its OCRAM address. The arrows show that correspondence, not an MMU translation; the rows are not to scale.
+```
+
+Here is the same correspondence, including BootData:
 
 | File view | RAM view after ROM load |
 |-----------|-------------------------|

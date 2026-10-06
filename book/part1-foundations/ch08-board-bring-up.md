@@ -161,6 +161,15 @@ $ sudo "$IMX6ULL_HOME/build/mfgtools/uuu/uuu" -lsusb
 
 If your actual output shows that identity, one of our questions has an answer: the host can see the ROM interface without a Linux image running on the board. Keep that output. It does not yet prove image transfer, authentication, or entry-point execution. Chapter 9 will add a different kind of evidence: the LED's response to our program.
 
+```{figure} ../illustrations/part1/08-uart-silence-usb-evidence.png
+:alt: In the documented ROM downloader state before our image is supplied, the UART terminal can be quiet while USB shows the ROM identity 15a2:0080. Enumeration does not prove that our program runs.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-uart-silence-usb-evidence
+
+No text yet, but not no information. In the documented USB-mode cold-start state, `15a2:0080` tells us the host sees the ROM downloader. It does not prove a transfer, successful authentication, or execution of our image. These are two observations, not a cable or power-connection diagram.
+```
+
 If you do not see `15a2:0080`:
 
 1. Confirm the boot switch is in the **USB** position.

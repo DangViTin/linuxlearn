@@ -219,6 +219,15 @@ The leading dot matters. It tells Bash to read the file **into this shell**, whi
 
 If you instead enter `bash ~/imx6ull/scripts/env.sh`, the file runs in a child shell. That child's settings cannot change the terminal you return to afterward. We also do not need to make `env.sh` executable: sourcing reads it as a file rather than launching it as a separate program.
 
+```{figure} ../illustrations/part1/03-terminal-environment.png
+:alt: Sourcing env.sh adds the bare-metal and Linux toolchain paths to this terminal. Another independent terminal is not changed by that operation and needs its own setup.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-terminal-environment
+
+The compiler files have not moved. We have told one shell where to look for them. Source `~/imx6ull/scripts/env.sh` in each independently opened Bash terminal used for the book; a child shell can inherit exported settings, but another already-open terminal does not receive them.
+```
+
 Ask the terminal what it selected before trusting a build. `command -v` reports the executable found through `PATH`; the version commands identify it. Both paths should lead into this workspace:
 
 ```sh

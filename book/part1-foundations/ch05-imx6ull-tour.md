@@ -185,6 +185,15 @@ The value `0xB0B1` appears in many NXP examples. It configures electrical proper
 
 We can now account for the opening example. MUX_CTL selects the function, PAD_CTL sets electrical behavior, and SELECT_INPUT, where present, chooses the input route. Setting the UART's own registers does not perform these jobs for it. When a signal is missing, check this path after the clock path instead of repeatedly changing the peripheral's data register.
 
+```{figure} ../illustrations/part1/05-uart-signal-path.png
+:alt: A clock reaches UART through its clock gate. A separate TX signal path leaves UART, passes through the mux and pad, and reaches the board connection.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-uart-signal-path
+
+"I have data!" is only the UART's part of the story. The teal path supplies its clock; the coral path carries TX through the selected mux and pad to the board net. This sketch leaves out detailed clock roots, dividers, and pad settings. Find those in the manual and the actual connection in the schematic.
+```
+
 The IOMUX tables occupy about 300 pages, but each experiment uses only a few pads. The schematic tells you which pad to search for; its table tells you the setting to use.
 
 ## 5.7  Power domains and the SNVS

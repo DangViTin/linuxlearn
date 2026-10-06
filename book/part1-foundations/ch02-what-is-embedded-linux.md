@@ -66,6 +66,15 @@ The CPU enforces this distinction. A user instruction that tries to write to pro
 
 There is an easy trap here. If `sudo` gives a program root privileges, has it crossed into kernel mode? No. **Root** is a Linux user identity; **kernel mode** is a CPU execution state. Later, `sudo picocom` gives the serial terminal credentials to open a restricted device, but its own instructions still run in user mode. The kernel checks those credentials when the program requests access. The need for `sudo` comes from device permissions, not from a rule that hardware always needs root.
 
+```{figure} ../illustrations/part1/02-root-is-not-kernel.png
+:alt: An application wearing a ROOT crown remains in user mode. A system call enters the kernel, which checks permissions for a device request.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-root-is-not-kernel
+
+Nice crown. Still user mode. Root credentials can change the kernel's permission decision, but they do not turn the application's instructions into kernel instructions. The arrow follows a device request, not every instruction the application executes.
+```
+
 An application requests a kernel service through a **system call**, usually shortened to *syscall*. On ARMv7-A, the `svc` instruction raises a Supervisor Call exception. The CPU enters the kernel handler in SVC mode, where Linux reads the syscall number from `r7` and its arguments from `r0`-`r6`. After handling the request, the kernel returns a result to the application.
 
 Here is a simplified path for opening an I2C device. The application sees an ordinary C function; the library wrapper performs the transition into the kernel:

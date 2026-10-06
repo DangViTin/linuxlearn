@@ -112,7 +112,18 @@ If you come from MCU work, start with **sections**. You already know these:
 - `.data`: globals/statics with non-zero initial values, such as `int led = 1;`.
 - `.bss`: globals/statics that start as zero, such as `int counter;`.
 
-There is a clue to the opening variable puzzle in that list. `.bss` describes zero-initialized storage; it does not need to store one zero byte for every runtime byte. Something at startup must make the storage zero. The linker arranges these sections, while the loader works with larger ranges it can load or map with permissions:
+There is a clue to the opening variable puzzle in that list. `.bss` describes zero-initialized storage; it does not need to store one zero byte for every runtime byte. Something at startup must make the storage zero. The linker arranges these sections, while the loader works with larger ranges it can load or map with permissions.
+
+```{figure} ../illustrations/part1/06-bss-file-and-ram.png
+:alt: A raw file supplies code and initialized data to RAM but contains no BSS initialization bytes. A separate startup clearing step writes four zero bytes into the example counter's BSS storage.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-bss-file-and-ram
+
+The counter gets a place in RAM without bringing four zero bytes in its suitcase. In our raw bare-metal workflow, startup code clears that storage; the ROM does not read an ELF `.bss` description and do it for us. Only selected sections are shown. The four byte boxes represent Lab B's counter, not every program's BSS size.
+```
+
+Put those sections beside the loader's segments:
 
 ```text
 sections:  .text  .rodata  .data  .bss  .debug_*
