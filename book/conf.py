@@ -71,6 +71,9 @@ myst_heading_anchors = 4
 # Permit URL fragments without strict checking
 myst_url_schemes = ("http", "https", "mailto", "ftp")
 
+# Product names such as i.MX are not scheme-less website addresses.
+myst_linkify_fuzzy_links = False
+
 # Pygments does not fully understand several book-specific snippets
 # (linker scripts, FIT .its files, BitBake recipes). Keep rendering them as
 # code without reporting those lexer limitations as documentation defects.
