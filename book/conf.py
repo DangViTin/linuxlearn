@@ -9,6 +9,9 @@ import sys
 from datetime import datetime
 
 from bs4 import BeautifulSoup
+from pygments.lexer import inherit
+from pygments.lexers.asm import GasLexer
+from pygments.token import Comment, Name, Operator
 
 # ---------------------------------------------------------------------------
 # Project metadata
@@ -69,9 +72,8 @@ myst_heading_anchors = 4
 myst_url_schemes = ("http", "https", "mailto", "ftp")
 
 # Pygments does not fully understand several book-specific snippets
-# (GNU ARM assembly with literal pools, linker scripts, FIT .its files,
-# BitBake recipes). Keep rendering them as code, but do not make those
-# lexer limitations look like documentation defects in CI output.
+# (linker scripts, FIT .its files, BitBake recipes). Keep rendering them as
+# code without reporting those lexer limitations as documentation defects.
 suppress_warnings = [
     "misc.highlighting_failure",
 ]
@@ -174,6 +176,29 @@ pygments_dark_style = "github-dark"
 highlight_language = "none"
 
 
+class ArmGasLexer(GasLexer):
+    """Adapt the GAS highlighter to the book's GNU Arm assembly listings."""
+
+    tokens = {
+        "root": [
+            (r"@[^\n]*", Comment.Single),
+            (r"[0-9]+:", Name.Label),
+            inherit,
+        ],
+        "instruction-args": [
+            (r"@[^\n]*", Comment.Single),
+            # Arm uses # for immediates and = for literal-pool loads.
+            (r"[=#<>+|&^~]+", Operator),
+            inherit,
+        ],
+        "directive-args": [
+            (r"@[^\n]*", Comment.Single),
+            (r"%[A-Za-z_][\w.]*", Name.Attribute),
+            inherit,
+        ],
+    }
+
+
 def include_first_chapter(app, pagename, templatename, context, doctree):
     # Adding the root to Sphinx's toctree would create a circular reading order.
     navigation = context.get("furo_navigation_tree")
@@ -201,4 +226,5 @@ def include_first_chapter(app, pagename, templatename, context, doctree):
 
 
 def setup(app):
+    app.add_lexer("asm", ArmGasLexer)
     app.connect("html-page-context", include_first_chapter, priority=600)
