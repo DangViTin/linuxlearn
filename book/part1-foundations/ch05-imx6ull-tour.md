@@ -258,7 +258,7 @@ The peripherals you will touch in this book, with reference-manual chapter numbe
 | SAI | 45 | Audio I²S, Ch 53 |
 | ADC | 13 | 12-bit, 10 channels, Ch 49 |
 | PWM | 40 | PWM, Ch 48 |
-| SNVS | 48 | RTC + secure storage, Ch 48 |
+| SNVS | 48 | RTC + secure storage; [bare-metal RTC](../part2-baremetal/ch18C-baremetal-rtc.md) |
 | OCOTP | 37 | Fuses |
 | WDOG | 59 | Watchdog |
 | GPC | 27 | Power controller |
