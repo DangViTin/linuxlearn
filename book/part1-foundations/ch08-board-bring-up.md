@@ -202,7 +202,7 @@ If you do not see `15a2:0080`:
 USB downloading will let us try the first program without preparing a boot card. In Chapter 11 we will use SD boot too. Before we reach the write command, learn how your host names the card and how to distinguish it from the host's own disks.
 
 ```{figure} ../illustrations/part1/18-identify-the-card.png
-:alt: Comparing device lists before and after attachment reveals a candidate new device. Its model, size, and serial must be checked against the actual card; a guessed device name is not a safe write destination.
+:alt: Comparing device lists before and after attachment reveals a candidate new device. Match its capacity and available identity fields to the physical spare card. Those fields may identify the USB reader rather than the card. A guessed device name is not a safe write destination.
 :width: 100%
 :figclass: concept-sketch
 :name: fig-identify-the-card

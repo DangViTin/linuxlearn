@@ -258,7 +258,7 @@ If you instead enter `bash ~/imx6ull/scripts/env.sh`, the file runs in a child s
 :figclass: concept-sketch
 :name: fig-terminal-environment
 
-The folder symbols stand for directory names in PATH, not files copied into a terminal. Both independently opened shells can access the same compiler files on disk. Enter `. ~/imx6ull/scripts/env.sh` in each book terminal; a child shell can inherit exported settings, but another already-open shell does not receive them.
+The folder symbols stand for directory names in PATH, not files copied into a terminal. Both terminals can access the same compiler files on disk. Enter `. ~/imx6ull/scripts/env.sh` in each independently opened terminal. A child shell can inherit exported settings, but a shell that was already open will not receive the change.
 ```
 
 After building `uuu`, use the single path/version acceptance block in [Section 3.11](ch03-sanity-check). `command -v` reports what this shell would select, which can be a program, alias, or function. For our compilers, expect full paths into the selected workspace directories. If the answer is surprising, `type -a` lists all definitions and locations of that command name.
@@ -347,7 +347,7 @@ Once U-Boot is running, think about the next ten kernel builds. Moving the card 
 :figclass: concept-sketch
 :name: fig-tftp-and-nfs
 
-A TFTP file travels to the board. An NFS directory stays on the host while the board accesses its files over the network; Linux may cache data locally. These are the roles we choose for the later labs, not exclusive capabilities of either protocol. Neither service is needed for the first LED experiment.
+A TFTP file travels to the board. With NFS, the directory stays on the host and the board accesses its files over the network. Linux may cache some of that data locally. These are the roles we choose for the later labs, not exclusive capabilities of either protocol. Neither service is needed for the first LED experiment.
 ```
 
 Unlike `env.sh`, a network service continues independently of this terminal. Keep a record of the existing configuration, preserve unrelated settings, and use an isolated lab link. Work through the address plan in Section 3.10 before restarting a server bound to that address. Do not expose these services on a public or shared network.

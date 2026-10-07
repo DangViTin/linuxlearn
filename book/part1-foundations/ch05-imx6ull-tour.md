@@ -10,7 +10,7 @@ On a new MCU, you would trace that path through the reference manual and schemat
 :figclass: concept-sketch
 :name: fig-uart-signal-path
 
-"I have data!" is only the UART's part. Teal supplies its clock; coral carries TX through the selected mux and pad to the board net. The chapter follows both paths. This is a conceptual route, not the board's complete wiring.
+"I have data!" is only the UART's part. Teal follows the clock into the UART. Coral follows TX out through the selected mux and pad to the board net. The chapter follows both paths. This sketch shows the idea, not the board's complete wiring.
 ```
 
 ## 5.1  What is the i.MX6ULL
@@ -102,12 +102,12 @@ The full map is RM Chapter 2. In particular, `0x00018000-0x000FFFFF`, `0x0010000
 OCRAM solves the first-memory problem, but there is a catch in its budget. The chip provides 128 KB; the Boot ROM leaves only about 68 KB free while it is loading. Both numbers are correct. The ROM is a running program with its own memory needs. RM 8.4.1, Figure 8-3 gives the boundaries below; it does not assign further subdivisions within the lower reservation.
 
 ```{figure} ../illustrations/part1/14-ocram-rom-budget.png
-:alt: The chip has 128 KiB OCRAM. While Boot ROM is active, a 68 KiB middle window is free; the 28 KiB lower and 32 KiB upper regions are reserved for ROM use.
+:alt: During Boot ROM execution, the chip's 128 KiB OCRAM has a free 68 KiB middle window. The lower 28 KiB and upper 32 KiB regions are reserved for ROM use.
 :width: 100%
 :figclass: concept-sketch
 :name: fig-ocram-rom-budget
 
-The coral regions are RAM reserved for the ROM's work, not the ROM storage itself. While that work continues, our image must fit in the middle window. The boundaries below give the exact addresses; the drawing is not to scale, and the reservations are not a permanent post-handoff limit.
+The coral regions are RAM reserved for the ROM's work, not the ROM storage itself. While the ROM is running, our image must fit between them. The table below gives the exact addresses. The drawing is not to scale, and these reservations are not a permanent post-handoff limit.
 ```
 
 | Start | End | Approx size | During Boot ROM execution | What it means for us |

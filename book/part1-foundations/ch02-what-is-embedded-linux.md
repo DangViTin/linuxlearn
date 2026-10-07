@@ -163,7 +163,7 @@ Look at `0x00010000` in both lists. The numbers match, but the physical RAM can 
 :figclass: concept-sketch
 :name: fig-virtual-address-private-ram
 
-Matching numbers need not mean matching bytes. Each map gives this process's pointer its meaning; the RAM blocks represent different regions, not necessarily different chips. These are illustrative private mappings. Shared mappings can instead lead to the same physical pages.
+Matching numbers need not mean matching bytes. Here, each process has a private mapping to a different RAM region. Those regions can belong to the same chip. Shared mappings can instead lead to the same physical pages.
 ```
 
 The **page table** describes this translation and its access permissions. A **page** is a fixed-size unit of memory; the ordinary small-page mappings in this route use 4 KiB pages. You can think of the table as a map owned by the kernel:
@@ -224,12 +224,12 @@ We now have a place for the remaining names: some describe the handles applicati
 Opening a device does not hand its register address to the application. Linux gives the process a **file descriptor**, a small non-negative integer that identifies the open object in its fd table. Suppose the result is 3. A later `read(3, ...)` means "read from the object I opened," not "read memory at address 3." The kernel can find the object and its operations from that handle.
 
 ```{figure} ../illustrations/part1/11-file-descriptor-handle.png
-:alt: An application passes descriptor 3. The kernel looks up entry 3 in that process's descriptor table to find an open object; the integer is not memory address 3.
+:alt: An application passes descriptor 3. The kernel looks up entry 3 in that process's descriptor table to find an open object. The integer is not memory address 3.
 :width: 100%
 :figclass: concept-sketch
 :name: fig-file-descriptor-handle
 
-The number is a ticket into a table, not the object itself. The kernel manages that table for the process. Two unrelated processes can both have fd 3 and mean different open objects; copying the integer alone does not give the second process the first one's descriptor.
+The number is a ticket into a table, not the object itself. The kernel manages that table for the process. Two unrelated processes can both have fd 3 for different open objects. Copying that number alone does not transfer the descriptor.
 ```
 
 Later calls such as `read(fd, ...)` tell the kernel which open object to use. That object may be a regular file, a socket, a pipe, or a device. Other descriptor-creating APIs, including `socket()`, `pipe()`, and `eventfd()`, can wait until we need them.

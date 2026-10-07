@@ -12,7 +12,7 @@ If you have brought up a microcontroller board, you already have a way to approa
 :figclass: concept-sketch
 :name: fig-build-is-not-execution
 
-The laptop is pleased with itself. We still need an answer from the board. A clean build is useful evidence about the host's work; an LED response or a message from our program supplies a different kind of evidence.
+The laptop is pleased with itself. We still need an answer from the board. A clean build checks the host's work. A response from our program, such as an LED change or a printed message, tells us it ran on the board.
 ```
 
 A vendor board-support package, usually shortened to **BSP**, can give you a working system quickly. Install its tools, build an image, write an SD card, and you may have a Linux prompt. That is a useful starting point. The harder moment comes when you change the design: a different DDR chip, a UART on different pins, a board that no longer matches the supplied image. Now you need to know which setting belongs to the bootloader, which belongs to Linux, and which assumption came from the old hardware.
@@ -53,7 +53,7 @@ A runnable lab supplies the input files, working directory, commands, and an obs
 The main route follows one i.MX6ULL board from bare metal to Linux drivers. The LED in the first experiment will still be there when Linux owns its GPIO. So will the UART whose registers we configured by hand. Returning to familiar hardware lets us see what the new software layer changes. The reasoning is useful on other boards, but register addresses, DDR settings, and electrical requirements must be checked again.
 
 ```{figure} ../illustrations/part1/09-same-led-two-routes.png
-:alt: Two experiments on the same LED: bare-metal code controls GPIO directly; later, a Linux application requests an operation through a kernel driver that controls GPIO.
+:alt: Two experiments use the same LED. Bare-metal code controls GPIO directly. Later, a Linux application requests an operation through a kernel driver that controls GPIO.
 :width: 100%
 :figclass: concept-sketch
 :name: fig-same-led-two-routes

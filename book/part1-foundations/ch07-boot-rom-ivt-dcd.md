@@ -99,12 +99,12 @@ Now check those values against the ROM's work:
 6. The ROM jumps to the IVT's `entry` address, `0x00908000`.
 
 ```{figure} ../illustrations/part1/07-file-offset-and-address-v2.png
-:alt: In this padded file layout, offset zero defines base 0x00907000; IVT offset 0x0400 corresponds to 0x00907400 and code offset 0x1000 to 0x00908000. The base arrow is dashed: UUU starts uploading at the IVT, not at the leading padding.
+:alt: In this padded file layout, offset zero corresponds to base 0x00907000. IVT offset 0x0400 corresponds to 0x00907400 and code offset 0x1000 to 0x00908000. The dashed base arrow is a layout reference. UUU starts uploading at the IVT, skipping the leading padding.
 :width: 100%
 :figclass: concept-sketch
 :name: fig-file-offset-and-address
 
-The IVT has not moved twice. `base + file_offset` describes this layout; it is not a trace of every byte transferred. Our later UUU path starts at the IVT and skips the leading `0x400` padding bytes. For uploaded bytes, `RAM = self + (file_offset - 0x400)`. The rows are not to scale, and the arrows are not MMU translations.
+Each row pairs a file offset with its intended RAM address. `base + file_offset` describes the layout, not the bytes actually transferred. In our later UUU path, the upload starts at the IVT and skips the leading `0x400` padding bytes. For uploaded bytes, `RAM = self + (file_offset - 0x400)`. The rows are not to scale. These arrows are not MMU translations.
 ```
 
 Here is the same correspondence, including BootData:
@@ -215,12 +215,12 @@ This format-only record follows the RM's documented version `0x41`. [U-Boot v202
 There are two ways out of that ordering problem. Give the ROM a DCD so it can prepare DDR before transferring the main image there. Or give it a small **Secondary Program Loader (SPL)** that fits in OCRAM; the SPL initializes DDR and loads the larger stage itself. The register work can be similar, but who performs it and when are different.
 
 ```{figure} ../illustrations/part1/16-dcd-or-spl.png
-:alt: Two alternative larger-image routes: ROM interprets DCD records to prepare DDR and then loads the image; or an SPL runs in OCRAM, prepares DDR, and loads the larger stage itself.
+:alt: Two alternative routes prepare DDR before loading a larger image. The ROM can interpret DCD records, then load the image. Alternatively, an SPL runs in OCRAM, prepares DDR, and loads the next stage itself.
 :width: 100%
 :figclass: concept-sketch
 :name: fig-dcd-or-spl
 
-The DDR work happens before the larger program arrives there. In one route the ROM interprets configuration records; in the other, a small program executes in OCRAM. The rows are alternatives. Our first OCRAM-only image needs neither a DCD nor an SPL.
+DDR must be ready before the larger program is loaded there. In the DCD route, the ROM reads configuration records. In the SPL route, a small program running in OCRAM does the work. The two rows show alternatives. Our first OCRAM-only image needs neither a DCD nor an SPL.
 ```
 
 We set the first image's DCD pointer to zero. Later code configures DDR when we reach that experiment; Chapter 11 keeps the OCRAM/no-DCD design. Do not copy a DDR DCD from an unrelated board as a compulsory header block.

@@ -132,7 +132,7 @@ There is a clue to the opening variable puzzle in that list. `.bss` describes ze
 :figclass: concept-sketch
 :name: fig-bss-file-and-ram
 
-Startup writes zero into the counter's four RAM bytes. In our raw bare-metal workflow, the ROM loads bytes but does not interpret an ELF `.bss` description to clear that storage. The pictured `.data` is a conceptual initialized-data region; Lab B's counter-only program has no such bytes. These labels identify byte ranges, not a section table retained in the raw file.
+Startup clears the counter's four RAM bytes. In this raw bare-metal workflow, the ROM loads bytes but does not read an ELF `.bss` description to clear that storage. The pictured `.data` is an example of initialized data. Lab B's counter-only program has none. The labels name byte ranges, not a section table stored in the raw file.
 ```
 
 Put those sections beside a possible Linux loader layout:

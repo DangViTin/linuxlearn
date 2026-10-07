@@ -61,7 +61,7 @@ There is also a difference in the vector itself. A Cortex-M exception vector con
 :figclass: concept-sketch
 :name: fig-vector-address-or-instruction
 
-An address tells the core where to go; a branch tells it what to do next. This sketch compares handler-vector entries, not the Cortex-M table's first word, which supplies the initial stack pointer. `b handler` is an illustrative instruction, not a complete vector table or interrupt handler.
+An address tells the core where to go. A branch is an instruction it executes to get there. This sketch compares handler-vector entries. The Cortex-M table's first word is a separate case: it supplies the initial stack pointer. `b handler` is an example, not a complete vector table or interrupt handler.
 ```
 
 Our Cortex-A7 does not do that automatic stack push. Instead, an exception changes the **processor mode** and selects the register view for that mode. Some register names now refer to different physical registers. These separate copies are called **banked registers**.
@@ -78,7 +78,7 @@ Before reading every row, hold the value 5 in `r0` and imagine an IRQ interrupti
 :figclass: concept-sketch
 :name: fig-shared-and-banked-registers
 
-Two SP registers, but one shared `r0`. The paper piles stand for memory selected by the pointers; **BANKED refers to the SP registers, not the stack memory**. The lines show sharing, not a copy operation. IRQ entry pushes nothing automatically.
+Two SP registers, but one shared `r0`. The paper piles represent the stacks selected by those pointers. **BANKED refers to the SP registers, not the stack memory**. The connecting lines show that sharing, not a copy operation. IRQ entry pushes nothing automatically.
 ```
 
 There is one LR/SPSR bank per exception mode, not a fresh frame for each interrupt. Preserve the return state before a C call overwrites LR or nesting can re-enter that mode. Ordinary IRQ entry masks IRQ; enabling nesting requires deliberate save/restore work. Reset is not a returnable saved pre-reset context. Chapter 15 implements the full entry and return path.
