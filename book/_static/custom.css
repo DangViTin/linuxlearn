@@ -55,6 +55,51 @@ body {
   outline-offset: 2px;
 }
 
+.book-download-container {
+  margin: 0.25rem 1rem 0.75rem;
+}
+
+.book-download {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 36px;
+  padding: 0.25rem 0.5rem;
+  color: var(--color-brand-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.book-download svg {
+  flex: 0 0 20px;
+}
+
+.book-download:hover {
+  text-decoration: underline;
+}
+
+.book-download:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}
+
+.book-download-inline {
+  display: none;
+}
+
+@media (max-width: 63em) {
+  .book-download-inline {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1rem;
+  }
+
+  .book-download-inline .book-download-container {
+    margin: 0;
+  }
+}
+
 .sidebar-scroll {
   scroll-behavior: auto;
   overscroll-behavior: contain;

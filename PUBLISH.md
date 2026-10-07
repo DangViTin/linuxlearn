@@ -139,6 +139,32 @@ deactivate
 
 ---
 
+## Whole-book PDF
+
+Every Pages deployment also creates `downloads/embedded-linux-imx6ull.pdf`.
+The export follows Sphinx's chapter navigation, not a filename sort, and fails if
+a chapter is omitted. Chapter and section links remain internal to the PDF;
+external references remain clickable. The sidebar and mobile article control
+download this complete file, rather than printing the currently viewed chapter.
+
+On Ubuntu, install the PDF dependencies in the same virtual environment as Sphinx:
+
+```sh
+sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core fonts-noto-core fonts-noto-cjk
+pip install -r requirements-pdf.txt
+python -m sphinx -b html --keep-going book book/_build/html
+python tools/build_book_pdf.py
+```
+
+Alternatively, `make pdf` runs the last two commands. The output is
+`book/_build/html/downloads/embedded-linux-imx6ull.pdf`; its adjacent JSON records
+the included document order and page count. The intermediate print HTML is not
+published. Windows users can use Ubuntu/WSL for the Pango-based rendering step.
+
+Print styles live in `tools/book_pdf.css`, independently of the web theme.
+Generation uses [WeasyPrint's paged-media renderer](https://doc.courtbouillon.org/weasyprint/stable/),
+and the download icon is [Lucide's File Down](https://lucide.dev/icons/file-down).
+
 ## Customization quick reference
 
 | Want to change... | Edit... |

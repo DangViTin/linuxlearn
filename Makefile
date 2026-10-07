@@ -1,5 +1,5 @@
 # Build targets for the book.
-# Requires: pandoc, texlive-xetex, texlive-fonts-extra (for PDF)
+# PDF: requirements-pdf.txt and Pango/fonts; legacy EPUB/HTML: pandoc.
 
 BOOK_TITLE     := Embedded Linux on i.MX6ULL — From First Boot to First Driver
 BOOK_AUTHOR    := (your name)
@@ -31,13 +31,9 @@ OUT := build
 .PHONY: all pdf epub html clean
 all: pdf epub html
 
-pdf: $(OUT)/book.pdf
-$(OUT)/book.pdf: $(CHAPTERS)
-	@mkdir -p $(OUT)
-	$(PANDOC) $(PANDOC_COMMON) --pdf-engine=xelatex \
-		-V geometry:a4paper,margin=2.5cm \
-		-V mainfont="Noto Serif" -V monofont="Noto Sans Mono" \
-		-o $@ $^
+pdf:
+	python -m sphinx -b html --keep-going book book/_build/html
+	python tools/build_book_pdf.py
 
 epub: $(OUT)/book.epub
 $(OUT)/book.epub: $(CHAPTERS)

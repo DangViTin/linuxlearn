@@ -1,0 +1,42 @@
+@page {
+  size: A4;
+  margin: 21mm 20mm 20mm;
+  @top-left { content: string(chapter); font: 8pt "DejaVu Sans", sans-serif; color: #52616b; }
+  @bottom-left { content: "Embedded Linux on i.MX6ULL"; font: 8pt "DejaVu Sans", sans-serif; color: #52616b; }
+  @bottom-right { content: counter(page) " / " counter(pages); font: 8pt "DejaVu Sans", sans-serif; color: #52616b; }
+}
+
+body { font: 10.5pt/1.5 "DejaVu Sans", sans-serif; color: #242b30; letter-spacing: 0; }
+.chapter { break-before: page; }
+h1 { font-size: 21pt; line-height: 1.25; color: #126b5e; string-set: chapter content(); bookmark-level: 1; }
+h2 { font-size: 15pt; line-height: 1.3; margin-top: 20pt; bookmark-level: 2; }
+h3 { font-size: 12pt; line-height: 1.35; margin-top: 15pt; bookmark-level: 3; }
+h4, h5, h6 { font-size: 10.5pt; bookmark-level: none; }
+h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+p, li { orphans: 3; widows: 3; }
+a { color: #126b5e; text-decoration: underline; }
+ul, ol { padding-left: 18pt; }
+blockquote { margin: 12pt 0; padding: 2pt 10pt; border-left: 2pt solid #126b5e; color: #52616b; }
+code, pre { font-family: "DejaVu Sans Mono", monospace; hyphens: none; }
+code { font-size: 9pt; overflow-wrap: break-word; }
+h1 code, h2 code, h3 code { font-size: inherit; }
+pre { font-size: 8.4pt; line-height: 1.45; white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4; padding: 8pt; margin: 10pt 0; border: 0.5pt solid #dfe5e8; background: #f3f6f7; }
+pre span { background: transparent; }
+table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 8.5pt; line-height: 1.4; margin: 12pt 0; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th, td { padding: 6pt; border: 0.5pt solid #cbd4d9; overflow-wrap: break-word; vertical-align: top; }
+th { background: #e3f1eb; text-align: left; }
+td code, th code { font-size: 8pt; }
+figure { margin: 15pt 0; break-inside: avoid; }
+figure img { display: block; max-width: 100%; max-height: 115mm; width: auto; height: auto; margin: 0 auto; }
+figcaption { font-size: 9pt; line-height: 1.4; color: #52616b; margin-top: 7pt; }
+figcaption p { margin: 0; }
+img { max-width: 100%; }
+.admonition { border-left: 2pt solid #126b5e; padding-left: 9pt; margin: 12pt 0; }
+.admonition-title { font-weight: bold; }
+.contents h1 { string-set: chapter "Contents"; }
+.contents ol { list-style: none; padding: 0; }
+.contents li { margin: 5pt 0; break-inside: avoid; }
+.contents a { text-decoration: none; }
+.contents a::after { content: " " leader(dotted) " " target-counter(attr(href), page); }

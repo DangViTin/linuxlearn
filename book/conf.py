@@ -152,6 +152,11 @@ html_theme_options = {
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 html_js_files = ["custom.js"]
+html_sidebars = {"**": [
+    "sidebar/brand.html", "sidebar/search.html", "sidebar/download.html",
+    "sidebar/scroll-start.html", "sidebar/navigation.html",
+    "sidebar/ethical-ads.html", "sidebar/scroll-end.html", "sidebar/variant-selector.html",
+]}
 
 # Sidebar logo / favicon (optional — drop into book/_static/ to enable)
 # html_logo = "_static/logo.svg"

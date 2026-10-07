@@ -5,6 +5,8 @@ From First Boot to First Driver - The Raw Approach.
 This repository contains the Markdown source for a first-principles embedded Linux book aimed at engineers who already know MCU, bare-metal, or RTOS development and want to understand Linux from the reset vector up.
 
 Read at https://dangvitin.github.io/linuxlearn/ (opens Chapter 1 directly). In the source tree, start with [Chapter 1](book/part1-foundations/ch01-preface.md).
+
+[Download the whole book as one PDF](https://dangvitin.github.io/linuxlearn/downloads/embedded-linux-imx6ull.pdf). The website's Download PDF control retrieves the same file, rebuilt on every deployment with all chapters, sketches, bookmarks and a linked contents list.
 ## Current Scope
 
 The book covers bare-metal i.MX6ULL bring-up, U-Boot, mainline Linux, root filesystem construction, Linux driver development, a device cookbook, debugging, production flows, secure boot, field updates, CI/CD, upstream patch submission, and an advanced virtualization track.
