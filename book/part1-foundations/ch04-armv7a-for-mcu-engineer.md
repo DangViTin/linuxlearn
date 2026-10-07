@@ -20,14 +20,14 @@ The core name also does not specify the board's clock frequency. Clock limits co
 
 The Cortex-A7 is an in-order, dual-issue core with an 8-stage pipeline. We do not need to study the pipeline to write the first program. Its register and exception model, however, gives us a manageable place to learn the ARMv7-A mechanisms later used by U-Boot and Linux.
 
-## 4.2  The features Cortex-M does not have
+## 4.2  Comparing the Cortex-M and Cortex-A7 models
 
 Use the following table to place familiar MCU features beside the Cortex-A7 equivalents. It is a comparison, not a specification for every Cortex-M part:
 
 | Feature | Cortex-M (typical) | Cortex-A7 |
 |---------|---------------------|-----------|
 | Address space | Single, flat, physical | Virtual, per-context, via MMU |
-| MMU | No (some have MPU) | Yes, 2-level page tables |
+| MMU | No (some have MPU) | Short-descriptor tables for our labs; LPAE also supported |
 | Privilege levels | Privileged / Unprivileged | PL0/PL1, plus PL2 for HYP; modes below |
 | Banked registers | A few (MSP, PSP) | Selected registers are banked in exception modes |
 | Caches | L1 I/D on M7+, sometimes none | L1 I/D mandatory. L2 is integrated inside the Cortex-A7 MPCore platform (128 KB on i.MX6ULL), with no separate PL310 controller |
@@ -53,11 +53,35 @@ On Cortex-M, the usual sequence is:
 3. Your ISR runs.
 4. `BX LR` (with the special EXC_RETURN value in LR) tells the CPU to unstack and resume.
 
+There is also a difference in the vector itself. A Cortex-M exception vector contains a handler address. In the ARM-state vector table we will use on Cortex-A7, each slot contains an instruction, commonly a branch or a load into `pc`. The CPU starts executing that slot; it does not treat it as a Cortex-M handler pointer. See the [Arm Cortex-A Programmer's Guide, Section 11.1.3](https://documentation-service.arm.com/static/5ff5c9fd89a395015c28fc51).
+
+```{figure} ../illustrations/part1/13-vector-address-or-instruction.png
+:alt: For a handler vector, Cortex-M loads a handler address into PC. Our ARM-state Cortex-A7 vector slot contains an instruction such as b handler, which executes to redirect control.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-vector-address-or-instruction
+
+An address tells the core where to go; a branch tells it what to do next. This sketch compares handler-vector entries, not the Cortex-M table's first word, which supplies the initial stack pointer. `b handler` is an illustrative instruction, not a complete vector table or interrupt handler.
+```
+
 Our Cortex-A7 does not do that automatic stack push. Instead, an exception changes the **processor mode** and selects the register view for that mode. Some register names now refer to different physical registers. These separate copies are called **banked registers**.
 
 Watch `sp` when an IRQ interrupts SVC code. Before the interrupt it refers to `sp_svc`; afterward the same name refers to `sp_irq`. The old stack pointer was not pushed anywhere. Its physical register is still there, out of the handler's current view. The IRQ stack must already have been initialized. Now watch `r0`: it has no corresponding IRQ bank. If the handler uses it, the interrupted value must be saved and restored by software.
 
 The tables below describe this Cortex-A7's nine modes. Other A-profile cores need not implement exactly the same set. First use the tables to follow SVC and IRQ; the extra security and hypervisor modes can wait.
+
+Before reading every row, hold the value 5 in `r0` and imagine an IRQ interrupting SVC code. The CPU saves status in `SPSR_irq`, records an exception link in `lr_irq`, selects `sp_irq`, and enters the IRQ vector. It does **not** create an IRQ copy of `r0`. A handler that overwrites the 5 must save it and restore it before returning.
+
+```{figure} ../illustrations/part1/04-shared-and-banked-registers.png
+:alt: The SVC and IRQ views both use the same r0 holding 5, but their banked stack pointers sp_svc and sp_irq select separate stacks. Changing modes does not save r0.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-shared-and-banked-registers
+
+Two SP registers, but one shared `r0`. The paper piles stand for memory selected by the pointers; **BANKED refers to the SP registers, not the stack memory**. The lines show sharing, not a copy operation. IRQ entry pushes nothing automatically.
+```
+
+There is one LR/SPSR bank per exception mode, not a fresh frame for each interrupt. Preserve the return state before a C call overwrites LR or nesting can re-enter that mode. Ordinary IRQ entry masks IRQ; enabling nesting requires deliberate save/restore work. Reset is not a returnable saved pre-reset context. Chapter 15 implements the full entry and return path.
 
 ### The registers you are looking at
 
@@ -65,7 +89,7 @@ Ordinary integer instructions use `r0` through `r15`. Several have familiar alia
 
 | Register | Common alias | What it does | Beginner note |
 |----------|--------------|--------------|---------------|
-| `r0`-`r3` | argument / result registers | Hold the first four integer function arguments and return values under the ARM calling convention. | Exception handlers must save them before calling C if they need the interrupted code's values later. |
+| `r0`-`r3` | argument / result registers | Initial core argument/result registers under AAPCS32; four ordinary 32-bit integer/pointer arguments fit here. Wider or aligned values follow the ABI's allocation rules. | Exception handlers must preserve interrupted values they overwrite, including through a C call. |
 | `r4`-`r8` | general saved registers | General-purpose registers that C functions normally preserve for their caller. | `r8` is ordinary in most modes, but FIQ mode has its own banked `r8_fiq`. |
 | `r9` | platform register | ABI-defined register. Some systems use it for a static base, thread pointer, or other platform role. | Treat it as "do not assume" in hand-written assembly that calls C. |
 | `r10` | `sl` | General saved register. Some older ABIs used it as a stack limit. | Usually another callee-saved register in Linux code. |
@@ -121,24 +145,13 @@ Now the Cortex-A7 view:
 | Undefined | UND | Undefined instruction | R13, R14, SPSR | `11011` |
 | System | SYS | Privileged mode using the user register view | none | `11111` |
 
-The mode bits live in `CPSR.M[4:0]`. An exception records the old CPSR in the destination mode's `SPSR`, giving the return sequence a way to restore the interrupted mode and status.
+The mode bits live in `CPSR.M[4:0]`. A returnable exception saves status in the destination mode's `SPSR`. Reset does not supply a restorable pre-reset frame. For C/assembly interfaces, consult [AAPCS32's parameter-passing rules](https://github.com/ARM-software/abi-aa/blob/main/aapcs32/aapcs32.rst), not a one-register-per-C-argument assumption.
 
 MON serves security-state transitions, and HYP serves virtualization. This Cortex-A7 supports those extensions, but our first bring-up path does not use them. Keep USR, SVC, IRQ, ABT, and UND in view first. Part IX returns to HYP.
 
 Total physical register count exposed by Cortex-A7: **34 general-purpose**, **8 status (CPSR + 7×SPSR)**, plus `ELR_hyp`. That is 43 registers. A normal non-HYP mode sees at most 18 at once: `r0`-`r15`, `CPSR`, and its `SPSR`. HYP sees `ELR_hyp` as its extra exception-return address.
 
-Try a small mental experiment with the table. Suppose SVC code has the value 5 in `r0` when an IRQ arrives. The CPU copies CPSR into `SPSR_irq`, records the exception return address in `lr_irq`, selects `sp_irq`, and enters the IRQ vector. Does changing the mode create a safe new copy of `r0`? It does not. If the handler overwrites that 5, it must have saved a copy to restore before returning.
-
-```{figure} ../illustrations/part1/04-shared-and-banked-registers.png
-:alt: The SVC and IRQ views both use the same r0 holding 5, but their banked stack pointers sp_svc and sp_irq select separate stacks. Changing modes does not save r0.
-:width: 100%
-:figclass: concept-sketch
-:name: fig-shared-and-banked-registers
-
-Two stack pointers, but only one `r0`. The stacks stand for the memory selected by `sp_svc` and `sp_irq`; the lines show a shared register, not a copy operation. IRQ entry pushes nothing onto the stack automatically. Our handler must save and restore the shared values it overwrites.
-```
-
-That is the missing half of the opening puzzle. Banked registers preserve selected exception state, not every value the handler might overwrite. Chapter 15 turns this sequence into an executable handler with the appropriate return instructions. HYP has a different return arrangement using `ELR_hyp`, which is why it has its own row above.
+The opening puzzle now has a precise cause: banking preserves selected exception state, not every value the handler might overwrite. HYP has its own return arrangement using `ELR_hyp`; it is not the PL1 IRQ return described below.
 
 ### What this means in practice
 
@@ -148,12 +161,13 @@ Put the two worlds side by side:
 |--------|----------|--------------------|
 | Interrupt accepted | Hardware picks the vector and starts exception entry. | Hardware switches to IRQ mode and branches through the exception vector. |
 | Registers saved automatically | `r0`-`r3`, `r12`, `lr`, `pc`, `xPSR` are pushed to the current stack. | Nothing is pushed. `CPSR` is copied to `SPSR_irq`, and the return address goes into `LR_irq`. |
-| Stack pointer used | The active MSP or PSP. | The banked `sp_irq`, which must already point at a valid IRQ stack. |
+| Hardware entry-frame stack | The interrupted context's active MSP or PSP. | No hardware stack frame is pushed. |
+| SP used by handler instructions | MSP. | Initially the banked `sp_irq`, which must already point at a valid IRQ stack. |
 | What `lr` means inside the handler | A special `EXC_RETURN` value that tells the CPU how to unstack. | The banked `LR_irq`, holding an exception return address that often needs an offset adjustment. |
 | Handler prologue | Often no assembly is needed, a C ISR can start immediately. | Assembly must save enough state before calling C. |
-| Return | `BX LR` triggers hardware unstacking. | Software restores the saved state, copies `SPSR_irq` back to `CPSR`, and restores the return PC. |
+| Return | `BX LR` with EXC_RETURN triggers hardware unstacking. | Software restores saved registers, then uses an appropriate exception-return instruction to restore CPSR and PC together. |
 
-The Cortex-M core hides much of this work from the C handler. On A-profile, entry and exit assembly becomes part of the software we must understand. Linux's `entry-armv.S` contains that machinery for its own exception handling.
+For an ordinary PL1 IRQ with the original IRQ link restored, `subs pc, lr, #4` is one return form: it adjusts the IRQ link and restores status from `SPSR_irq` with the return PC. This is not a complete handler. SVC, abort, and HYP returns have different rules; an ordinary `BX LR` is not an A-profile EXC_RETURN operation. Do not restore CPSR first and then branch as two independent steps. Linux's `entry-armv.S` contains its entry/exit machinery.
 
 ### PL0 vs PL1 vs PL2
 
@@ -163,13 +177,13 @@ Across the nine modes, ARM defines three **privilege levels**:
 - **PL1** (privileged): most modes, including SVC, IRQ, FIQ, ABT, UND, and SYS. This is the level the kernel runs at.
 - **PL2** (hypervisor): only HYP mode. It can intercept selected PL1 operations and transfer control to the hypervisor.
 
-ARM TrustZone adds a separate **Security state**: Normal World or Secure World. This is independent of PL0/PL1/PL2. MON mode is the mode used to switch between the two worlds.
+ARM TrustZone adds a separate **Security state**: Normal World or Secure World, with restricted combinations. On ARMv7-A, MON exists only in Secure state and HYP/PL2 only in Non-secure state; most other modes can exist in either. MON handles transitions between the worlds. Security state is not another privilege-level number.
 
 MMU/control and cache-maintenance operations generally require privileged execution. Some CP15 registers, such as user thread-ID registers, are user-accessible; access rights are defined per register.
 
 You will also meet the name **CP15** in startup assembly. It is the ARMv7-A access path for system-control registers, not another chip on the board. Instructions such as `mrc` and `mcr` access controls including the MMU enable bits in `SCTLR`, page-table bases in `TTBR0` and `TTBR1`, and the exception-vector base in `VBAR`. Cache maintenance and generic-timer access also use this path. AArch64 uses named system-register instructions instead.
 
-Linux runs user space in USR mode (PL0) and the kernel in SVC mode (PL1). The transition between them, what the kernel calls "userspace ↔ kernelspace", is a hardware mode switch triggered by an `svc` instruction or an interrupt.
+Linux runs ordinary user instructions in USR/PL0 and uses PL1 modes for kernel execution. Much kernel code runs in SVC mode; exception entry can use IRQ or another mode before an entry veneer changes it. A syscall or interrupt can trigger the hardware transition. Do not equate every kernel instruction with the first mode selected by its exception vector.
 
 HYP mode is the extra layer used by a hypervisor. A guest kernel runs as if it controls PL1, but sensitive actions can be redirected to PL2. The hypervisor can then decide whether to allow the action, emulate it, or stop the guest. The matching instruction is `hvc` (Hypervisor Call), similar to `svc` but for calls into the hypervisor.
 
@@ -195,7 +209,7 @@ CPSR (Current Program Status Register) is the A-profile equivalent of M-profile'
 - **N, Z, C, V:** condition flags (the same as M-profile: negative, zero, carry, overflow)
 - **Q:** saturation flag, set by saturating arithmetic instructions
 - **IT[7:0]** (split bits 26:25 + 15:10): IF-THEN block state for Thumb-2 conditional execution
-- **J** (bit 24), **T** (bit 5): together select the active instruction set: ARM (J=0,T=0), Thumb (J=0,T=1), ThumbEE (J=1,T=1), Jazelle (J=1,T=0)
+- **J** (bit 24), **T** (bit 5): our labs use ARM (`J=0,T=0`) or Thumb (`J=0,T=1`). Other architectural encodings include legacy ThumbEE/Jazelle. Cortex-A7's Jazelle implementation is trivial, not Java-bytecode acceleration; do not treat those encodings as extra lab instruction sets.
 - **GE[3:0]** (bits 19:16): flags used by packed integer instructions such as `UADD8`, not NEON comparisons.
 - **E:** current data-endianness state where applicable, not a choice attached to each load/store. This book uses little-endian data.
 - **A:** asynchronous abort mask
@@ -204,7 +218,7 @@ CPSR (Current Program Status Register) is the A-profile equivalent of M-profile'
 - **T:** Thumb state (`T=1` means executing in Thumb)
 - **M[4:0]:** current processor mode (encoding for USR/SVC/IRQ/...)
 
-When an exception is taken, the CPU copies CPSR into `SPSR_<mode>` and writes the new mode into CPSR.M[4:0]. The handler can use `mrs Rn, spsr` to read the saved value. A `cps` instruction can change the current mode and interrupt-mask bits.
+For a returnable exception, the CPU saves CPSR in `SPSR_<mode>` and selects the exception mode. That bank can be overwritten by another entry to the same mode. The handler can read saved status with `mrs Rn, spsr`; privileged `cps` instructions can change the current mode and interrupt masks. None makes reset a saved frame to return to.
 
 For the first labs, pay particular attention to the mode field and the I/F interrupt masks. They let us describe which register bank is active and whether IRQ or FIQ may interrupt the code. The remaining status fields become useful when reading instruction behavior and more advanced exception paths.
 
@@ -218,22 +232,22 @@ The Cortex-A7 also supports a second translation stage for virtualization. Do no
 
 ARMv7-A supports two translation table formats:
 
-- **Short descriptor (32-bit physical addresses, 2-level tables).** What we will use.
+- **Short descriptor.** Our ordinary mappings use this SoC's 32-bit physical map. Small pages use two table levels; a section can finish at Level 1. The architecture also defines extended supersection cases outside this lab route.
 - **Long descriptor (LPAE, 40-bit physical, 3-level tables).** Used when a system needs larger physical addresses or LPAE features. Our board has at most 512 MiB of DRAM, so this book does not need LPAE.
 
-The short-descriptor translation steps:
+Here are two distinct short-descriptor paths, using a full, unsplit L1 table (`TTBCR.N=0`):
 
 ```
-  Virtual address (32-bit):
-  ┌─────────────────────┬────────────┬──────────────────┐
-  │ 31              20  │ 19      12 │ 11             0 │
-  │  Level-1 index      │ Level-2 idx│  Page offset     │
-  └──┬──────────────────┴──┬─────────┴──────────────────┘
-     │                      │
-     ▼                      ▼
-   TTBR0/1 → L1 table   L2 table       Physical page
-   (16 KB, 4096 entries)(1 KB, 256 ent) (4 KB or 1 MB section)
+4 KiB small page:
+  VA[31:20] -> L1 entry -> L2 table indexed by VA[19:12]
+                         -> physical page base + VA[11:0]
+
+1 MiB section:
+  VA[31:20] -> L1 section entry
+                         -> physical section base + VA[19:0]
 ```
+
+For illustrative VA `0x12345678`, the small-page indices are `0x123` and `0x45`, with offset `0x678`. A section uses the same L1 index but offset `0x45678`, with no L2 lookup. A full L1 table has 4096 entries/16 KiB; a coarse L2 table has 256 entries/1 KiB. Other table-split settings change the applicable indexing rules.
 
 Each Level-1 entry can:
 
@@ -272,10 +286,12 @@ These properties are specified separately in the [Cortex-A7 TRM DDI 0464F, Chapt
 
 Two A-profile cache properties are important here:
 
-1. **Caches are off at reset.** Our first small programs can run without them. Larger programs benefit greatly from caching, but enabling it also makes memory attributes and coherency part of startup. Chapter 17 introduces that setup.
+1. **Processor reset is not our image's entry state.** Caches are disabled at architectural reset, but the Boot ROM runs before `_start` and can enable L1 instruction caching while loading [RM 8.4.4]. Use the documented ROM handoff contract and deliberately inspect/normalize the required state in the appropriate startup lab. Do not infer "all caches off" merely from having cold-started the board. Chapter 6's skeleton is build-only, not a complete handoff implementation.
 2. **I/D geometry differs.** Do not use one line size for both maintenance loops. DMA sharing and changed executable instructions require operation-specific coherency work in Chapters 17 and 51.
 
-The maintenance names describe different actions. **Clean** writes modified, or *dirty*, data toward the required coherency point. **Invalidate** discards a cached copy so it will not be reused. Discarding dirty data without first cleaning it can lose writes. **Clean and invalidate** performs both actions; the word "flush" alone does not tell you which was intended.
+The maintenance names describe different actions. **Clean** writes modified, or *dirty*, data toward the point required for the other observer to see it. **Invalidate** discards a cached copy so it will not be reused. Discarding dirty data without first cleaning it can lose writes. **Clean and invalidate** performs both actions; "flush" alone does not specify which.
+
+The encodings below are **later-lab reference**, not a complete maintenance procedure to run now. Chapter 17 supplies the required ranges, attributes, synchronization, and coherency-point definitions; Linux drivers use the appropriate DMA APIs.
 
 ARMv7-A performs cache maintenance through **CP15** operations. The assembly uses `mcr` with an operation-specific CP15 encoding:
 
@@ -353,7 +369,7 @@ Look at `r2` in that loop. It reports whether `strex` succeeded; it is not the n
 
 VFPv4 gives you 32 double-precision FP registers and the usual IEEE-754 operations. NEON shares the same register file (viewed as 16 × 128-bit Q registers, or 32 × 64-bit D registers) and adds packed integer/float SIMD.
 
-For kernel code, NEON/VFP are **disabled by default**. Touching them in kernel context requires `kernel_neon_begin()` / `kernel_neon_end()`. Failing to do so corrupts user-space FP state on context switch. Most drivers never need NEON. Some crypto and codec paths do.
+Ordinary kernel code must not use floating point or accidentally generate NEON instructions. Specialized paths follow Linux's [Kernel Mode NEON recipe](https://www.kernel.org/doc/html/v6.6/arch/arm/kernel_mode_neon.html): controlled compilation units, a permitted execution context, and `kernel_neon_begin()`/`kernel_neon_end()` protection. The protected work must not sleep and must not run in hard-IRQ context. A begin/end pair alone is not permission to put DSP code in an ISR; misuse can trap, fault the kernel, or corrupt FP state. Our driver examples use integer code.
 
 For now, our startup exercises use integer instructions. User programs can use NEON once the operating system enables and manages its context. Whether a particular library function does so depends on that library's build and implementation; we will inspect actual binaries rather than assume every `memcpy` uses vector instructions.
 
@@ -373,13 +389,19 @@ The most important difference for this book is the instruction set. Cortex-A7 is
 
 ## 4.12  Lab
 
-The mode table helped us follow an interrupted register; the MMU table explained an address; the GIC supplied an interrupt ID. Locate their definitions in the manuals below so you can repeat that reasoning without depending on this chapter's summary. Use titles as well as numbers when comparing editions.
+First check the opening example without a manual:
 
-1. From the **ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition** (DDI 0406C.d), locate:
+- On SVC -> IRQ, which `sp` is visible, and what happens to `r0=5`? Answer: `sp_irq` replaces the visible `sp_svc` view; `r0` still names the shared register. Software must preserve it before overwriting it.
+- Why is an ordinary function return insufficient? Answer: exception return must restore the saved status/mode and the correct PC together, after software restores its saved registers.
+- For `0x12345678`, compare a 4 KiB page walk with a 1 MiB section walk. Answer: offsets `0x678` and `0x45678`; only the page case follows an L2 table.
+
+Then bookmark the definitions below. Use titles as well as numbers when comparing editions:
+
+1. From the [**ARM Architecture Reference Manual, ARMv7-A and ARMv7-R edition**](https://documentation-service.arm.com/static/5f8daeb7f86e16515cdb8c4e) (DDI 0406C.d), locate:
    - Section B1.3: Processor modes
    - Section B3.5: Short-descriptor translation table
    - Chapter B8: Generic timer
-2. From the **Cortex-A7 MPCore Technical Reference Manual** (DDI 0464F), locate:
+2. From the [**Cortex-A7 MPCore Technical Reference Manual**](https://documentation-service.arm.com/static/602cf701083323480d479d18?token=) (DDI 0464F), locate:
    - Chapter 6: L1 memory system (cache sizes, line length)
    - Chapter 4: System control, including CP15 registers
 3. From the **i.MX 6ULL Applications Processor Reference Manual** (IMX6ULLRM), locate:
@@ -388,7 +410,7 @@ The mode table helped us follow an interrupted register; the MMU table explained
 
 Bookmark each. We will refer to them often.
 
-Answer check: the NXP interrupt table gives UART1 SPI index 26, hence GIC ID 58. The A7 TRM gives different L1 I/D line sizes (32/64 bytes); CP15 is not in its revision-history appendix. Use section titles as well as numbers when comparing other editions.
+Answer check: the NXP interrupt table gives UART1 SPI index 26, hence GIC ID 58. The A7 TRM gives different L1 I/D line sizes (32/64 bytes). Use section titles as well as numbers when comparing other editions.
 
 ## 4.13  Pitfalls
 

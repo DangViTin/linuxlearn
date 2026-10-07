@@ -4,6 +4,15 @@ A correct register write need not produce a change at a connector. A UART can be
 
 On a new MCU, you would trace that path through the reference manual and schematic. We will do the same on the i.MX6ULL: find the controller, find its clock, and follow its signal to the board. The chip is larger, but the questions are familiar. Keep an LED and a UART in mind as we move through the map; the worked UART1 lookup at the end will bring the pieces together.
 
+```{figure} ../illustrations/part1/05-uart-signal-path.png
+:alt: A clock reaches UART through its clock gate. A separate TX signal path leaves UART, passes through the mux and pad, and reaches the board connection.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-uart-signal-path
+
+"I have data!" is only the UART's part. Teal supplies its clock; coral carries TX through the selected mux and pad to the board net. The chapter follows both paths. This is a conceptual route, not the board's complete wiring.
+```
+
 ## 5.1  What is the i.MX6ULL
 
 The i.MX6ULL is a **system on chip**, or SoC: the CPU core is one part of a device that also includes memory controllers, clocks, and peripherals. It is a low-cost member of NXP's i.MX6 family, with one Cortex-A7 and no GPU, VPU, or PCIe controller.
@@ -19,7 +28,7 @@ Keep the following summary nearby as we examine the map. Where a resource depend
 - **DRAM:** 16-bit LPDDR2/DDR3L/DDR3 controller (MMDC). The Point Atom core boards used in this book have 256 MiB or 512 MiB.
 - **Boot media:** SD/MMC, eMMC, NAND, SPI NOR, QSPI, parallel NOR, and USB SDP recovery
 - **Process:** 28 nm
-- **Package:** BGA289 / BGA324 (depending on variant)
+- **Package:** 289-ball VM (14 x 14 mm) or 272-ball VK (9 x 9 mm), according to the fitted variant/datasheet; not a universal interchangeable pinout.
 
 Before we choose a clock setting, the chip marking deserves a closer look. Two boards sold under a similar name need not carry the same part. `Y` identifies i.MX6ULL, while `G` identifies i.MX6UL; those are different families, not price grades of the same part. Within ULL, `Y0`, `Y1`, and `Y2` identify baseline, reduced-feature, and full-feature variants.
 
@@ -92,6 +101,15 @@ The full map is RM Chapter 2. In particular, `0x00018000-0x000FFFFF`, `0x0010000
 
 OCRAM solves the first-memory problem, but there is a catch in its budget. The chip provides 128 KB; the Boot ROM leaves only about 68 KB free while it is loading. Both numbers are correct. The ROM is a running program with its own memory needs. RM 8.4.1, Figure 8-3 gives the boundaries below; it does not assign further subdivisions within the lower reservation.
 
+```{figure} ../illustrations/part1/14-ocram-rom-budget.png
+:alt: The chip has 128 KiB OCRAM. While Boot ROM is active, a 68 KiB middle window is free; the 28 KiB lower and 32 KiB upper regions are reserved for ROM use.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-ocram-rom-budget
+
+The coral regions are RAM reserved for the ROM's work, not the ROM storage itself. While that work continues, our image must fit in the middle window. The boundaries below give the exact addresses; the drawing is not to scale, and the reservations are not a permanent post-handoff limit.
+```
+
 | Start | End | Approx size | During Boot ROM execution | What it means for us |
 |-------|-----|-------------|---------------------------|----------------------|
 | `0x00900000` | `0x00906FFF` | 28 KiB | Reserved. | Do not load over it while ROM is active. |
@@ -124,11 +142,11 @@ Seven PLLs:
 | PLL | Example output/rate | Purpose |
 |-----|--------------|---------|
 | PLL1, ARM PLL | Depends on DIV_SELECT | Feeds ARM root through downstream division; not automatically the final core rate |
-| PLL2, System PLL | 528 MHz (fixed) | Bus clocks, peripherals |
-| PLL3, USB1 PLL | 480 MHz (fixed) | USB, peripheral references |
+| PLL2, System PLL | 528 MHz normal intended rate | Bus clocks, peripherals; a selection field is not approval for arbitrary rates |
+| PLL3, USB1 PLL | 480 MHz normal intended rate | USB, peripheral references |
 | PLL4, Audio PLL | variable (44.1/48 kHz multiples) | SAI |
 | PLL5, Video PLL | variable (LCD pixel rates) | eLCDIF |
-| PLL6, ENET PLL | 500 MHz | Ethernet refclk |
+| PLL6, ENET PLL | 500 MHz internal PLL rate | Divided reference outputs serve Ethernet; this is not a 500 MHz PHY reference |
 | PLL7, USB2 PLL | 480 MHz | Host USB |
 
 A **PLL**, or Phase-Locked Loop, produces faster clocks from a reference. PLL2 and PLL3 also expose four **PFDs**, Phase Fractional Dividers, per PLL. These provide divided outputs; PLL2_PFD2 at 396 MHz, for example, is commonly used as a source in the AHB clock path.
@@ -149,15 +167,16 @@ Chapter 13 performs the explicit clock setup. Before then, our ROM-loaded progra
 
 ### Layer 4, Gates (CCGR0..CCGR6)
 
-Every peripheral has a **gate bit** (or pair of bits) in one of seven `CCM_CCGRx` registers. The bits have three possible values:
+The relevant CCGR controls are **two-bit CG fields** in `CCM_CCGR0` through `CCM_CCGR6`, not single enable flags:
 
 - `00`: clock off in all modes
 - `01`: clock on in run mode only, off in WAIT/STOP
-- `11`: on in RUN and WAIT; STOP behavior follows the documented CCM/low-power conditions.
+- `10`: reserved; do not use it as a one-bit enable value
+- `11`: clock on in RUN and WAIT, off in STOP under the documented CG semantics
 
 Bare-metal examples often select `11`. Production code selects a state according to the peripheral's run, wakeup, and low-power requirements; `01` is not a universal production setting.
 
-The reference manual's CCM Table 18-5 connects each peripheral to its CCGR field. For UART1, this lookup will give us a specific register and two bits. We have moved from a block name to a concrete field our code can select.
+RM Table 18-3, **System Clocks, Gating, and Override**, connects clocks to gate fields; the UART rows are on pages 640-641. Then read the actual CCGR register description, such as 18.6.28 for UART1's CCGR5 field.
 
 If a peripheral's registers give unexpected values or writes seem to have no effect, check its clock gate early. An address can be correct while the block behind it is not receiving the clock it needs.
 
@@ -167,11 +186,13 @@ Suppose we have found the UART registers and enabled the clock. There is still n
 
 Do not choose a setting from another pad just because its name looks similar. Each pad has its own ALT table in the reference manual's IOMUXC chapter.
 
-The **IOMUXC** (IO Multiplexer Controller) block contains, for every pin:
+Many muxable digital pads have these controls in **IOMUXC**, the I/O Multiplexer Controller; dedicated power, analog, and memory pins do not all follow this pattern:
 
 - A **MUX_CTL** register selecting which ALT (and a few other bits, SION, "Software Input On", which forces the pad's input buffer on even when output-driven).
 - A **PAD_CTL** register controlling drive strength, slew rate, pull-up/down, hysteresis, open-drain.
 - Some input functions also require a **SELECT_INPUT** register. This register chooses which eligible pad feeds the peripheral input. NXP calls this selection a "daisy chain."
+
+The main IOMUXC block starts at `0x020E0000`. The SNVS pad group has a separate **IOMUXC_SNVS** block at `0x02290000` [RM 32.5]. For example, BEEP's `SNVS_TAMPER1`/`GPIO5_IO01` mux belongs to that group, not to a register name invented from the main-block pattern.
 
 A typical pin setup is two writes, sometimes three. The following symbolic register pseudocode is not a standalone C program:
 
@@ -181,18 +202,9 @@ IOMUXC_SW_PAD_CTL_PAD_GPIO1_IO03 = 0xB0B1; /* pad electrical settings */
 /* if the pin's function has a SELECT_INPUT, write that too */
 ```
 
-The value `0xB0B1` appears in many NXP examples. It configures electrical properties such as pull resistance, drive strength, and slew rate. Chapter 9 decodes the fields before using a pad-control value.
+In this illustrative value, `ODE=0` selects push-pull rather than open-drain behavior and `SRE=1` selects fast slew. It is not a universal GPIO/UART/I2C setting. SPEED encodes pad bandwidth, not an output signal frequency; DSE is a drive-strength encoding, not a fixed current in milliamps. Chapter 9 decodes the full value before using it for its checked pad.
 
 We can now account for the opening example. MUX_CTL selects the function, PAD_CTL sets electrical behavior, and SELECT_INPUT, where present, chooses the input route. Setting the UART's own registers does not perform these jobs for it. When a signal is missing, check this path after the clock path instead of repeatedly changing the peripheral's data register.
-
-```{figure} ../illustrations/part1/05-uart-signal-path.png
-:alt: A clock reaches UART through its clock gate. A separate TX signal path leaves UART, passes through the mux and pad, and reaches the board connection.
-:width: 100%
-:figclass: concept-sketch
-:name: fig-uart-signal-path
-
-"I have data!" is only the UART's part of the story. The teal path supplies its clock; the coral path carries TX through the selected mux and pad to the board net. This sketch leaves out detailed clock roots, dividers, and pad settings. Find those in the manual and the actual connection in the schematic.
-```
 
 The IOMUX tables occupy about 300 pages, but each experiment uses only a few pads. The schematic tells you which pad to search for; its table tells you the setting to use.
 
@@ -200,11 +212,13 @@ The IOMUX tables occupy about 300 pages, but each experiment uses only a few pad
 
 Clocks and pads also depend on the board's supplies. Three names recur in the power and low-power chapters:
 
-- **VDD_SOC**: main digital supply (the part you turn off in deep sleep).
-- **VDD_ARM**: the CPU core supply, allowing voltage and frequency to be adjusted together. This is called dynamic voltage and frequency scaling, or **DVFS**.
+- **VDD_SOC**: the main digital domain. Required supplies depend on the selected state: suspend/DRAM retention is not the same as SNVS-only operation. Do not translate "deep sleep" into an instruction to switch this rail off; consult the electrical datasheet's power-state requirements.
+- **VDD_ARM**: the CPU domain, whose voltage/frequency control supports **DVFS**, dynamic voltage and frequency scaling. Domain names and internal regulator controls do not prove independently switchable external board rails.
 - **SNVS**: Secure Non-Volatile Storage, including RTC, security state, tamper inputs, and retained registers. For example, `SNVS_LPGPR` is a 32-bit retained general-purpose register [RM 48.7.14], not a general byte-addressable SRAM. Retention requires its supply to remain present; board battery wiring matters.
 
 This book first uses SNVS for its real-time clock and retained registers. Later chapters also discuss its security and low-power functions.
+
+For electrical work, distinguish supply inputs such as `VDD_SOC_IN` from internal-regulator capacitor nets such as `VDD_ARM_CAP`/`VDD_SOC_CAP`. The supplied core schematic uses a shared external `VDD_ARM_SOC_IN` net. Follow the fitted board's regulator and sequencing design, not a generic three-domain drawing [industrial datasheet, Table 14 and Sections 4.1.6.2-4.1.6.3].
 
 ## 5.8  Fuses and identification
 
@@ -228,7 +242,7 @@ The peripherals you will touch in this book, with reference-manual chapter numbe
 | CCM | 18 | Clock controller, Ch 5, 13 |
 | Analog CCM (ANATOP) | 18.7 | PLL registers, Ch 5, 13 |
 | IOMUXC | 32 | Pin mux, every peripheral chapter |
-| GPIO | 28 | 5 GPIO banks × 32 = 160 pins, Ch 9, 44 |
+| GPIO | 28 | Five banks with 32-bit registers; usable GPIOs depend on bonded pads, package, muxing, and board routing, Ch 9, 44 |
 | GIC | (ARM TRM) | Interrupt controller, Ch 4, 15 |
 | GPT | 30 | General-purpose timer, Ch 16 |
 | EPIT | 24 | Enhanced periodic interrupt timer, Ch 16 |
@@ -261,7 +275,7 @@ Our reference documents are the MINI v2.2 schematic and the core schematic with 
 | Hardware in the reference setup | What to check | Relevant lab |
 |---|---|---|
 | User LED, GPIO1_IO03 | Pad and active level | [Assembly LED](../part2-baremetal/ch09-asm-led.md) |
-| KEY/BEEP | GPIO1_IO18 / GPIO5_IO01 and schematic circuit | [Button and beep](../part2-baremetal/ch18B-button-beep.md) |
+| KEY0 / BEEP | Reference KEY0: GPIO1_IO01, ALT5, active-low; BEEP: SNVS_TAMPER1/GPIO5_IO01. Verify actual circuit/revision. | [Button and beep](../part2-baremetal/ch18B-button-beep.md) |
 | Built-in UART1 bridge | TX/RX pads, bridge identity, power path | [UART](../part2-baremetal/ch12-uart-printf.md) |
 | DDR3L on core | Schematic names `NT5CC256M16EP-EK`; compare fitted marking and topology | [DDR initialization](../part2-baremetal/ch14-ddr3-init.md) |
 | eMMC on core | Schematic names `KLM8G1GETF`; verify fitted storage | [SD/eMMC](../part7-cookbook/ch66-sd-emmc.md) |
@@ -272,6 +286,8 @@ Our reference documents are the MINI v2.2 schematic and the core schematic with 
 
 ALPHA baseboards and NAND cores are revision-dependent alternatives, not verified equivalents of this schematic set. Before doing their labs, obtain their matching schematic/BOM and identify the fitted components. Audio, CAN, light sensors, IMUs, Wi-Fi, and modems may require add-ons: see [audio codecs](../part7-cookbook/ch89-audio-codecs.md), [CAN](../part6-drivers/ch55C-can-flexcan.md), [light sensors](../part7-cookbook/ch68-light-color.md), [SPI IMUs](../part7-cookbook/ch71-spi-imus.md), [SDIO Wi-Fi](../part7-cookbook/ch91-sdio-wifi.md), and [USB modems](../part7-cookbook/ch102-usb-lte.md). RS485 and GPS are covered in [RS485/Modbus](../part7-cookbook/ch108-rs485-modbus.md) and [GPS/PPS](../part7-cookbook/ch107-gps-pps.md).
 
+For the named schematic set, CORE sheet 8 labels J2 pin 49 `GPIO_1 / KEY0`, while pin 47 is `UART1_CTS / KEY2`. GPIO1_IO18 belongs to the latter GPIO function, not the MINI's KEY0. Do not carry a differently named/revised button example into this hardware without reconciling its mapping.
+
 For another board, re-derive power/reset policy, oscillator sources, DDR topology/timings, boot-storage routing, PHY wiring, and pin assignments. The [board-directory pattern](../part2-baremetal/ch18A-project-organization.md) organizes those differences; it does not make incompatible hardware work unchanged. Do not use Chapter 14's DDR values without that comparison.
 
 ## 5.10  Navigating the i.MX6ULL Reference Manual
@@ -280,7 +296,7 @@ We have used several parts of revision 1 (11/2017) of IMX6ULLRM. Its 4,127 pages
 
 1. **Start with Chapter 2 (Memory Maps)** when you need to locate a block's address range.
 2. **Use Chapter 1 (Introduction)** for the block overview and part variants.
-3. **Keep Chapter 8 (System Boot) beside Chapter 7 of this book** for boot-mode and image-format questions. RM Chapter 5 is Fusemap, not System Boot.
+3. **Keep Chapter 8 (System Boot) beside Chapter 7 of this book** for boot-mode and image-format questions.
 4. **For each peripheral, first read:** the overview and block diagram, the initialization sequence, and the descriptions of the registers your code accesses. Read other sections when a specific question requires them.
 5. **Keep Chapter 32 (IOMUXC) open in another window.** You will reference it constantly.
 
@@ -290,28 +306,42 @@ Take UART1 all the way from the chip to the serial bridge. Try the lookups below
 
 1. Open the reference manual. Locate, by chapter and page:
    - The **register base address** of UART1.
-   - The **CCGR register and bit** that gates UART1's clock.
+   - The **CCGR register, two-bit field, and bit range** that gate UART1's clock.
    - The **GIC SPI ID** for UART1's interrupt.
    - The **IOMUXC MUX_CTL register name** for the pin that carries UART1 TXD on the Point Atom MINI (consult the board schematic).
-2. From the same manual, locate the corresponding clock, interrupt, and IOMUX information for **GPIO1_IO03**, the Point Atom user LED pin, and for **I2C1_SDA / I2C1_SCL**.
+2. Repeat the lookup for **GPIO1_IO03**, the reference LED pad, and the **board-routed I2C1** SCL/SDA nets. Choose pads from the supplied schematic, not whichever valid alternate route appears first in the mux table. This is a paper lookup, not an instruction to connect an I2C device or write pad settings now.
 
 ### Worked UART1 lookup and answer check
 
 Start with **where**: RM Chapter 2 places UART1 at `0x02020000`, within AIPS-1. We can now locate the controller's registers. That answers an address question, but has not yet told us how to clock the block or reach its pins.
 
-Next find **its clock gate**. UART1 uses `CCM_CCGR5.CG12`, bits 25:24, at register address `0x020C407C` [RM 18.6.28]. The lookup crossed into the CCM chapter because the UART does not own this control. Those bits select its gate, not its baud rate.
+Next find **its clock gate**. UART1 uses `CCM_CCGR5.CG12`, bits 25:24, at `0x020C407C = CCM base 0x020C4000 + 0x7C` [RM 18.6.28]. The two-bit mask is `0x03000000`. These bits select the gate, not the baud rate.
 
 For **the interrupt**, RM Chapter 3 gives UART1 GIC SPI index 26. Adding the GIC's architectural SPI base of 32 gives interrupt ID 58, using the distinction from Chapter 4.
 
-Finally, follow **the board connection**. In the MINI v2.2 schematic, trace UART1 TX/RX to the bridge and package pads. TX uses `IOMUXC_SW_MUX_CTL_PAD_UART1_TX_DATA`. Now the schematic has given us a pad name to search in RM Chapter 32. Its ALT table supplies the mux selection; the UART controller's name alone could not do that.
+Finally, follow **the board connection**: CORE sheet 6's `UART1_TX_DATA`, ball K14, reaches the `UART1_TXD` net and the core/base connectors; MINI sheet 4 shows the analog-switch routing to the CH340C bridge U8's RX input. U12/U13 and their VUSB-derived control are part of that path. Check the matching power/switch arrangement rather than assuming a direct wire or inventing a switch truth table.
 
-Use the same chain for the LED and I2C: address -> clock -> interrupt -> pad -> board net. Record both register names and manual locations so another reader can reproduce your lookup.
+RM 32.6.17, page 1578, gives `IOMUXC_SW_MUX_CTL_PAD_UART1_TX_DATA` at `0x020E0084`; ALT0 selects UART1 TX. This output route does not need RX's SELECT_INPUT setting. The register name, mux choice, and schematic trace now answer different parts of the same question; this is still not a complete initialization sequence.
+
+### LED and I2C answer checks
+
+| Lookup | Checked result for this reference route |
+|---|---|
+| GPIO1 controller | Base `0x0209C000`; CCGR1.CG13 at `0x020C406C`, bits 27:26. The lower 16 GPIO inputs use GIC SPI index 66, architectural ID 98; no interrupt is needed for an LED output. |
+| LED pad | GPIO1_IO03, mux `0x020E0068`, ALT5; pad-control register `0x020E02F4`. Check the active level and routed net in the board schematic before the LED lab. |
+| I2C1 controller | Base `0x021A0000`; CCGR2.CG3 at `0x020C4070`, bits 7:6; GIC SPI index 36, architectural ID 68. |
+| Board-routed I2C1 SCL | UART4_TX_DATA, ball G17; mux `0x020E00B4`, ALT2; SELECT_INPUT `0x020E05A4`, daisy 1. |
+| Board-routed I2C1 SDA | UART4_RX_DATA, ball G16; mux `0x020E00B8`, ALT2; SELECT_INPUT `0x020E05A8`, daisy 2. |
+
+The I2C mux choices are in RM 32.6.29/30, and its input selectors in 32.6.328/329. CORE sheets 6/8 identify the routed UART4 pads. GPIO1_IO02/03 are other SoC routes, not this board trace; selecting the IO03 I2C alternative would conflict with its LED use. Pull resistors and attached devices must be checked separately.
+
+The pinned upstream [device tree](https://github.com/torvalds/linux/blob/v6.6/arch/arm/boot/dts/nxp/imx/imx6ul.dtsi), [clock implementation](https://github.com/torvalds/linux/blob/v6.6/drivers/clk/imx/clk-imx6ul.c), and [pin-function definitions](https://github.com/torvalds/linux/blob/v6.6/arch/arm/boot/dts/nxp/imx/imx6ul-pinfunc.h) provide independent cross-checks of the controller/field encodings. They do not prove what is fitted or wired on your particular board.
 
 ## 5.12  Pitfalls
 
 - **Ignoring document and silicon revisions.** This book cites RM rev. 1, 11/2017. Check errata for your silicon mask; they can document behavior or workarounds without changing a field definition. Compare newer manuals explicitly rather than silently mixing section numbers.
 - **Believing the i.MX6ULL has a Cortex-M4.** It does not. The bigger i.MX6 SoloX / 7Solo have one. The 6ULL is single-A7 only.
-- **Trusting marketing block diagrams.** The block diagram on page 1 of the datasheet omits *most* of the chip. The real block diagram is in Chapter 1 of the reference manual.
+- **Using an overview as a complete wiring map.** The datasheet summarizes the device; RM Chapter 1 gives the fuller block view. The board schematic supplies its actual connections.
 - **Treating UL/ULL or speed grades as interchangeable.** `G` and `Y` name different families. Decode the complete ULL marking and its feature/speed grade before choosing a clock or peripheral lab.
 
 ## 5.13  Going deeper

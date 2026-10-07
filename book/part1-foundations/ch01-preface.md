@@ -19,7 +19,7 @@ A vendor board-support package, usually shortened to **BSP**, can give you a wor
 
 This book follows those questions on the i.MX6ULL. Our first visible result will be modest: an LED controlled by a program small enough to follow from its first instruction. To get there, we write startup code, choose its memory layout, and give the Boot ROM the header it expects. Each part has a job we can explain.
 
-The same board then takes us further. We build a page table, describe the hardware with a device tree, and build U-Boot and Linux from their existing sources. We are learning how those projects work, not writing replacements for them. Our first root filesystem contains just one statically-linked program. Even when the software becomes large, we keep asking what happened before the next step could run.
+The same board then takes us further. We build a page table, describe the hardware with a **device tree** (the hardware description passed to Linux), and build U-Boot and Linux from their existing sources. We are learning how those projects work, not writing replacements for them. Our first root filesystem contains just one statically-linked program. Even when the software becomes large, we keep asking what happened before the next step could run.
 
 Buildroot enters in Chapter 35, toolchain construction in Chapter 122, Yocto in Chapter 123, and secure boot in Chapter 124. Their inputs will make more sense after we have worked with the pieces ourselves. A large build may still fail. The difference we want is that you can choose something specific to inspect instead of starting over and hoping.
 
@@ -30,6 +30,15 @@ If you can read C, find a register in a reference manual, and follow a signal th
 Linux experience is not required. The terminal may be new to you; the hardware is not. Perhaps you have built a vendor image but still cannot explain why the directory contains both `vmlinux` and `zImage`. You do not need to settle that question before opening Chapter 2. We will meet those files when we have a reason to inspect them.
 
 Chapter 3 explains the shell operations needed for setup. When a new command appears, read the explanation beside it and note what changed: a file, a directory, this terminal's environment, or a setting on the host. That habit matters more at the beginning than remembering every option.
+
+Before a hardware lab, have these items ready:
+
+- An i.MX6ULL board supported by the lab. Our worked schematic lookups use the Point Atom MINI v2.2 baseboard and its supplied core-board schematic; check the actual revision fitted to your board.
+- The matching baseboard/core schematics and the supplier's power instructions for that combination. The schematics supplied with this book are not a validated power-connection guide. Obtain that guide from the board supplier before attaching a supply, USB cable, or adapter.
+- A suitable digital multimeter, the documented supply, and USB **data** cables for the debug bridge and OTG port. An external UART adapter is optional where the built-in bridge is available.
+- An x86_64 Linux host, or a suitable Ubuntu VM with device access, prepared in Chapter 3. The host-only exercises can proceed before the board is connected.
+
+A spare SD card and Ethernet connection are needed for later storage/network labs, not for the first USB-loaded LED image. JTAG and the peripheral add-ons are optional.
 
 ## 1.3  What "raw" means in this book
 
@@ -43,9 +52,18 @@ A runnable lab supplies the input files, working directory, commands, and an obs
 
 The main route follows one i.MX6ULL board from bare metal to Linux drivers. The LED in the first experiment will still be there when Linux owns its GPIO. So will the UART whose registers we configured by hand. Returning to familiar hardware lets us see what the new software layer changes. The reasoning is useful on other boards, but register addresses, DDR settings, and electrical requirements must be checked again.
 
+```{figure} ../illustrations/part1/09-same-led-two-routes.png
+:alt: Two experiments on the same LED: bare-metal code controls GPIO directly; later, a Linux application requests an operation through a kernel driver that controls GPIO.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-same-led-two-routes
+
+We will visit this LED twice. First, our small program does the register work. Later, a Linux application uses a driver interface. The two rows are different experiments on the same hardware, not two programs trying to drive it at once.
+```
+
 There are optional routes into [PREEMPT_RT](../part6-drivers/ch52A-preempt-rt.md), [containers](../part5-rootfs/ch35C-containers-on-embedded.md), and Part IX's QEMU and STM32MP1 experiments. None is needed for the first Linux boot. Leave them until the main route makes sense, unless one directly matches your work.
 
-This is not a Linux application-programming book. We use a shell and small C test programs, but do not teach POSIX threads or `select`/`epoll` in depth. Nor is this a Kubernetes deployment guide. Android also has its own userspace, including Bionic, Binder, and a different init and build system. The kernel material provides useful background for Android work, but the root-filesystem chapters here are not an AOSP setup guide.
+This is not a Linux application-programming book. We use a shell and small C test programs, but do not teach POSIX threads or `select`/`epoll` in depth. Kubernetes deployment and Android system builds are outside the route.
 
 ## 1.5  How each chapter is organized
 
@@ -97,7 +115,7 @@ Registers are written in uppercase with the bank prefix from the reference manua
 CCM_CCGR5 |= (3u << 24);    /* UART1 CG12: bits 25:24 = 11 */
 ```
 
-This is register pseudocode, not a complete UART setup. UART1's two-bit gate is in `CCM_CCGR5` at `0x020C407C`; `11` selects the documented always-enabled gate state [RM 18.6.28]. MMIO definitions, pin mux, and the UART root clock are supplied later.
+This is register pseudocode, not a complete UART setup. UART1's two-bit gate is in `CCM_CCGR5` at `0x020C407C`; `11` enables it in run and WAIT modes, but not STOP [RM 18.6.28]. MMIO definitions, pin mux, and the UART root clock are supplied later.
 
 When a bit field is named, square brackets denote a field rather than C array syntax:
 
@@ -127,16 +145,15 @@ Detailed reference diagrams are also drawn with text, so they remain readable in
 
 On a first reading, follow Chapters 1-8 in order. They prepare the host, explain the chip and its boot format, and check access to the board. Chapter 9 then puts those pieces together in the first LED image. Continue through the intervening chapters to the UART program in Chapter 12. U-Boot and the kernel builds come later, before the first Linux boot.
 
-Remember the silent board at the opening. A successful build tells us about the host tools and the image; a visible response from our program tells us it executed on the board. Chapters 3, 6, and 8 prepare for that response but do not substitute for it. Keeping these two kinds of evidence separate will save us from calling a problem solved too early.
-
-Experienced readers can skip Part II if they already have a working board and can complete Chapter 19's U-Boot build/transfer prerequisites. Part II explains the clocks, DDR, exceptions, and MMU work otherwise performed by U-Boot and Linux.
+Experienced readers can take a Linux-first route if they already have a working, supported board and meet [Chapter 19's build/transfer prerequisites](../part3-uboot/ch19-uboot-from-source.md). MCU experience alone is not that prerequisite. Part II explains the clocks, DDR, exceptions, and MMU work otherwise performed by U-Boot and Linux.
 
 If you already have experience in part of this route, the table below suggests a shorter reading path. Check the practical prerequisites before skipping a lab:
 
 | If you... | Read | Skim | Skip |
 |-----------|------|------|------|
 | Want the full experience | All | none | none |
-| Already wrote MCU firmware and want Linux | 1-3, 4-8, 19+ | 9, 17 | 10-16, 18 |
+| Have MCU experience but are new to Linux | 1-17, 19+ | none | optional Chapter 18/add-ons |
+| Want Linux first and already meet Chapter 19's prerequisites | 1-8, 19+ | 9-17 | 18 |
 | Already shipped Linux on a different SoC, want i.MX6ULL specifics | 1, 5, 7, 19-24, 27 | 25-35 | 9-18 |
 | Maintain an existing BSP, want driver depth | 1, 27, 36+ | 25-35 | 2-24 |
 

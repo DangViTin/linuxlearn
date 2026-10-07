@@ -18,16 +18,20 @@ Add FatFS or littlefs, a network stack, and several RTOS tasks, and the project 
 
 ## 2.2  The four layers
 
-An embedded Linux system can be viewed as four software layers above the hardware. During boot, control moves from the Boot ROM to the bootloader, then to the kernel, which starts user-space programs:
+An embedded Linux system can be viewed as four software layers above the hardware. During boot, control moves from the Boot ROM to the bootloader, then to the kernel, which starts user-space programs.
+
+Keep three things separate: the **source** we edit, the **files** produced by a build, and the **running software** with its registers, memory, and state. An executable file in `/bin` is not yet a process. The root filesystem is the target's directory tree mounted at `/`; it supplies programs, configuration, and any required libraries. The target does not need the kernel's C source tree installed to run Linux.
+
+The picture names the main roles and some typical input files, not a compulsory one-file boot recipe. A bootloader can have stages such as SPL and U-Boot. On this SoC, the ROM can also apply image-supplied hardware settings before entering the loaded code; Chapter 7 explains that route.
 
 ```
    ┌──────────────────────────────────────────────────────────────┐
    │  Layer 4: User space                                         │
    │  shell, applications, daemons, your code                     │
-   │  (lives in /bin, /sbin, /usr/bin, ...)                       │
+   │  (files in /bin, /sbin, /usr/bin, ...)                       │
    ├──────────────────────────────────────────────────────────────┤
    │  Layer 3: Linux kernel                                       │
-   │  scheduler, MM, FS, drivers, network stack                   │
+   │  scheduler, memory management, filesystems, drivers, network  │
    │  (vmlinux, zImage)                                           │
    ├──────────────────────────────────────────────────────────────┤
    │  Layer 2: Bootloader  (U-Boot)                               │
@@ -66,6 +70,8 @@ The CPU enforces this distinction. A user instruction that tries to write to pro
 
 There is an easy trap here. If `sudo` gives a program root privileges, has it crossed into kernel mode? No. **Root** is a Linux user identity; **kernel mode** is a CPU execution state. Later, `sudo picocom` gives the serial terminal credentials to open a restricted device, but its own instructions still run in user mode. The kernel checks those credentials when the program requests access. The need for `sudo` comes from device permissions, not from a rule that hardware always needs root.
 
+An application requests a kernel service through a **system call**, usually shortened to *syscall*. On ARMv7-A, the `svc` instruction raises a Supervisor Call exception. The CPU enters the kernel handler in SVC mode, where Linux reads the syscall number from `r7` and its arguments from `r0` onward. After handling the request, the kernel returns a result to the application.
+
 ```{figure} ../illustrations/part1/02-root-is-not-kernel.png
 :alt: An application wearing a ROOT crown remains in user mode. A system call enters the kernel, which checks permissions for a device request.
 :width: 100%
@@ -75,9 +81,7 @@ There is an easy trap here. If `sudo` gives a program root privileges, has it cr
 Nice crown. Still user mode. Root credentials can change the kernel's permission decision, but they do not turn the application's instructions into kernel instructions. The arrow follows a device request, not every instruction the application executes.
 ```
 
-An application requests a kernel service through a **system call**, usually shortened to *syscall*. On ARMv7-A, the `svc` instruction raises a Supervisor Call exception. The CPU enters the kernel handler in SVC mode, where Linux reads the syscall number from `r7` and its arguments from `r0`-`r6`. After handling the request, the kernel returns a result to the application.
-
-Here is a simplified path for opening an I2C device. The application sees an ordinary C function; the library wrapper performs the transition into the kernel:
+Here is a simplified path for opening an example I2C bus interface. `/dev/i2c-0` is a device-interface pathname. An **fd**, or file descriptor, is the small integer handle returned on success; Section 2.6 follows its lifetime. **libc** is the application's C library; glibc is one implementation. The application calls its ordinary C function, and the library wrapper performs the transition into the kernel:
 
 ```
     user-space process            kernel
@@ -95,7 +99,9 @@ Here is a simplified path for opening an I2C device. The application sees an ord
     fd in r0, back in user mode
 ```
 
-Most application requests to the kernel take this shape. Reading a file uses `read()`. Allocating memory may use `brk()` or `mmap()`. Sleeping may use `nanosleep()`. To control an LED, an application may call `write()` on a device interface or use `ioctl()` on a device node. These operations cross the user/kernel boundary through syscalls.
+Opening `/dev/i2c-0` only obtains a bus handle; it does not select an I2C peripheral or transfer bytes yet. The adapter number is illustrative, not a promise about this board. Later requests supply the address and operation.
+
+Most application requests to the kernel take this shape. Reading a file uses `read()`. Allocating memory may use `brk()` or `mmap()`. Sleeping may use `nanosleep()`. To control an LED, an application may call `write()` on a device interface or use `ioctl()` on a device node. These operations cross the user/kernel boundary through syscalls and return a result or error to the application, which resumes in user mode. Non-root programs make syscalls too.
 
 Not every C function needs a syscall every time it runs. `malloc()` can reuse memory the library already obtained, for example. If a driver authorizes a memory mapping, later loads and stores through that mapping do not each require a syscall. The kernel sets up and controls the access; it does not have to execute every instruction on the application's behalf.
 
@@ -106,20 +112,20 @@ Linux documents its syscall interfaces in section 2 of the manual. On a Linux ho
 Suppose a network service has a bad pointer. You would rather lose that service than let it overwrite the application's state or the kernel's scheduler. Suppose two programs want the I2C bus. Their requests need coordination, even though neither program knows the other's code. Linux's separation addresses these problems:
 
 1. **Robustness.** A bad pointer in an ordinary application is normally contained by its mappings and permissions, rather than overwriting kernel data or another program's private memory.
-2. **Isolation between programs.** A fault or unauthorized access in one user-space process is less likely to damage the kernel or another process.
-3. **Resource arbitration.** Many processes want the I²C bus, the CPU, the network. Someone must serialize and schedule. The kernel is that someone.
+2. **Access policy.** A driver can check which operations a caller is allowed to request, rather than giving every program unrestricted control of its hardware.
+3. **Resource arbitration.** Many processes want the I²C bus, the CPU, or the network. The kernel coordinates supported transfers and schedules work. It does not automatically turn several separate application requests into one atomic device protocol; drivers and applications still need appropriate ownership or locking.
 
 For one tightly controlled firmware image, a smaller RTOS and direct driver calls may be the right design. Linux takes on a different job: managing independent programs and the resources between them. Its driver boundary starts to make sense once more than your one application needs the board.
 
 ## 2.4  Virtual memory, in one section
 
-On an MCU, an address is usually simple:
+Start with bare-metal code using physical addresses, with the MMU disabled. This is **symbolic pseudocode, not a register write to run**:
 
 ```c
-*(volatile uint32_t *)0x020E0000 = value;
+*(volatile uint32_t *)PHYSICAL_REGISTER_ADDRESS = value;
 ```
 
-If the reference manual says the IOMUXC register is at `0x020E0000`, your firmware writes to `0x020E0000`. The CPU puts that address on the bus. The peripheral responds.
+The manual supplies a block base and each register's offset; together they give the physical register address. For example, `0x020E0000` is the i.MX6ULL IOMUXC **block base**, not a pad register to write at offset zero. A valid register access must also follow that register's width and access rules.
 
 Carry that same number into a Linux application and a less obvious question appears: is it still the address of that register?
 
@@ -151,7 +157,16 @@ Process B:
 
 Look at `0x00010000` in both lists. The numbers match, but the physical RAM can be different. The current process's mapping gives the pointer its meaning. Each application can therefore work with its own code, globals, and stack without first finding a free physical address above every other application's allocations.
 
-The **page table** is the data structure that describes this translation. You can think of it as a map owned by the kernel:
+```{figure} ../illustrations/part1/10-virtual-address-private-ram.png
+:alt: Process A and process B both use virtual address 0x00010000, but their separate page-table mappings lead to different private physical RAM regions in this example.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-virtual-address-private-ram
+
+Matching numbers need not mean matching bytes. Each map gives this process's pointer its meaning; the RAM blocks represent different regions, not necessarily different chips. These are illustrative private mappings. Shared mappings can instead lead to the same physical pages.
+```
+
+The **page table** describes this translation and its access permissions. A **page** is a fixed-size unit of memory; the ordinary small-page mappings in this route use 4 KiB pages. You can think of the table as a map owned by the kernel:
 
 ```text
 For process A:
@@ -160,21 +175,22 @@ For process A:
   some pages     -> not mapped at all
 ```
 
-What if a mapping is missing when the process first touches an address? The MMU raises a **page fault**. The name sounds like a program has already gone wrong, but that is not always the case. The MMU could not complete the translation; the kernel must decide whether the access is valid and can be supplied with memory.
+What if a translation is missing, or its permissions do not allow the attempted access? The CPU raises a memory-access exception that Linux handles as a **page fault**. The name sounds like a program has already gone wrong, but that is not always the case. Linux must decide whether the access is valid and can be completed.
 
 The kernel may decide:
 
 - This address is valid but not loaded yet, so allocate RAM and continue.
-- This address belongs to a memory-mapped file, so read the needed file page and continue.
-- This address is illegal for this process, so kill the process with a segmentation fault.
+- This address belongs to a file mapping, so attach an already cached page or fetch the file data if needed, then continue.
+- This is a permitted write to a private copy-on-write page, so supply a private copy and retry the instruction.
+- This access is invalid or prohibited, so deliver `SIGSEGV`, whose default action terminates the process.
 
 This also separates an address range from the RAM currently backing it. A process can have a valid range for which physical pages are supplied as needed. The kernel decides whether a fault can be resolved or whether the access must be rejected.
 
 Several later Linux features build on this mechanism. Treat the names below as examples of where the idea leads, not as APIs to memorize before Chapter 3:
 
-- **Process isolation.** Process A cannot write into process B's memory because process A's page table does not contain process B's private pages.
-- **Memory-mapped files.** `mmap()` is a syscall that makes a file look like memory. Instead of calling `read()` into a buffer, the program gets a pointer. When it touches that pointer, the kernel loads the needed part of the file.
-- **fork().** `fork()` is a syscall that creates a new process by copying the current one. At first, Linux does not copy every RAM page. Parent and child share the same physical pages until one process writes. That delayed copy is called **copy-on-write**.
+- **Process isolation.** An ordinary store can reach only memory mapped for that process with the required permissions. Private mappings protect another process's private state. Deliberate shared mappings and authorized cross-process operations are different cases; process separation is not an unconditional sandbox.
+- **Memory-mapped files.** For a regular file, `mmap()` can give the program a virtual range instead of a separate `read()` buffer. Missing translations may fault; resident, permitted pages need no syscall or storage read for each access. The same API can also create anonymous memory or a driver-authorized device mapping.
+- **fork().** A child initially shares many physical pages with its parent. Private writable pages can be mapped read-only so that a write faults; Linux makes a private copy when required and resumes the instruction. This is **copy-on-write**. Sharing a physical page does not mean either process may silently change the other's private view.
 - **Shared libraries.** A library such as `libc.so` contains common code used by many programs. Linux can map the same physical code pages into many processes, while each process still has its own private stack and heap.
 - **Swap.** Swap means the kernel can move idle memory pages out of RAM and onto storage, then bring them back later. Embedded systems often disable swap, but it uses the same page-table and page-fault machinery.
 
@@ -207,27 +223,28 @@ We now have a place for the remaining names: some describe the handles applicati
 
 Opening a device does not hand its register address to the application. Linux gives the process a **file descriptor**, a small non-negative integer that identifies the open object in its fd table. Suppose the result is 3. A later `read(3, ...)` means "read from the object I opened," not "read memory at address 3." The kernel can find the object and its operations from that handle.
 
-`open()`, `socket()`, and `eventfd()` return descriptors, while `pipe()` fills an array with two of them. Later calls such as `read(fd, ...)` tell the kernel which open object to use. That object may be a regular file, a socket, a pipe, or a device.
+```{figure} ../illustrations/part1/11-file-descriptor-handle.png
+:alt: An application passes descriptor 3. The kernel looks up entry 3 in that process's descriptor table to find an open object; the integer is not memory address 3.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-file-descriptor-handle
 
-By convention, fd 0 is stdin, 1 is stdout, 2 is stderr. After that, the kernel hands out the lowest free number.
+The number is a ticket into a table, not the object itself. The kernel manages that table for the process. Two unrelated processes can both have fd 3 and mean different open objects; copying the integer alone does not give the second process the first one's descriptor.
+```
+
+Later calls such as `read(fd, ...)` tell the kernel which open object to use. That object may be a regular file, a socket, a pipe, or a device. Other descriptor-creating APIs, including `socket()`, `pipe()`, and `eventfd()`, can wait until we need them.
+
+An `open()` through the C library returns `-1` on failure and sets `errno` to describe the error. Do not use that result as a valid descriptor. On success, keep the fd while using the object, then call `close(fd)` to release that reference. The number can be reused for a later open; other descriptors may still refer to the original open object.
+
+By convention, fd 0 is stdin, 1 is stdout, and 2 is stderr. An open gets the lowest free number, even 0, 1, or 2 if its old descriptor was closed. Stdout can lead to a terminal, a file, or a pipe; it is not permanently wired to a UART.
 
 This common handle explains the phrase "everything is a file." The phrase is not literally true, but many interfaces use the same `read()`, `write()`, and `ioctl()` model. A serial port and a text file behave differently, yet an application can refer to each through an fd.
-
-### inode
-
-A filename is how we look something up. It is tempting to treat the name as the object itself, but two names can refer to the same object through hard links. An **inode** is the kernel's representation of that filesystem object, including its type, permissions, and owner. Directory entries connect names to inodes.
-
-Keep this separate from an open file. An open *file object* records state such as the current offset, and an fd refers to that open object. How an inode locates content depends on the filesystem; a procfs entry, for instance, need not correspond to blocks on a disk.
-
-### Virtual filesystem (VFS)
-
-The application has another useful freedom: it does not need to ask whether a file is on ext4, FAT, or tmpfs before reading it. The **virtual filesystem**, or VFS, provides the common kernel interface above those filesystems, as well as procfs and devtmpfs. Each supplies operations the VFS can call. Character and block devices also connect to this framework, which brings us back to the fd used to open our device.
 
 ### syscall, libc, glibc, musl
 
 The C functions in your application are not the kernel itself. **libc**, the user-space C library, implements standard C facilities and wraps many syscalls in ordinary function calls. Glibc and musl are two implementations we will encounter. The syscall underneath is the numbered kernel operation invoked through `svc` on this board.
 
-When you call `printf()` from a C program, the path is roughly:
+When you call `printf()` from a C program, the path is roughly as follows. The VFS named here is the kernel's common file-I/O interface; its filesystem details are in the optional reading at the end.
 
 ```
 printf("hi\n")
@@ -246,7 +263,7 @@ This is a simplified path when stdout is a UART terminal. Buffering and the sele
 
 ### Process tree, init
 
-Who starts the first application? The kernel runs the selected **init** program, commonly `/sbin/init` on a mounted root filesystem or `/init` in an initramfs. It becomes PID 1 and starts the ordinary user-space process tree. Kernel threads have a different origin.
+Who starts the first application? The kernel runs the selected **init** program, commonly `/sbin/init` on a mounted root filesystem or `/init` in an **initramfs**, a small initial filesystem unpacked into RAM. It becomes PID 1 and starts the ordinary user-space process tree. Kernel threads have a different origin.
 
 BusyBox init and systemd are two possible init implementations, but the first experiment can be much smaller. In Chapter 29, our statically-linked PID 1 prints a message and deliberately reboots. It must not simply return from `main()`: the system's PID 1 exiting causes a kernel panic.
 
@@ -260,20 +277,19 @@ The `.ko` suffix can make a module look like one more program file, but loading 
 
 All these layers raise a fair MCU-engineer question: does this small board need the memory budget of a desktop? A desktop installation includes many programs our board will not need. An embedded system selects the kernel features, libraries, and applications for its particular job. The useful comparison is between those selected pieces, not between the board and your entire PC installation.
 
-These are example ranges, not measured requirements for every kernel configuration. Storage means file size; RAM means runtime use.
+There is no single "Linux memory budget" to copy into a design. The table locates the costs we will later measure; it is not an additive size estimate. Build options, compression, stripped/debug files, and the workload change the numbers.
 
-| Component | Resource | Approximate size |
+| Component | Resource | What determines the cost |
 |----------|----------|------------------|
-| `zImage` (compressed kernel) | Storage | 5-8 MB |
-| Decompressed kernel | RAM | 12-20 MB |
-| Device tree blob | Storage | 50 KB |
-| Statically-linked BusyBox | Storage | 800 KB |
-| musl libc shared object | Storage | 600 KB |
-| glibc shared object | Storage | 2.0 MB |
-| Small Buildroot rootfs (BusyBox + musl + utilities) | Storage | 4-8 MB |
-| Kernel data and allocations | RAM | 30-60 MB |
+| `zImage` | Stored compressed boot file | Kernel configuration and compression |
+| Running kernel | RAM | Loaded sections, kernel allocations, and workload; these categories can overlap |
+| Device tree blob | Stored input file | Hardware description and included nodes |
+| BusyBox | Stored executable | Selected applets, libc, and static versus shared linking |
+| libc | Stored library or code linked into executables | Implementation, ABI, build options, and stripping |
+| Root filesystem | Stored tree/archive/filesystem | Programs, libraries, configuration, compression, and filesystem overhead |
+| Running user space | RAM | Processes, private/shared mappings, and working data |
 
-A carefully selected single-purpose system can fit in 64 MB of RAM and 32 MB of flash. That is an example of what is possible, not a budget for every kernel or application. A MINI core with 512 MB of DRAM gives us considerably more room for the systems built here.
+The MINI core used here has 512 MiB of DRAM. That gives us room to learn without treating the first build as a size contest. A smaller product needs measurements of its actual image, boot-time peak, and running workload, not a sum of unrelated example ranges.
 
 User-space libraries and frameworks can use more storage than the kernel. Common examples are glibc, the C++ runtime, Qt, and Python. This is why Yocto and Buildroot spend much of their work selecting and packaging user-space components.
 
@@ -287,8 +303,8 @@ The following table shows the first major stages of the book and where each arti
 | 9-17 | **our bare-metal code** as a Layer 2 substitute | LED, DDR, and MMU. Your code performs the bootloader's early work. |
 | 18 | optional | bare-metal I²C/SPI/LCD |
 | 19-24 | Layer 2 | U-Boot from source, ported and understood |
-| 25-30 | Layer 3 | Linux kernel built from source, booted and traced |
-| 31-35 | Layer 4 | Root filesystem and user space, first by hand and then with Buildroot |
+| 25-30 | Layers 3 and 4 | Linux kernel and Chapter 29's first minimal userspace/initramfs |
+| 31-35 | Layer 4 | Expand the root filesystem and userspace, then automate with Buildroot |
 | 36-55 | Layer 3 | Device drivers and kernel subsystems |
 | Later parts | all | Debugging, product development, build systems, security, and advanced topics |
 
@@ -304,33 +320,47 @@ At the end of the route, someone still writes the GPIO register. Linux has chang
 
 Before setting up the host, try these questions in your own words. You do not need a running board for them. Use the answer checks afterward to find anything worth rereading:
 
-1. Why can't a user-space program write directly to a GPIO register?
+1. Why is casting the manual's physical GPIO address not sufficient in an ordinary Linux application?
 2. What does U-Boot do that the Boot ROM does not?
 3. Which principal file-I/O operations let `cat /etc/hostname` copy a file to stdout? Ignore loader and process-startup calls.
 4. Sketch a minimal Linux system whose PID 1 prints "hello" on the UART and stays alive or deliberately reboots. Why must it not just return from `main()`?
 5. How does a user-space NULL-pointer fault differ from a kernel-module fault? Why can the module fault not be promised harmless? Do not deliberately crash your host to investigate.
+6. Does `sudo` put the application's instructions into kernel mode? Where do they run after a syscall returns?
+7. Can two unrelated processes both use pointer value `0x00010000` or fd 3 and mean different things?
 
 ### Answer checks
 
 1. A physical register address is not automatically mapped into the process. The kernel must authorize a driver interface or mapping.
 2. U-Boot provides board initialization and loading facilities beyond the ROM's device/image contract: for example, loading Linux and passing its device tree and command line.
 3. Open the input, read bytes, write bytes to stdout, then close the input. Exact syscall names and startup calls depend on the binary and libc.
-4. Hardware, a suitable bootloader, kernel, and a root filesystem/initramfs containing PID 1 are enough for this demonstration. PID 1 must remain alive or request a deliberate shutdown/reboot; an ordinary exit causes a panic.
+4. Supply hardware, a suitable bootloader/kernel, and a root filesystem/initramfs containing PID 1. The kernel must support the board's UART, select the right console, and give PID 1 usable stdout. A static `/init` avoids needing a dynamic loader and shared libc in the minimal filesystem. PID 1 must remain alive or request a deliberate shutdown/reboot; an ordinary exit causes a panic. The board-specific setup comes later; silence alone does not prove PID 1 failed to run.
 5. A user fault is normally contained to that process. A kernel fault may produce an *oops* (a kernel fault report), terminate the current task, or cause a *panic* that stops the system, depending on context and policy. Corrupted kernel state can affect other work even when execution continues.
+6. No. Root is a user identity. The application resumes in user mode after the kernel returns its result or error.
+7. Yes. Page-table mappings give a virtual pointer its meaning, and the process's descriptor table gives the fd its meaning. Equal numbers do not establish equal objects.
 
 ## 2.11  Pitfalls
 
 - **Looking for an "embedded mode" in Linux.** We configure the kernel for the target and choose a suitable userspace: perhaps fewer daemons, a smaller libc, and a read-only root. There is no single switch that turns a desktop distribution into the system our board needs.
-- **Assuming the bootloader and the kernel cooperate after handoff.** They do not. The bootloader stops running at `bootz`. The kernel does not call back into U-Boot. A few data values from U-Boot may remain in memory, but U-Boot code is no longer in control.
+- **Treating `bootz` as proof of Linux entry.** A failed command can return to the U-Boot prompt. After a successful handoff, ordinary U-Boot code is no longer in control; Linux does not use it as a runtime service. Data such as the device tree can remain in memory.
 - **Believing `/proc/cpuinfo` always reflects physical hardware.** It reports what the kernel detected or was told through the device tree. A virtual machine such as QEMU may report virtual hardware instead.
 - **Trying to debug user-space problems with kernel tools and vice versa.** Each layer has its own toolset. First identify which layer contains the bug, then choose tools for that layer.
 
 ## 2.12  Going deeper
 
+### Names and filesystem objects, optional reference
+
+A filename is how we look something up. Two names can refer to the same object through hard links. An **inode** is the kernel's representation of that filesystem object, including its type, permissions, and owner. Directory entries connect names to inodes.
+
+Keep this separate from an open file. An open *file object* records state such as the current offset, and an fd refers to that open object. How an inode locates content depends on the filesystem; a procfs entry, for instance, need not correspond to blocks on a disk.
+
+An application does not need to ask whether a file is on ext4, FAT, or tmpfs before reading it. The **virtual filesystem**, or VFS, provides the common kernel interface above those filesystems, as well as procfs and devtmpfs. Each supplies operations the VFS can call. Character and block devices also connect to this framework.
+
+### Further reading
+
 - *The Design of the Unix Operating System*, Maurice Bach (1986), for historical background on Unix processes and filesystem design. Its implementation details are not current Linux behavior.
 - *Linux Kernel Development*, Robert Love (3rd ed., 2010), for a high-level kernel tour. Compare implementation details with the selected Linux source version.
-- The "Anatomy of a Program" series on LWN.net.
+- [execve(2)](https://man7.org/linux/man-pages/man2/execve.2.html), for how an executable file becomes the program image of a running process.
 - Start with `man 2 intro`, `man 2 open`, `man 2 read`, `man 2 mmap`, and `man 7 pthreads`. See [mmap(2)](https://man7.org/linux/man-pages/man2/mmap.2.html) and [pthreads(7)](https://man7.org/linux/man-pages/man7/pthreads.7.html) for the mapping and shared-resource distinctions above.
 - The Linux source tree's `Documentation/admin-guide/` and `Documentation/process/`.
 
-Before any of those programs can run on the board, they must be built somewhere else. Open a terminal on the host PC, and another practical question appears: when you type a compiler name, which compiler does it actually find? Chapter 3 makes that choice visible.
+For the first labs, we build the board's programs on the host with a cross-compiler. Linux can also run a native compiler on a sufficiently equipped target, but that is not our initial route. Open a host terminal: when you type a compiler name, which compiler does it actually find? Chapter 3 makes that choice visible.

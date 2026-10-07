@@ -228,6 +228,18 @@ def include_first_chapter(app, pagename, templatename, context, doctree):
     context["furo_navigation_tree"] = str(tree)
 
 
+def prepare_sketch_images(app, pagename, templatename, context, doctree):
+    body = context.get("body", "")
+    if "concept-sketch" not in body:
+        return
+    fragment = BeautifulSoup(body, "html.parser")
+    for sketch in fragment.select("figure.concept-sketch img"):
+        sketch["loading"] = "lazy"
+        sketch["decoding"] = "async"
+    context["body"] = str(fragment)
+
+
 def setup(app):
     app.add_lexer("asm", ArmGasLexer)
     app.connect("html-page-context", include_first_chapter, priority=600)
+    app.connect("html-page-context", prepare_sketch_images, priority=610)
