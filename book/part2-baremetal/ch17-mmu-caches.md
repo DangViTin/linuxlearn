@@ -110,6 +110,7 @@ void mmu_build_table(void)
     l1_table[0x00A] = 0x00A00000u | ATTR_DEVICE; /* Cortex-A7/GIC */
     l1_table[0x020] = 0x02000000u | ATTR_DEVICE; /* AIPS-1 */
     l1_table[0x021] = 0x02100000u | ATTR_DEVICE; /* AIPS-2, MMDC */
+    l1_table[0x022] = 0x02200000u | ATTR_DEVICE; /* AIPS-3, IOMUXC_SNVS */
 
     /* Opt-in only: one section per qualified MiB, beginning at 0x80000000. */
 #if DDR_MIB > 0
