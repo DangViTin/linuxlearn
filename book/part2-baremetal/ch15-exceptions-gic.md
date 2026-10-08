@@ -8,236 +8,238 @@ status: draft
 
 # Chapter 15: Exceptions and the GIC
 
-> **What:** install a real ARMv7-A exception vector table, configure the GIC v2 distributor and CPU interface, route the UART1 interrupt to the core, and write an ISR that echoes received characters.
-> **GIC:** ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
->
-> **Why:** every kernel, every RTOS, and most useful bare-metal programs are interrupt-driven. Polling works for hello-world. It falls apart the moment more than one peripheral needs attention.
->
-> **Focus:** the two-stage IRQ flow: the GIC routes the IRQ to the CPU, the CPU vectors to your handler, and the handler reads the GIC for the IRQ ID, dispatches, and writes EOI. Internalize this diagram and every A-profile system feels familiar.
-> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+A received character can be sitting in the UART FIFO while the CPU sleeps.
+To wake the program, three things must agree: the UART must request an
+interrupt, the GIC must route it, and the CPU must have a usable vector
+and stack. We will follow one character through that path.
 
+This is a single-core, non-nested, **Secure SVC/IRQ, Group-0 IRQ** teaching
+configuration for the i.MX6ULL GIC-400 (GICv2). SVC mode alone does not prove
+Secure state. Confirm the boot/handoff policy before using these writes;
+they are not a drop-in Non-secure, Hyp, Monitor, RTOS, or Linux initializer.
+IRQ routing must enter IRQ mode rather than Monitor/Hyp. The program owns
+the controller exclusively and begins without active IRQs.
 
 ## 15.1  What is different from Cortex-M
 
-In Cortex-M:
+On Cortex-M, exception entry stacks core registers on the interrupted
+context's stack; the handler itself uses MSP. The vector slots contain
+handler addresses (apart from the initial SP), and EXC_RETURN tells hardware
+how to return.
 
-- The NVIC is inside the CPU.
-- Hardware auto-stacks R0-R3, R12, LR, PC, xPSR on the active stack.
-- The vector table is an array of *function pointers*. The CPU loads PC directly from the slot.
-- `BX LR` with the special `EXC_RETURN` value tells hardware to unstack.
+On Cortex-A7, the hardware saves CPSR into SPSR_irq, banks IRQ SP/LR,
+and chooses a vector instruction. It does **not** save the shared general
+registers. Software must preserve them and perform an exception return.
 
-In Cortex-A7:
-
-- The GIC is outside the CPU (memory-mapped block).
-- **No auto-stacking.** Your handler must save and restore registers itself.
-- The vector table is an array of *branch instructions*, not function pointers.
-- Return is an explicit `rfeia sp!` or equivalent.
-
-The trade-off: A-profile gives you more flexibility (you can split handlers across modes, share register banks, etc.) at the cost of writing more entry and exit code. Linux's `arch/arm/kernel/entry-armv.S` is several hundred lines of the same pattern. Correct, but intimidating to read the first time.
-
-We will write a smaller version. The pattern is identical.
+A C ISR is an ordinary function behind our assembly wrapper. The compiler
+does not know that its caller represents an interrupted program. We must
+provide a valid AAPCS stack and preserve anything the handler can clobber.
 
 ## 15.2  The exception vector table
 
-ARMv7-A has eight exception entries, each 4 bytes (one instruction). They must be 32-byte aligned, and the CPU jumps to the appropriate offset based on what happened:
+```{figure} ../illustrations/part2/07-irq-save-and-return.png
+:alt: The interrupted program has r0 equal to five. Software saves that value before the handler uses r0 for nine, then restores five before returning.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-part2-irq-context
 
-| Offset | Exception | Triggered by |
-|--------|-----------|--------------|
-| `+0x00` | Reset | POR, soft reset |
-| `+0x04` | Undefined instruction | UND opcode |
-| `+0x08` | SVC (Supervisor Call) | `svc` instruction (syscall on Linux) |
-| `+0x0C` | Prefetch abort | Instruction-fetch fault |
-| `+0x10` | Data abort | Load/store fault |
-| `+0x14` | Reserved | (Was an "address exception" in ARMv4, unused now) |
-| `+0x18` | IRQ | External IRQ asserted by GIC |
-| `+0x1C` | FIQ | External FIQ asserted by GIC |
-
-Each entry is one instruction. Universally that instruction is `b <label>` or `ldr pc, =<label>` (the latter for far branches).
-
-The table can live at one of two locations:
-
-- **Low vectors** at virtual `0x00000000`, historical default. Conflicts with our OCRAM/DRAM layout.
-- **High vectors** at virtual `0xFFFF0000`, set by SCTLR.V=1.
-- **VBAR** (Vector Base Address Register), modern: set VBAR to *any* aligned address. We use this.
-
-VBAR is a CP15 register:
-
-```asm
-ldr r0, =_vectors
-mcr p15, 0, r0, c12, c0, 0  @ VBAR <- r0
+Returning to the right instruction is not enough if its registers have changed. The saved pouch represents our assembly wrapper's work. Cortex-A7 does not automatically stack these shared registers on IRQ entry.
 ```
 
-After this write (plus an `isb`), exceptions vector to our table wherever we put it.
+For our ARM-state exception policy, the vector entries are eight
+instructions, four bytes each, with a 32-byte-aligned base.
+
+| Offset | Exception | Cause |
+|--------|-----------|-------|
+| `+0x00` | Reset | CPU reset vector; ROM normally owns actual reset |
+| `+0x04` | Undefined instruction | Unsupported instruction |
+| `+0x08` | SVC | `svc` instruction |
+| `+0x0C` | Prefetch abort | Instruction-fetch fault |
+| `+0x10` | Data abort | Data-access fault |
+| `+0x14` | Reserved | Unused vector slot |
+| `+0x18` | IRQ | Routed interrupt request |
+| `+0x1C` | FIQ | Fast interrupt request |
+
+A branch or PC-relative load of a handler address is common. This is not
+the Cortex-M function-pointer table.
+
+With SCTLR.V=0, VBAR supplies the normal vector base; historical low
+vectors correspond to VBAR=0. SCTLR.V=1 selects high vectors at
+`0xFFFF0000` instead. The security state selects the corresponding banked
+VBAR. Hyp and Monitor have separate vector-base mechanisms.
+
+Setting VBAR alone is therefore insufficient. Section 15.4 selects
+ARM-state, little-endian exceptions and clears high-vector selection.
+With the MMU off, our VBAR value is a physical address.
 
 ## 15.3  The new vector table
 
-`vectors.S`:
+`vectors.S` is a complete assembly module. Its first instruction remains
+`b _start`, compatible with Chapter 10's `ENTRY(_vectors)` and IVT entry
+at `0x00908000`. Hardware reset still enters ROM; this first slot also
+serves our image's software entry.
 
 ```asm
     .syntax unified
-    .cpu    cortex-a7
+    .cpu cortex-a7
+    .arm
     .section .vectors, "ax"
-    .align  5                       @ 32-byte aligned
+    .balign 32
     .global _vectors
-
+    .type _vectors, %function
 _vectors:
-    ldr     pc, =reset_handler       @ +0x00 Reset
-    ldr     pc, =undef_handler       @ +0x04 Undefined
-    ldr     pc, =svc_handler         @ +0x08 SVC
-    ldr     pc, =prefetch_handler    @ +0x0C Prefetch abort
-    ldr     pc, =data_handler        @ +0x10 Data abort
-    ldr     pc, =unused_handler      @ +0x14 (reserved)
-    ldr     pc, =irq_entry           @ +0x18 IRQ
-    ldr     pc, =fiq_handler         @ +0x1C FIQ
+    b       _start
+    ldr     pc, =undef_handler
+    ldr     pc, =svc_handler
+    ldr     pc, =prefetch_handler
+    ldr     pc, =data_handler
+    ldr     pc, =unused_handler
+    ldr     pc, =irq_entry
+    ldr     pc, =fiq_handler
+    .size _vectors, . - _vectors
+    .ltorg                          @ handler literals follow all eight slots
 
     .text
-    .global reset_handler
-reset_handler:
-    b       _start                   @ defined in startup.S
-
 undef_handler:
 prefetch_handler:
 data_handler:
 unused_handler:
 svc_handler:
 fiq_handler:
-    b       .                        @ stop here: branch to self forever
+    b       .                       @ fail-stop; no C call or stack required
 
     .global irq_entry
+    .type irq_entry, %function
 irq_entry:
-    /*
-     * On entry to IRQ mode:
-     *   LR_irq    = PC of interrupted instruction + 4
-     *   SPSR_irq  = saved CPSR
-     *   CPSR.M    = IRQ (0x12), CPSR.I = 1 (IRQs masked)
-     *   r0..r12   = whatever was running
-     */
-
-    sub     lr, lr, #4              @ LR_irq = PC_interrupted + 4 on IRQ entry.
-                                    @ Subtract 4 so RFE resumes at the interrupted
-                                    @ instruction.
-
-    /* Save the interrupted state to the IRQ-mode stack as a "return frame". */
-    srsdb   sp!, #0x12              @ store LR_irq and SPSR_irq to IRQ stack
-
-    /* Switch to SVC mode for the body of the handler (still with IRQs masked).
-       This way we use a more spacious stack and can call C functions safely. */
-    cpsid   i, #0x13                @ mode=SVC, IRQ masked
-
-    push    {r0-r3, r12, lr}        @ save caller-saved regs
-
-    bl      c_irq_dispatch          @ <-- the C interrupt handler
-
-    pop     {r0-r3, r12, lr}
-
-    /* Switch back to IRQ mode and return via RFE */
-    cpsid   i, #0x12
-    rfeia   sp!                     @ pop {LR_irq, SPSR_irq} -> PC, CPSR
+    sub     lr, lr, #4              @ architectural IRQ resume address
+    srsdb   sp!, #0x12              @ {resume PC, SPSR_irq} on IRQ stack
+    push    {r0-r12, lr}            @ 56 bytes; total frame = 64 bytes
+    bl      c_irq_dispatch          @ stays in IRQ mode, IRQs still masked
+    pop     {r0-r12, lr}
+    rfeia   sp!                     @ restore PC and CPSR from return frame
+    .size irq_entry, . - irq_entry
 ```
 
-What is happening:
+The return frame is eight bytes, followed by 56 bytes of registers.
+Starting with an aligned IRQ SP, the C call is eight-byte aligned even if
+the interrupted SVC function's SP was only four-byte aligned at that point.
+The SVC stack and banked SVC LR are never touched.
 
-- **The `ldr pc, =sym` form** rather than `b sym` is used because `b` has a limited branch range, and our handler labels may be far away in flash or DRAM. This form loads the full handler address into `pc`.
-- **`sub lr, lr, #4`** before `srsdb`. The CPU put `PC_interrupted + 4` in `LR_irq`. ARM defines a fixed return offset per exception: 4 for IRQ, 4 for prefetch abort, 8 for data abort, 0 for SVC. For IRQ we subtract 4 to land back on the interrupted instruction.
-- **`srsdb sp!, #0x12`** stores `{LR, SPSR}` to the IRQ-mode stack pointer. Mode 0x12 = IRQ. The `db` (decrement-before) and `!` (writeback) make it a stack push.
-- **`cpsid i, #0x13`** switches to SVC mode and masks IRQs (which were already masked, but explicit). After this, we are on the SVC-mode stack.
-- **`push {r0-r3, r12, lr}`** saves the caller-saved registers AAPCS expects us to preserve across the C function call.
-- **`bl c_irq_dispatch`** branches to the C interrupt dispatcher and stores the return address in `lr`. When the C function returns, `sp` is back where it was.
-- **`cpsid i, #0x12`** moves back to IRQ mode (so `rfeia sp!` pops from the IRQ stack, where we pushed in `srsdb`).
-- **`rfeia sp!`** pops two words: PC and CPSR. The CPU resumes with that PC and that mode/CPSR. Masking of IRQs is automatically restored from the SPSR we saved.
+For an IRQ, `LR_irq - 4` is the architectural **resume address**. Do not
+derive it from the PC value visible in a debugger or describe every IRQ as
+retrying an instruction. RFE restores both execution address and saved CPSR,
+including flags, mode, ARM/Thumb state, and the old interrupt mask.
+
+This wrapper saves core registers only. Compile **all reachable ISR code**
+with `-mcpu=cortex-a7 -marm -mfloat-abi=soft -mgeneral-regs-only`; do not call
+FP/NEON routines or libraries with a mismatched ABI. IRQ nesting is disabled,
+FIQs remain masked, and fault handlers halt. There is no scheduler/context
+switch or general exception recovery here.
 
 ## 15.4  Setting up VBAR and a separate IRQ stack
 
-In `startup.S`, after the existing prologue, add:
+Integrate this **startup fragment** before any IRQ unmask, after establishing
+Chapter 10's MMU/data-cache policy. Enter it in privileged Secure SVC,
+ARM state; the existing SVC stack must already be initialized.
 
 ```asm
-    /* Install vector table */
-    ldr     r0, =_vectors
-    mcr     p15, 0, r0, c12, c0, 0   @ VBAR
+    cpsid   if
+    cps     #0x12
+    ldr     sp, =_irq_stack_top
+    cps     #0x13
+
+    mrc     p15, 0, r0, c1, c0, 0
+    bic     r0, r0, #(1 << 13)      @ SCTLR.V=0: use VBAR
+    bic     r0, r0, #(1 << 30)      @ SCTLR.TE=0: ARM-state exception entry
+    bic     r0, r0, #(1 << 25)      @ SCTLR.EE=0: little-endian exceptions
+    mcr     p15, 0, r0, c1, c0, 0
     isb
 
-    /* IRQ mode needs its own stack.  Switch to IRQ mode, set sp_irq, return. */
-    cps     #0x12                    @ mode = IRQ (no mask change)
-    ldr     sp, =_irq_stack_top
-    cps     #0x13                    @ back to SVC
+    dsb     sy
+    mov     r0, #0
+    mcr     p15, 0, r0, c7, c5, 0  @ ROM may leave I-cache enabled
+    mcr     p15, 0, r0, c7, c5, 6  @ synchronize branch predictor state
+    dsb     sy
+    ldr     r0, =_vectors
+    mcr     p15, 0, r0, c12, c0, 0
+    isb
 ```
 
-In the linker script, reserve an IRQ stack:
+This does not disable I-cache or change the other SCTLR controls.
+If vectors were written through a data cache, clean their bytes to the
+required point before instruction invalidation. Our integration policy
+has MMU/D/L2 disabled; do not silently apply it to a different state.
+
+Inside the existing linker `SECTIONS`, retain the first-position
+`KEEP(*(.vectors))`. Add this **linker fragment** after BSS and outside the
+existing SVC stack reservation:
 
 ```text
-SECTIONS
-{
-    ...
-    .irq_stack (NOLOAD) : ALIGN(8) {
-        . += 4096;                   /* 4 KB IRQ stack */
-        _irq_stack_top = .;
-    } > OCRAM
-}
+.irq_stack (NOLOAD) : ALIGN(8) {
+    _irq_stack_bottom = .;
+    . += 4096;
+    _irq_stack_top = .;
+} > OCRAM
+ASSERT((_irq_stack_top & 7) == 0, "IRQ stack must be 8-byte aligned")
+ASSERT(_irq_stack_top <= 0x00920000, "IRQ stack exceeds owned OCRAM")
+ASSERT(_irq_stack_top <= _stack_limit, "IRQ stack overlaps SVC stack")
 ```
 
-4 KB is generous. We will not stack deeply in an ISR.
+Keep the original load-end assertion at `0x00918000`, the SVC stack's
+4 KiB reservation/assertions, and non-overlap checks for **both** stacks.
+NOLOAD does not allocate more physical RAM. Use the map to verify all
+reservations; a 4 KiB IRQ stack is a budget, not a measured worst case.
 
 ## 15.5  The GIC v2 distributor + CPU interface
 
-GIC v2 has two memory-mapped regions:
+GIC-400 exposes two regions:
 
-- **Distributor**: `0x00A01000`, 4 KB. Configures priorities, enables, sets targets, sees all interrupts in the system.
-- **CPU Interface**: `0x00A02000`, 4 KB. Acknowledges interrupts, ends interrupts, masks based on priority. Per-CPU on multi-core. Here we have one core.
-
-Registers we will use (offsets within their region):
+- **Distributor**, `0x00A01000`: enable, grouping, target, priority,
+  trigger configuration, and pending/active state.
+- **CPU interface**, `0x00A02000`: priority filtering, acknowledge, EOI.
 
 ### Distributor (`GICD_*`)
 
 | Register | Offset | Purpose |
 |----------|--------|---------|
-| `GICD_CTLR` | `+0x000` | Enable distributor (bit 0) |
-| `GICD_TYPER` | `+0x004` | Read: number of supported IRQs |
-| `GICD_ISENABLERn` | `+0x100 + 4n` | Enable bit per IRQ (bit `(irq % 32)` in word `irq/32`) |
-| `GICD_ICENABLERn` | `+0x180 + 4n` | Disable (write-1-to-clear) |
-| `GICD_ISPENDRn` | `+0x200 + 4n` | Set pending |
-| `GICD_ICPENDRn` | `+0x280 + 4n` | Clear pending |
-| `GICD_IPRIORITYRn` | `+0x400 + n` | Priority, 8 bits each, 256 bytes for 256 IRQs |
-| `GICD_ITARGETSRn` | `+0x800 + n` | Target CPU mask. Per IRQ for SPI. Fixed for PPI and SGI. |
-| `GICD_ICFGRn` | `+0xC00 + 4n` | Trigger type (edge/level), 2 bits per IRQ |
+| CTLR | `+0x000` | Group enable controls; view depends on security |
+| TYPER | `+0x004` | Implemented interrupt register range |
+| IGROUPRn | `+0x080 + 4n` | Secure grouping: 0 = Group 0 |
+| ISENABLERn | `+0x100 + 4n` | Write-one enable |
+| ICENABLERn | `+0x180 + 4n` | Write-one disable |
+| ISPENDRn / ICPENDRn | `+0x200 / +0x280 + 4n` | Pending state / write-one clear |
+| IPRIORITYR byte | `+0x400 + INTID` | Priority byte per interrupt |
+| ITARGETSR byte | `+0x800 + INTID` | CPU target mask for SPIs |
+| ICFGRn | `+0xC00 + 4n` | Two bits per INTID; bit 1 selects edge vs level |
 
 ### CPU Interface (`GICC_*`)
 
 | Register | Offset | Purpose |
 |----------|--------|---------|
-| `GICC_CTLR` | `+0x000` | Enable CPU interface |
-| `GICC_PMR` | `+0x004` | Priority mask. Must allow the IRQ priority. |
-| `GICC_BPR` | `+0x008` | Binary point (we set 0 = full priority resolution) |
-| `GICC_IAR` | `+0x00C` | Read: pending IRQ ID + ack |
-| `GICC_EOIR` | `+0x010` | Write: end-of-interrupt |
-| `GICC_RPR` | `+0x014` | Running priority |
-| `GICC_HPPIR` | `+0x018` | Highest priority pending |
+| CTLR | `+0x000` | Interface/group enable, IRQ/FIQ and EOI policy |
+| PMR | `+0x004` | Only priorities numerically **less than** PMR pass |
+| BPR | `+0x008` | Group/subpriority split; implemented resolution is limited |
+| IAR | `+0x00C` | Read acknowledges one interrupt, returns a token |
+| EOIR | `+0x010` | Write matching acknowledge token |
+| RPR / HPPIR | `+0x014 / +0x018` | Running/highest-pending priority |
 
-A typical IRQ flow:
+The selected policy sets Group 0, enables it in both blocks, leaves FIQEn
+clear so Group 0 arrives as IRQ, and leaves split EOI mode off. Another
+security policy needs different access/group handling, not just `cpsie i`.
 
-```
-peripheral asserts SPI line
-   ↓
-GIC distributor sees it, latches in ISPENDR
-   ↓
-distributor compares priority against running priority on each CPU
-   ↓
-selects highest-priority CPU, asserts IRQ signal to that core
-   ↓
-core takes IRQ exception → our irq_entry
-   ↓
-our handler reads GICC_IAR  → gets the IRQ ID (e.g., 58 for UART1)
-   ↓
-dispatch on ID → call peripheral's ISR
-   ↓
-write IRQ ID to GICC_EOIR (signal "I'm done")
-   ↓
-return from exception → resume interrupted code
-```
-
-The pattern is identical in every GIC-based system, including the kernel.
+The path is: peripheral condition -> pending SPI -> priority/target filter
+-> CPU IRQ exception -> IAR read -> peripheral service -> **source deassertion**
+-> EOI -> exception return. Clearing GIC pending alone does not clear a
+level-sensitive peripheral condition.
 
 ## 15.6  GIC bring-up code
+
+These are complete modules for the policy above, but not a standalone boot
+image. Add `gic.o` and `vectors.o` to Chapter 10's project, replace its
+placeholder vector module rather than linking two `_vectors` definitions,
+and integrate section 15.4. If the placeholder is inside `startup.S`, remove
+only its old `.vectors` block, retaining `_start` and runtime initialization.
+BSS clearing initializes the handler table.
 
 `gic.h`:
 
@@ -245,19 +247,20 @@ The pattern is identical in every GIC-based system, including the kernel.
 #ifndef GIC_H
 #define GIC_H
 #include <stdint.h>
-
 typedef void (*irq_handler_t)(void);
-
 void gic_init(void);
-void gic_register(uint32_t irq_id, irq_handler_t fn);
-void gic_enable_irq(uint32_t irq_id);
-void gic_disable_irq(uint32_t irq_id);
-
-void c_irq_dispatch(void);  /* called from irq_entry assembly */
-
-static inline void irq_enable(void)  { asm volatile ("cpsie i" ::: "memory"); }
-static inline void irq_disable(void) { asm volatile ("cpsid i" ::: "memory"); }
-
+void gic_register(uint32_t irq, irq_handler_t fn);
+void gic_enable_irq(uint32_t irq);
+void gic_disable_irq(uint32_t irq);
+void c_irq_dispatch(void);
+static inline void irq_enable(void)
+{
+    __asm__ volatile ("dsb sy\n\tcpsie i\n\tisb" ::: "memory");
+}
+static inline void irq_disable(void)
+{
+    __asm__ volatile ("cpsid i" ::: "memory");
+}
 #endif
 ```
 
@@ -265,192 +268,225 @@ static inline void irq_disable(void) { asm volatile ("cpsid i" ::: "memory"); }
 
 ```c
 #include "gic.h"
-
-#define REG(addr) (*(volatile uint32_t *)(addr))
-#define GICD_BASE   0x00A01000
-#define GICC_BASE   0x00A02000
-
-#define GICD_CTLR        (GICD_BASE + 0x000)
-#define GICD_TYPER       (GICD_BASE + 0x004)
-#define GICD_ISENABLER(n) (GICD_BASE + 0x100 + 4*(n))
-#define GICD_ICENABLER(n) (GICD_BASE + 0x180 + 4*(n))
-#define GICD_IPRIORITYR(n) (GICD_BASE + 0x400 + (n))
-#define GICD_ITARGETSR(n)  (GICD_BASE + 0x800 + (n))
-#define GICD_ICFGR(n)     (GICD_BASE + 0xC00 + 4*(n))
-
-#define GICC_CTLR    (GICC_BASE + 0x000)
-#define GICC_PMR     (GICC_BASE + 0x004)
-#define GICC_BPR     (GICC_BASE + 0x008)
-#define GICC_IAR     (GICC_BASE + 0x00C)
-#define GICC_EOIR    (GICC_BASE + 0x010)
-
-#define MAX_IRQ      192          /* GIC reports 32 + 32×N total */
-
+#define REG(a) (*(volatile uint32_t *)(uintptr_t)(a))
+#define BYTE(a) (*(volatile uint8_t *)(uintptr_t)(a))
+#define GICD 0x00A01000u
+#define GICC 0x00A02000u
+#define MAX_IRQ 192u
 static irq_handler_t handlers[MAX_IRQ];
+static uint32_t num_lines;
 
 void gic_init(void)
 {
-    /* Read how many interrupts the distributor supports. */
-    uint32_t typer = REG(GICD_TYPER);
-    uint32_t num_lines = ((typer & 0x1F) + 1) * 32;
+    irq_disable();                     /* FIQ must already be masked */
+    REG(GICC + 0x000) = 0;
+    REG(GICD + 0x000) = 0;
+    __asm__ volatile ("dsb sy" ::: "memory");
+    num_lines = ((REG(GICD + 0x004) & 31u) + 1u) * 32u;
     if (num_lines > MAX_IRQ) num_lines = MAX_IRQ;
-
-    /* Disable all interrupts at the distributor. */
-    for (uint32_t i = 0; i < num_lines; i += 32) {
-        REG(GICD_ICENABLER(i/32)) = 0xFFFFFFFFu;
+    for (uint32_t i = 0; i < num_lines; i++) handlers[i] = 0;
+    /* Disable PPIs; SGIs are not used by this lab. */
+    REG(GICD + 0x180) = 0xFFFF0000u;
+    REG(GICD + 0x280) = 0xFFFF0000u;
+    REG(GICD + 0x080) = 0;              /* Secure Group 0 */
+    for (uint32_t i = 32; i < num_lines; i += 32) {
+        REG(GICD + 0x180 + 4u * (i / 32u)) = 0xFFFFFFFFu;
+        REG(GICD + 0x280 + 4u * (i / 32u)) = 0xFFFFFFFFu;
+        REG(GICD + 0x080 + 4u * (i / 32u)) = 0;
     }
-
-    /* Default priority = 0xA0 (medium-low), targets = CPU0 for all SPIs. */
     for (uint32_t i = 32; i < num_lines; i++) {
-        ((volatile uint8_t *)(GICD_BASE + 0x400))[i] = 0xA0;
-        ((volatile uint8_t *)(GICD_BASE + 0x800))[i] = 0x01; /* CPU0 */
+        BYTE(GICD + 0x400 + i) = 0xA0;
+        BYTE(GICD + 0x800 + i) = 1;     /* CPU0 */
     }
-
-    /* Enable distributor. */
-    REG(GICD_CTLR) = 1;
-
-    /* CPU interface: priority mask wide open, no binary point. */
-    REG(GICC_PMR)  = 0xFF;
-    REG(GICC_BPR)  = 0x00;
-    REG(GICC_CTLR) = 1;
+    /* All SPIs disabled: level-sensitive defaults for our UART/EPIT. */
+    for (uint32_t i = 32; i < num_lines; i += 16)
+        REG(GICD + 0xC00 + 4u * (i / 16u)) = 0;
+    REG(GICC + 0x004) = 0xFF;
+    REG(GICC + 0x008) = 0;
+    __asm__ volatile ("dsb sy" ::: "memory");
+    REG(GICD + 0x000) = 1;             /* EnableGrp0 */
+    REG(GICC + 0x000) = 1;             /* Group0 IRQ, combined EOI */
+    __asm__ volatile ("dsb sy\n\tisb" ::: "memory");
 }
 
 void gic_register(uint32_t irq, irq_handler_t fn)
 {
-    if (irq < MAX_IRQ) handlers[irq] = fn;
+    if (irq >= 32 && irq < num_lines) handlers[irq] = fn;
 }
 
 void gic_enable_irq(uint32_t irq)
 {
-    REG(GICD_ISENABLER(irq/32)) = 1u << (irq & 0x1F);
+    if (irq >= 32 && irq < num_lines) {
+        __asm__ volatile ("dsb sy" ::: "memory");
+        REG(GICD + 0x100 + 4u * (irq / 32u)) = 1u << (irq & 31u);
+    }
 }
 
 void gic_disable_irq(uint32_t irq)
 {
-    REG(GICD_ICENABLER(irq/32)) = 1u << (irq & 0x1F);
+    if (irq >= 32 && irq < num_lines)
+        REG(GICD + 0x180 + 4u * (irq / 32u)) = 1u << (irq & 31u);
 }
 
 void c_irq_dispatch(void)
 {
-    uint32_t iar = REG(GICC_IAR);
-    uint32_t irq = iar & 0x3FF;
-    if (irq == 1023) return;   /* spurious: IAR returns 1023 when no IRQ is active */
-    if (irq < MAX_IRQ && handlers[irq]) handlers[irq]();
-    REG(GICC_EOIR) = iar;       /* end of interrupt */
+    uint32_t iar = REG(GICC + 0x00C);
+    uint32_t irq = iar & 0x3FFu;
+    if (irq >= 1020) return;            /* special IDs: no normal EOI */
+    if (irq >= 32 && irq < num_lines && handlers[irq])
+        handlers[irq]();
+    else
+        gic_disable_irq(irq);           /* quarantine an unhandled SPI */
+    __asm__ volatile ("dsb sy" ::: "memory"); /* peripheral clear before EOI */
+    REG(GICC + 0x010) = iar;            /* preserve complete IAR token */
+    __asm__ volatile ("dsb sy" ::: "memory");
 }
 ```
 
-A note on the `GICD_IPRIORITYR` writes: each IRQ has *one byte* of priority, not one word. The array `0x400..0x4FF` is 256 bytes covering IRQ 0..255. We index by byte, which is why the cast to `volatile uint8_t *` is there.
+Register/unregister and enable/disable sources only with CPU IRQs masked
+in this simple API. It supports SPIs, not SGI messaging or generic PPIs.
+It does not reset inherited active interrupts; use a clean, approved boot
+state rather than applying it under an existing interrupt owner.
+
+Priority/target accesses are bytes. The hardware determines the number
+of implemented priorities and INTIDs; our handler table caps the supported
+range. PMR=0xFF admits the chosen 0xA0 priority, not literally every possible
+priority value.
 
 ## 15.7  Hooking up the UART1 IRQ
 
-UART1's IRQ is shown as **IRQ 26** in the i.MX6ULL RM Table 3-1 (interrupt assignments). That number is the *SPI (Shared Peripheral Interrupt) offset*. The GIC's own ID space numbers SGIs 0-15, PPIs 16-31, and SPIs from 32 upward, so the GIC **INTID** for UART1 is `32 + 26 = 58`. We pass `58` to `gic_register()` and `gic_enable_irq()`. Different SoC docs use one convention or the other. Once you internalize "RM number + 32 = GIC INTID for SPIs," the rest is bookkeeping.
+RM Table 3-1 lists UART1 as **SPI offset 26**, so its GIC INTID is
+`32 + 26 = 58`. Add 32 only to SPI offsets, not to an already absolute
+INTID or a PPI number.
 
-Modify `uart_init` (Chapter 12) to enable the RX-ready interrupt:
-
-```c
-void uart_irq_enable(void)
-{
-    REG(UART_UCR1) |= (1u << 9);   /* RRDYEN: receive ready IRQ enable */
-}
-```
-
-Write a UART ISR:
+The following is a **fragment inside Chapter 12's UART implementation**,
+where its private register definitions are visible. Export the install
+function in `uart.h`. Preserve the 80 MHz UART root prerequisite,
+`UCR4=0` polling baseline, and exact 115200 baud settings; do not globally
+change unrelated UART control bits.
 
 ```c
-#include "uart.h"
 #include "gic.h"
-
-static volatile int rx_count;
+static volatile uint32_t rx_count;
 
 static void uart1_isr(void)
 {
-    while (REG(UART_USR2) & USR2_RDR) {
-        int c = REG(UART_URXD) & 0xFF;
-        uart_putc(c);              /* echo */
+    while (REG(UART_USR2) & (1u << 0)) { /* RDR: data available */
+        uint32_t rx = REG(UART_URXD);
+        uart_putc((int)(rx & 0xFFu));    /* deliberately polling echo */
         rx_count++;
     }
 }
 
 void uart1_install_isr(void)
 {
+    /* CPU IRQs masked; uart_init() and gic_init() already completed. */
+    REG(UART_UCR1) &= ~(1u << 9);       /* RRDYEN off during setup */
+    REG(UART_UFCR) = (REG(UART_UFCR) & ~0x3Fu) | 1u; /* RXTL=1 */
     gic_register(58, uart1_isr);
     gic_enable_irq(58);
-    uart_irq_enable();
+    REG(UART_UCR1) |= 1u << 9;          /* RRDYEN */
 }
 ```
 
-And in `main()`:
+RX-ready depends on **UFCR.RXTL**, not merely RDR. RXTL=1 makes one received
+byte enough to trigger. Reading URXD drains the FIFO and removes the level
+condition; do not write a fictitious W1C receive-ready bit. A production
+receiver must inspect URXD error flags and handle overruns; this echo
+drops that information deliberately.
+
+**Main-body fragment** after vectors/stacks and UART are ready:
 
 ```c
-int main(void)
-{
-    /* ... clocks, ddr, etc. as before ... */
-    gic_init();
-    uart1_install_isr();
-    irq_enable();   /* unmask CPSR.I */
-
-    printf("Interrupt-driven echo.  Type to test.\r\n");
-    for (;;) {
-        asm volatile ("wfi");      /* sleep until interrupt */
-    }
-}
+gic_init();
+printf("Interrupt-driven echo\r\n"); /* finish foreground TX first */
+uart1_install_isr();
+irq_enable();
+for (;;) __asm__ volatile ("wfi" ::: "memory");
 ```
 
-`wfi` (Wait For Interrupt) puts the core to sleep until an interrupt fires. After each ISR returns, we resume here, immediately re-enter `wfi`. Power-efficient idle.
+WFI is a wait hint; an interrupt or another permitted wake condition can
+complete it. The loop has no foreground work, so an interrupt immediately
+before WFI does not lose queued main-thread work. A queue-based application
+needs a proper check-and-sleep protocol.
 
-The echo is now driven entirely by the UART1 ISR. The main thread only sleeps.
+Polling TX inside the ISR is acceptable only for this bounded-rate demo.
+IRQs remain masked during echo, so it delays every other IRQ. Do not share
+an unprotected printf/TX stream with foreground code after enabling it.
 
 ## 15.8  What happens when you type a character
 
-Pin-level: dongle TX pulls UART1_RX_DATA from idle high to start bit.
+1. UART1 shifts in the byte. The FIFO reaches RXTL=1 and RRDY is asserted.
+2. RRDYEN enables its level-sensitive interrupt request.
+3. GIC sees SPI 26 / INTID 58, enabled and targeted to CPU0.
+4. Priority 0xA0 passes PMR=0xFF and the running-priority/group filters.
+5. CPU saves CPSR to SPSR_irq, selects IRQ SP/LR, and enters VBAR+0x18.
+6. The vector load reaches irq_entry. It saves a 64-byte core/return frame
+   on the IRQ stack and calls the dispatcher without enabling nesting.
+7. IAR acknowledges INTID 58. The dispatcher calls the UART ISR.
+8. The ISR drains URXD and echoes; draining removes the receive-ready source.
+9. The dispatcher orders device writes before writing the full IAR token
+   to EOIR.
+10. The wrapper restores registers; RFE restores the resume PC and CPSR.
 
-1. UART1 receiver shifts in 8 bits, raises `USR2.RDR`.
-2. Because we set `UCR1.RRDYEN`, the UART asserts its interrupt line.
-3. GIC distributor: IRQ 58 becomes pending.
-4. Distributor: IRQ 58's priority (0xA0) ≤ CPU's running priority mask (0xFF), so it asserts IRQ to CPU.
-5. CPU takes IRQ exception:
-   - CPSR ↦ SPSR_irq
-   - CPSR.M ↦ IRQ, CPSR.I ↦ 1
-   - SP and LR banked to IRQ-mode
-   - PC ↦ VBAR + 0x18 ↦ our table's IRQ slot ↦ `irq_entry`
-6. `irq_entry` runs: subtracts 4 from LR, srsdb's the return frame, switches to SVC mode, pushes scratch regs, calls `c_irq_dispatch`.
-7. `c_irq_dispatch` reads `GICC_IAR` (returns 58), looks up handlers[58], calls `uart1_isr`.
-8. `uart1_isr` reads the character, calls `uart_putc(c)` (which polls TX), increments `rx_count`.
-9. Back to dispatch. Write 58 to `GICC_EOIR`.
-10. Return to `irq_entry`: pop scratch regs, switch to IRQ mode, `rfeia sp!`: restores SPSR (which has SVC mode and IRQ-unmasked), PC back to whatever was running.
-11. Resumed `wfi` returns. Loop body runs. We hit `wfi` again.
-
-Eleven steps. Every Linux IRQ in user space follows the same pattern.
+This is the hardware/privileged entry path. Linux adds its own entry,
+IRQ-domain mapping and dispatch machinery. User space does not run the
+GIC ISR; it can receive data later through a driver and system call.
 
 ## 15.9  Lab
 
-1. **Build, push, type characters, see them echo.** Confirm IRQ-driven.
-2. **Replace polling printf with IRQ-driven printf.** Wrap `uart_putc` in a small queue. When TX FIFO has space (`UCR1.TRDYEN`), drain queue from ISR. Now your `printf` returns immediately.
-3. **Count IRQs.** Increment `rx_count` in the ISR. After 1000 characters, dump it from `main`. Confirm exact match.
-4. **Try without `wfi`.** Replace `for(;;){wfi}` with `for(;;)`. The program still works, but idle power is higher. You may not see the power difference without measuring it.
-5. **Trigger a data abort.** From `main`, do `*(volatile uint32_t *)0x1 = 0;`. Confirm `data_handler` (currently `b .`) is hit. Add a `printf` to `data_handler` (it must run in ABT mode). The simple debug path is to halt and inspect with JTAG. The fuller path is to copy the `cpsid` pattern and switch to SVC.
-> **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
-> **JTAG:** the hardware debug scan chain used to halt, inspect, and single-step CPUs.
-6. **Add an SVC instruction** (`asm volatile ("svc #0")`) and observe the SVC handler is hit. This is the foundation of syscalls.
+1. Build/inspect vectors and the IRQ stack map before loading. Check eight
+   four-byte slots, nearby literal pool, entry address, and stack alignment.
+2. With the approved handoff policy and terminal local echo off, type one
+   byte and then a short burst.
+   Record received-byte count separately from **IRQ count**: one IRQ may
+   drain several bytes. Expose a getter rather than accessing a private
+   `rx_count` from another file.
+3. Compare a main loop with WFI and one that spins. Both should receive
+   bytes; do not claim a power saving without a measurement.
+4. Optional TX queue: enqueue bounded data in foreground, service TX-ready
+   in the ISR, disable TX-ready interrupts when the queue empties. Specify
+   queue-full behavior and critical sections; printf is not automatically
+   immediate or reentrant.
+5. Study an abort using a debugger and a known memory-map/permission
+   setup. Do not write to address 1 to "guarantee" a fault: alignment,
+   MMU settings, and the target address determine behavior. Do not call C
+   from ABT without a valid stack/context wrapper.
+6. An intentional `svc #0` reaches the current fail-stop SVC handler.
+   It will not return. A returning SVC service needs its own wrapper;
+   IRQ's LR adjustment must not be copied into it.
 
 ## 15.10  Pitfalls
 
-- **Forgetting `isb` after VBAR write.** The CPU may keep using stale vectors. Always `isb`.
-- **Wrong IRQ-mode return offset.** IRQ uses `-4`, prefetch abort uses `-4`, data abort uses `-8`. Mismatched: you re-execute or skip the faulting instruction.
-- **`srsdb` to the wrong mode.** The encoded mode bits must match the current mode you're saving for. `0x12` = IRQ.
-- **Not enabling at both distributor and CPU interface.** `GICD_CTLR.Enable` and `GICC_CTLR.Enable` must both be 1.
-- **Priority mask too low.** `GICC_PMR = 0` blocks all interrupts. `GICC_PMR = 0xFF` allows all. Default mask of `0xFF` on init.
-- **Forgetting EOI.** If you don't write `GICC_EOIR`, the GIC thinks the interrupt is still active and won't deliver the next instance.
-- **Re-entrant ISR for a non-reentrant peripheral.** Don't enable IRQs inside an ISR unless you know what you're doing.
-- **`cpsie i` in user-mode code.** PL0 can't change CPSR.I. We're always in SVC, so fine.
+- **VBAR with SCTLR.V still set.** High vectors override normal VBAR.
+- **Stale instruction bytes.** ROM may leave I-cache active; synchronize
+  a replaced vector table under the actual cache policy.
+- **Wrong security/group view.** The Secure Group-0 setup is not a generic
+  Non-secure recipe.
+- **Invalid IRQ stack.** Initialize its banked SP and verify its bounds.
+- **FP/NEON in the call tree.** Core-register preservation is not FP context
+  preservation.
+- **Wrong exception return rule.** IRQ uses LR-4; other exceptions have
+  different rules. A data-abort retry without fixing the fault just faults again.
+- **EOI before clearing the source.** A level request becomes pending again.
+- **Unhandled SPI left enabled.** It can create an interrupt storm.
+- **Nesting or PL0 mask writes.** This example supports neither nested IRQs
+  nor user-mode control of CPSR.I.
 
 ## 15.11  Going deeper
 
-- **ARM IHI 0048B**: *Generic Interrupt Controller v2 Architecture Specification*. The canonical reference.
-- **ARM DDI 0464**: *Cortex-A7 MPCore TRM*. The CPU side of interrupts.
-- **Linux source: `arch/arm/kernel/entry-armv.S`**: the production-grade version of `irq_entry`. Read it after this chapter.
-- **Linux source: `drivers/irqchip/irq-gic.c`**: kernel's GIC driver. Same registers, vastly more abstraction.
-- **xv6-arm** (an educational port of xv6 to ARMv7), has a small, readable interrupt subsystem.
+- [Arm IHI 0048B.b, GICv2 specification](https://documentation-service.arm.com/static/5f8ff196f86e16515cdbf969):
+  grouping, acknowledge tokens, special INTIDs, priorities, and EOI.
+- **Arm DDI 0464, Cortex-A7 TRM**, and **Arm DDI 0406, ARMv7-A/R
+  Architecture Reference Manual**: exception entry, VBAR/SCTLR, SRS/RFE.
+- [Arm AAPCS32](https://github.com/ARM-software/abi-aa/blob/main/aapcs32/aapcs32.rst):
+  core-register and stack-alignment requirements.
+- **IMX6ULLRM Table 3-1** and system memory map: SoC SPI offsets and
+  GIC-400 addresses.
+- Linux `arch/arm/kernel/entry-armv.S` and `drivers/irqchip/irq-gic.c`:
+  production paths, not code to splice into this minimal wrapper.
+- **i.MX6ULL ERR008961**: Hyp exceptions and Monitor-routed mask behavior,
+  outside the restricted SVC/IRQ policy here.
 
-> Next chapter: **Chapter 16: Timers (EPIT and GPT).** A 1 ms tick and a free-running counter give us `udelay`, profiling, and the foundation for any scheduler we might write.
+> Next chapter: **Chapter 16: Timers (EPIT and GPT).** A periodic source will
+> make interrupt counts observable without relying on incoming UART traffic.

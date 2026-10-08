@@ -1,6 +1,6 @@
 ---
 chapter: 18C
-title: Bare-metal RTC: SNVS, the always-on domain
+title: "Bare-metal RTC: SNVS, the always-on domain"
 part: II - Bare-metal i.MX6ULL (inserted v1.1)
 estimated_pages: 10
 status: draft
@@ -8,239 +8,390 @@ status: draft
 
 # Chapter 18C: Bare-metal RTC
 
-> **What:** access the **SNVS** (Secure Non-Volatile Storage) RTC on i.MX6ULL: set the wall-clock time, read it back at runtime, and confirm it survives a deliberate main-power brown-out.
->
-> **Why:** Any product that needs to log timestamps, run scheduled actions, or check license expiration relies on an RTC that survives power cycles. SNVS is the only always-on domain on i.MX6ULL. We need to know how to talk to it.
->
-> **Focus:** the separate power domain. SNVS has its own supply pin (`VDD_SNVS_IN`, usually tied to a coin cell or supercap), its own 32.768 kHz oscillator, and its own counter. When the rest of the SoC sleeps or browns out, SNVS keeps counting.
+After a restart, the ordinary uptime counter begins again at zero. A log
+timestamp should not. Which counter can keep advancing while the CPU and
+DDR have no power, and how does the CPU read it after returning?
 
+The **Secure Non-Volatile Storage (SNVS)** block has separate high-power
+(HP) and low-power (LP) sections. We use its LP real-time counter and one
+retained general-purpose register. "Always-on" is a supply requirement, not
+a promise: if the LP supply disappears, so does its retained state.
+
+This is a bare-metal counter/retention lab. Setting a counter to zero does
+not set a wall clock, and deliberately causing a brown-out is not needed.
+Keep Chapter 18A's startup, linker, toolchain, and fresh-ROM handoff policy;
+initialize Chapter 16's GPT delay source before using the driver below.
 
 ## 18C.1  What the SNVS provides
 
-The i.MX6ULL SNVS block (RM Chapter 47) contains:
+The supplied **IMX6ULLRM Rev. 1, Chapter 48** describes:
 
-- A **32-bit second counter** (`SNVS_LPSRTCMR` high word, `SNVS_LPSRTCLR` low word), when concatenated, a 64-bit count of seconds since "SNVS was first powered."
-- A separate **alarm register** (`SNVS_LPTAR`), fires an interrupt when `LPSRTC == LPTAR`.
-- 24 bytes of always-on **scratch SRAM** (`SNVS_LPGPR0..LPGPR5`), survives main-power-off as long as VDD_SNVS_IN has power.
-- A **monotonic counter** that increments on every chip reset, useful as a tamper-evident reboot counter.
-- A small set of **tamper inputs** that, on certain board designs, trigger erasure of secure secrets.
+- An HP real-time counter and its alarm, which lose state with system power.
+- An LP section with the retained counter, control/security state, monotonic counter, and general-purpose register.
+- A **32-bit LPGPR at offset 0x68** described in Section 48.7.14: retained space for one marker or counter, not a general byte-addressable buffer.
+- A monotonic counter incremented by permitted **writes**, not automatically by every chip reset. It has security and fuse-era behavior; we do not use it as a reboot counter or program its fuses.
 
-For this chapter we use only the second counter, the scratch SRAM (LPGPR registers), and we read but do not arm the alarm.
+The public RM describes the LP counter but omits its register fields.
+The starred entries in Section 18C.3 use the
+[Linux v6.12 SNVS RTC implementation](https://github.com/torvalds/linux/blob/v6.12/drivers/rtc/rtc-snvs.c)
+as an additional reference. [NXP's migration guide, Table 1](https://www.nxp.com/docs/en/application-note/AN5350.pdf)
+and [clarification of the omission](https://community.nxp.com/t5/i-MX-Processors/The-LP-SNVS-RTC-in-the-iMX6ULL-what-is-the-story-about-it/m-p/833519?profile.language=ja)
+explain the UL-to-ULL relationship. Obtain matching NXP security/reference
+documentation for production use; this lab does not provision security.
 
 ## 18C.2  Powering SNVS
 
-The Point Atom MINI exposes a **VBAT** pin on the schematic (typically populated with a CR1220 coin cell holder or a small supercap). When main power is removed, VDD_SNVS_IN is supplied from VBAT. While the SoC's main rails are off, SNVS's 32 kHz oscillator continues, its counter continues to increment, and its LPGPR scratch SRAM retains its contents.
+Follow the actual nets, rather than a generic VBAT label:
 
-If your board has no battery: SNVS still works, but power loss resets SNVS. It is still useful for boot counting, but not for wall-clock survival across reboots.
+| Reference sheet | What it shows |
+|---|---|
+| MINI v2.2 sheet 4 | CR1, labelled 1220, feeding VDD_COIN_3V |
+| CORE sheet 8, internal project CL6Y2CB_V1.9 | VDD_COIN_3V on J1 pin 41 |
+| CORE sheet 2 | D1 from VDD_SNVS_3V3 and D2 from VDD_COIN_3V feeding VDD_SNVS_IN; R34 1.5 kOhm is also drawn across the coin-cell diode path |
+| CORE sheet 6 | Y1 32.768 kHz at RTC_XTALI/RTC_XTALO, separate from the 24 MHz main reference |
 
-The clocks the SNVS controller needs come from:
+These connections are not a battery compatibility or lifetime guarantee.
+Check the fitted circuit, cell chemistry/polarity, and supplier-approved
+arrangement, including any current through R34. Do not assume every "1220"
+holder accepts a rechargeable cell or that a supercapacitor can be substituted.
 
-- **`xtal32k`**: the 32.768 kHz crystal (always on while SNVS has power)
-- **`ipg`** for the register interface (only needed when CPU is alive and accessing SNVS)
+The supplied industrial electrical datasheet
+Sections 4.1.6.3 and 4.2 require the SNVS supply first on and last off, and
+forbid externally driving an unpowered I/O domain. Follow the matching
+datasheet and Chapter 8's power/back-power inventory. CPU register access
+still needs the main-powered HP interface and its clocks; a coin cell
+does not keep the Cortex-A7 or that bus interface running.
+
+An ordinary main-power cycle can retain LP state when its supply remains
+valid. It is different from LP power-on reset or LP software reset. With no
+working backup path, warm reset may preserve the count while complete
+power removal does not. Measure and document the supply conditions before
+interpreting a retention result.
 
 ## 18C.3  Register map (relevant subset)
 
-SNVS base = `0x020CC000` (RM ch. 47).
+SNVS base is `0x020CC000`. Offsets here are relative to that base, **not**
+to the LP subrange used by some Linux device-tree nodes.
 
 | Register | Offset | Purpose |
-|----------|--------|---------|
-| `SNVS_HPLR` | `+0x00` | High-power lock register |
-| `SNVS_HPCOMR` | `+0x04` | High-power command |
-| `SNVS_HPSR` | `+0x14` | High-power status |
-| `SNVS_LPCR` | `+0x38` | Low-power control |
-| `SNVS_LPSR` | `+0x4C` | Low-power status |
-| `SNVS_LPSRTCMR` | `+0x50` | Secure RTC, upper 32 bits (47:32) |
-| `SNVS_LPSRTCLR` | `+0x54` | Secure RTC, lower 32 bits (31:0), count of 32 kHz ticks |
-| `SNVS_LPTAR` | `+0x58` | Alarm register |
-| `SNVS_LPGPR0..5` | `+0x68..7C` | 24 bytes of scratch SRAM |
+|---|---|---|
+| SNVS_HPLR | +0x00 | HP lock register; do not set locks in this lab |
+| SNVS_HPCOMR | +0x04 | HP command/access policy; not an innocuous initialization write |
+| SNVS_LPLR | +0x34 | LP lock register |
+| SNVS_LPCR | +0x38 | LP control; SRTC_ENV is bit 0* |
+| SNVS_LPSR | +0x4C | LP status, including write-one-to-clear fields |
+| SNVS_LPSRTCMR* | +0x50 | Counter bits 46:32 in register bits 14:0 |
+| SNVS_LPSRTCLR* | +0x54 | Counter bits 31:0 |
+| SNVS_LPTAR* | +0x58 | LP alarm's 32-bit seconds value; not armed in this lab |
+| SNVS_LPGPR | +0x68 | One 32-bit retained general-purpose register |
 
-The actual counter ticks at **32 kHz**, but the architectural view splits it: bit 14 of `LPSRTCLR` increments at 2 Hz. Treat **upper 32 bits of the 48-bit concatenation** as seconds.
+The LP counter is **47 bits of 32.768 kHz ticks**: 32 whole-second bits and
+15 fractional bits. Form `((uint64_t)(hi & 0x7FFF) << 32) | lo`, then
+shift right by 15. Equivalently, seconds are
+`((hi & 0x7FFF) << 17) | (lo >> 15)`. At 32768 ticks, seconds must be 1;
+at 65536 ticks, 2. These are useful arithmetic checks without a board.
 
-For the purposes of this chapter we use a simpler model: read `LPSRTCMR` and `LPSRTCLR`, concatenate as 48 bits, shift right by 15 to get seconds. (Why 15: 32768 = 2^15, so each tick is 1/2^15 of a second. Shifting right by 15 divides ticks by 32768.) Verify the exact bit layout against your RM revision.
+The counter stores a number, not a calendar or a timezone. Software chooses
+the epoch by setting that number. An unsigned 32-bit Unix-seconds choice
+reaches its limit in 2106; a signed 32-bit software representation has a
+different 2038 limit. Neither is a 64-bit-seconds hardware RTC.
 
 ## 18C.4  Driver
 
-`bsp_rtc.h`:
+```{figure} ../illustrations/part2/13-rtc-counter-and-calendar.png
+:alt: A whole-second value derived from the RTC counter is converted into a date and time using a software-chosen epoch. The counter does not supply a calendar itself.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-part2-rtc-calendar
+
+The raw SNVS counter counts ticks. Here, "seconds" means the value after removing its fractional bits. Turning that number into a calendar needs an agreed epoch and software conversion. A running counter alone does not establish a valid date.
+```
+
+Add the following definitions inside `imx6ull.h`, keeping the hardware map
+out of `bsp_rtc.c`. The starred offsets/bit use the implementation evidence
+identified above:
 
 ```c
-#ifndef __BSP_RTC_H__
-#define __BSP_RTC_H__
+#define SNVS_BASE           0x020CC000u
+#define SNVS_LPCR           (SNVS_BASE + 0x38u)
+#define SNVS_LPSRTCMR       (SNVS_BASE + 0x50u)
+#define SNVS_LPSRTCLR       (SNVS_BASE + 0x54u)
+#define SNVS_LPGPR          (SNVS_BASE + 0x68u)
+#define LPCR_SRTC_ENV       (1u << 0)
+#define SRTC_MSB_MASK       0x7FFFu
+#define CCGR_SNVS_HP_GATE   (3u << 18) /* CCGR5[19:18] */
+#define CCGR_SNVS_LP_GATE   (3u << 20) /* CCGR5[21:20] */
+```
+
+Create `bsp/rtc/bsp_rtc.h`:
+
+```c
+#ifndef BSP_RTC_H
+#define BSP_RTC_H
 #include <stdint.h>
 
-void rtc_init(void);
-uint64_t rtc_get_seconds(void);
-void rtc_set_seconds(uint64_t s);
-
-uint32_t rtc_scratch_read(int idx);    /* idx in 0..5 */
-void rtc_scratch_write(int idx, uint32_t v);
+int rtc_init(void);
+int rtc_get_seconds(uint32_t *seconds);
+int rtc_set_seconds(uint32_t seconds);
+uint32_t rtc_scratch_read(void);
+int rtc_scratch_write(uint32_t value);
 
 #endif
 ```
 
-`bsp_rtc.c`:
+Create `bsp/rtc/bsp_rtc.c`:
 
 ```c
 #include "bsp_rtc.h"
+#include "bsp_delay.h"
 #include "imx6ull.h"
 
-#define SNVS_BASE       0x020CC000U
-#define SNVS_HPCOMR     (SNVS_BASE + 0x04)
-#define SNVS_LPCR       (SNVS_BASE + 0x38)
-#define SNVS_LPSRTCMR   (SNVS_BASE + 0x50)
-#define SNVS_LPSRTCLR   (SNVS_BASE + 0x54)
-#define SNVS_LPGPR(n)   (SNVS_BASE + 0x68 + 4*(n))
-
-#define HPCOMR_NPSWA_EN (1u << 31)
-#define LPCR_SRTC_ENV   (1u << 0)
-
-void rtc_init(void)
+static int rtc_enable(unsigned enable)
 {
-    /* Allow non-privileged software access (we run in PL1; this is a no-op
-     * for our case but harmless). */
-    REG(SNVS_HPCOMR) |= HPCOMR_NPSWA_EN;
+    uint32_t control = REG(SNVS_LPCR);
+    if (enable != 0u)
+        control |= LPCR_SRTC_ENV;
+    else
+        control &= ~LPCR_SRTC_ENV;
+    REG(SNVS_LPCR) = control;
 
-    /* Enable the Secure RTC counter, if not already running. */
-    REG(SNVS_LPCR) |= LPCR_SRTC_ENV;
-
-    /* Wait for it to actually start. */
-    while ((REG(SNVS_LPCR) & LPCR_SRTC_ENV) == 0) { }
+    for (unsigned attempt = 0u; attempt < 1000u; ++attempt) {
+        unsigned running = (REG(SNVS_LPCR) & LPCR_SRTC_ENV) != 0u;
+        if (running == (enable != 0u))
+            return 0;
+        udelay(10u);
+    }
+    return -1;
 }
 
-uint64_t rtc_get_seconds(void)
+int rtc_init(void)
 {
-    /* Read twice and retry on rollover. The high word can increment
-     * between our reads of low and high. */
-    uint32_t hi1, hi2, lo;
-    do {
-        hi1 = REG(SNVS_LPSRTCMR);
-        lo  = REG(SNVS_LPSRTCLR);
-        hi2 = REG(SNVS_LPSRTCMR);
-    } while (hi1 != hi2);
-
-    /* The 48-bit raw count is (hi << 32) | lo, in 32 kHz ticks.
-     * Shift right by 15 to convert to seconds. */
-    uint64_t raw = ((uint64_t)hi1 << 32) | lo;
-    return raw >> 15;
+    REG(CCM_CCGR5) |= CCGR_SNVS_HP_GATE | CCGR_SNVS_LP_GATE;
+    return rtc_enable(1u);           /* Preserve the existing counter value. */
 }
 
-void rtc_set_seconds(uint64_t s)
+static uint64_t rtc_raw(void)
 {
-    /* The Secure RTC must be disabled to write a new value. */
-    REG(SNVS_LPCR) &= ~LPCR_SRTC_ENV;
-    while (REG(SNVS_LPCR) & LPCR_SRTC_ENV) { }
-
-    uint64_t raw = s << 15;
-    REG(SNVS_LPSRTCMR) = (uint32_t)(raw >> 32);
-    REG(SNVS_LPSRTCLR) = (uint32_t)raw;
-
-    /* Re-enable. */
-    REG(SNVS_LPCR) |= LPCR_SRTC_ENV;
-    while ((REG(SNVS_LPCR) & LPCR_SRTC_ENV) == 0) { }
+    uint32_t hi = REG(SNVS_LPSRTCMR) & SRTC_MSB_MASK;
+    uint32_t lo = REG(SNVS_LPSRTCLR);
+    return ((uint64_t)hi << 32) | lo;
 }
 
-uint32_t rtc_scratch_read(int idx)
+int rtc_get_seconds(uint32_t *seconds)
 {
-    if (idx < 0 || idx > 5) return 0;
-    return REG(SNVS_LPGPR(idx));
+    if (seconds == 0)
+        return -1;
+
+    /* Compare complete samples, not only the upper word. */
+    uint64_t previous = rtc_raw();
+    for (unsigned attempt = 0u; attempt < 100u; ++attempt) {
+        uint64_t current = rtc_raw();
+        if (current == previous) {
+            *seconds = (uint32_t)(current >> 15);
+            return 0;
+        }
+        previous = current;
+    }
+    return -1;                      /* No output update on failure. */
 }
 
-void rtc_scratch_write(int idx, uint32_t v)
+int rtc_set_seconds(uint32_t seconds)
 {
-    if (idx < 0 || idx > 5) return;
-    REG(SNVS_LPGPR(idx)) = v;
+    if (rtc_enable(0u) != 0)
+        return -1;                  /* Never write a running/locked counter. */
+
+    REG(SNVS_LPSRTCLR) = seconds << 15;
+    REG(SNVS_LPSRTCMR) = seconds >> 17;
+    return rtc_enable(1u);
+}
+
+uint32_t rtc_scratch_read(void)
+{
+    return REG(SNVS_LPGPR);
+}
+
+int rtc_scratch_write(uint32_t value)
+{
+    REG(SNVS_LPGPR) = value;
+    for (unsigned attempt = 0u; attempt < 1000u; ++attempt) {
+        if (REG(SNVS_LPGPR) == value)
+            return 0;
+        udelay(10u);
+    }
+    return -1;
 }
 ```
 
+The setter clears SRTC_ENV, waits for the observed state, writes the low
+word and high word with fractional bits zero, then re-enables and waits
+again. It preserves the other LPCR fields. At most 1000 failed polls request
+10 us delays: roughly 10 ms plus GPT guard ticks and software overhead,
+not a hard wall-clock deadline. This assumes GPT delays already work.
+A failed restart can leave the counter stopped. Report the error and
+inspect access/lock/clock state rather than proceeding as though time was set.
+
+RM 48.6.2 describes both asynchronous sampling and a split-register update
+hazard. A high-low-high read addresses carry between words but not every
+partially synchronized value. This small driver requires two identical
+**whole-counter samples**, with a bounded retry. Linux instead accepts a
+small forward difference between full samples. Equality is practical for
+fast polled reads between 32 kHz ticks, but can time out on a slow or
+interrupted access path. Neither a retry count nor compilation certifies
+the hardware's clock/synchronization behavior.
+
+A stopped counter can also return a stable value. The getter checks read
+consistency; enable-state readback and successive time readings tell us
+whether it is running and advancing.
+
+This driver deliberately does **not** set HPCOMR.NPSWA_EN. RM 48.7.2 says
+that bit broadens non-privileged access; privileged execution does not make
+the write a harmless no-op. Access rights, security state, and locks must
+already permit this development-board experiment. The upstream driver also
+initializes the power-glitch detector and clears status during probe. We
+do not copy its blanket status clear into a bare-metal security policy:
+pending tamper/security indications must not be erased just to obtain a
+successful lab. A cold-board failure may require vendor-documented SNVS
+initialization for the exact device/provisioning. Stop there, without guessed
+security-bit writes, LP reset, or fuse changes.
+
+LPGPR can be locked or cleared by documented reset/tamper behavior. The
+write helper checks readback and reports failure. That is evidence of a
+matching read, not proof that a previously equal value was newly written
+or that it will survive power loss. Use only a board on which this register
+is not owned by boot/security software. Do not interpret arbitrary retained
+data as tamper-proof storage.
+
 ## 18C.5  Test program
 
+This program first reads the existing counter. It does **not** reset time
+on every boot or infer time validity from a marker. Set the lab constant to
+1 only for one deliberate initialization run, then build with it back at 0
+before the retention test. A bootloader or later Linux RTC driver must not
+also reset the counter during that test.
+
+The application uses the Chapter 12 mini-printf formats `%u` and `%02u`;
+its formatter does not support `%lu` or a 64-bit length modifier. Cast
+variadic arguments to the unsigned type it expects.
+
 ```c
+#include <stdint.h>
 #include "bsp_clk.h"
 #include "bsp_uart.h"
-#include "bsp_rtc.h"
+#include "bsp_gpt.h"
 #include "bsp_delay.h"
+#include "bsp_rtc.h"
+
+#define SET_RTC_ON_THIS_BOOT 0
 
 int printf(const char *fmt, ...);
 
-static void format_secs(uint64_t s, char *out)
+static void stop(const char *message)
 {
-    /* Print as DDD:HH:MM:SS for RTC seconds since enable. */
-    uint32_t days = (uint32_t)(s / 86400);
-    s %= 86400;
-    uint32_t h = (uint32_t)(s / 3600);
-    s %= 3600;
-    uint32_t m = (uint32_t)(s / 60);
-    uint32_t sec = (uint32_t)(s % 60);
-    /* Use mini_printf style. In real code, implement this with uart_puts(). */
-    static char buf[40];
-    /* Implement with multiple uart_puts() calls instead of sprintf to
-     * keep dependencies minimal. */
-    (void)out; (void)buf; (void)days; (void)h; (void)m; (void)sec;
-    printf("%u days, %02u:%02u:%02u", days, h, m, sec);
+    printf("%s\r\n", message);
+    for (;;) { }
+}
+
+static void print_seconds(uint32_t seconds)
+{
+    uint32_t days = seconds / 86400u;
+    uint32_t rest = seconds % 86400u;
+    printf("%u days, %02u:%02u:%02u",
+           (unsigned)days, (unsigned)(rest / 3600u),
+           (unsigned)((rest / 60u) % 60u), (unsigned)(rest % 60u));
 }
 
 int main(void)
 {
-    clk_init_main();
+    clk_enable_lab_gates();
     uart_init();
-    rtc_init();
+    uint32_t ipg_hz = clocks_get_ipg_hz();
+    if (gpt_init(ipg_hz) != 0)
+        stop("GPT setup failed; inspect the clock audit.");
+    if (rtc_init() != 0)
+        stop("RTC enable timed out; inspect clocks, access, and locks.");
 
-    /* Has SNVS been set before?  Use scratch[0] as a known marker.
-     * If 0xDEADBEEF, the RTC has been initialized previously. */
-    if (rtc_scratch_read(0) != 0xDEADBEEF) {
-        printf("First boot since SNVS power-on; setting time.\r\n");
-        rtc_set_seconds(0);
-        rtc_scratch_write(0, 0xDEADBEEF);
-    } else {
-        printf("SNVS survived power-cycle.  Reading time.\r\n");
+    if (SET_RTC_ON_THIS_BOOT != 0) {
+        if (rtc_set_seconds(0u) != 0)
+            stop("RTC set failed.");
+        if (rtc_scratch_write(0x52544331u) != 0)
+            stop("LPGPR readback failed; do not claim retention.");
     }
+    printf("LPGPR = 0x%08x\r\n", (unsigned)rtc_scratch_read());
 
     for (;;) {
-        uint64_t s = rtc_get_seconds();
-        printf("[t = %lu s] uptime: ", (unsigned long)s);
-        format_secs(s, 0);
+        uint32_t seconds;
+        if (rtc_get_seconds(&seconds) != 0)
+            stop("RTC read did not stabilize.");
+        printf("[RTC = %u s] ", (unsigned)seconds);
+        print_seconds(seconds);
         printf("\r\n");
-        mdelay(1000);
+        mdelay(1000u);
     }
 }
 ```
 
-## 18C.6  The brown-out demo
+With the one-time zero setting, the display means elapsed time since that
+setting, including time the CPU was off. It is not this boot's uptime.
+If you instead set Unix seconds, the same day/hour decomposition remains a
+numeric interval; it is not yet a date conversion. UART output and the
+foreground delay also mean lines are not an exact one-second measurement
+cadence. Compare counter differences with an independent elapsed-time source.
 
-Run this lab to see SNVS in action.
+(c-6-the-brown-out-demo)=
+## 18C.6  Controlled retention check
 
-1. Boot, set the wall clock, observe the counter ticking up.
-2. Power-cycle the board. Unplug VBUS, but keep the coin cell installed.
-3. Re-power. Observe the counter resumes from where it left off, *plus* the ~2 seconds you spent unplugged.
+Use **controlled main-power removal**, not an induced brown-out. Keep the
+backup supply valid throughout; undervoltage and rail manipulation are not
+part of this experiment.
 
-The scratch SRAM at `LPGPR0..5` also survives. You can write a counter into it, increment every reboot, and observe an "n-th boot" indicator that the SoC reset cannot clear. Useful in production for tamper detection and reboot accounting.
+Before removing anything, confirm the supplier-approved backup arrangement,
+the board revision, and all main-power/back-power paths. Follow the Chapter
+8 checks and the datasheet's supply order. The supplied schematics alone
+do not establish a universal unplugging recipe.
+
+1. In the one-time initialization build, set zero and a marker, and check that the counter advances. Record the value and an independent time reference.
+2. Rebuild with SET_RTC_ON_THIS_BOOT = 0. Boot this read-only-time version and confirm it does not change the counter. Keep this exact image for the restart.
+3. Remove main power by the approved procedure while maintaining the verified SNVS supply. Account for DC input, USB-TTL, USB-OTG, debug adapters, and powered add-ons. Disconnecting one VBUS cable does not establish that main rails are off.
+4. After a recorded off interval, restore main power and load the same image by the fresh-ROM route. Compare the counter advance with **all elapsed time between readings**, including startup and download, and check LPGPR separately.
+
+A retained marker and an advancing counter test different things. A marker
+can remain while the counter stops; a running counter does not prove that
+every retained register is valid. Do not invent a fixed two-second advance
+or unexplained "settling slack." If the readings disagree, investigate the
+supply, clock, resets, and intervening firmware.
 
 ## 18C.7  Lab
 
-1. **Build and run §18C.5.** Confirm the counter advances at 1 Hz.
-2. **Brown-out test.** As described above. Don't expect millisecond accuracy across the power cycle. The first read after power-on may show 1-2 seconds of slack while SNVS internals settle.
-3. **Boot counter.** Add a `boot_count = rtc_scratch_read(1); rtc_scratch_write(1, boot_count + 1);` to `main`. Print it at startup. Power-cycle 10 times. Confirm it counts up.
-4. **Lose VBAT.** If your coin cell is removable, pop it out, power-cycle the main rail, observe the SNVS reset (boot_count back to 0, scratch RAM at `0xDEADBEEF` lost).
-5. **Wall-clock UNIX time.** Have the user enter `t=1716595200\n` over UART. Call `rtc_set_seconds`. Then print the date in a real human-readable form (`gmtime`-style). This is a small but pleasant integration exercise.
+1. **Build and inspect.** Use Chapter 18A's integer-only flags and explicit libgcc link. Confirm GPT initialization precedes RTC polling. With hardware prerequisites satisfied, verify that the counter advances at approximately one second per elapsed second.
+2. **Retention test.** Use Section 18C.6. Record the off interval and total read-to-read interval, not just the time spent unplugged.
+3. **Software boot count.** As a separate experiment, reserve the single LPGPR for a count. Read it, handle an uninitialized/saturated value deliberately, write the increment, and verify readback. It counts executions reaching that code, not every reset, and is not tamper evidence. Do not also store the marker in the same word.
+4. **Model backup loss first.** Predict what LP POR would erase and how the program detects invalid data. Actual backup removal is optional only under the matching board's approved procedure, with all other sources off and SNVS removed last/restored first. Do not pull a cell from a powered board or short a supply to force a reset.
+5. **Unix time.** Parse a UART command such as t=1716595200 with overflow/error checks and require a value within UINT32_MAX. Call the setter only after accepting the command; read it back and report failure. Calendar conversion and timezone display are software work. Retain UTC as the stored convention and test leap-year/month boundaries in your conversion code.
 
 ## 18C.8  Pitfalls
 
-- **Reading the counter without rollover protection.** Without the `do { hi1 = ...; lo = ...; hi2 = ...; } while (hi1 != hi2);` pattern, you can occasionally read a stale `hi` paired with an already-incremented `lo`. The error is rare (~once per 2^15 reads) but real.
-- **Forgetting that scratch SRAM is only 24 bytes.** Six 32-bit words. Allocate carefully.
-- **Writing to LPSRTC while it's running.** The RM requires you to clear `LPCR_SRTC_ENV` first. Our `rtc_set_seconds` does this.
-- **No VBAT supply.** Behavior is identical until you power-cycle. Then SNVS resets. Symptom: the boot-counter resets to zero only on power-cycle, not on warm reset. The fix is in hardware.
-- **SNVS tamper inputs floating.** If your board exposes tamper pins (TAMPER_IN_x) and they float, the SNVS may go into "tampered" state and refuse to release secrets. Tie them via the schematic.
+- **Confusing 47-bit ticks with seconds.** The high register contributes 15 bits, the low 32; the lowest 15 bits are fractional. One tick is not one second.
+- **Using an LP-relative offset with the full base.** Linux may add 0x34 before its LP-local offsets. Here +0x50 and +0x54 are already relative to 0x020CC000.
+- **Reading only high-low-high.** Carry protection alone does not address asynchronous sampling. Compare full samples and report exhausted retries.
+- **Writing before observed disable.** Do not merely clear SRTC_ENV and immediately write the counter. The transition crosses clock domains, and locks/access state can prevent it.
+- **Treating access-policy writes as harmless.** NPSWA_EN changes who can access privileged registers. Do not broaden permissions, clear security status, or program locks/fuses in this lab.
+- **Assuming six scratch words.** This subset uses only the documented 32-bit LPGPR. Other SoC variants and separate GPR blocks are not evidence for consecutive scratch RAM here.
+- **A marker that proves too much.** It is application data, not proof of battery health, RTC accuracy, or resistance to resets/tampering.
+- **A frozen counter with a readable interface.** Enable readback alone is not proof that the 32 kHz timebase advances. Check successive seconds as well as control state.
 
 ## 18C.9  Going deeper
 
-- **IMX6ULLRM Chapter 47**: SNVS, complete register description. Most of the chapter is about secure features (tamper, key zeroize) we did not touch.
-- **AN12077**: *i.MX 6/7 Series SNVS Application Note*. Concise overview, with circuit examples for VBAT supply.
-- **Linux source: `drivers/rtc/rtc-snvs.c`**: the kernel's SNVS RTC driver. Same registers, full implementation. We meet it in Chapter 48.
-- **POSIX `time()`, `gmtime()`, `localtime()`**: what user-space sees of all this once Linux is running.
+- **IMX6ULLRM Rev. 1, Chapter 48**: HP/LP domains, synchronization guidance, locks, access policy, and LPGPR. Note its LP RTC field omissions.
+- **Supplied industrial/commercial datasheets**, Sections 4.1.6 and 4.2, plus **MINI sheet 4 / CORE sheets 2, 6, 8**: supply states, ordering, crystal, and the real backup route.
+- **AN5350, i.MX 6ULL Migration Guide**, and the linked NXP clarification: the UL-to-ULL SNVS relationship and the missing public register fields.
+- **Linux drivers/rtc/rtc-snvs.c**: the LP offsets, 47-bit conversion, full-sample retry, enable/disable acknowledgement, and separate alarm setup. Chapter 48 introduces the Linux RTC interface.
+- **POSIX time(), gmtime(), localtime()**: software epoch/calendar/timezone services. They do not supply a bare-metal RTC driver merely by being declared.
 
 ---
 
-End of Part II's inserted chapters. Part II proper ends with Chapter 18. Chapters 18A-18C are supplementary deep-dives. Read them in any order, or skip them entirely.
+Chapters 18A-18C supplement Part II. The button and RTC implementations use
+the Chapter 18A layout and earlier startup, UART, and delay code; they are
+not independent copy-and-boot projects. From here, Chapter 19 moves to
+U-Boot, which prepares hardware and loads the next image before Linux runs.
 
-> Next chapter: **Chapter 19: U-Boot from source, first boot.** With the bare-metal foundation in place, we move from writing it ourselves to reading a real bootloader that does the same things.
-> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
+> Next chapter: **Chapter 19: U-Boot from source, first boot.**

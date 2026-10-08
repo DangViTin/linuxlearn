@@ -8,582 +8,561 @@ status: draft
 
 # Chapter 14: DDR3 initialization with MMDC
 
-> **What:** code that takes the Point Atom MINI's DDR3 chip from "powered on but uninitialized" to "512 MiB of usable memory at `0x80000000`," by hand. Then code that copies itself from OCRAM to DRAM and continues running from DRAM.
->
-> **Why:** until this works, your bare-metal world is 100 KB. After it works, it is 512 MiB. More fundamentally: every dev board you have ever used had someone solve this problem for you in a vendor BSP. Solving it once makes this hidden layer visible.
-> **BSP:** Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
->
-> **Focus:** The JEDEC DDR3 init sequence is universal across vendors. The MMDC register groups are i.MX-specific. Know both, and you can port to a different DRAM part or a different SoC.
-> **MMDC:** the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
-> **DDR:** external DRAM that must be configured and trained before most software can run from it.
+A store to OCRAM needs no memory-device initialization. The same store to
+`0x80000000` depends on an external chip, its power and clock, controller
+timings, and the board's routing. A correct address is only the beginning.
 
+We will trace those dependencies, prepare a board-specific initialization
+record, and write a small destructive test. The supplied core schematic
+shows a **single x16 Nanya NT5CC256M16EP-EK on CS0**, nominally 512 MiB.
+Use that device as the worksheet's starting point, then check the marking
+on your fitted board.
+
+> **Execution boundary:** this chapter does **not** contain a qualified
+> DDR initialization table. Obtain the exact part data sheet, board-matched
+> BSP initialization, and i.MX6ULL-compatible NXP tools before attempting
+> bring-up. Do not substitute illustrative timings or calibration values.
+> If DDR is already initialized by a DCD/loader, do not reinitialize it
+> under running code. You may study the sequence and use a verified loader
+> configuration instead.
 
 ## 14.1  This chapter takes time
 
-Set an afternoon aside. This is the most complex bring-up step in the book. The number of values that must be exactly right is large. The only diagnostic for a wrong value is "DRAM doesn't work." When DRAM doesn't work, you cannot `printf` from it, load test patterns into it, or do much else.
+Keep the loader, UART diagnostics, constants, stack, and exception vectors
+in OCRAM while DDR is uncertain. A failed DDR read may hang rather than
+return a conveniently printable error. Print a checkpoint **before** each
+new phase; a last message can narrow the failing step.
 
-We will keep the entire chapter in **OCRAM** until the very last section, where DRAM works and we relocate to it.
+Retain Chapter 10's map and assertions: ROM-active loaded bytes must end
+at or below `0x00918000`; post-handoff owned stack space may extend up to
+`0x00920000` only when it no longer overlaps ROM use. Include every added
+table and embedded payload in the load-size check.
+
+MMU and D/L2 cache state must be established before destructive memory
+tests. Do not infer all caches are off from reset: RM section 8.4.4 describes
+ROM use of I-cache and disabling D/L2/MMU following authentication, not an
+unconditional I-cache-off handoff.
 
 ## 14.1a  RAM/ROM/SRAM/SDRAM/DDR, the lineage
 
-Most Cortex-M parts have 64 KB to 2 MB of built-in SRAM, and many SoCs expose SDRAM through a bus controller. Here is the rest of the family tree in 60 seconds:
+The useful distinction is whether software must keep the memory alive:
 
-- **SRAM**: Static RAM. Six-transistor cell per bit. Fast (~5 ns access), low-power-when-idle, but expensive per bit. A 1 MB SRAM costs more than 32 MB of SDRAM. Used for CPU caches and small on-chip memories (like the i.MX6ULL's 128 KB OCRAM).
-- **SDRAM**: Synchronous Dynamic RAM. One-capacitor cell per bit. Must be **refreshed** every 64 ms or the charge bleeds away. Synchronous = clocked. Cheaper than SRAM but slower and needs refresh logic. The classic "PC100" / "PC133" memory of the late 1990s.
-- **DDR (DDR1)**: Double Data Rate. Same density as SDRAM but transfers on both clock edges, doubling bandwidth. A 200 MHz clock yields 400 MT/s ("MegaTransfers per second"). 2.5 V.
-- **DDR2**: Quadruples the prefetch (4-bit vs DDR1's 2-bit), runs at half the cell clock but double the bus clock. 1.8 V.
-- **DDR3**: 8-bit prefetch. 1.5 V at standard voltage.
-- **DDR3L**: *L* for *Low-voltage*. Same protocol as DDR3, runs at **1.35 V**. Designed for mobile / industrial / embedded. **This is what i.MX6ULL boards use.**
-- **LPDDR3**: Low Power DDR3. Different protocol, 1.2 V, more aggressive power-saving features. Used in phones, supported by i.MX6ULL but uncommon on dev boards.
-- **DDR4 / DDR5**: Successors. Not supported by i.MX6ULL's MMDC controller.
+- **SRAM** retains data while powered without DRAM-style refresh. OCRAM
+  and CPU caches use SRAM; cost and area limit their capacity.
+- **DRAM** stores charge and needs refresh. **SDRAM** synchronizes commands
+  to a clock; DDR is also synchronous DRAM.
+- **DDR** transfers data on both clock edges. DDR2/DDR3 increase prefetch
+  depth and change electrical/protocol requirements.
+- **DDR3** normally uses 1.5 V; **DDR3L** supports the low-voltage 1.35 V
+  operating specification. Confirm the fitted part and actual rail.
+- **LPDDR2** is a different supported protocol. **LPDDR3, DDR4, and DDR5**
+  are not supported by this i.MX6ULL controller configuration.
 
-The i.MX6ULL MMDC supports **DDR3, DDR3L, and LPDDR2**, at up to 400 MHz cell clock (actually 396 MHz), giving up to 800 MT/s on a 16-bit bus = 1.6 GB/s peak. The Point Atom boards always use **DDR3L** (the low-voltage variant), not standard 1.5 V DDR3.
+MMDC supports DDR3/DDR3L x16 and LPDDR2 x16, up to 400 MHz DDR CK
+(RM 35.1). A 396 MHz CK transfers at **792 MT/s**, not 396 MT/s:
+`396 million * 2 edges * 2 bytes = 1.584 GB/s` theoretical data-bus peak.
+Command overhead, refresh, and access patterns reduce usable bandwidth.
+CK is not the DRAM cell-array clock.
 
 ## 14.2  DDR3, enough detail for bring-up
 
-A DDR3 chip is a 2D array (or 3D, with multiple banks) of capacitor cells, accessed by:
+```{figure} ../illustrations/part2/06-ddr-before-first-access-v2.png
+:alt: Code stays in on-chip OCRAM while a board-specific procedure configures and tests external DDR. Only then may the application use that memory for its stack or payload.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-part2-ddr-first-access
 
-- **Activate** a row in a bank: latches the row's contents into a sense-amplifier ("page open").
-- **Read or Write** a column within the open row: data flows on the bus.
-- **Precharge** the bank: closes the page and prepares for the next activation.
-- **Refresh** all rows periodically: capacitors leak. Without refresh, data is lost in ~64 ms.
+Keep the code and stack in known memory while investigating the new memory. The arrows show prerequisites, not an automatic copy operation. The DDR icon is generic. The fitted device and its required settings come from the board record.
+```
 
-The controller schedules these operations subject to **timing parameters**:
+The controller activates a row in one of eight banks, reads or writes
+columns in that open row, then precharges it before a different activation.
+Refresh commands restore charge across the array over a refresh window;
+one command does not refresh every row at once.
 
-| Symbol | Meaning | Typical (DDR3-1600) |
-|--------|---------|---------------------|
-| `tRCD` | Row-to-column delay | 13.75 ns |
-| `tRP`  | Precharge time | 13.75 ns |
-| `tRAS` | Row-active time min | 35 ns |
-| `tRC`  | Row cycle time (= tRAS + tRP) | 48.75 ns |
-| `tRFC` | Refresh cycle time | 260 ns (4 Gb) |
-| `tWR`  | Write recovery time | 15 ns |
-| `tFAW` | Four-activate window | 40 ns |
-| `CL`   | CAS latency | 11 clocks @ DDR3-1600 |
-| `tWL`  | Write latency | CL - 2 = 9 clocks |
-| `tREFI` | Average refresh interval | 7.8 µs |
+| Symbol | Requirement to find in the exact part data sheet |
+|--------|--------------------------------------------------|
+| `tRCD` | Activate-to-read/write delay |
+| `tRP` | Precharge-to-activate delay |
+| `tRAS` | Minimum row-active time |
+| `tRC` | Minimum row-cycle time |
+| `tRFC` | Refresh command busy time, dependent on density |
+| `tWR` | Write recovery; also encoded in MR0 |
+| `tFAW` | Four-activate window |
+| `CL` / `tAA` | Permitted CAS latency and minimum access time at chosen CK |
+| `CWL` | Permitted CAS write latency at chosen CK; not universally CL-2 |
+| `tREFI` | Refresh interval, including temperature-dependent requirements |
 
-These come from the **chip's datasheet**. You cannot guess them. You must look them up.
+For a minimum in nanoseconds, start with
+`cycles = ceil(t_min_ns / tCK_ns)`, then apply minimum-cycle requirements
+and the particular MMDC field encoding. Not every field is simply N-1.
 
-Datasheets often summarize three of the most-cited timings as a triple, **"CL-tRCD-tRP"**, in clock cycles. A "13-13-13 DDR3-1600" part has CL = tRCD = tRP = 13 clocks at 1600 MT/s. Smaller numbers are better. At our 400 MHz cell clock (2.5 ns per cycle), 13 clocks = 32.5 ns of latency.
+For example, a **hypothetical** 15 ns minimum at 396 MHz needs six CK
+cycles. This is arithmetic, not a Nanya timing recommendation. A speed-bin
+label such as DDR3-1600 describes operation at 1600 MT/s (800 MHz CK);
+its latency numbers cannot be copied unchanged into a 396 MHz setup.
 
-The Point Atom boards use Nanya DDR3L parts (verified):
+Build a worksheet with columns for data-sheet page, minimum ns, minimum
+cycles, chosen cycles, MMDC field, and encoded value. Add a separate column
+for the matching DRAM mode-register field. That catches a controller/DRAM
+latency mismatch before the first access.
 
-| Part | Capacity | Density | CL-tRCD-tRP | tRC | tRAS | Used on |
-|------|---------|---------|-------------|-----|------|---------|
-| **NT5CC128M16JR-EK** | 256 MiB | 2 Gb | 13.91 / 13.91 / 13.91 ns | 47.91 ns | 34 ns | NAND core board |
-| **NT5CC256M16EP-EK** | 512 MiB | 4 Gb | 13.91 / 13.91 / 13.91 ns | 47.91 ns | 34 ns | eMMC core board |
-
-Both are 16-bit-wide, 8-bank, with row × column = 14 × 10 (256 MiB part) or 15 × 10 (512 MiB part). Same pinout, same package, the board accepts either without PCB changes. The difference is in the controller's row-address-count setting.
-
-For other vendors' parts in the same density and rate class (Micron MT41K, ISSI IS43TR, Samsung K4B), the timings are within ±10% and the controller config is essentially identical. Verify against your specific chip's datasheet before powering up.
-
-> **Open your DDR chip's datasheet first.** Guessed timings produce the worst class of bug: the DRAM passes a 1 MB memtest and fails at 16 MB. Look up your part. Write the timings down. They feed every register value below.
+The supplied schematic names NT5CC256M16EP-EK. Obtain its manufacturer data
+sheet and confirm density, row/column geometry, speed suffix, temperature
+range, and low-frequency limits. A replacement device needs a fresh
+worksheet, even when the pinout matches.
 
 ## 14.3  Two chips, one bus, channels, ranks, banks
 
-The MMDC controller on i.MX6ULL is **16 bits wide**. The Point Atom MINI uses **two ×8 DDR3 chips in parallel** to form a 16-bit bus. (Some variants use a single ×16 chip. Same idea.) Both chips receive the same address and command. One drives bus bits [7:0]. The other drives [15:8].
+A **channel** is a controller data interface. A **rank** is the set of
+devices selected together by one chip-select. **Banks** are internal
+arrays within a DRAM device.
 
-A "rank" is a set of chips that share a Chip Select. The MINI has **1 rank**. (Larger boards might have 2 ranks on the same channel. A CS0/CS1 pair selects between them.) Each chip has 8 internal banks. The controller can have up to 8 banks open at once (interleaved).
+Two x8 devices can form a x16 rank, but the supplied core schematic instead
+shows **one x16 device** on CS0. Both byte lanes come from that chip.
 
-Total capacity:
-
+```text
+256 M locations * 16 bits = 4096 Mbits = 512 MiB
+one x16 device, one rank, eight internal banks
 ```
-chip:    256 MB × 2 chips    = 512 MiB
-or:      4 Gb total × 1 rank = 4 Gb = 512 MiB
-```
 
-This matches the MINI's "512 MB DDR3" spec.
+For a candidate 15-row-bit, 10-column-bit, eight-bank x16 geometry:
+`2^15 * 2^10 * 8 * 2 bytes = 512 MiB`. Check those counts in the exact
+data sheet before encoding MDCTL and MDASP. A 14-row-bit version would
+have half that capacity. A low-address test cannot distinguish them.
 
 ## 14.4  The MMDC register groups
 
-MMDC base = `0x021B0000` (MMDC0. Only one channel on i.MX6ULL). The registers fall into groups by responsibility:
+MMDC base is `0x021B0000`; its register descriptions are in **RM Chapter 35**.
 
-| Group | Address range | Purpose |
-|-------|--------------|---------|
-| MDCTL | `+0x000` | Master control: rank/bank/row/col counts, bus width |
-| MDPDC | `+0x004` | Power-down config |
+| Register/group | Offset | Responsibility |
+|----------------|--------|----------------|
+| MDCTL | `+0x000` | Geometry, bus width, chip-select enable |
+| MDPDC | `+0x004` | Power-down configuration |
 | MDOTC | `+0x008` | ODT timing |
-| MDCFG0 | `+0x00C` | tRFC, tXS, tXP, tXPDLL |
-| MDCFG1 | `+0x010` | tRP, tRAS, tRC, tRPA, tWR, tMRD, tCWL |
-| MDCFG2 | `+0x014` | tDLLK, tRTP, tWTR, tRRD |
-| MDMISC | `+0x018` | DDR type, bank interleave, mode flags |
-| MDSCR | `+0x01C` | Command register (Mode Register Set, ZQ calibration, etc.) |
-| MDREF | `+0x020` | Refresh control |
-| MDPDC | (rep) | (alias) |
-| MDRWD | `+0x02C` | Read/write data path delay |
-| MDOR | `+0x030` | Out-of-reset timing |
-| MAARCR | `+0x040` | Auto-refresh control |
-| MAPSR | `+0x404` | Power saving / status |
-| MPZQHWCTRL | `+0x800` | ZQ calibration control |
-| MPWLGCR | `+0x808` | Write leveling start |
-| MPWLDECTRL0 | `+0x80C` | Write leveling delay 0 |
-| MPWLDECTRL1 | `+0x810` | Write leveling delay 1 |
-| MPDGCTRL0 | `+0x83C` | DQS gating delay 0 |
-| MPDGCTRL1 | `+0x840` | DQS gating delay 1 |
-| MPRDDLCTL | `+0x848` | Read delay |
-| MPWRDLCTL | `+0x850` | Write delay |
-| MPRDDQBY0DL..3DL | `+0x860..86C` | Per-byte read DQ delay |
-| MPMUR0 | `+0x8B8` | Calibration request |
+| MDCFG0 | `+0x00C` | Includes tRFC, tXS, tXP, tXPDLL, tFAW, tCL |
+| MDCFG1 | `+0x010` | Includes tRCD, tRP, tRC, tRAS, tWR, tMRD, tCWL |
+| MDCFG2 | `+0x014` | Includes tDLLK, tRTP, tWTR, tRRD |
+| MDMISC | `+0x018` | Memory type and controller options |
+| MDSCR | `+0x01C` | Configuration request/acknowledge and commands |
+| MDREF | `+0x020` | Refresh configuration |
+| MDRWD | `+0x02C` | Read/write turnaround |
+| MDOR | `+0x030` | Reset/CKE wait timing |
+| MDASP | `+0x040` | Chip-select address-space partition |
+| MAARCR | `+0x400` | AXI reordering |
+| MAPSR | `+0x404` | Power saving/status |
+| MPZQHWCTRL | `+0x800` | PHY ZQ calibration |
+| MPWLGCR | `+0x808` | Write-leveling control |
+| MPWLDECTRL0 | `+0x80C` | Write-leveling delays for byte lanes 0 and 1 |
+| MPDGCTRL0 | `+0x83C` | Read DQS gating for the active lanes |
+| MPRDDLCTL | `+0x848` | Per-byte read delay |
+| MPWRDLCTL | `+0x850` | Per-byte write delay |
+| MPRDDQBY0DL..1DL | `+0x81C..820` | Active byte-lane read DQ bit-delay controls |
+| MPMUR0 | `+0x8B8` | PHY measure-unit control/status |
 
-There are more. Don't memorize them. Learn the *groups*.
+The register map contains descriptions inherited from wider MMDC variants.
+Mark the two active byte lanes before following those descriptions.
 
-The write order for most of these matters less than you'd think. The exception is **MDSCR**, the command register. We use MDSCR to send DDR3 commands (load mode register, ZQ cal, refresh, etc.), and it must be written at specific points in the init sequence.
+MDSCR.CON_REQ blocks new AXI accesses and drains outstanding work.
+Poll CON_ACK before permitted configuration/commands, then clear CON_REQ
+after completion (RM 35.12.8). Command fields in MDSCR issue the DRAM
+commands; ordinary memory traffic waits while configuration is in progress.
+Polls need bounded failure handling that remains entirely outside DDR.
 
 ## 14.5  IOMUX before MMDC
 
-The DDR3 bus pins (DDR_ADDR, DDR_DQ, DDR_DQS, etc.) need their drive strength and ODT (On-Die Termination) configured **before** the controller starts driving them. These live in IOMUXC under names like `IOMUXC_SW_PAD_CTL_PAD_DRAM_*`.
+DDR pads need the correct electrical configuration before command traffic.
+The dedicated DDR pad/group registers are in IOMUXC (RM Chapter 32).
+They select the memory interface's electrical behavior, separately from
+the familiar GPIO alternate-function setup.
 
-Typical settings:
+Record exact addresses and decoded fields for clock, address/control,
+DQS, DQ byte groups, CKE, ODT, reset, DDR type, and calibration reference
+settings from the board-matched configuration. Check reserved bits and the
+actual 1.35 V rail. Keep addresses and decoded fields together so each
+write can be checked against its register description.
 
-| Pin group | PAD_CTL value | Meaning |
-|-----------|---------------|---------|
-| `DRAM_ADDR*`, `DRAM_RAS_B`, `DRAM_CAS_B`, etc. | `0x000000F0` | Strong drive, no pull |
-| `DRAM_DQ[15:0]`, `DRAM_DQS[1:0]_B`, `DRAM_DQS[1:0]` | `0x00000030` | Slightly weaker, ODT capable |
-| `DRAM_SDQS[1:0]_B`, `DRAM_SDQS[1:0]` | `0x00000030` | |
-| `DRAM_RESET`, `DRAM_ODT[1:0]`, `DRAM_CKE[1:0]`, `DRAM_SDCKE[1:0]` | `0x000030B0` | With keeper for stable idle |
-
-There are about 80 DRAM pin pads on i.MX6ULL. Configuring them all takes ~30 register writes. Source: RM Chapter 32 → search for "DRAM" pad names.
-
-> **Why pad config first?** Because the MMDC controller, once enabled, starts driving these pins. If their drive strength is wrong, the signals are weak (under-drive: ringing, EMI) or unstable (over-drive: cross-talk).
+Drive strength, slew, and termination interact with trace impedance and
+loading. Too much or too little drive can reduce the signal margin. A
+memtest mismatch is a starting point for diagnosis; waveform and margin
+measurements answer the electrical questions the schematic leaves open.
 
 ## 14.6  The JEDEC DDR3 initialization sequence
 
-Independent of which controller you use, DDR3 requires this sequence after power-on:
+The part data sheet and MMDC procedure together define the actual sequence.
+For the DDR3 power-up outline:
 
-1. **De-assert RESET#** after at least 200 µs (with stable clock and Vdd).
-2. **De-assert CKE** after at least 500 µs since power-on.
-3. Issue **NOPs** for at least 500 µs.
-4. **MRS, Load Mode Register 2 (MR2):** CWL, ASR (auto self-refresh).
-5. **MRS, Load Mode Register 3 (MR3):** typically 0.
-6. **MRS, Load Mode Register 1 (MR1):** ODT, DLL enable, output drive, Rtt_Nom, write leveling off.
-7. **MRS, Load Mode Register 0 (MR0):** Burst length, CL, DLL reset.
-8. **ZQ calibration long (ZQCL):** wait for completion.
-9. Optionally: **Write leveling**, **DQS gating calibration**, **Read calibration**.
-10. **Enable refresh.**
+1. Establish supplies as specified and hold RESET# low for the required
+   power-up interval (at least 200 us for the usual DDR3 sequence).
+2. Release RESET# while keeping **CKE low** for the required interval
+   (usually at least 500 us after RESET# rises). Establish a valid clock
+   for the specified time before CKE rises.
+3. **Assert CKE high**, issue NOP/deselect, and wait tXPR before MRS.
+4. Load MR2, MR3, MR1, then MR0 with DLL reset, observing tMRD and the
+   final tMOD requirement.
+5. Issue ZQCL and observe the specified ZQ initialization and DLL-lock
+   waits before normal traffic.
+6. Complete the controller/PHY calibration flow, restore operating modes
+   and refresh, and release configuration request.
 
-The MMDC controller does most of this for you via the **MDSCR** command interface, but you still configure each MR's value (which goes into MDSCR.CMD_VAL and is sent to the chip).
+Follow the CKE rising edge closely: the reset-to-CKE wait happens before
+it, and tXPR happens afterward. MMDC MDOR and command sequencing implement
+parts of the procedure; verify their clock basis and encodings.
+[Micron's DDR3 FAQ](https://www.micron.com/sales-support/sales/faqs)
+also explains reset and ZQ behavior; it is background, not the fitted
+Nanya part's timing authority.
 
 ### Mode Register encodings (relevant fields)
 
-**MR0** (operating mode):
+| Register | Fields to decode from the fitted part's data sheet |
+|----------|---------------------------------------------------|
+| MR0 | BL at A1:A0; split CL field at A6:A4 and A2; DLL reset at A8; discrete tWR encoding at A11:A9 |
+| MR1 | DLL disable at A0; output impedance at A5/A1; RTT_NOM at A9/A6/A2; write leveling at A7 |
+| MR2 | CWL at A5:A3; RTT_WR at A10:A9; refresh-related options |
+| MR3 | MPR/operating options required during calibration and normal use |
 
-| Bits | Field | Our value |
-|------|-------|----------|
-| 1:0 | Burst length | 00 (BL8 fixed) |
-| 6:4 + 2 | CAS latency | CL = 11 → 1110_1 → 0b01110 |
-| 8 | DLL reset | 1 (reset DLL at init) |
-| 11:9 | Write recovery (tWR) | depends. For tWR=15ns@800MHz, 6 ⇒ 0b101 |
+Choose supported CL/CWL values for the actual CK, not the maximum-speed
+bin. Compute DRAM MR values separately from MMDC timing encodings.
+Then encode the MR address and bank selection into MDSCR as documented.
+A bare MR value is not an entire MDSCR command.
 
-**MR1**:
+Record each MR's source, chosen cycles, and encoding in the worksheet.
 
-| Bits | Field | Our value |
-|------|-------|----------|
-| 0 | DLL enable | 0 (enabled, active-low) |
-| 2,6 | Output drive | RZQ/7 (typical) |
-| 1,5,9 | Rtt_Nom | RZQ/4 = 60 Ω (typical) |
-| 7 | Write leveling | 0 (off) |
+(a-complete-ddr3-init-for-the-point-atom-mini)=
+## 14.7  Preparing the board-specific initialization
 
-**MR2**: ODT for Rtt_WR. CWL.
+Bring the worksheet, pad configuration, and calibration record together
+in this **design checklist**. Each line should lead to a documented step
+in the board's initialization:
 
-**MR3**: typically 0.
+```text
+Verified board-specific initialization:
+  establish approved clock/voltage state and MMDC root
+  configure exact DDR pads and groups
+  enter/confirm MMDC configuration state
+  program geometry, partition, timing, reset waits, ODT and PHY controls
+  perform reset/CKE/MRS/ZQ sequence with required waits
+  apply qualified calibration or run the complete calibration procedure
+  restore refresh and normal operating options
+  release configuration request; confirm completion
+  test only an explicitly reserved, destructive scratch range
+```
 
-For our part with CL=11 and CWL=8:
+Start from the matching board BSP and NXP RPA, then check the fitted part
+and silicon errata. Keep the generated initialization, worksheet, tool
+version, and calibration log together: they describe one configuration.
 
-- MR0 = `0x00000A50` (depends on exact tWR/CL. This is a representative value)
-- MR1 = `0x00000044`
-- MR2 = `0x00000018`
-- MR3 = `0x00000000`
-
-> **Real numbers will differ.** I gave illustrative bit patterns. You must compute yours from your DDR3 chip's datasheet, your target clock, and your tWR/CL choices. NXP's DDR Stress Tool (§14.13) is the easiest way to derive them.
-
-## 14.7  A complete DDR3 init for the Point Atom MINI
-
-Below is the bring-up function. It is long. That is the nature of DDR. Read it. Do not run it without first running NXP's DDR Stress Tool on your specific board and replacing the calibration values.
+The test below **is compilable**. It requires already initialized DDR,
+an aligned, exclusively reserved range, MMU-off access with D-cache/L2
+disabled under the startup policy, and all code/data/stacks in OCRAM.
+It overwrites every word twice. Volatile forces accesses in C; it does not
+bypass a cache.
 
 `ddr.h`:
 
 ```c
 #ifndef DDR_H
 #define DDR_H
-void ddr_init(void);
-int  ddr_selftest(void);   /* returns 0 on success */
+#include <stdint.h>
+int ddr_init(void); /* board-owned implementation; 0 = completed */
+uint32_t ddr_test_words(volatile uint32_t *base, uint32_t words);
 #endif
 ```
 
-`ddr.c` (abbreviated to the structural skeleton):
+`ddr-test.c` (there is deliberately no generic `ddr_init()` definition):
 
 ```c
 #include "ddr.h"
-#include <stdint.h>
-#define REG(addr) (*(volatile uint32_t *)(addr))
 
-#define MMDC0_BASE       0x021B0000
-#define MMDC_MDCTL       (MMDC0_BASE + 0x000)
-#define MMDC_MDPDC       (MMDC0_BASE + 0x004)
-#define MMDC_MDOTC       (MMDC0_BASE + 0x008)
-#define MMDC_MDCFG0      (MMDC0_BASE + 0x00C)
-#define MMDC_MDCFG1      (MMDC0_BASE + 0x010)
-#define MMDC_MDCFG2      (MMDC0_BASE + 0x014)
-#define MMDC_MDMISC      (MMDC0_BASE + 0x018)
-#define MMDC_MDSCR       (MMDC0_BASE + 0x01C)
-#define MMDC_MDREF       (MMDC0_BASE + 0x020)
-#define MMDC_MDRWD       (MMDC0_BASE + 0x02C)
-#define MMDC_MDOR        (MMDC0_BASE + 0x030)
-#define MMDC_MAPSR       (MMDC0_BASE + 0x404)
-#define MMDC_MPZQHWCTRL  (MMDC0_BASE + 0x800)
-#define MMDC_MPWLGCR     (MMDC0_BASE + 0x808)
-#define MMDC_MPWLDECTRL0 (MMDC0_BASE + 0x80C)
-#define MMDC_MPDGCTRL0   (MMDC0_BASE + 0x83C)
-#define MMDC_MPRDDLCTL   (MMDC0_BASE + 0x848)
-#define MMDC_MPWRDLCTL   (MMDC0_BASE + 0x850)
-#define MMDC_MPMUR0      (MMDC0_BASE + 0x8B8)
-
-#define IOMUXC_DRAM_PADS_BASE 0x020E0290    /* approximate; see RM */
-
-static void ddr_iomux(void)
+uint32_t ddr_test_words(volatile uint32_t *base, uint32_t words)
 {
-    /* ---- Address / control pads: strong drive, no pull ---- */
-    /* (For brevity, only key pads shown.) */
-    REG(0x020E0500) = 0x000000F0;   /* DRAM_ADDR00 .. */
-    /* ... (all DRAM pads) ... */
-}
-
-static void ddr_calibrate(void)
-{
-    /* These values come from the DDR Stress Tool.
-       They are SPECIFIC to your board's layout and DRAM. */
-    REG(MMDC_MPWLDECTRL0) = 0x001F001F;
-    REG(MMDC_MPDGCTRL0)   = 0x4140414C;
-    REG(MMDC_MPRDDLCTL)   = 0x40404546;
-    REG(MMDC_MPWRDLCTL)   = 0x40402E32;
-}
-
-void ddr_init(void)
-{
-    ddr_iomux();
-
-    /* ---- MMDC core configuration ---- */
-    REG(MMDC_MDMISC)  = 0x00001740;   /* DDR3 mode, 8-bank interleave */
-    REG(MMDC_MDOTC)   = 0x12554000;
-    REG(MMDC_MDCFG0)  = 0xBABF7954;   /* tRFC, tXS, tXP, tXPDLL */
-    REG(MMDC_MDCFG1)  = 0xDB538F64;   /* tRP, tRAS, tRC, tWR, tCWL */
-    REG(MMDC_MDCFG2)  = 0x01FF00DB;   /* tDLLK, tRTP, tWTR, tRRD */
-    REG(MMDC_MDRWD)   = 0x000026D2;
-    REG(MMDC_MDOR)    = 0x005B0E21;
-    REG(MMDC_MDPDC)   = 0x00020024;
-    REG(MMDC_MDCTL)   = 0x83180000;   /* row=14, col=10, BL=8, 16-bit, CS0 only */
-
-    ddr_calibrate();
-
-    /* ---- Issue mode register sets via MDSCR ---- */
-    REG(MMDC_MDSCR)   = 0x00008032;   /* MR2 = 0x18 -> MDSCR */
-    REG(MMDC_MDSCR)   = 0x00008033;   /* MR3 = 0x00 */
-    REG(MMDC_MDSCR)   = 0x00048031;   /* MR1 = 0x004 */
-    REG(MMDC_MDSCR)   = 0x15208030;   /* MR0 = 0x1520 (CL=11, tWR=12, DLL_reset=1) */
-
-    /* ---- ZQ calibration ---- */
-    REG(MMDC_MDSCR)   = 0x04008040;   /* ZQ long */
-
-    /* ---- Hardware ZQ continuous + refresh ---- */
-    REG(MMDC_MPZQHWCTRL) = 0xA1390003;
-    REG(MMDC_MDREF)      = 0x00007800; /* tREFI counter for 7.8 us */
-    REG(MMDC_MAPSR)      = 0x00011006;
-
-    /* ---- Final: take controller out of config mode ---- */
-    REG(MMDC_MDSCR)   = 0x00000000;
-}
-
-/* Memtest: write pattern, read back, count bit errors. */
-int ddr_selftest(void)
-{
-    volatile uint32_t *p = (uint32_t *)0x80000000;
-    const uint32_t size_words = 1024 * 1024;  /* 4 MB scan */
     uint32_t errors = 0;
-
-    for (uint32_t i = 0; i < size_words; i++) p[i] = i ^ 0xA5A5A5A5;
-    for (uint32_t i = 0; i < size_words; i++) {
-        if (p[i] != (i ^ 0xA5A5A5A5)) errors++;
+    for (uint32_t pass = 0; pass < 2; pass++) {
+        uint32_t mask = pass ? 0x5A5A5A5Au : 0xA5A5A5A5u;
+        for (uint32_t i = 0; i < words; i++) base[i] = i ^ mask;
+        __asm__ volatile ("dsb sy" ::: "memory");
+        for (uint32_t i = 0; i < words; i++)
+            if (base[i] != (i ^ mask)) errors++;
     }
-    return (int)errors;
+    return errors;
 }
 ```
 
-The constants are the dangerous part. **Do not trust the numbers above blindly.** They are typical for a particular MT41K128M16 layout but vary across board revisions, trace lengths, and chip vendors. The correct values for *your* board come from:
-
-1. Running the **NXP DDR Stress Tool** on your board.
-2. Reading the values from a known-good vendor BSP for your specific MINI revision.
-3. Sweeping calibration values experimentally (slow but possible).
+Limit the range so the pointer arithmetic is valid and the two-pass error
+count cannot overflow. The caller supplies the capacity and reserved-region
+checks. Zero errors mean this range passed these patterns on this run;
+wider coverage comes in section 14.11.
 
 ## 14.8  Calibration: write leveling, DQS gating, read/write delay
 
-DDR3 chips need three calibrations beyond the standard initialization:
+Calibration asks where to sample or drive data **within** a clock period:
 
-- **Write leveling**: aligns the controller's data clock (DQS) with the chip's clock (CK). The chip enters a special mode where it samples DQS rising edges. The controller increments its DQS delay until the chip reports a transition. Result: per-byte DQS delay value.
-- **DQS gating**: tunes when the controller looks for the chip's response DQS during reads. Without this, reads return data, but framed incorrectly.
-- **Read/write delay**: per-bit fine-tuning across the data lane.
+- **Write leveling** aligns write DQS with CK at the memory.
+- **DQS gating** finds the read-response strobe window.
+- **Read/write delay calibration** positions sampling/driving within the
+  data window. The main delay registers operate per byte; separate DQ
+  registers provide bit adjustments.
 
-The MMDC can do this **in hardware** if you set the right bits, write 1 to `MPWLGCR` to start write leveling, poll for completion, read back the resulting delay. Or do it manually by sweeping values and running a memtest at each.
+The hardware calibration procedure controls memory mode, configuration
+state, refresh, starting delays, completion polls, error checks, and
+restoration. Follow RM 35.11 and the tool's matching user guide in order.
 
-Real-world flow: NXP's DDR Stress Tool runs the hardware calibration *with diagnostics*, reports the optimal values, and emits a "DCD list", a sequence of register writes you can drop into your code (or your DCD blob).
-> **DCD:** Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
+(the-six-registers-the-stress-tool-updates)=
+### Recording the active-lane delays
 
-### The six registers the stress tool updates
+On the i.MX6ULL x16 interface, MPWLDECTRL0 covers both active byte lanes.
+The corresponding registers with suffix 1 describe additional lanes in
+wider layouts. Keep that distinction beside the tool's output:
 
-After the tool completes its calibration sweep, it reports values for **exactly six registers** that you must update in your initialization code:
+| Register | Address | Lane meaning |
+|----------|---------|--------------|
+| MPWLDECTRL0 | `0x021B080C` | Write leveling, bytes 0 and 1 |
+| MPWLDECTRL1 | `0x021B0810` | Wider-layout bytes 2 and 3, not active x16 bytes |
+| MPDGCTRL0 | `0x021B083C` | DQS gating for active x16 lanes |
+| MPDGCTRL1 | `0x021B0840` | Wider-layout additional lanes |
+| MPRDDLCTL | `0x021B0848` | Read delay; use active byte fields |
+| MPWRDLCTL | `0x021B0850` | Write delay; use active byte fields |
 
-| Register | Address | Calibration step |
-|----------|---------|------------------|
-| `MMDC_MPWLDECTRL0` | `0x021B080C` | Write leveling, byte 0 |
-| `MMDC_MPWLDECTRL1` | `0x021B0810` | Write leveling, byte 1 |
-| `MPDGCTRL0`        | `0x021B083C` | Read DQS gating, byte 0 |
-| `MPDGCTRL1`        | `0x021B0840` | Read DQS gating, byte 1 |
-| `MPRDDLCTL`        | `0x021B0848` | Read delay (all bytes) |
-| `MPWRDLCTL`        | `0x021B0850` | Write delay (all bytes) |
+Record the active-lane results with board revision, part marking, CK,
+voltage, temperature, tool version, and test settings. Use the matching
+i.MX6ULL procedure to decide which fields belong in the initialization.
 
-A typical stress-tool report for the Point Atom eMMC core board (NT5CC256M16EP-EK) might be:
+(the-10-15-overclock-heuristic)=
+### Qualifying supported operating points
 
-```
-Write leveling:
-  MMDC_MPWLDECTRL0 = 0x00000000
-  MMDC_MPWLDECTRL1 = 0x000B000B
-Read DQS gating:
-  MPDGCTRL0        = 0x0138013C
-  MPDGCTRL1        = 0x00000000
-Read calibration:
-  MPRDDLCTL        = 0x40402E34
-Write calibration:
-  MPWRDLCTL        = 0x40403A34
-```
+Qualify the chosen configuration at supported operating points across the
+specified voltage/temperature envelope, using appropriate equipment.
+For each point, record test coverage, duration, errors, and calibration
+margin. Stay within both the SoC and DRAM ratings; an overclock result
+cannot replace this qualification.
 
-Plug these six values into the `mx6_mmdc_calib` struct in `ddr.c` (§14.7). **Do not** copy these specific numbers from one board to another, they reflect trace lengths, PCB stack-up, and the specific DDR3L chip. Always re-derive them on your own board.
-
-**For this book**, we copy the values the DDR Stress Tool emits. Treat them as measured board data that you can generate again by running the tool. If your DRAM begins to fail occasionally during DRAM workloads, re-run the tool. Calibration changes with temperature.
-
-### The 10-15% overclock heuristic
-
-A useful design-validation trick: after calibration, the stress tool can attempt to run DRAM at increasing clock rates above the nominal 396 MHz. **If your board can sustain 10-15% overclock** (i.e., DDR working clean at ~440-460 MHz), the PCB routing and termination are healthy. **If it fails at less than 10% over**, the board has signal-integrity issues, likely mismatched trace lengths, missing termination, or excessive cross-talk. The fix is in hardware, not software.
-
-This is the cheapest pre-production sanity check available for embedded boards with DDR.
+Review errata **ERR005778** before DDR operation below 100 MHz (measure-unit
+workaround must execute outside DDR). **ERR009596** requires MAARCR's
+ARCR_GUARD bits to remain zero. Include those requirements in the same
+initialization record.
 
 ## 14.9  Calling from `main()` and the OCRAM → DRAM jump
 
-In `main()`:
+Integrate this **main-body fragment** with the board-owned `ddr_init()`,
+working UART/printf, Chapter 10 startup, and the test module. If a DCD/loader
+already initialized DDR, retain that state and skip the initialization call.
 
 ```c
-#include "uart.h"
-#include "clocks.h"
-#include "ddr.h"
-int printf(const char *fmt, ...);
-
-int main(void)
-{
-    uart_init();
-    clocks_init();
-    uart_init();   /* re-init after clock change */
-
-    printf("\r\n== DDR3 initialization ==\r\n");
-    ddr_init();
-    int errs = ddr_selftest();
-    printf("DDR memtest (4 MB): %d errors\r\n", errs);
-    if (errs) {
-        printf("DDR failed; halting.\r\n");
-        for (;;) {}
-    }
-    printf("DDR ok. 512 MiB at 0x80000000.\r\n");
-
-    /* Write a marker; read back; print. */
-    *(volatile uint32_t *)0x80000000 = 0xCAFEBABE;
-    printf("Wrote 0x%08x at 0x80000000, read back 0x%08x\r\n",
-           0xCAFEBABE, *(volatile uint32_t *)0x80000000);
-
-    /* The next section replaces this halt with relocation to DRAM. */
-
+/* In main(), while everything still lives in OCRAM: */
+printf("Starting board DDR initialization\r\n");
+if (ddr_init() != 0) {
+    printf("DDR initialization did not complete\r\n");
     for (;;) {}
 }
+/* Example only: reserve 0x81000000..0x813FFFFF before using it. */
+uint32_t errors = ddr_test_words((volatile uint32_t *)0x81000000u,
+                                4u * 1024u * 1024u / 4u);
+printf("DDR scratch test: %u mismatches\r\n", errors);
+if (errors) for (;;) {}
 ```
 
-Expected output:
+That scratch span is 16 MiB above the base. Confirm it exists and reserve
+it in the memory map; it stays clear of the separate payload proposed
+below. Report the tested span and mismatch count rather than total-capacity
+success.
 
-```
-== DDR3 initialization ==
-DDR memtest (4 MB): 0 errors
-DDR ok. 512 MiB at 0x80000000.
-Wrote 0xcafebabe at 0x80000000, read back 0xcafebabe
-```
-
-If the memtest is non-zero: your calibration is wrong (most likely), or your IOMUX pad settings are wrong (less common), or your timing parameters don't match the chip (third most common).
-> **MCU bridge:** Think of IOMUX like STM32 alternate-function selection, but with separate pad electrical settings and board-level ownership by Device Tree.
-> **IOMUX:** the pin multiplexer that decides which peripheral function appears on each package pin.
+If a checkpoint disappears, investigate power/reset, CK, pads, geometry,
+timings, commands, refresh, and calibration. There is no evidence-based
+ranking of those causes in this chapter.
 
 ## 14.10  Copying ourselves to DRAM
 
-Now relocate. Right now we are executing from OCRAM at `0x009xxxxx`. DRAM works. We want to copy the *entire* image to DRAM at `0x80100000` (1 MB into DRAM, for headroom) and jump to it.
+Copying a fixed-address executable to a new base does **not** relocate it.
+Literal addresses, global references, pointers, and vector entries still
+refer to the old link addresses. A zero-initialized static flag usually
+belongs to BSS, which is not stored in the raw payload. Printing `&main`
+also prints a link-time address, not a measurement of the current PC.
 
-The mechanics:
+Use a simpler learning design: an OCRAM loader plus a **separately linked
+DRAM payload**. Each image has its own link addresses and startup. The
+loader's job is to place the second image exactly where it was linked.
+
+1. Link the payload at `0x80100000`, with its first ARM instruction
+   branching to its own startup. Use `ENTRY(_vectors)` and put vectors
+   first, as in Chapter 10.
+2. Its startup masks interrupts, initializes its own SVC/IRQ stacks,
+   initializes data/BSS, installs its own VBAR with the Chapter 15 policy,
+   and enters a new payload main. It must **not reinitialize DDR**.
+3. Embed the payload's raw file in the OCRAM loader's read-only section.
+   Define start/end symbols around it and account for those bytes in the
+   ROM-active load bound. A larger two-image bundle may not fit.
+4. Test an unrelated scratch range. Copy exactly the payload file length
+   into its linked destination. Exclude both loader and payload regions
+   from every subsequent destructive test.
+5. Synchronize the new instruction bytes and branch to the payload entry.
+
+Embedding **assembly fragment** in a loader source file:
+
+```asm
+    .section .rodata.dram_payload, "a"
+    .balign 4
+    .global _payload_start, _payload_end
+_payload_start:
+    .incbin "dram-payload.bin"
+_payload_end:
+```
+
+Copy **C fragment**; include `stdint.h`. Its symbols require the assembly
+and linker integration above:
 
 ```c
-/* In main(), after DDR is up: */
-extern uint32_t _text_start;
-extern uint32_t _text_end;
-extern uint32_t _data_start;
-extern uint32_t _data_end;
+extern const unsigned char _payload_start[], _payload_end[];
+extern void enter_dram_payload(uint32_t entry) __attribute__((noreturn));
 
-void relocate_to_dram(void)
+void copy_and_enter_payload(void)
 {
-    /* Symbols come from linker script: addresses of our current image. */
-    uint32_t img_size = (uint32_t)&_text_end - (uint32_t)&_text_start;
-    img_size += (uint32_t)&_data_end - (uint32_t)&_data_start;
-
-    uint32_t *src = (uint32_t *)0x00908000;   /* OCRAM program address */
-    uint32_t *dst = (uint32_t *)0x80100000;   /* DRAM target */
-    for (uint32_t i = 0; i < (img_size + 3) / 4; i++) dst[i] = src[i];
-
-    /* The DRAM copy is identical to the OCRAM copy.  The 'jump' is just
-       calling a function pointer to the DRAM-resident entry. */
-    typedef void (*entry_t)(void) __attribute__((noreturn));
-    entry_t entry = (entry_t)(0x80100000 + ((uint32_t)main - 0x00908000));
-    entry();
+    uintptr_t bytes = (uintptr_t)_payload_end - (uintptr_t)_payload_start;
+    volatile unsigned char *dst = (volatile unsigned char *)0x80100000u;
+    /* Verify bytes and destination bounds against the payload map first. */
+    for (uintptr_t i = 0; i < bytes; i++) dst[i] = _payload_start[i];
+    enter_dram_payload(0x80100000u);
 }
 ```
 
-Caveat: the call to `entry()` enters the DRAM-resident copy of `main`, which then re-initializes everything. To avoid infinite recursion, use a flag:
+`enter-dram.S`, callable from that fragment under the explicit
+**MMU-off, D/L2-disabled, privileged SVC, ARM-state** policy:
 
-```c
-static uint32_t already_in_dram = 0;
-
-int main(void)
-{
-    if (!already_in_dram) {
-        uart_init();
-        clocks_init();
-        uart_init();
-        ddr_init();
-        if (ddr_selftest() == 0) {
-            already_in_dram = 1;
-            relocate_to_dram();   /* never returns */
-        }
-    }
-    /* We're now running from DRAM. */
-    printf("\r\nRunning from DRAM at 0x80100000!\r\n");
-    printf("My PC is somewhere near %p\r\n", (void*)main);
-    for (;;) {}
-}
+```asm
+    .syntax unified
+    .cpu cortex-a7
+    .arm
+    .text
+    .global enter_dram_payload
+    .type enter_dram_payload, %function
+enter_dram_payload:
+    cpsid if
+    dsb sy
+    mov r1, #0
+    mcr p15, 0, r1, c7, c5, 0   @ invalidate I-cache to PoU
+    mcr p15, 0, r1, c7, c5, 6   @ invalidate branch predictor
+    dsb sy
+    isb
+    bx r0
+    .size enter_dram_payload, . - enter_dram_payload
 ```
 
-The flag-in-`.data` works because we copy `.data` along with `.text`, so the DRAM copy sees `already_in_dram = 1`. The OCRAM copy still has `0` but never runs again, we jumped past it.
+I-cache may still be enabled from ROM; synchronization is therefore
+explicit. If D-cache/L2 is enabled, this stub is **insufficient**: dirty
+destination data needs the correct clean-to-PoU/coherency procedure first.
+Do not add a casual cache-disable instruction and discard dirty data.
 
-When you run this, picocom should show:
-
-```
-== DDR3 initialization ==
-DDR memtest (4 MB): 0 errors
-DDR ok. 512 MiB at 0x80000000.
-Wrote 0xcafebabe at 0x80000000, read back 0xcafebabe
-
-Running from DRAM at 0x80100000!
-My PC is somewhere near 0x80100xxx
-```
-
-That `0x80100xxx` for `main` is the proof. We are executing instructions out of DDR3. Every later chapter in Part II (and all of Part III's U-Boot) lives here.
-> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
+Use the payload map/disassembly and, when available, a debugger's current
+PC to check execution in DRAM. Its stack, globals, and VBAR need separate
+checks. Later IRQ/timer exercises can still run in OCRAM; moving them is
+not a prerequisite.
 
 ## 14.11  Sanity tests beyond the basic memtest
 
-A 4 MB memtest is necessary but not sufficient. Common further tests:
+All tests are destructive. Keep the tester outside the tested range and
+disable other masters that might use it.
 
 ### Walking ones / zeros
 
-```c
-for (int bit = 0; bit < 32; bit++) {
-    uint32_t pat = 1u << bit;
-    *(volatile uint32_t *)0x80000000 = pat;
-    if (*(volatile uint32_t *)0x80000000 != pat) report_failure(bit);
-}
-```
-
-Catches stuck-at-bit faults.
+At a reserved word, write each `1u << bit` and its complement, then compare.
+This checks data-bit behavior at that location, not every cell or address
+line. Add all-zero/all-one and alternating patterns at multiple locations.
 
 ### Address-as-data
 
-```c
-for (uint32_t a = 0x80000000; a < 0x80100000; a += 4)
-    *(volatile uint32_t *)a = a;
-for (uint32_t a = 0x80000000; a < 0x80100000; a += 4)
-    if (*(volatile uint32_t *)a != a) report_failure_at(a);
-```
-
-Catches address-line shorts.
+Write distinct address-derived patterns across a reserved span before
+reading any back. Add a dedicated power-of-two address-alias test across
+the verified capacity: a 4 MiB sweep cannot find every high address bit
+or a wrongly configured 256/512 MiB boundary.
 
 ### Long memtest
 
-Sweep the **entire 512 MiB** with random patterns. Takes a few minutes. Run before declaring DRAM good.
+Sweep the available verified capacity with multiple patterns and retention
+intervals. Reserve loader, stacks, vectors, logs, payload, and tool working
+areas. A tester running in DRAM cannot overwrite "all 512 MiB" safely.
+Record range, duration, conditions, and first failing address/value.
 
-The reference open-source tool is `memtester` (a Linux user-space program in Part V, not a bare-metal one). For bare-metal, copy the loops from above and extend.
+Linux `memtester` later tests memory allocated to a user process; it is not
+a bare-metal program or a proof that every physical byte was tested.
 
 ## 14.12  Why the DCD is the elegant alternative
 
-In Chapter 7 we discussed how the Boot ROM reads and executes a DCD before loading your image. A DCD that initializes DRAM is our function above expressed as `(address, value)` pairs. It has no loops or branches, only register writes.
+A DCD lets the ROM prepare DDR before loading a payload into it. Chapter 7
+describes its write, check/poll, and NOP commands, format limits, and
+register-validation constraints. General branching and calibration
+algorithms require executable initialization code.
 
-In production, you ship a DCD inside your `.imx`. The ROM brings up DRAM. Then it loads U-Boot (which is multi-megabyte) *into* DRAM. U-Boot, in turn, loads the kernel.
-
-For *learning*, doing it in C is better because you see the logic. For *deployment*, the DCD is better because it lets the ROM load larger images.
-
-We will update `mkimx.py` in **Chapter 19** to support DCDs so that we can re-use our DDR init values when we want to load a >100 KB image. Until then, our bare-metal images are small enough to fit in OCRAM and bootstrap DRAM themselves.
+A validated DCD carries a fixed board configuration. An SPL can instead
+execute richer initialization code. Choose the boot design first, then
+express the board's initialization in the form that design supports.
+Chapter 11's `python3 mkimx.py` tool is deliberately OCRAM-only and unsigned;
+it does not build a DDR image or accept a DCD. The two-image exercise above
+still wraps an OCRAM loader. For a ROM-loaded DDR image, follow the actual
+Chapter 19 image/build route with a qualified DCD-capable configuration.
 
 ## 14.13  NXP's DDR Stress Tool
 
-This deserves its own section.
+Use NXP's **i.MX 6/7 DDR Stress Test Tool** and the matching
+**i.MX6UL/ULL/ULZ Register Programming Aid (RPA)**. Select the package by its
+supported SoCs; similarly named tools for i.MX8M serve a different controller.
 
-The DDR Stress Tool (`mscale_ddr_tool` in modern NXP releases) is a Windows GUI / CLI program that:
+The RPA derives an initialization script from the selected part geometry,
+timings, clock, and board configuration. The stress tool loads a helper,
+runs calibration/testing, and reports results. Supply the RPA-derived
+starting configuration before asking the tool to find delay margins.
+[NXP's tool release page](https://community.nxp.com/t5/i-MX-Processors-Knowledge-Base/i-MX-6-7-Series-DDR-Tool-Release/ta-p/1271415)
+identifies the supported SoCs and separate roles of the two tools.
 
-1. Connects to your board over USB-OTG (SDP).
-2. Pushes a small bare-metal helper into OCRAM and runs it.
-3. The helper runs hardware calibration with extensive diagnostics.
-4. Reports the optimal write-leveling, DQS-gating, and read/write delay values.
-5. Optionally generates a DCD blob you can drop into your image.
-
-**Use it on every new board.** Even if you use values from a vendor BSP, validate with the tool. Calibration drifts with temperature, board layout, and DRAM lot.
-
-Download from NXP's website (free, registration required). Documentation: AN4467 and AN5223. There is an open-source replacement effort but the NXP tool is what everyone uses.
+Before a hardware session, read the matching package guide, check board
+power/USB/reset prerequisites from Chapter 8, and verify the selected SoC.
+Archive inputs and results. This chapter records no tool run or board test.
 
 ## 14.14  Lab
 
-> **Template warning:** This block contains placeholder values.
-> Replace compatible strings, GPIO numbers, addresses, and paths with values from your board before using it.
-
-
-This is the central lab of Part II.
-
-1. **Run DDR Stress Tool** on your board. Record the calibration values.
-2. **Replace the placeholder constants** in `ddr.c` with your measured values.
-3. **Build, push via SDP, run.** Watch picocom for "DDR ok" or for memtest failures.
-4. **Run the long memtest.** Sweep all 512 MiB. Confirm zero errors.
-5. **Relocate to DRAM.** Implement §14.10. Confirm `main` reports an address in `0x80100000` range.
-6. **Vary DRAM clock.** In `clocks_init()`, reduce MMDC clock to 198 MHz (PFD2 / 2 instead of PFD2). Re-run DDR init with adjusted timing values (compute from datasheet ns). Re-test. Compare error rate.
-7. **Heat the chip.** Run a long memtest while gently heating the DRAM with a hot-air station or a hairdryer (be careful). Observe whether calibration holds.
+1. Locate the fitted part and matching schematic/BSP. Fill the timing and
+   geometry worksheet. Stop if the exact part data sheet is unavailable.
+2. Check the MMDC clock path with Chapter 13. Audit pads, timing encodings,
+   MRS values, refresh, completion waits, and applicable errata.
+3. With approved hardware prerequisites, use the matching RPA/stress tool
+   workflow. Preserve actual logs and calibration conditions.
+4. Build an OCRAM test only after initialization is qualified. Declare the
+   scratch range; compare two patterns and record failures precisely.
+5. Check high-address aliasing and wider ranges without overwriting the
+   tester or another live owner.
+6. Optional: build the separately linked payload and inspect both maps
+   before transferring control. Check PC, SP, globals, and VBAR separately.
+7. Temperature/voltage qualification belongs to a controlled setup within
+   ratings. Do not use a hairdryer, hot-air station, or DDR overclock as a
+   beginner stress experiment.
 
 ## 14.15  Pitfalls
 
-- **Trusting copied calibration values.** They were calibrated on someone else's board. Use them as a starting point and re-validate on yours.
-- **IOMUX not configured.** The MMDC pads default to weak drive after reset. Signals look correct on a scope but cross-talk causes occasional bit errors. Configure pads first.
-- **Wrong MR0 CAS latency.** Symptom: memtest fails immediately. The chip and the controller must agree on CL. CL=11 on chip = `MR0[6:4,2] = 0b1110_1`. CL=11 in MMDC's MDCFG1.tRL field = different encoding.
-- **MMDC clock mismatch.** Timings in MDCFG0/1/2 are converted to cycles using the *current* MMDC clock. If you change MMDC clock after MMDC init, the timings are no longer correct.
-- **Forgetting to disable MDSCR config mode.** After MR sets, write 0 to MDSCR to leave config mode. Otherwise reads/writes are interpreted as MMDC commands.
-- **Heating the chip in a way that destroys it.** A hairdryer is fine for the temperature lab. A heat gun is too hot and can destroy the chip.
-- **Not power-cycling after a failed bring-up.** A partially-initialized MMDC can produce stuck states. When in doubt, power off, count to 5, power on.
+- **Copied constants without provenance.** Calibration is not a complete
+  clock/pad/timing/refresh configuration.
+- **Wrong capacity.** A small test may pass while high addresses alias.
+- **Mismatched CL/CWL.** Controller and DRAM have different encodings but
+  must agree on the chosen latencies.
+- **Live MMDC reclocking.** Timings are encoded for a particular CK.
+- **Leaving CON_REQ asserted.** Normal AXI traffic remains blocked.
+- **Cache-only success.** Volatile is not uncached memory.
+- **Naive copy-and-call relocation.** Link-time addresses do not move.
+- **Blind retries.** Follow the board's approved reset/power sequence,
+  including source/back-power checks; an arbitrary five-second wait is
+  not proof of a clean reset.
 
 ## 14.16  Going deeper
 
-- **JEDEC JESD79-3F**: *DDR3 SDRAM Specification*. The original. Free download with registration.
-- Your **DRAM chip datasheet** (Micron MT41K128M16, ISSI IS43TR16128, Nanya NT5CC128M16, etc.). Authoritative for tRCD/tRP/tRAS values and MR bit fields.
-- **IMX6ULLRM Chapter 39, MMDC**: The controller's complete register reference. Long but skimmable.
-- **AN4467**: *MX6 DDR Stress Test*. How to use the NXP tool.
-- **AN5223**: *MX6 DDR Calibration*. The theory behind the calibration the tool performs.
-- **U-Boot source: `board/freescale/mx6ul_14x14_evk/MX6UL_14x14_EVK_4x_MT41K256M16HA-125.cfg`**: a real DCD for a similar Micron DDR. Compare against your tool output.
-- **Bootlin training material on DRAM controllers**: accessible, free.
+- The **exact fitted DRAM manufacturer's data sheet**, including operating
+  ranges, low-frequency limits, reset/MRS/ZQ timings, and MR encodings.
+- **IMX6ULLRM Chapter 35**, especially 35.11 and 35.12; Chapter 18 for
+  clocks and Chapter 32 for pads.
+- **i.MX6ULL errata**, ERR005778 and ERR009596.
+- [NXP i.MX 6/7 DDR tools](https://community.nxp.com/t5/i-MX-Processors-Knowledge-Base/i-MX-6-7-Series-DDR-Tool-Release/ta-p/1271415),
+  matching RPA and packaged stress-tool user guide.
+- **AN4467, i.MX 6 Series DDR Calibration**: background on the procedures;
+  check applicability alongside the matching device/tool guide.
+- Board-matched BSP DCD/SPL: trace each value back to a worksheet or measured
+  result rather than copying a different evaluation board's memory table.
 
-> Next chapter: **Chapter 15: Exceptions and the GIC.** We have CPU clocks, UART, and DRAM. Now we install proper exception vectors and write our first real interrupt handler.
-> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
-> **GIC:** ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
+> Next chapter: **Chapter 15: Exceptions and the GIC.** We can build the IRQ
+> path in OCRAM with a known stack and vector table, independently of the
+> optional DRAM payload.

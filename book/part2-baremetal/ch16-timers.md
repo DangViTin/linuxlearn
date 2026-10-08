@@ -1,6 +1,6 @@
 ---
 chapter: 16
-title: Timers: EPIT and GPT
+title: "Timers: EPIT and GPT"
 part: II - Bare-metal i.MX6ULL
 estimated_pages: 14
 status: draft
@@ -8,156 +8,212 @@ status: draft
 
 # Chapter 16: Timers, EPIT and GPT
 
-> **What:** a 1 ms tick from EPIT1 (interrupt-driven) and a free-running 32-bit counter from GPT1 (polled). Together they give us `tick_ms()`, `udelay()`, `mdelay()`, and a cycle-precise way to measure code.
->
-> **Why:** Before we touch the MMU or write real drivers we need timing primitives. Schedulers, protocol stacks, and "wait at least N ns then check again" all need them.
-> **MCU bridge:** Think of the MMU as a hardware address translator in front of every load/store. Cortex-M usually runs physical addresses directly. Linux relies on virtual addresses and page permissions.
-> **MMU:** Memory Management Unit, hardware that translates virtual addresses to physical addresses and enforces permissions.
->
-> **Focus:** We use two timers because Linux does: GPT as a free-running counter (clocksource), EPIT for periodic interrupts (tick source). Seeing the split here makes Linux's `arch_timer` and `clocksource` framework easier later.
+An LED delay loop changes when the compiler changes. A timer lets us ask
+for an interval without guessing how many instructions the loop takes.
+We will use GPT1 to read elapsed time and EPIT1 to request periodic service.
 
+The examples use a verified **IPG clock**, not an assumed 696 MHz CPU.
+They run in the Chapter 10/15 privileged, MMU-off, integer-only environment
+and remain in normal run mode. DDR and a higher ARM frequency are not
+prerequisites.
 
 ## 16.1  Two timers, two jobs
 
-The i.MX6ULL has multiple timer blocks. We use two:
+- **GPT1** counts up freely. We read it for delays and elapsed-time tests.
+- **EPIT1** counts down and reloads. Its compare event requests an IRQ.
 
-- **GPT1** (General Purpose Timer 1), 32-bit free-running counter. We poll it. Used for `udelay`, `mdelay`, and profiling.
-- **EPIT1** (Enhanced Periodic Interrupt Timer 1), 32-bit count-down with auto-reload. We let it fire an interrupt every 1 ms. Used for `tick_ms`.
+A free-running counter and an interrupt source solve different problems:
+"how much time passed?" and "when should software run?" Linux calls these
+clocksource and clockevent roles. This is a teaching split, not a claim
+that every i.MX6ULL Linux configuration uses GPT plus EPIT. The generic
+timer or a GPT driver may provide those roles, depending on the kernel
+and device tree.
 
-You could use one timer for both jobs (and Linux on this part typically uses the generic timer for both), but separating them keeps each minimal.
+Use the Chapter 13 audit before initializing these modules. If IPG changes
+later, stop and reconfigure both timers under the documented procedure;
+their units are no longer valid.
 
 ## 16.2  GPT, free-running counter
 
-GPT1 base = `0x02098000`. Registers we touch:
+GPT1 base is `0x02098000`; the supplied RM describes GPT in **Chapter 30**.
 
-| Register | Offset | Notes |
-|----------|--------|-------|
-| `GPT_CR` | `+0x00` | Control |
-| `GPT_PR` | `+0x04` | Prescaler |
-| `GPT_SR` | `+0x08` | Status (output-compare bits) |
-| `GPT_IR` | `+0x0C` | Interrupt enable mask |
-| `GPT_OCR1..3` | `+0x10..18` | Output-compare values |
-| `GPT_ICR1..2` | `+0x1C..20` | Input-capture |
-| `GPT_CNT` | `+0x24` | The counter itself |
+| Register | Offset | Role |
+|----------|--------|------|
+| GPT_CR | `+0x00` | Control/source/mode |
+| GPT_PR | `+0x04` | Prescaler |
+| GPT_SR | `+0x08` | Compare/capture/rollover status |
+| GPT_IR | `+0x0C` | Interrupt enables |
+| GPT_OCR1..3 | `+0x10..18` | Output compare |
+| GPT_ICR1..2 | `+0x1C..20` | Input capture |
+| GPT_CNT | `+0x24` | Current counter |
 
-Bring-up:
+Create `timers.h`:
 
 ```c
-#define GPT1_BASE   0x02098000
-#define GPT_CR      (GPT1_BASE + 0x00)
-#define GPT_PR      (GPT1_BASE + 0x04)
-#define GPT_CNT     (GPT1_BASE + 0x24)
+#ifndef TIMERS_H
+#define TIMERS_H
+#include <stdint.h>
+int gpt_init(uint32_t ipg_hz);
+int epit_init(uint32_t ipg_hz);
+uint32_t gpt_now_us(void);
+void udelay(uint32_t us);
+void mdelay(uint32_t ms);
+uint32_t tick_ms(void);
+#endif
+```
 
-#define CCM_CCGR1   0x020C406C   /* GPT1 gate = CG10 = bits 20:21 */
+The following is the **first half of `timers.c`**; append section 16.3's
+second half to it. Both initializers return 0 on completion, -1 if their
+clock input is unsuitable or reset polling exhausts its budget. That
+budget counts software iterations, not calibrated microseconds.
 
-void gpt_init(void)
+```c
+#include "timers.h"
+#include "gic.h"
+#define REG(a) (*(volatile uint32_t *)(uintptr_t)(a))
+#define CCM_CCGR1 0x020C406Cu
+#define GPT1_BASE 0x02098000u
+#define GPT_CR    (GPT1_BASE + 0x00u)
+#define GPT_PR    (GPT1_BASE + 0x04u)
+#define GPT_SR    (GPT1_BASE + 0x08u)
+#define GPT_IR    (GPT1_BASE + 0x0Cu)
+#define GPT_CNT   (GPT1_BASE + 0x24u)
+
+static int wait_clear(uint32_t address, uint32_t mask)
 {
-    /* Enable GPT1 clock. */
-    REG(CCM_CCGR1) |= (3u << 20);
-
-    /* Soft reset, then configure. */
-    REG(GPT_CR) = (1u << 15);                 /* SWR = 1: software reset */
-    while (REG(GPT_CR) & (1u << 15)) {}
-
-    /* CLKSRC = 0b001 (peripheral clock = IPG = 66 MHz),
-       ENMOD = 1 (reset count on enable),
-       FRR = 1 (free-run mode),
-       EN = 1 (enable).
-       Prescaler: 66 MHz / 66 = 1 MHz counter (1 tick = 1 us). */
-    REG(GPT_PR) = 65;                         /* divider = 66 */
-    REG(GPT_CR) = (1u << 9)                   /* FRR free-run */
-                | (1u << 1)                   /* ENMOD: reset on enable */
-                | (1u << 6)                   /* CLKSRC = peripheral clk */
-                | (1u << 0);                  /* EN = 1 */
+    for (uint32_t budget = 1000000u; budget != 0; budget--)
+        if (!(REG(address) & mask)) return 0;
+    return -1;
 }
 
-static inline uint32_t gpt_now_us(void)
+int gpt_init(uint32_t ipg_hz)
+{
+    if (ipg_hz == 0 || ipg_hz % 1000000u != 0) return -1;
+    uint32_t divisor = ipg_hz / 1000000u;
+    if (divisor == 0 || divisor > 4096) return -1;
+    /* CCGR1 CG10 bus gate and CG11 serial gate; RUN/WAIT, not STOP. */
+    REG(CCM_CCGR1) |= (3u << 20) | (3u << 22);
+    REG(GPT_CR) = 0;                    /* EN=0 before source/reset changes */
+    REG(GPT_CR) = 1u << 15;             /* SWR */
+    if (wait_clear(GPT_CR, 1u << 15)) return -1;
+    REG(GPT_IR) = 0;                    /* GPT is polled, no IRQ */
+    REG(GPT_SR) = 0x3Fu;                /* W1C all status flags */
+    REG(GPT_PR) = divisor - 1u;
+    REG(GPT_CR) = (1u << 9)             /* FRR */
+                 | (1u << 6)           /* CLKSRC=001: ipg_clk */
+                 | (1u << 1)           /* ENMOD: reset on enable */
+                 | 1u;                 /* EN */
+    __asm__ volatile ("dsb sy" ::: "memory");
+    return 0;
+}
+
+uint32_t gpt_now_us(void)
 {
     return REG(GPT_CNT);
 }
 
 void udelay(uint32_t us)
 {
-    uint32_t start = gpt_now_us();
-    while ((gpt_now_us() - start) < us) {}
+    while (us != 0) {
+        uint32_t chunk = us > 1000000u ? 1000000u : us;
+        uint32_t start = gpt_now_us();
+        /* One guard tick avoids returning early due to tick phase. */
+        while ((uint32_t)(gpt_now_us() - start) < chunk + 1u) {}
+        us -= chunk;
+    }
 }
 
 void mdelay(uint32_t ms)
 {
-    while (ms--) udelay(1000);
+    while (ms != 0) {
+        udelay(1000u);
+        ms--;
+    }
 }
 ```
 
-A few notes:
+With verified IPG=66 MHz, PR=65 divides by 66, producing 1 MHz.
+CLKSRC=001 selects `ipg_clk`; CLKSRC=010 selects the separate high-frequency
+reference/PERCLK path. Do not interchange them.
 
-- **Prescaler of 65 ⇒ divider 66.** The field is "divisor - 1," yet another N+1 register. With 66 MHz IPG, dividing by 66 gives a 1 MHz timer, one tick = 1 µs. Convenient: each tick equals 1 microsecond.
-- **`(gpt_now_us() - start) < us`** uses unsigned subtraction, which wraps cleanly modulo 2^32. This handles counter rollover correctly for any delay shorter than 2^32 µs (~71 min). For longer delays accumulate into a 64-bit value.
-- **`FRR = 1`** means "free-running", the counter keeps going past output-compare matches. It does not auto-reload to zero. This is what makes it a clocksource rather than a tick source.
+Unsigned subtraction handles one counter wrap. At 1 MHz, wrap occurs
+about every 71.58 minutes. Each delay chunk is only one second, but the
+polling code must still run often enough not to miss a full counter period.
+It requires a successfully started timer that does not stop during the
+wait. It has no fallback if that clock disappears.
 
-`udelay` is now precise to within 1 microsecond. On a 696 MHz core the spin-loop reaction adds well under a microsecond.
+The unit is nominally one microsecond, not a one-microsecond accuracy
+guarantee. Quantization, crystal error, MMIO latency, loop overhead,
+and IRQ service add uncertainty. The guard tick favors minimum delay;
+`udelay(1)` repeated a million times will **not** take exactly one second.
 
 ## 16.3  EPIT, periodic interrupt
 
-EPIT1 base = `0x020D0000`. Registers:
+```{figure} ../illustrations/part2/08-timer-wraparound.png
+:alt: An unsigned counter passes through its final FE and FF values and wraps to zero and one. Elapsed time is calculated as now minus start using unsigned arithmetic.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-part2-timer-wrap
 
-| Register | Offset | Notes |
-|----------|--------|-------|
-| `EPIT_CR` | `+0x00` | Control |
-| `EPIT_SR` | `+0x04` | Status (compare match) |
-| `EPIT_LR` | `+0x08` | Load value |
-| `EPIT_CMPR` | `+0x0C` | Compare value (usually 0) |
-| `EPIT_CNR` | `+0x10` | Current count (read-only) |
+Zero can come after a large count. For a 32-bit timer, the full wrap is from `0xFFFFFFFF` to `0x00000000`. The drawing abbreviates those digits. Unsigned subtraction works for an interval shorter than one full period, provided we do not miss that period while waiting.
+```
 
-For a 1 ms tick from 66 MHz: count down 66000 cycles per tick.
+EPIT1 base is `0x020D0000`; the supplied RM describes EPIT in **Chapter 24**.
+
+| Register | Offset | Role |
+|----------|--------|------|
+| EPIT_CR | `+0x00` | Source/prescaler/reload/control |
+| EPIT_SR | `+0x04` | Compare flag, write-one-to-clear |
+| EPIT_LR | `+0x08` | Reload value |
+| EPIT_CMPR | `+0x0C` | Compare value |
+| EPIT_CNR | `+0x10` | Current down-counter |
+
+The steady reload sequence includes zero: with LR=4 it counts
+`4,3,2,1,0,4,...`, five source ticks per period (RM Figure 24-3).
+For 66 MHz and 1 kHz, use **LR=65999**, not 66000, with CMPR=0.
+The initial enable-to-first-compare interval has its own starting phase;
+measure steady consecutive events when checking the period.
+
+Append this **second half of `timers.c`**:
 
 ```c
-#define EPIT1_BASE  0x020D0000
-#define EPIT_CR     (EPIT1_BASE + 0x00)
-#define EPIT_SR     (EPIT1_BASE + 0x04)
-#define EPIT_LR     (EPIT1_BASE + 0x08)
-#define EPIT_CMPR   (EPIT1_BASE + 0x0C)
-
-#define CCM_CCGR1_EPIT1_GATE (3u << 12)   /* CG6 of CCGR1 */
-
+#define EPIT1_BASE 0x020D0000u
+#define EPIT_CR    (EPIT1_BASE + 0x00u)
+#define EPIT_SR    (EPIT1_BASE + 0x04u)
+#define EPIT_LR    (EPIT1_BASE + 0x08u)
+#define EPIT_CMPR  (EPIT1_BASE + 0x0Cu)
+#define EPIT1_INTID 88u                 /* SPI offset 56 + 32 */
 static volatile uint32_t jiffies_ms;
 
 static void epit_isr(void)
 {
-    REG(EPIT_SR) = 1;          /* W1C: clear the compare flag */
+    REG(EPIT_SR) = 1u;                   /* W1C OCIF; source before EOI */
     jiffies_ms++;
 }
 
-void epit_init(void)
+int epit_init(uint32_t ipg_hz)
 {
-    REG(CCM_CCGR1) |= CCM_CCGR1_EPIT1_GATE;
-
-    REG(EPIT_CR) = (1u << 16);                /* SWR */
-    while (REG(EPIT_CR) & (1u << 16)) {}
-
-    /* CLKSRC=01 (peripheral=IPG), RLD=1 (reload from LR), ENMOD=1 (load on enable),
-       OCIEN=1 (interrupt on compare), IOVW=1 (write LR overwrites immediately),
-       PRESCALER=0 (divide-by-1).
-       LR = 66000 = (66 MHz / 1000 Hz) for 1 ms. */
-    REG(EPIT_LR) = 66000;
+    if (ipg_hz < 2000u || ipg_hz % 1000u != 0) return -1;
+    /* gic_init() completed; CPU IRQs remain masked during setup. */
+    gic_disable_irq(EPIT1_INTID);
+    REG(CCM_CCGR1) |= 3u << 12;          /* CG6 */
+    REG(EPIT_CR) = 0;
+    REG(EPIT_CR) = 1u << 16;             /* SWR */
+    if (wait_clear(EPIT_CR, 1u << 16)) return -1;
+    uint32_t control = (1u << 24)        /* CLKSRC=01: ipg_clk */
+                     | (1u << 3)        /* RLD: reload from LR */
+                     | (1u << 2)        /* OCIEN */
+                     | (1u << 1);       /* ENMOD: load on enable */
+    REG(EPIT_CR) = control;              /* source selected with EN=0 */
+    REG(EPIT_LR) = ipg_hz / 1000u - 1u;
     REG(EPIT_CMPR) = 0;
-    /* Per RM §30.5.1 (EPIT_CR):
-     *   CLKSRC is the 2-bit field at [25:24]; 0b01 = peripheral clock → (1 << 24).
-     *   IOVW is bit 17 (NOT bit 22 — earlier drafts of this listing had that wrong).
-     *   PRESCALER is bits [15:4]; 0 = divide-by-1.
-     *   RLD = bit 3, OCIEN = bit 2, ENMOD = bit 1, EN = bit 0. */
-    REG(EPIT_CR) = (1u << 24)                 /* CLKSRC[25:24] = 0b01 (peripheral) */
-                 | (1u << 17)                 /* IOVW */
-                 | (1u << 3)                  /* RLD */
-                 | (1u << 2)                  /* OCIEN */
-                 | (1u << 1)                  /* ENMOD */
-                 | (1u << 0);                 /* EN */
-}
-
-/* GIC SPI ID for EPIT1 = 88 on i.MX6ULL (RM Table 3-1).  Verify. */
-void epit_install_isr(void)
-{
-    gic_register(88, epit_isr);
-    gic_enable_irq(88);
+    REG(EPIT_SR) = 1u;
+    jiffies_ms = 0;
+    gic_register(EPIT1_INTID, epit_isr);
+    gic_enable_irq(EPIT1_INTID);
+    REG(EPIT_CR) = control | 1u;
+    __asm__ volatile ("dsb sy" ::: "memory");
+    return 0;
 }
 
 uint32_t tick_ms(void)
@@ -166,127 +222,170 @@ uint32_t tick_ms(void)
 }
 ```
 
-`jiffies_ms` is global, volatile, and incremented from interrupt context, read it carefully from non-ISR code:
+CLKSRC is bits 25:24; PRESCALER is 15:4 (zero means divide by one).
+IOVW is bit 17, but this sequence does not need it: ENMOD loads LR on
+enable. Disabling before changing sources and clearing OCIF are intentional.
 
-```c
-uint32_t ms = tick_ms();   /* harmless: a 32-bit read is atomic */
-```
+The handler is installed before the timer starts and CPU IRQs are enabled
+last. Chapter 15's dispatcher performs the barrier before GIC EOI. EPIT's
+source is level-sensitive; clearing its flag is not optional.
 
-A 32-bit unsigned wraps every ~49 days. Sufficient for our purposes. Production code would track 64-bit ticks (read low, read high, re-read low, retry on wrap, the standard 32-bit pair pattern).
+On this single-core build, the aligned 32-bit volatile read is one
+single-copy access. It can return the old or new value around an IRQ.
+It is not a general synchronization primitive. The unsigned count wraps
+in about 49.71 days; use unsigned differences for short intervals.
+
+More importantly, this counts **serviced events**, not guaranteed elapsed
+milliseconds. OCIF is a flag, not a queue: multiple matches while IRQs
+are blocked can coalesce. A 64-bit version would need a defined update
+protocol and masked snapshot or sequence counter, not an arbitrary
+low/high read order.
 
 ## 16.4  Putting it together
 
+This `main.c` integrates the complete modules with Chapter 12's UART/printf
+and Chapter 15's vectors/startup/GIC. Add `timers.o`, `clocks.o`,
+`gic.o`, and `vectors.o` to the existing project and preserve its linker
+bounds. Use matching integer-only architecture flags when compiling and
+linking; put `-lgcc` after objects. This is not an independent board loader.
+
+No generic `clocks_init()` is called. The board/ROM configuration must be
+approved first; the audit supplies the actual supported IPG rate.
+Do not install the UART echo ISR for this example: it would share TX
+with foreground printf and lengthen timer latency.
+
 ```c
+#include "uart.h"
+#include "clocks.h"
+#include "gic.h"
+#include "timers.h"
+int printf(const char *fmt, ...);
+
 int main(void)
 {
-    uart_init();
-    clocks_init();
-    uart_init();
-    gic_init();
-    gpt_init();
-    epit_init();
-    epit_install_isr();
+    uart_init();                         /* Chapter 12 root prerequisite */
+    uint32_t ipg_hz = clocks_get_ipg_hz();
+    gic_init();                          /* leaves CPU IRQs masked */
+    if (gpt_init(ipg_hz) || epit_init(ipg_hz)) {
+        printf("Timer setup failed; IPG=%u Hz\r\n", ipg_hz);
+        for (;;) {}
+    }
     irq_enable();
-
-    printf("Timers running.\r\n");
-
-    /* Use udelay to time a quick test: */
+    printf("Timers running; IPG=%u Hz\r\n", ipg_hz);
     uint32_t t0 = gpt_now_us();
-    udelay(10000);                     /* 10 ms */
-    uint32_t t1 = gpt_now_us();
-    printf("10 ms udelay actually took %u us\r\n", t1 - t0);
-
-    /* Print a heartbeat every second using mdelay. */
+    udelay(10000u);
+    uint32_t elapsed = gpt_now_us() - t0;
+    printf("10 ms request: %u timer us\r\n", elapsed);
     for (uint32_t i = 0;; i++) {
-        printf("[%u ms]  heartbeat %u\r\n", tick_ms(), i);
-        mdelay(1000);
+        printf("[%u serviced ticks] heartbeat %u\r\n", tick_ms(), i);
+        mdelay(1000u);
     }
 }
 ```
 
-Expected:
+A representative run would show a delay of **at least** 10000 nominal timer
+microseconds, then increasing heartbeat/tick counts. It will not print
+exact 0/1000/2000 timestamps: setup, the initial delay, UART transmission,
+and the guarded repeated delays all take time. Measuring a delay with the
+same GPT validates software behavior, not the oscillator's absolute accuracy.
 
-```
-Timers running.
-10 ms udelay actually took 10000 us
-[0 ms]  heartbeat 0
-[1000 ms]  heartbeat 1
-[2000 ms]  heartbeat 2
-...
-```
+If the tick stops, follow the path in order:
 
-If `tick_ms()` does not advance, EPIT's IRQ isn't firing. Re-check:
-> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
+- Does EPIT_CNR change? Check IPG, CCGR1 CG6, EN and CLKSRC.
+- Does OCIF become set? Check LR/CMPR and the current count.
+- Can INTID 88 pass the GIC enable, level, group, target and priority policy?
+- Are VBAR, IRQ stack, and CPSR.I correct?
+- Does the handler clear OCIF before EOI? Avoid stopping in the ISR with a
+  breakpoint and interpreting debugger-induced loss as normal timing.
 
-- CCGR gate bit. Right register, right field.
-- GIC ID 88 enabled.
-> **MCU bridge:** Think of the GIC like the Cortex-M NVIC scaled up for Cortex-A: it routes peripheral interrupts to CPU cores and has separate distributor and CPU-interface blocks.
-> **GIC:** ARM's Generic Interrupt Controller, the Cortex-A interrupt router roughly analogous to NVIC on Cortex-M.
-- `EPIT_CR.OCIEN = 1` and `EPIT_SR` cleared on each tick.
-- CPSR.I cleared via `irq_enable()`.
+Run mode is deliberate. GPT/EPIT WAITEN/STOPEN and CCM low-power controls
+are not configured here. Do not add WFI and assume these clocks keep running
+in every low-power state.
 
 ## 16.5  Profiling with PMU CCNT and GPT
 
-Two ways to measure short intervals:
+(pmu-cycle-counter-chapter-13s-introduction)=
+(pmu-cycle-counter-chapter-13-s-introduction)=
+Chapter 13's PMU fragments explicitly enable CCNT and clear divide-by-64.
+Keep them in the profiling translation unit or a shared header; do not
+define the inline reader a second time.
 
-### PMU cycle counter (chapter 13's introduction)
+(gpt-counter)=
+PMU gives CPU cycles; GPT gives nominal microseconds while IPG is unchanged.
+Changing MMDC alone does not change GPT's time base. Memory changes can,
+however, change how many cycles an operation takes.
 
-```c
-static inline uint32_t pmu_ccnt(void)
-{
-    uint32_t v;
-    asm volatile ("mrc p15, 0, %0, c9, c13, 0" : "=r"(v));
-    return v;
-}
-```
-
-This is *cycle-precise* but reset on power-cycle. It tells you "how many cycles did this code take", independent of clock changes.
-
-### GPT counter
-
-`gpt_now_us()` is *time-precise*, microseconds always mean microseconds, regardless of how the ARM core has been reclocked. (Until you change MMDC/IPG clocks. The GPT divider then needs adjusting.)
-> **MMDC:** the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
-
-Use PMU to measure cycles (how efficient is the code on this CPU). Use GPT to measure wall time (how long the real-time operation took). They answer different questions.
-
-Example: profile our 4 MB memtest from Chapter 14:
+For an operation lasting well above GPT's one-tick resolution, use this
+**main-body fragment** after both counters are ready:
 
 ```c
 uint32_t c0 = pmu_ccnt();
 uint32_t u0 = gpt_now_us();
-ddr_selftest();
+/* Perform the operation here; keep all destructive tests in reserved RAM. */
+__asm__ volatile ("dsb sy" ::: "memory");
 uint32_t c1 = pmu_ccnt();
 uint32_t u1 = gpt_now_us();
-printf("memtest: %u cycles = %u us\r\n", c1 - c0, u1 - u0);
+printf("%u CPU cycles across %u nominal us\r\n", c1 - c0, u1 - u0);
 ```
 
-A 4 MB write + 4 MB read on DDR3 at 396 MHz takes ~30 ms (≈ 250 MB/s). At 696 MHz CPU that's ~21 million CPU cycles. The cycle/µs ratio should be ~696, matching the CPU clock. If it isn't, your clock initialization (Chapter 13) is wrong.
+Keep the interval below one CCNT wrap at the actual frequency. Endpoint
+reads are not simultaneous; measure their overhead, repeat runs, and
+state whether interrupts/cache effects are included. A long-run
+cycles-per-microsecond ratio can cross-check the decoded ARM/IPG ratio,
+but both may share the same oscillator, so it is not independent proof of
+absolute Hz. A mismatch is a question to investigate, not proof that the
+clock initializer is wrong.
+
+Do not promise a memtest throughput or assume 200 NOP instructions take
+exactly 200 cycles. Pipeline behavior, loop instructions, memory, cache,
+and interrupt service all matter. A 1 MHz GPT also cannot resolve a
+287 ns interval directly.
 
 ## 16.6  Lab
 
-1. **Heartbeat for an hour.** Run the example and observe `tick_ms` rolling forward predictably. Check that one hour of heartbeats produces ~3600 increments.
-2. **Drift test.** Compare `tick_ms()` after 60 seconds against a stopwatch. The error tells you the crystal accuracy and the prescaler precision. Typical: < 0.01% (60 ms over 60 s).
-3. **Measure `udelay(1)`.** Loop `udelay(1)` a million times. Time the wall clock. Divide. Confirm it's within 1% of 1 second.
-4. **Nested-IRQ test.** Inside `epit_isr`, `printf("tick\n")`. `uart_putc` polls TX, so this is okay even though we're in ISR. Confirm output every 1 ms (you won't see individual ticks at 115200 baud, but the *rate* should be steady).
-5. **Use GPT to validate Chapter 13's clocks.** Make a fixed-cycle-count loop (200 nops, exactly). Measure with PMU. Confirm 200 cycles. Measure with GPT. Confirm 200/696 ≈ 287 ns.
+1. Run heartbeats with the approved clock/handoff state. Log elapsed GPT
+   intervals and delivered EPIT ticks separately. One hour corresponds
+   nominally to 3,600,000 ticks, not 3600.
+2. Compare a longer interval against a suitable external reference.
+   Separate reference uncertainty, crystal tolerance, and missed IRQs.
+   A hand stopwatch does not characterize a 0.01% oscillator.
+3. Measure batches of `udelay(1)`, `udelay(10)`, and `udelay(1000)`.
+   Report overhead and minimum-delay behavior; no 1% promise is made.
+4. Keep printf out of the 1 ms ISR. Increment counters there and print
+   snapshots in foreground. This wrapper does not support nested IRQs.
+5. Test unsigned rollover arithmetic on the host with start=0xFFFFFFF0
+   and now=0x00000020. **Check:** elapsed=48. This tests arithmetic, not
+   a physical timer.
+6. Profile a sufficiently long operation with PMU and GPT. Compare the
+   ratio with the read-only clock audit and record counter settings.
 
 ## 16.7  Pitfalls
 
-- **Wrong CCGR bit.** GPT1 is CG10. EPIT1 is CG6. Both in CCGR1. Easy to confuse.
-- **Forgetting to W1C the status flag.** EPIT_SR bit 0 is set on compare. You must write 1 to clear it inside the ISR. Otherwise the interrupt re-fires immediately and you spin forever in IRQ context.
-- **Wrong prescaler register.** GPT_PR holds *divisor minus 1*. To go from 66 MHz to 1 MHz the divisor is 66, so we write 65.
-- **EPIT_LR vs EPIT_CMPR:** LR is the reload value, CMPR is the compare threshold (usually 0). Don't swap them.
-- **Drift from forgotten clock changes.** If you call `clocks_init` *after* `gpt_init`, the GPT prescaler is now wrong for the new IPG. Initialize clocks first, then timers.
-- **Reading `jiffies_ms` torn across an update.** 32-bit reads are single-instruction on ARMv7-A. Safe. A 64-bit counter would need a lo/hi retry loop.
+- **Only one GPT gate.** CCGR1 CG10 is bus, CG11 serial; EPIT1 is CG6.
+- **IPG vs PERCLK.** Source encodings select different roots.
+- **Assumed IPG rate.** The divisor must match the audited, stable input.
+- **Reload off by one.** The repeating EPIT sequence includes zero.
+- **Missing W1C.** OCIF must be cleared at the source before GIC EOI.
+- **Long masked interval.** A flag cannot count every missed match.
+- **Delay timer stopped.** The polling loop cannot finish without a running
+  counter, even though its wrap arithmetic is correct.
+- **64-bit counter without a protocol.** Use a coherent snapshot/update
+  scheme; volatile alone does not prevent a torn multiword read.
+- **Low-power assumptions.** Gate encoding 11 excludes STOP; timer and CCM
+  mode controls still determine behavior.
 
 ## 16.8  Going deeper
 
-- **IMX6ULLRM Chapter 29 (GPT) and Chapter 30 (EPIT).** Complete register descriptions.
-- **Cortex-A7 TRM, Chapter 8**: generic timer (which you can use *instead* of EPIT/GPT. We use it in Linux later).
-- **Linux source: `drivers/clocksource/timer-imx-gpt.c`**: the same hardware as a Linux clocksource.
-- **POSIX `clock_gettime(CLOCK_MONOTONIC)`**: what user-space sees of all this. Backed eventually by these timers.
+- **IMX6ULLRM Chapter 30 (GPT), Chapter 24 (EPIT)**:
+  source encodings, reset exceptions, low-power controls, and Figure 24-3.
+- **IMX6ULLRM Chapter 18**, CCGR1: separate GPT bus/serial gates.
+- **Cortex-A7 TRM**, generic timer and performance-monitor chapters:
+  alternative time bases and cycle-counter controls.
+- Linux `drivers/clocksource/timer-imx-gpt.c`: clocksource/clockevent
+  integration; check the actual device tree before assuming it is selected.
+- POSIX `clock_gettime(CLOCK_MONOTONIC)`: the user-space abstraction,
+  not a direct read of our EPIT software count.
 
-> Next chapter: **Chapter 17: MMU and caches.** The last bare-metal infrastructure piece. Turn on the MMU, run our code with virtual memory, enable I/D caches, measure the speed-up. After this we are ready for U-Boot in Part III.
-> **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
-> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
+> Next chapter: **Chapter 17: MMU and caches.** Memory attributes and cache
+> maintenance add new requirements to the MMIO and executable-copy paths.
+> Keep this chapter's explicit memory/cache policy with those examples.

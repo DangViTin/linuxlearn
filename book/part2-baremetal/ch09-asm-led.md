@@ -1,10 +1,10 @@
 # Chapter 9: First LED, pure assembly
 
-> **What:** code that blinks an LED on the Point Atom MINI. No C. No libc. No bootloader. The program is under 1 KB and is loaded into OCRAM by the Boot ROM over USB-OTG.
->
-> **Why:** This is the moment you control the chip directly. Higher layers exist to make hard things easy, but you can only judge them if you have done the low-level version once.
->
-> **Focus:** the **three-write pattern** that brings up any GPIO on any i.MX SoC, `CCGR` (clock), `IOMUXC` (pin), `GPIO_GDIR + GPIO_DR` (use). Memorize it. We use it for every peripheral in the book.
+The host can already see the board in USB downloader mode. Now we want one observation that comes from our own program: the user LED changing state. No Linux console is involved. The ROM loads a small assembly payload into OCRAM, then gives it control.
+
+An LED seems like a modest reward for all that preparation. It is also a useful first witness. To blink, the program must reach its entry point, access a GPIO controller and route that controller to the right pad. We can inspect each of those steps without first building a C runtime or initializing DDR.
+
+Keep the Chapter 8 power and connector checks in place. This lab assumes an open development device and a fresh ROM downloader boot, not a jump from U-Boot or another running program. We do not change security fuses.
 
 ## 9.1  What we are about to build
 
@@ -14,8 +14,9 @@ A program with the following structure:
 _start:                          ; ROM jumps here
     set SP to top of OCRAM
     enable clock to GPIO1        ; one write to CCM_CCGR1
-    set pin GPIO1_IO03 to ALT5   ; one write to IOMUXC
+    set pin GPIO1_IO03 to ALT5    ; one write to IOMUXC
     configure pad properties     ; one write to IOMUXC
+    preload LED-off level        ; set bit 3 in GPIO1_DR
     set GPIO1_IO03 as output     ; one write to GPIO1_GDIR
 loop:
     toggle GPIO1_IO03            ; toggle bit 3 of GPIO1_DR
@@ -23,21 +24,31 @@ loop:
     branch loop
 ```
 
-That is the whole program. About 50 instructions, 200 bytes of `.text`, zero data. We push it to OCRAM via `uuu` in SDP mode. The Boot ROM transfers control and the LED blinks.
+There is no scheduler and no hidden GPIO initialization. The listing below contains the instructions and constants we need. Its payload is small, but the padded `.imx` file will exceed 4 KiB. Do not confuse the code size with the upload file size.
 
 No linker script this chapter. The program is small enough to hand-place. Chapter 10 introduces the linker script as soon as we want C.
 
-> **Which pin?** On both Point Atom ALPHA and MINI, the user LED is on **GPIO1_IO03**. The wiring is active-low: the anode goes to 3.3 V through a current-limiting resistor. The GPIO pulls the cathode low to turn the LED on. *Confirm against your board's schematic for safety.* If your LED is on a different pin, every register address in this chapter changes, but the pattern does not. Because we only toggle the bit, active-low wiring does not change our code. The LED blinks with inverted phase.
+On the supplied Point Atom MINI schematic, the user LED is on **GPIO1_IO03**. It is active-low: its anode receives 3.3 V through a resistor, and the GPIO sinks current to light it. A high output turns it off. Confirm the pad and net on your exact board before uploading. For another pin, look up its mux, pad and GPIO registers again. The clock-gate register may remain the same if the pin belongs to the same bank.
 
 The vendor Linux device tree confirms this mapping. It names the device `sys-led` and declares GPIO bank 1, bit 3, active-low.
 
-## 9.2  The three-write pattern, explained
+(the-three-write-pattern-explained)=
+## 9.2  Clock, pad and output
 
-To make any pin output a level under software control on i.MX6ULL, you do exactly three things:
+Think in three jobs rather than three literal writes. This example uses more than three register writes:
 
-1. **Enable the clock to the GPIO controller**, by setting two bits in `CCM_CCGRx`. Without this, all writes to the GPIO registers go into the void.
+```{figure} ../illustrations/part2/01-led-path.png
+:alt: A clock reaches the GPIO controller through a gate. A separate output path carries its level through the selected mux and pad to an LED.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-part2-led-path
+
+Follow the clock into GPIO, then follow the output toward the LED. Both paths must be ready. The blocks show responsibilities, not separate chips or a count of register writes.
+```
+
+1. **Enable the GPIO controller's clock**, using its two-bit field in `CCM_CCGRx`. Do not rely on reads or writes while its required clock is stopped.
 2. **Route the pin to its GPIO function**, by writing the ALT number to `IOMUXC_SW_MUX_CTL_PAD_<padname>`. Without this, the pin still belongs to whatever default function the silicon picked at reset (often a different peripheral).
-3. **Make it an output**, by setting the corresponding bit in `GPIO<bank>_GDIR`. **Then** write 0/1 to the same bit position in `GPIO<bank>_DR` to drive the level.
+3. **Choose the output level and direction.** Preload the LED-off level in `GPIO<bank>_DR`, then set the bit in `GPIO<bank>_GDIR` to enable the output. This avoids deliberately exposing an old latch value when the direction changes.
 
 You can also write `IOMUXC_SW_PAD_CTL_PAD_<padname>` to set drive strength, slew rate, and pulls. We use `0x17059`, the pad value from the vendor Linux device tree for this LED pin.
 
@@ -62,33 +73,35 @@ Every CCM_CCGRx register holds **16 clock gates × 2 bits each** = 32 bits. The 
 | `00` | **Clock off** in all CPU run modes, peripheral cannot be accessed |
 | `01` | Clock on in RUN mode, **off** in WAIT and STOP, low-power-friendly |
 | `10` | *Reserved*, do not program this value |
-| `11` | Clock on in all CPU run modes (RUN/WAIT/STOP), "always on" |
+| `11` | Clock on in RUN and WAIT, off in STOP |
 
-So "enable GPIO1 always" is `0b11` written into CG13's bit-pair. CG13 occupies bits 26-27 of CCGR1 (CG0 is bits 0-1, CG1 bits 2-3, ..., CG15 bits 30-31). The OR-mask is `0b11 << 26 = 0x0C000000`. We can either OR in that mask or write `0xFFFFFFFF` to CCGR1, which turns every gate in CCGR1 on. For a learning exercise the OR form is cleaner because it leaves the other gates unchanged. **This 2-bit encoding applies to every CCGR write throughout the book**. Chapters 13, 14, and 18 reuse it.
+For this running program, write `0b11` into CG13. Its field occupies bits 26-27, so the mask is `0b11 << 26 = 0x0C000000`. OR that mask into the existing value to preserve the other fields. Writing `0xFFFFFFFF` would also modify unrelated and reserved fields. Chapter 13 follows the clock upstream. Here we only need its gate.
 
 ## 9.3  The assembly source
 
-`led.S`:
+In a new host terminal, run `. ~/imx6ull/scripts/env.sh`, then create `~/imx6ull/src/ch09-asm-led` and open it in your editor. Save the following as `led.S` there. Save the Makefile from Section 9.4 beside it. Lines beginning with `$` in command examples show the shell prompt. Do not type the `$`.
 
 ```asm
     .syntax unified
     .cpu    cortex-a7
+    .arm
     .text
     .global _start
 
 _start:
+    cpsid   if, #0x13              @ SVC mode, IRQ and FIQ masked
     /* --------------------------------------------------------------
      *  1. Establish a stack.  The Boot ROM has used part of OCRAM
-     *     for its own bookkeeping, but the top of OCRAM is free.
+     *     for its own bookkeeping. This program does not use the stack.
      *     OCRAM ends at 0x00920000 (128 KB starting at 0x00900000).
      *     We set SP just below that.  An LED blink doesn't actually
-     *     touch the stack, but it's hygienic.
+     *     touch the stack. The ROM has already handed off before this runs.
      * -------------------------------------------------------------- */
     ldr     sp, =0x0091FFF0
 
     /* --------------------------------------------------------------
      *  2. Enable the GPIO1 clock gate.
-     *     CCM_CCGR1 @ 0x020C406C, CG13 = bits 26:27 = 0b11 (always on)
+     *     CCM_CCGR1 @ 0x020C406C, CG13 = bits 26:27 = 0b11 (RUN/WAIT)
      * -------------------------------------------------------------- */
     ldr     r0, =0x020C406C         @ &CCM_CCGR1
     ldr     r1, [r0]
@@ -111,8 +124,13 @@ _start:
     str     r1, [r0]
 
     /* --------------------------------------------------------------
-     *  5. Set GPIO1_IO03 as output.
+     *  5. Preload the active-low LED's off level, then enable output.
      * -------------------------------------------------------------- */
+    ldr     r0, =0x0209C000         @ &GPIO1_DR
+    ldr     r1, [r0]
+    orr     r1, r1, #(1 << 3)       @ high = LED off
+    str     r1, [r0]
+
     ldr     r0, =0x0209C004         @ &GPIO1_GDIR
     ldr     r1, [r0]
     orr     r1, r1, #(1 << 3)
@@ -142,10 +160,10 @@ blink:
 
 A few notes on what's there and what isn't:
 
-- **No exception vectors.** The Boot ROM doesn't require them. We are running with interrupts disabled (CPSR.I=1 from reset) and we don't enable them, so no exception ever fires. Chapter 15 will install a real vector table.
+- **No private exception vectors.** We explicitly mask IRQ and FIQ, but those masks do not prevent undefined-instruction or abort exceptions. This first listing assumes valid instructions and accesses. Chapter 10 adds placeholder vectors, and Chapter 15 adds handlers.
 - **No `.data`, no `.bss`.** Every value we use is an immediate or computed at run time. Therefore no startup code is needed to copy or zero anything.
 - **No `main()`.** `_start` is the entry. It never returns. An assembly program has no caller to return to. You must explicitly loop forever.
-- **`ldr r0, =0x...`** is GNU assembler syntax for "load-pc-relative pool constant". The assembler generates a literal pool somewhere after the function and the `ldr` becomes a load from that pool. Cortex-A7 cannot encode arbitrary 32-bit immediates in one instruction. This pseudo-form is the standard idiom.
+- **`ldr r0, =0x...`** asks GNU assembler to load a constant. It may use an encodable immediate instruction or a PC-relative load from a literal pool. Inspect the disassembly to see which it chose. Arbitrary 32-bit constants do not all fit one ARM immediate instruction.
 - **`1:` is a local label.** `1b` means "branch to the nearest `1` label going backward." This is a GAS convention for local loops. It avoids us inventing new names.
 - **`.syntax unified`** says "use the modern ARM/Thumb-unified mnemonics", which lets us write `orr r1, r1, ...` even in ARM mode without surprises.
 
@@ -159,10 +177,10 @@ CROSS := arm-none-eabi-
 
 all: led.bin
 
-led.o: led.S
+led.o: led.S Makefile
 	$(CROSS)gcc -mcpu=cortex-a7 -marm -ffreestanding -c -o $@ $<
 
-led.elf: led.o
+led.elf: led.o Makefile
 	$(CROSS)ld -Ttext=0x00908000 -e _start -o $@ $<
 
 led.bin: led.elf
@@ -181,7 +199,7 @@ What is going on:
 - **`-e _start`** records `_start` as the ELF entry point. The i.MX IVT also uses this same address.
 - **`--only-section=.text`** copies only our code and its literal pool into `led.bin`.
 
-Build:
+From this project directory, build. The commands below the prompt are representative output. The byte count depends on the listing and assembler:
 
 ```sh
 $ make
@@ -189,7 +207,6 @@ arm-none-eabi-gcc -mcpu=cortex-a7 -marm -ffreestanding -c -o led.o led.S
 arm-none-eabi-ld -Ttext=0x00908000 -e _start -o led.elf led.o
 arm-none-eabi-objcopy -O binary --only-section=.text led.elf led.bin
 $ wc -c led.bin
-128 led.bin
 ```
 
 Check the ELF before wrapping it:
@@ -227,6 +244,8 @@ BOOT_ADDR  = IVT_ADDR + 0x20           # 0x00907420
 
 code = Path('led.bin').read_bytes()
 image_size = CODE_OFFSET + len(code)
+if not code or IMAGE_START + image_size > 0x00918000:
+    raise SystemExit('Payload must be nonempty and fit the ROM-active OCRAM window')
 
 # IVT header: tag, 16-bit big-endian length, version.
 ivt = struct.pack('>BHB', 0xD1, 0x0020, 0x40)
@@ -263,7 +282,7 @@ print(f'size: {len(image)} bytes')
 $ python3 wrap.py
 IVT:  file 0x0400 -> RAM 0x00907400
 code: file 0x1000 -> RAM 0x00908000
-size: 4256 bytes
+size: ... bytes
 ```
 
 Your size may differ slightly. The two addresses must match the output above.
@@ -290,7 +309,7 @@ Tag `D1 00 20 40`, entry `00 80 90 00` (little-endian → `0x00908000`), dcd zer
 
 ## 9.6  Pushing to the board with `uuu`
 
-1. Power off the board, flip the boot-mode switch to **SDP** (USB-Downloader).
+1. Follow Chapter 8's checked power-down and power-up procedure. Set the boot-mode switch to **SDP** (USB-Downloader) while the board is unpowered. Account for all attached power sources and UART back-power paths.
 2. Connect the USB-OTG cable to the host.
 3. Power on.
 4. Confirm enumeration:
@@ -331,7 +350,7 @@ If it does not:
 1. **Check all three execution addresses.** `readelf`, `objdump`, and `wrap.py` must all show `_start` at `0x00908000`.
 2. **Check the image layout.** `wrap.py` must report code at file offset `0x1000` and RAM address `0x00908000`.
 3. **Check the LED's pin.** This code controls `GPIO1_IO03`. Confirm that this is the user LED in your exact board revision.
-4. **Check the blink delay.** A very short delay will makes the LED look continuously on or dim.
+4. **Check the blink delay.** A very short delay makes the LED look continuously on or dim. The constant is not a promised half-second interval.
 5. **Power-cycle and retry.** After the ROM jumps to your program, it cannot accept another SDP upload until the board resets.
 
 ## 9.7  What happened, step by step
@@ -358,37 +377,37 @@ Your code:
   → sets pin ALT5
   → sets pin direction = output
   → enters blink loop
-LED blinks. You wrote every instruction the CPU executed to get here.
+LED blinks. The ROM executed first. From the handoff into `_start`, the instructions controlling this LED are ours.
 ```
 
 No software layer sits between your code and the chip. The next chapters add layers on top of what you built here.
 
 ## 9.8  Lab
 
-You have already done the lab if the LED blinked. To deepen:
+If the LED blinks, pause before changing the code: which write gave the pin a level, and which write made that level visible outside the chip? Then try:
 
 1. **Change the blink rate** by editing the delay constant. Measure the resulting frequency with a scope or with a phone's slow-motion camera. This busy loop is not a precise timer because its speed depends on the CPU clock and instruction timing.
-2. **Use a different pin.** Look up the schematic. Find a second LED, or an unused GPIO that goes to a header pin you can probe. Modify the source to use that pin instead. *Do not* read register addresses from the previous example. Look them up in the RM yourself.
+2. **Trace a different pin on paper first.** Check its schematic net, voltage domain, loads and boot role. Only use a confirmed spare output with a suitable probe or resistor-limited LED. Never drive a supply, a connected output or a boot strap simply because it appears on a header. Look up its registers in the RM.
 3. **Add a second LED** that blinks at half the rate. Now you have a counter.
 4. **Measure image size growth.** Run `wc -c led.bin` before and after. Observe the marginal cost.
 
 ## 9.9  Pitfalls
 
-- **Forgetting the CCGR write.** Symptoms: register reads return 0, writes have no effect. *Always* enable the clock before touching a peripheral. Always.
+- **Forgetting the CCGR write.** Confirm the required gate before interpreting register accesses. A stopped-clock access does not have one universal, safe failure value.
 - **Wrong IOMUX ALT.** Symptom: writes to GPIO_DR succeed but the pin doesn't move. Some pads default to "GPIO" in their reset ALT. Many do not. Always set ALT explicitly.
 - **Entry address does not match code location.** Symptom: `uuu` reports success, but the board does nothing. The host cannot tell whether valid instructions exist at `IVT.entry`. Check the file-to-RAM map in Section 9.5.
 - **Delay is too short.** The LED may look continuously on even though the pin is toggling quickly.
-- **Leaving the boot-mode switch in SDP.** After your image runs, if you reset the board, it goes back into SDP and does nothing visible. Move the switch back to SD when you are done with SDP work for the day.
-- **Push-pull vs open-drain.** If your LED is wired to VCC through a resistor (common for active-low LEDs), driving the GPIO high turns it off, not on. Read the schematic.
+- **Resetting after a successful upload.** This image is in RAM. A new downloader boot waits for another upload. Keep SDP selected while doing these labs. Switch to SD only after preparing and verifying a bootable card in Chapter 11.
+- **Mistaking active-low for open-drain.** Active-low describes which level lights the LED. Open-drain describes the output driver. They are different properties. Our pad setting uses a push-pull output.
 - **Optimization eating your loop.** GCC with `-O2` may unroll or completely eliminate a delay loop with no side-effects. We avoided this here by leaving the loop in raw asm. If you port to C, mark the counter `volatile`.
 
 ## 9.10  Going deeper
 
 - **IMX6ULLRM Chapter 28, GPIO**: Specifically Table 28-1 (register summary) and Table 28-3 (GPIOx_DR bit layout).
 - **IMX6ULLRM Chapter 32, IOMUXC**: Look up GPIO1_IO03 in the IOMUX table.
-- **IMX6ULLRM Chapter 18, CCM**: Table 18-5 (CCGR bit definitions).
+- **IMX6ULLRM Chapter 18, CCM**: Table 18-3 (gate encoding) and Section 18.6.24 (`CCM_CCGR1`). Table 18-5 in Chapter 8 is the ROM's disabled-clock list, not the gate-encoding table.
 - **ARM DDI 0406** Section A8.8.62, `LDR (literal)` form, which is what `ldr Rn, =const` expands into.
 - The GNU Assembler manual, "ARM Dependent Features", `.syntax unified`, `.cpu`, `.global`, literal pools.
 - Your **Point Atom MINI schematic**, the only authoritative source for which LED is on which pin on *your* board.
 
-> Next chapter: **Chapter 10: C + startup.S + linker script.** We graduate from one-shot assembly to a real bare-metal C environment with proper `.data` initialization and `.bss` zeroing. Same LED, ten times more useful.
+The LED gives us an execution checkpoint. Next we keep that checkpoint and change the language: Chapter 10 supplies the stack and memory initialization that C expects before `main()` can run.

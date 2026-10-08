@@ -1,10 +1,8 @@
 # Chapter 12: UART driver and `printf`
 
-> **What:** a polled UART1 driver and a tiny `printf` clone that uses it. By the end of the chapter your bare-metal program can say `Hello, world!` instead of blink.
->
-> **Why:** debugging bare-metal without `printf` is doable but slow. Adding text output changes everything. Every later chapter in Part II uses `printf` freely.
->
-> **Focus:** the **UART baud-divisor formula** and the **status-register polling loop**. Both repeat across most UART implementations. After this chapter you will recognize them anywhere.
+An LED can tell us that a program reached a checkpoint. It is less helpful when we want the value of a register or the name of the next step. We could invent a blink code, but the board already has a better route to the host: UART1 and its USB-to-serial bridge.
+
+First we will send one character. Then a string. Only after that path works will we put a small formatter in front of it. Keeping those jobs separate means that a garbled number does not immediately send us back to the pinmux table.
 
 
 ## 12.1  Which UART, and on which pins
@@ -72,7 +70,7 @@ TX usually does not need this extra selection. Once the TX pad is muxed to UART1
 
 If the daisy value is wrong, TX can still print correctly while RX receives nothing. A voltage transition may reach the physical RX pad, but the UART receiver is connected internally to a different candidate path.
 
-The UART1 controller is on AIPS-1. Its clock gate is in **CCM_CCGR5**, bits 24-25 (CG12). UART1's input clock, `uart_clk_root`, has a default of **80 MHz** (PLL3 / 6, with the post-divider set to 1). We'll use that.
+The UART1 gate is **CCM_CCGR5**, bits 24-25 (CG12). The baud calculation below needs an **80 MHz** module clock. Our driver explicitly selects PLL3's divided-by-six path and a root divider of one. It assumes the normal direct ROM boot has supplied a running 480 MHz PLL3. It is not a clock recipe for an arbitrary previous program's state. Chapter 13 follows the wider clock tree.
 
 ## 12.2  Baud rate, the i.MX way
 
@@ -85,7 +83,7 @@ Most UART chips compute baud as `f_in / (16 × divisor)`. I.MX is the same shape
 - `UBIR` is a 16-bit numerator register (Baud Rate Numerator).
 - `UBMR` is a 16-bit denominator register (Baud Rate Modulator).
 - The factor of 16 is the oversampling rate, fixed.
-- There's a fractional adjustment (`UFCR.RFDIV` field) that further divides f_uart_clk by 1 / 2 / 4 / etc.. We leave it at "divide by 1" for now.
+- `UFCR.RFDIV` is an encoded integer divider between the module clock and the reference clock used in this formula. We choose divide by one. Its field value is `5`, not `1`.
 
 For our case:
 
@@ -93,16 +91,16 @@ For our case:
 - Target baud = 115200
 - We want `(UBIR + 1) / (UBMR + 1) = 115200 × 16 / 80 000 000 = 0.02304`
 
-The simplest values that yield this ratio cleanly are `(UBIR+1) = 71`, `(UBMR+1) = 3083`. (Choice not unique. We pick small numerators when possible.) So:
+Multiply the ratio by 25,000: the numerator becomes 576. Both numbers fit the 16-bit registers, giving an exact nominal ratio:
 
-- `UBIR = 70`
-- `UBMR = 3082`
+- `UBIR = 575`
+- `UBMR = 24999`
 
-If exact match is impossible, the chip rounds. Most receivers tolerate up to about 3% baud error. A mismatched baud rate appears as unreadable characters that look like ASCII but are not.
+Check it before reading further: `80,000,000 / 16 * 576 / 25,000 = 115,200`. There is no nominal divider error in this choice. The actual clock can still have oscillator error. With other clock/baud combinations, choose integer register values and calculate the resulting error rather than assuming the UART will correct it. Receiver tolerance depends on both ends and the frame format.
 
 ## 12.3  Register map (the ones we actually use)
 
-The UART has dozens of registers. We use six:
+This is the working register map for the driver. Keep it beside the listing:
 
 | Register | Offset | Purpose |
 |----------|--------|---------|
@@ -113,7 +111,7 @@ The UART has dozens of registers. We use six:
 | `UCR3` | `+0x088` | Control 3 (various) |
 | `UCR4` | `+0x08C` | Control 4 (DMA off, RX threshold) |
 | `UFCR` | `+0x090` | FIFO control + clock div |
-| `USR1` | `+0x094` | Status 1 (TRDY = TX FIFO has room) |
+| `USR1` | `+0x094` | Status 1 (TRDY = FIFO at/below its configured TX threshold) |
 | `USR2` | `+0x098` | Status 2 (TXDC = TX complete, RDR = RX data ready) |
 | `UESC` | `+0x09C` | Escape character (we ignore) |
 | `UTIM` | `+0x0A0` | Escape timer (we ignore) |
@@ -123,15 +121,26 @@ The UART has dozens of registers. We use six:
 
 The full list is RM Table 55-3. We will not visit most of them.
 
-Three bits we will touch by name:
+The main control and status bits are:
 
 - **`UCR1.UARTEN`** (bit 0), overall UART enable.
-- **`UCR2.SRST`** (bit 0), software reset, **active-low**. Clear the bit to *assert* reset. Set it to release. (Yes, the polarity is unusual. That is what the RM says.)
-- **`UCR2.TXEN | UCR2.RXEN`** (bits 1 and 2), TX and RX enables.
-- **`USR1.TRDY`** (bit 13), TX FIFO has space for at least one byte.
+- **`UCR2.SRST`** (bit 0), software reset. Write zero to request reset, then wait for hardware to set it again. Writing one does not manually release it.
+- **`UCR2.TXEN` / `UCR2.RXEN`** (bits 2 / 1), transmitter and receiver enables.
+- **`USR1.TRDY`** (bit 13), the transmit FIFO has reached its configured refill threshold. It is not the same test as `UTS.TXFULL` (bit 4).
 - **`USR2.RDR`** (bit 0), receive data ready.
 
+```{figure} ../illustrations/part2/04-uart-fifo-and-wire.png
+:alt: The CPU can add a byte to a transmit FIFO that has room while an earlier byte is still passing through the shift register and onto the wire.
+:width: 100%
+:figclass: concept-sketch
+:name: fig-part2-uart-fifo-wire
+
+Room in the FIFO lets us queue another byte. It does not say the last byte has left the pin. `UTS.TXFULL` answers the space question. `USR2.TXDC` answers the completion question.
+```
+
 ## 12.4  The driver, top to bottom
+
+Copy the four Chapter 10 project files into `~/imx6ull/src/ch12-uart-printf` using your editor or file manager. Keep a working copy of Chapter 10. Save `uart.h`, `uart.c` and `mini_printf.c` beside them, then replace `main.c` with Section 12.6's listing. Add `uart.o mini_printf.o` to `OBJS` in the copied Makefile. Its `-lgcc` supplies the integer-division helpers used by the formatter.
 
 `uart.h`:
 
@@ -171,47 +180,50 @@ int  uart_getc(void);     /* -1 if no data */
 #define UART_UTS     (UART1_BASE + 0x0B4)
 
 #define CCM_CCGR5    0x020C407C
+#define CCM_CSCDR1   0x020C4024
 #define IOMUX_MUX_TX 0x020E0084
 #define IOMUX_MUX_RX 0x020E0088
 #define IOMUX_PAD_TX 0x020E0310
 #define IOMUX_PAD_RX 0x020E0314
 #define IOMUX_DAISY  0x020E0624
 
-#define USR1_TRDY    (1u << 13)
+#define UTS_TXFULL   (1u << 4)
 #define USR2_RDR     (1u << 0)
 
 void uart_init(void)
 {
     /* 1.  Gate the clock to UART1.  CG12 (bits 24-25) of CCGR5 = 0b11. */
     REG(CCM_CCGR5) |= (3u << 24);
+    REG(UART_UCR1) = 0;
+    /* Shared UART root: PLL3/6, divider 1. No other UART is in use here. */
+    REG(CCM_CSCDR1) &= ~0x7Fu;
 
     /* 2.  Pinmux: ALT0 on both TX and RX pads. */
     REG(IOMUX_MUX_TX) = 0;
     REG(IOMUX_MUX_RX) = 0;
-    REG(IOMUX_PAD_TX) = 0x000010B0;   /* Push-pull, 50 MHz, no pull */
-    REG(IOMUX_PAD_RX) = 0x000130B1;   /* With keeper for stable idle level */
+    REG(IOMUX_PAD_TX) = 0x000010B0;   /* push-pull, keeper enabled */
+    REG(IOMUX_PAD_RX) = 0x000130B1;   /* pull enabled, fast slew */
     REG(IOMUX_DAISY)  = 3;            /* select UART1_RX_DATA input path */
 
     /* 3.  Soft-reset the UART (SRST is active-low: clear to assert). */
     REG(UART_UCR2) = 0;
-    while (!(REG(UART_UCR2) & 1)) { /* wait for SRST high (release) */ }
+    while (!(REG(UART_UCR2) & 1)) { /* hardware completes reset */ }
 
     /* 4.  Disable while configuring. */
     REG(UART_UCR1) = 0;
 
-    /* 5.  No hardware flow control; 8N1; RX+TX enable; release SRST. */
+    /* 5. No hardware flow control; 8N1; RX+TX enable. */
     REG(UART_UCR2) = (1u << 14)   /* IRTS (ignore RTS) */
                    | (1u << 5)    /* WS = 8 data bits */
                    | (1u << 2)    /* TXEN */
                    | (1u << 1)    /* RXEN */
-                   | (1u << 0);   /* SRST released */
+                   | (1u << 0);   /* writing 1 leaves SRST unchanged */
 
-    /* 6.  UCR3.RXDMUXSEL must be 1 for receive to work on the externally-muxed
-          path.  This is documented in the errata. */
-    REG(UART_UCR3) |= (1u << 2);
+    /* 6. RM 55.15.5 requires RXDMUXSEL for this chip's muxed input. */
+    REG(UART_UCR3) = (1u << 2);
 
     /* 7.  No DMA, no escape detection. */
-    REG(UART_UCR4) = (1u << 0);    /* DREN: receive-ready interrupt enable bit. We do not use IRQ yet. */
+    REG(UART_UCR4) = 0;           /* keep receive-ready and other IRQs disabled */
 
     /* 8.  FIFO control: RX trigger = 1, TX trigger = 2, RFDIV = /1.
           UFCR fields:
@@ -223,10 +235,9 @@ void uart_init(void)
                    | (5u << 7)          /* RFDIV = /1 */
                    | (1u << 0);         /* RXTL = 1 */
 
-    /* 9.  Baud: 115200 from f_uart = 80 MHz.
-          UBIR = 70, UBMR = 3082.  (UBIR must be written before UBMR!) */
-    REG(UART_UBIR) = 70;
-    REG(UART_UBMR) = 3082;
+    /* 9. 115200 from an 80 MHz reference. Write UBIR before UBMR. */
+    REG(UART_UBIR) = 575;
+    REG(UART_UBMR) = 24999;
 
     /* 10. Enable UART. */
     REG(UART_UCR1) = (1u << 0);    /* UARTEN */
@@ -234,7 +245,7 @@ void uart_init(void)
 
 void uart_putc(char c)
 {
-    while (!(REG(UART_USR1) & USR1_TRDY)) { /* spin until TX has room */ }
+    while (REG(UART_UTS) & UTS_TXFULL) { /* spin while FIFO is full */ }
     REG(UART_UTXD) = (uint8_t)c;
 }
 
@@ -253,15 +264,18 @@ int uart_getc(void)
 }
 ```
 
-Read `uart_init()` carefully. Each line is in the RM, and each line costs someone an afternoon when it is skipped. A few specific points:
+Follow the initialization in groups: clock and pads, controller reset, frame settings, baud, then enable. Three details explain common half-working results:
 
-- **UBIR must be written before UBMR.** The order matters. The controller's internal divider is latched on the UBMR write. Reverse and you'll get baud rates 6.8% off, which still looks like text but has occasional corruption.
-- **The `\n` → `\r\n` translation in `uart_puts`** is here because simple terminals, and `picocom` by default, expect CRLF endings to advance to a new line and return to column 0. Our bare-metal program must do this itself.
-- **`UCR3.RXDMUXSEL = 1`** is required by the errata. Without it, RX appears dead.
+- **Write UBIR before UBMR.** RM 55.5 requires both writes in that order to update the rate multiplier. Reversing them does not produce one predictable percentage error.
+- **The `\n` to `\r\n` translation in `uart_puts`** supplies both a new line and a return to column zero without depending on a particular terminal mapping.
+- **`UCR3.RXDMUXSEL = 1`** is a requirement in the register description, not an unexplained erratum workaround. It is separate from the IOMUX daisy value.
 
-## 12.5  A 200-line `printf`
+This small driver has blocking transmit/reset waits, no timeout and no receive-error reporting. A stopped reference clock can leave it waiting forever. Treat it as a lab console, not a fault-tolerant production interface.
 
-You should use a third-party printf (`mpaland/printf` is excellent) in real projects. For the book we write our own, ~120 lines.
+(a-200-line-printf)=
+## 12.5  A small `printf`
+
+The formatter is deliberately limited so we can follow a number from its digits to `uart_putc()`. A maintained formatter with appropriate tests is a better starting point for a product. This one accepts only the formats listed below and returns zero rather than a standard `printf` character count.
 
 `mini_printf.c`:
 
@@ -271,23 +285,31 @@ You should use a third-party printf (`mpaland/printf` is excellent) in real proj
 #include "uart.h"
 
 static void emit_char(char c)            { uart_putc(c); }
-static void emit_str(const char *s)      { while (*s) emit_char(*s++); }
-
-static void emit_uint(unsigned long v, unsigned base, int width, char pad)
+static void emit_str(const char *s)
 {
-    char buf[32];
+    if (!s) s = "(null)";
+    while (*s) emit_char(*s++);
+}
+
+static void emit_uint(unsigned long v, unsigned base, int width, char pad,
+                      int negative)
+{
+    char buf[sizeof(v) * 8];
     const char *digits = "0123456789abcdef";
     int i = 0;
     if (v == 0) buf[i++] = '0';
     while (v) { buf[i++] = digits[v % base]; v /= base; }
-    while (i < width) buf[i++] = pad;
+    int padding = width - i - negative;
+    if (pad == ' ') while (padding-- > 0) emit_char(' ');
+    if (negative) emit_char('-');
+    if (pad == '0') while (padding-- > 0) emit_char('0');
     while (i--) emit_char(buf[i]);
 }
 
-static void emit_int(long v, int width, char pad)
+static void emit_int(int v, int width, char pad)
 {
-    if (v < 0) { emit_char('-'); v = -v; if (width) width--; }
-    emit_uint((unsigned long)v, 10, width, pad);
+    unsigned magnitude = v < 0 ? 0u - (unsigned)v : (unsigned)v;
+    emit_uint(magnitude, 10, width, pad, v < 0);
 }
 
 int mini_vprintf(const char *fmt, va_list ap)
@@ -298,15 +320,21 @@ int mini_vprintf(const char *fmt, va_list ap)
         char pad = ' ';
         int  width = 0;
         if (*fmt == '0') { pad = '0'; fmt++; }
-        while (*fmt >= '0' && *fmt <= '9') { width = width*10 + (*fmt - '0'); fmt++; }
+        /* Cap field width at 64 without writing padding into the digit buffer. */
+        while (*fmt >= '0' && *fmt <= '9') {
+            width = width * 10 + (*fmt++ - '0');
+            if (width > 64) width = 64;
+        }
+        if (!*fmt) { emit_char('%'); break; }
 
         switch (*fmt) {
         case 'c':  emit_char((char)va_arg(ap, int));         break;
         case 's':  emit_str(va_arg(ap, const char *));       break;
         case 'd':  emit_int (va_arg(ap, int),  width, pad);  break;
-        case 'u':  emit_uint(va_arg(ap, unsigned), 10, width, pad); break;
-        case 'x':  emit_uint(va_arg(ap, unsigned), 16, width, pad); break;
-        case 'p':  emit_str("0x"); emit_uint((uintptr_t)va_arg(ap, void*), 16, 8, '0'); break;
+        case 'u':  emit_uint(va_arg(ap, unsigned), 10, width, pad, 0); break;
+        case 'x':  emit_uint(va_arg(ap, unsigned), 16, width, pad, 0); break;
+        case 'p':  emit_str("0x"); emit_uint((uintptr_t)va_arg(ap, void*), 16,
+                                          sizeof(uintptr_t) * 2, '0', 0); break;
         case '%':  emit_char('%');                           break;
         default:   emit_char('%'); emit_char(*fmt);          break;
         }
@@ -325,11 +353,11 @@ int printf(const char *fmt, ...)
 }
 ```
 
-Features we support: `%c %s %d %u %x %p %%`. Width and `0`-padding. Negative `%d`.
+Features we support: `%c %s %d %u %x %p %%`. Numeric field width up to 64, space/zero padding and negative `%d`. Width is ignored for strings and characters. Padding is emitted separately from the digit buffer, so a wide field cannot overflow that buffer. Unsigned subtraction handles `INT_MIN` without signed-negation overflow.
 
 Features we do **not** support: `%f` (we have no floats in the kernel of this book), `%lld`, `%ll`, locales, precision (`%.5s`), left-justification (`%-5d`), `%n`. Cover them when you need them.
 
-A note on `va_arg(ap, unsigned)`: AAPCS promotes `unsigned short` and `unsigned char` to `unsigned int` when passing to a variadic function. So `unsigned` is the correct type. For `unsigned long` on 32-bit Linux/ARM it would be the same size. We keep it simple.
+Variadic arguments follow C's default promotions. On this target, an `unsigned char` or `unsigned short` promotes to `int`, because `int` can represent all its values. Cast a small value to `unsigned` when passing it to `%u` or `%x`. Pass an `int` to `%d` and a `void *` to `%p`. Equal type sizes do not make an arbitrary `va_arg` type correct. Keep length modifiers such as `%lu` out of this formatter's calls.
 
 ## 12.6  `main()` that actually says hello
 
@@ -345,7 +373,7 @@ int main(void)
     printf("CPU running at boot-default clock.\r\n");
     printf("This text travels at 115200 baud.\r\n");
     printf("printf supports %%d=%d %%u=%u %%x=0x%08x %%s=\"%s\" %%c=%c\r\n",
-           -42, 0xCAFE, 0xDEADBEEF, "rainbow", 'Z');
+           -42, 0xCAFEu, 0xDEADBEEFu, "ready", 'Z');
 
     /* Echo loop so you can confirm RX works. */
     printf("\r\nType characters. They will echo back.\r\n> ");
@@ -359,7 +387,7 @@ int main(void)
 Keep the board's integrated USB-TTL port connected. In one host terminal, open the serial device found in Chapter 8:
 
 ```sh
-$ picocom -b 115200 /dev/ttyUSB0
+$ sudo picocom -b 115200 /dev/ttyUSB0
 ```
 
 If the bridge appeared as `/dev/ttyACM0`, use that path instead. This connection carries UART text. The separate USB-OTG connection carries SDP commands from `uuu`.
@@ -367,9 +395,11 @@ If the bridge appeared as `/dev/ttyACM0`, use that path instead. This connection
 In another host terminal, build and load the image through the board's USB-OTG port:
 
 ```sh
+$ . ~/imx6ull/scripts/env.sh
+$ cd ~/imx6ull/src/ch12-uart-printf
 $ make
-$ ~/imx6ull/scripts/mkimx.py led.bin led.imx
-$ uuu led.imx
+$ python3 ~/imx6ull/scripts/mkimx.py led.bin led.imx
+$ sudo "$IMX6ULL_HOME/build/mfgtools/uuu/uuu" led.imx
 ```
 
 In the terminal connected through the integrated USB-TTL bridge:
@@ -378,20 +408,20 @@ In the terminal connected through the integrated USB-TTL bridge:
 Hello, i.MX6ULL bare-metal world!
 CPU running at boot-default clock.
 This text travels at 115200 baud.
-printf supports %d=-42 %u=51966 %x=0xdeadbeef %s="rainbow" %c=Z
+printf supports %d=-42 %u=51966 %x=0xdeadbeef %s="ready" %c=Z
 
 Type characters. They will echo back.
 > hello
 ```
 
-The printed text confirms the UART1 TX path through the onboard bridge. The echo confirms the UART1 RX path through the same bridge.
+Before adding the formatter, you can replace `main()` temporarily with `uart_init(); uart_puts("UART only\n");` followed by an infinite loop. Restore the full listing once those bytes arrive correctly. The representative transcript above shows a working TX path. Check that terminal local echo is off before treating returned characters as evidence of the RX path.
 
 ## 12.7  Why polled UART, not interrupt-driven
 
 We are deliberately using polling. Reasons:
 
 - **No interrupt controller yet.** The GIC will be set up properly in Chapter 15.
-- **Polling is enough for `printf`.** Even at 115200 baud, transmitting one character takes 87 µs. Worst case we spin 87 µs per character. For diagnostic output that's fine. In a high-throughput application it wouldn't be.
+- **Polling is sufficient for this small console.** An 8N1 character needs ten bit periods, about 87 microseconds at 115200 baud. The FIFO can accept several bytes sooner, but a long stream is limited by that wire rate. This is not a worst-case bound on our wait loops, especially if the clock stops.
 - **Polling shows the status bits directly.** After you do it once, the interrupt version is the same hardware flow, but the FIFO threshold triggers an ISR.
 
 We will write an interrupt-driven echo as a lab in Chapter 15.
@@ -401,16 +431,16 @@ We will write an interrupt-driven echo as a lab in Chapter 15.
 1. **Build, push via SDP, and observe `Hello, world`.** Use USB-OTG for `uuu` and the integrated USB-TTL port for `picocom`. Type several characters and confirm that each one echoes.
 2. **Measure the baud error.** Insert a `for` loop that emits `'U'` (0x55, the canonical alternating-bit-pattern character) 1 million times. Capture on a scope. Measure one bit period. Compute actual baud. Compare to 115200. Should be within 1%.
 3. **Add `%b`** to `mini_printf`, binary representation, for register dumps. Use it to dump `UCR1`, `UCR2`, `USR1`, `USR2` at startup.
-4. **Print system info.** Read OCOTP_CFG0 and OCOTP_CFG1 (RM Chapter 37) and print the chip's unique ID.
+4. **Inspect identity safely.** Read only the documented OCOTP shadow registers for chip identity, after checking their clock/access requirements. Do not write the OCOTP programming registers. Printing an identifier does not require blowing a fuse.
 5. **Stress test.** Send 10 KB of text through the board's USB-TTL serial device and confirm it is echoed. We do not use hardware flow control, so the host script must not send faster than the polled receiver can consume data.
 
 ## 12.9  Pitfalls
 
 - **Wrong RFDIV in UFCR.** Setting `RFDIV = 0` divides by 6, not 1. Symptom: baud rate is six times too slow. The encoding is: 000=/6, 001=/5, 010=/4, 011=/3, 100=/2, 101=/1. Always `0b101`.
-- **Forgot to release SRST.** Symptom: UART silent. `UCR2.SRST = 0` means *asserted*. Set it to release.
+- **Reset never completes.** After requesting reset, wait for hardware to restore `SRST`. Writing one cannot force completion. Check the module clock if the loop never exits.
 - **Wrong daisy-chain (SELECT_INPUT).** Symptom: TX works through the onboard bridge, but typed characters do not echo. `UART1_RX_DATA_SELECT_INPUT` must select the pad physically connected to the bridge.
 - **Using the wrong USB connector.** The USB-TTL port appears as `/dev/ttyUSBx` or `/dev/ttyACMx` and carries console text. The USB-OTG port appears as the i.MX6ULL SDP device and is used by `uuu`.
-- **CRLF vs LF.** `picocom` defaults to translating LF to CRLF on receive. Newer terminals don't. If your output is "stairstepped," your `\n` is not being followed by `\r`. Our `uart_puts` handles it.
+- **CRLF versus LF.** Terminal mappings can differ. `uart_puts()` inserts `\r` before `\n`, while this formatter emits characters directly, so its example strings use explicit `\r\n`. Do not insert an extra carriage return in both layers.
 - **`printf` with `float`s.** Compiles, runs, and prints wrong output because we never wrote `%f`. Do not pass floats to this `printf`.
 - **UBIR after UBMR.** Discussed in §12.4. Write UBIR first.
 - **Forgot the CCGR.** If the UART is silent, check the clock gate before debugging the UART registers.
@@ -419,9 +449,8 @@ We will write an interrupt-driven echo as a lab in Chapter 15.
 
 - **IMX6ULLRM Chapter 55**: UART. Read once cover-to-cover. You'll come back.
 - **AN3956**: *Configuring the i.MX UART Module*. Concise. Useful.
-- **`mpaland/printf`** at `<https://github.com/mpaland/printf>`, a production-quality tiny printf, MIT-licensed.
+- **`mpaland/printf`** at `<https://github.com/mpaland/printf>`, an MIT-licensed formatter to evaluate with your own tests and required format support.
 - **The 16550 UART datasheet**: every embedded engineer should read this once. It's the platonic UART.
 - **Linux source: `drivers/tty/serial/imx.c`**: the same hardware, the same registers, vastly more sophisticated driver. Read it after Chapter 12 here. You'll recognize every bit.
 
-> Next chapter: **Chapter 13: CCM clock tree bring-up.** So far we've been running on whatever clock the ROM left us. Time to take ownership.
-> **CCM:** Clock Controller Module. It selects clock sources, dividers, and gates for the SoC.
+Text output gives us a way to report the next investigation. In Chapter 13 we trace its clock source and the CPU clock through CCM, the Clock Controller Module, rather than assuming the ROM's choices suit every peripheral.
