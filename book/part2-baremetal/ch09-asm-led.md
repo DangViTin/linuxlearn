@@ -149,7 +149,7 @@ blink:
     eor     r5, r5, r6              @ toggle bit 3 in our saved copy of GPIO1_DR
     str     r5, [r4]                @ write back
 
-    ldr     r7, =500000           @ rough visible delay
+    ldr     r7, =50000000         @ long crude delay, not a calibrated interval
 1:  subs    r7, r7, #1
     bne     1b
 
@@ -166,6 +166,8 @@ A few notes on what's there and what isn't:
 - **`ldr r0, =0x...`** asks GNU assembler to load a constant. It may use an encodable immediate instruction or a PC-relative load from a literal pool. Inspect the disassembly to see which it chose. Arbitrary 32-bit constants do not all fit one ARM immediate instruction.
 - **`1:` is a local label.** `1b` means "branch to the nearest `1` label going backward." This is a GAS convention for local loops. It avoids us inventing new names.
 - **`.syntax unified`** says "use the modern ARM/Thumb-unified mnemonics", which lets us write `orr r1, r1, ...` even in ARM mode without surprises.
+
+The delay count is deliberately large. A short loop that looked slow on an MCU may make this LED appear steady. CPU clock, instruction-cache state and branch timing all affect the interval, so do not label it as milliseconds. Start with this count, then compare a smaller count in the lab. Chapter 16 supplies a measured timebase.
 
 ## 9.4  Building the image
 

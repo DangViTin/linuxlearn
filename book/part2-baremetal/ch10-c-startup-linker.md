@@ -216,7 +216,7 @@ int main(void)
 
     for (;;) {
         REG(GPIO1_DR) ^= LED_BIT;
-        delay(500000);
+        delay(50000000u);
     }
 }
 ```
