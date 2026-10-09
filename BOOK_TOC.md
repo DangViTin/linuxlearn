@@ -251,155 +251,144 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 
 ## PART III — U-BOOT, DEEPLY
 
-> *We now switch to using U-Boot — but only after re-implementing, by hand, everything it does. You will read U-Boot's source and recognize every step.*
+> *The register-level work from Part II gives us a way to read U-Boot's source. We will trace its framework, distinguish a build from board qualification, and test each boot decision before trusting it.*
 
 ### Chapter 19 — U-Boot from source, first boot
-- Cloning mainline U-Boot (`git.denx.de`)
-- The directory layout: `arch/`, `board/`, `cmd/`, `common/`, `drivers/`, `lib/`, `include/configs/`
-- `make mx6ull_14x14_evk_defconfig && make` — what each step produces
-- Output artifacts: `u-boot.bin`, `u-boot.imx`, `SPL`, `u-boot-dtb.imx`, `MLO`
-- Burning to SD, booting, getting the `=>` prompt
-- First commands: `printenv`, `bdinfo`, `md`, `mw`, `mtest`, `mmc info`
-- **Lab:** boot U-Boot, dump the DDR pattern with `md`, compare to your bare-metal expectations
+- Pin upstream v2026.04 and use Chapter 3's portable Linux-target toolchain environment
+- Inspect the source layout and build the EVK reference in a separate output directory
+- Read the actual no-SPL artifacts and ROM+DCD image header
+- Separate file offsets, SD placement, runtime addresses and the reserved environment range
+- Inspect commands without sweeping live memory or saving experimental policy
+- **Lab:** trace and build on the host, then consider boot only on independently qualified hardware
 - **Pages:** ~16
 
 ### Chapter 20 — U-Boot SPL: the missing link
-- Why SPL exists at all: OCRAM is 128 KB; full U-Boot is bigger; DDR isn't up yet
-- SPL is *your Chapter 14 productized*
-- `arch/arm/mach-imx/spl.c`, `board/freescale/mx6ull_14x14_evk/MX6ULL_*.cfg`
-- Reading the SPL DDR setup and mapping it to MMDC registers you already know
-- The IVT/DCD-vs-SPL choice: when does U-Boot use DCD, when does it use SPL?
-- **Focus:** by mapping SPL onto Ch. 14, you remove the last bit of magic
+- Compare ROM+DCD with ROM+SPL and identify who initializes DDR
+- Build a separate PICO i.MX6UL SPL reference for source study, not MINI flashing
+- Trace OCRAM startup, DDR-resident BSS, size limits and the board's handoff path
+- Distinguish the SPL wrapper, full payload format and raw MMC load sector
+- **Lab:** compare actual build/config results without deliberately corrupting DDR
 - **Pages:** ~18
 
 ### Chapter 21 — U-Boot internals
-- The boot flow: `_start` → `reset` → `lowlevel_init` → `_main` → `board_init_f` → relocation → `board_init_r` → `main_loop`
-- The two `board_init` halves and *why* there are two
-- **Relocation**: copying U-Boot from its load address to high DRAM, fixing up GOT
-- The U-Boot environment: where it lives (mmc / SPI flash / NAND), how `saveenv` works
-- The command system: `U_BOOT_CMD()`, how `printenv` finds commands at link time
-- The driver model (DM): `UCLASS_*`, `udevice`, `driver`, parse-time vs runtime
-- **Lab:** add a custom command `hello` that runs from the U-Boot prompt
+- Follow ARM entry, current initcall machinery, `board_init_f`, relocation and `board_init_r`
+- Explain early stack/global data, selected relocation fixes and the BSS overlay
+- Compile and register a complete `book_hello` command
+- Separate compiled defaults, RAM environment changes and persistent backend selection
+- Distinguish driver binding from probing and U-Boot's control DT from the kernel DT
+- **Lab:** build the command and inspect its linker registration before any board test
 - **Pages:** ~26
 
 ### Chapter 22 — Porting U-Boot to a custom board
-- Forking `mx6ull_14x14_evk` into your own `board/<yours>/`
-- New defconfig, new device tree (`arch/arm/dts/imx6ull-yours.dts`)
-- Changing pinmux for your LEDs, buttons, MAC PHY
-- Re-running DDR Stress Tool with your DRAM and updating the SPL DDR config
-- Boot and verify
-- **Lab:** even if you use the Point Atom board, *pretend* it's a custom one — change the model string, hostname, default bootcmd
+- Fork `board/nxp/mx6ullevk` into the consistent `mx6ull_pa_mini` teaching namespace
+- Connect board Kconfig, defconfig, control DTS, header and ROM DCD
+- Build an EVK-derived scaffold with disabled autoboot and a RAM-only environment
+- Record schematic, fitted parts, DDR calibration, pad/clock/reset and power evidence
+- **Lab:** compile and audit the scaffold without calling it a qualified MINI image
 - **Pages:** ~22
 
 ### Chapter 23 — `bootcmd`, `bootargs`, FIT images
-- `bootm`, `bootz`, `booti` — what each expects
-- The kernel cmdline syntax: `console=`, `root=`, `rootfstype=`, `rw`, `ip=`, `nfsroot=`, `init=`
-- FIT (Flattened Image Tree): kernel + DTB + initramfs in one signed bundle
-- `mkimage -f kernel.its kernel.itb`
-- Why FIT replaces uImage for modern systems
-- **Lab:** boot kernel with three different `bootargs` (NFS root, ramdisk root, SD root) without recompiling anything
+- Gate storage selection, root identification, every required load and argument construction
+- Explain `bootm`, `bootz`, raw initramfs sizes and separate image buffers
+- Trace `/chosen/bootargs`, kernel console/root prerequisites and root versus init failure
+- Package a complete script and a kernel+DTB hash-only FIT
+- Separate hashes, trusted required signatures and the boot-chain policy
+- **Lab:** test load/script failure paths and packaging before qualified kernel handoff
 - **Pages:** ~18
 
 ### Chapter 24 — Workflows: TFTP, NFS, USB-OTG
-- Iterating fast: don't reflash, network-boot
-- Setting up `tftpd-hpa` on the host
-- Setting up `nfs-kernel-server` and exporting the rootfs
-- A canonical "edit, build, `make` install to NFS, reboot board" loop
-- Recovery flow: USB-OTG SDP if SD/eMMC is corrupted
+- Stage matched artifacts as real files under the established TFTP server root
+- Keep U-Boot's network loader separate from Linux's Ethernet/IP/NFS-root path
+- Explain built-in root-network drivers, export permissions and the observed command line
+- Separate userspace and kernel rebuild/restart loops
+- **Lab:** audit a board-owner ROM recovery procedure without wiping media
 - **Pages:** ~14
 
 ## Optional deep dive
 
-### Chapter 24A — Supplementary: Building i.MX6ULL U-Boot from nothing
-- Create every architecture, board, driver, Device Tree, and configuration file for a teaching i.MX6ULL platform
-- Expose the complete direct-register UART, clock, timer, watchdog, pin-routing, and DDR initialization code
-- Build the Boot ROM IVT and DCD image, write it to SD, and follow the boot path to the first prompt
-- Write UART1, GPT1, and USDHC2 PIO drivers directly from the i.MX6ULL register descriptions
-- Explain every defconfig option, build artifact, test command, and failure checkpoint
-- **Lab:** recreate i.MX6ULL support under a teaching architecture without selecting the existing i.MX6 platform
+(chapter-24a-supplementary-building-i-mx6ull-u-boot-from-nothing)=
+### Chapter 24A — Supplementary: Building an i.MX6ULL teaching port from scratch
+- Reuse generic ARMv7 startup and U-Boot frameworks under an independent teaching architecture
+- Show complete UART1, clock, GPT1 and USDHC2 PIO driver files and manual integration edits
+- Trace bounded polling, baud/clock calculations, reset behavior and card error recovery
+- Require a qualified fitted-board DDR input before producing a MINI boot image
+- Explain IVT/Boot Data fields, file/media/RAM offsets and evidence checkpoints
+- **Lab:** reproduce the source build and host checks, then qualify hardware separately
 - **Pages:** ~76
 
 ## Applied U-Boot scenarios
 
 ### Chapter 24B - Supplementary: U-Boot board policy with GPIO and I2C
-- Start from the Chapter 22 board port and add pre-boot decisions instead of making a new port
-- Enable GPIO, I2C, board late init, and test commands
-- Read an I2C temperature sensor and block Linux boot when the board is too hot
-- Add a GPIO recovery button check
-- Explain fail-open vs fail-closed behavior for each policy
-- **Lab:** boot normally below 50 C, then force the blocked path and confirm U-Boot stops at the prompt
+- Add late policy to the existing port without duplicating its hook
+- Use a hypothetical TMP102 with signed fractional values and checked I2C errors
+- Claim a dedicated GPIO descriptor, handle logical polarity and debounce, then release ownership
+- Keep failure closed and dispatch exactly one normal or recovery path
+- **Lab:** inject sensor, environment and key failures in host fixtures, not live saved policy
 - **Pages:** ~18
 
 ### Chapter 24C - Supplementary: Ethernet fallback boot in U-Boot
-- Bring up FEC Ethernet enough to prove MAC, PHY, MDIO, and link
-- Handle `ethaddr`, static IP, DHCP, `serverip`, and TFTP variables
-- Write a `bootcmd` that tries local MMC first, then falls back to TFTP
-- Use TFTP for kernel and DTB while keeping the rootfs on local storage
-- Optionally fetch a temporary `boot.scr` from the host for service work
-- **Lab:** remove local `zImage`, confirm U-Boot falls back to TFTP, then restore local boot
+- Review FEC/PHY wiring, reset/clock ownership and uniquely allocated MAC addresses
+- Apply explicit static network state and test DHCP separately
+- Gate fresh kernel/DTB loads and arguments on both local and TFTP paths
+- Keep fallback before kernel handoff and distinguish a local rootfs from network payloads
+- **Lab:** inject missing-file and script failures without deleting live boot files
 - **Pages:** ~18
 
 ### Chapter 24D - Supplementary: Board identity and variant selection in U-Boot
-- Read board identity from EEPROM, strap GPIOs, or fuses
-- Define a small EEPROM layout for hardware revision, LCD option, MAC address, and serial number
-- Set `fdtfile` or `fitconf` from board code before `bootcmd` runs
-- Choose between separate DTBs, FIT configurations, and DT overlays
-- Define safe behavior when identity data is missing or corrupt
-- **Lab:** boot two fake variants by changing only the identity byte, then prove the safe fallback
+- Define a bounded versioned 64-byte EEPROM record with required CRC and byte-order rules
+- Validate complete fields, MAC/serial values and supported hardware combinations
+- Publish readiness only after checked selection and identity assignments
+- Keep unknown identity closed rather than inventing a universally safe DTB
+- **Lab:** test complete valid/invalid host records without EEPROM or fuse writes
 - **Pages:** ~18
 
 ### Chapter 24E — Supplementary: Multi-variant FIT images and DT overlays at runtime
-In modern shipping products one binary often serves several board variants (different displays, different I/O headers, different sensors). The mainline pattern is one FIT image carrying multiple DTBs, plus optional DT overlays applied at boot time based on a strap pin or an EEPROM-read variant ID.
-- Building a FIT with `images { kernel { ... } fdt-1 { ... } fdt-2 { ... } } configurations { conf-rev-a { ... } conf-rev-b { ... } }`
-- U-Boot `bootm` selecting `#conf-rev-a` from the cmdline
-- DT overlays applied by U-Boot `fdt apply`
-- Reading a variant ID from EEPROM at boot (the `i2c md` → `setenv variant` → `bootm` chain)
-- **Lab:** one image boots correctly on three different "virtual variants" (LCD enabled, LCD disabled, alt-I²C address) selected by a U-Boot env var
+- Package common-DDR no-display, LCD43 and LCD70 configurations with matching DTBs
+- Stage the FIT separately from its kernel destination and name the selected configuration
+- Use a complete harmless host overlay fixture and reload both inputs after apply failure
+- Distinguish the working OS tree from U-Boot's control tree
+- **Lab:** check payload hashes, corruption rejection and overlay failures without claiming hardware boot
 - **Pages:** ~14
 
 ### Chapter 24F - Supplementary: Watchdog, bootcount, and rollback in U-Boot
-- Enable bootcount and watchdog support
-- Build a simple A/B boot environment
-- Use `bootlimit` and `altbootcmd` to roll back after failed candidate boots
-- Let Linux mark a boot good only after user space is healthy
-- Explain why watchdog reset and bootcount must work together
-- **Lab:** mark slot B as candidate, simulate repeated failure, and confirm U-Boot returns to slot A
+- Require a separately qualified persistent backend and layout beyond the RAM-only scaffold
+- Count candidate attempts and roll back to the recorded good slot
+- Gate complete slot loads, root PARTUUID and grouped metadata changes
+- Let Linux verify the actual running root, kernel, slot and health before acceptance
+- Explain ignored save failures, metadata durability and watchdog-handoff limits
+- **Lab:** test both rollback directions and failed saves with host/sandbox mocks
 - **Pages:** ~20
 
 ### Chapter 24G - Supplementary: Factory and recovery modes in U-Boot
-- Add a recovery key path before normal boot
-- Use USB mass storage mode for simple human recovery
-- Use DFU for controlled factory flashing with named targets
-- Add a small factory test command that prints parseable pass/fail lines
-- Explain recovery layers: ROM SDP, U-Boot recovery, Linux recovery, normal Linux
-- **Lab:** hold a key at reset and make U-Boot enter USB recovery instead of booting Linux
+- Distinguish ROM SDP, working-U-Boot services and Linux recovery dependencies
+- Review actual USB role/controller support and authorized device identity
+- Expose only a reviewed disposable target through UMS or DFU
+- Require fresh write authorization and preserve exclusive host/target storage ownership
+- **Lab:** test mutually exclusive recovery policy and enumeration, not guessed raw flashing
 - **Pages:** ~18
 
 ### Chapter 24H - Supplementary: PMIC and power policy in U-Boot
-- Read a PMIC, power monitor, or battery gauge before Linux starts
-- Check fault bits, input voltage, and critical rail state
-- Block boot or updates when power is unsafe
-- Keep long-term charging and thermal policy in Linux
-- Define fail-open vs fail-closed behavior for each power condition
-- **Lab:** force a low-power threshold and confirm U-Boot blocks boot with a clear reason
+- Determine what the fitted power hardware can measure and when it can protect an operation
+- Separate status/enable requests from coherent measured rail/energy evidence
+- Keep the chip-specific adapter unimplemented and refusing until real documentation exists
+- Prioritize power veto over normal, alternate and writable recovery paths
+- **Lab:** inject power-assessment failures without changing real rails or thresholds
 - **Pages:** ~18
 
 ### Chapter 24I - Supplementary: U-Boot display and boot screen
-- Enable U-Boot video, BMP decoding, FAT loading, and optional splash support
-- Add an eLCDIF panel node and LCD pin group to the U-Boot Device Tree
-- Create a simple 24-bit `splash.bmp` and load it from the boot partition
-- Test `fatload`, `bmp info`, and `bmp display` manually before changing `bootcmd`
-- Add `show_splash` to the default environment
-- **Lab:** show a boot screen before Linux starts, then continue into the normal boot path
+- Review the actual video/BMP symbols, LCDIF driver parsing and board header requirement
+- Qualify panel timing, pinmux, power and backlight separately
+- Keep the bounded BMP file buffer distinct from scanout framebuffer and other RAM users
+- Make optional splash failure unable to bypass recovery, rollback or power policy
+- **Lab:** validate host assets and mocked failure paths before qualified panel inspection
 - **Pages:** ~16
 
 ### Chapter 24J - Supplementary: SPI LCD and I2C OLED displays in U-Boot
-- Compare RGB LCD, SPI LCD, and I2C OLED display paths
-- Bring up an SPI LCD by checking reset, backlight, D/C GPIO, chip select, and panel init commands
-- Add the Device Tree shape for an SPI LCD module
-- Bring up an SSD1306-style I2C OLED with a tiny U-Boot command
-- Decide when to use U-Boot video and when to keep a small board-specific status path
-- **Lab:** show a recovery, rollback, or power-fault status on a small SPI LCD or I2C OLED
+- Distinguish RGB scanout, SPI display RAM and I2C OLED page data
+- Do not infer a U-Boot driver from a Linux compatible string
+- Implement bounded SPI transport with explicit D/C, CS, byte order and cleanup
+- Use a qualified SSD1306 profile, zero offset length and correct command/data control bytes
+- **Lab:** test transfer failures and optional status integration without assuming a fitted module
 - **Pages:** ~14
 
 ---
