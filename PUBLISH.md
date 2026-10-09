@@ -165,6 +165,19 @@ Print styles live in `tools/book_pdf.css`, independently of the web theme.
 Generation uses [WeasyPrint's paged-media renderer](https://doc.courtbouillon.org/weasyprint/stable/),
 and the download icon is [Lucide's File Down](https://lucide.dev/icons/file-down).
 
+The export removes unstyled syntax-token wrappers from the print HTML and drops
+unused image/font references from each page, then uses
+[QPDF through pikepdf](https://pikepdf.readthedocs.io/en/stable/) to compress images
+at JPEG quality 95 and prepare fast web view. Images are converted only when the
+JPEG is smaller, without reducing their pixel dimensions. This compression is
+lossy, so the original PNG artwork remains unchanged in the website and source.
+Text stays selectable, and bookmarks, links and accessibility tags remain in the
+PDF. Fast web view allows compatible viewers to begin displaying the file before
+the entire download finishes. The adjacent JSON also records the optimization
+settings. Only temporary intermediate PDFs use uncompressed objects. The final
+download uses compact compressed object groups. A failed render or optimization
+preserves the previous complete PDF.
+
 ## Customization quick reference
 
 | Want to change... | Edit... |

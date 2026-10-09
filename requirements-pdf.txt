@@ -1,3 +1,4 @@
 -r requirements-docs.txt
 weasyprint==70.0
 pypdf==6.1.1
+pikepdf==10.5.1

@@ -6,15 +6,18 @@ import json
 import logging
 from pathlib import Path
 import re
+import tempfile
 from urllib.parse import unquote, urljoin, urlsplit
 
 from bs4 import BeautifulSoup
+import pikepdf
 from pypdf import PdfReader
 from weasyprint import CSS, HTML, URLFetcher
 
 ROOT_DOCUMENT = "part1-foundations/ch01-preface"
 PUBLIC_URL = "https://dangvitin.github.io/linuxlearn/"
 FILENAME = "embedded-linux-imx6ull.pdf"
+JPEG_QUALITY = 95
 
 
 def document_id(path):
@@ -62,6 +65,10 @@ def assemble_book(site, documents):
     for relative, prefix, article in articles:
         for unwanted in article.select(".headerlink, .toctree-wrapper, .copybtn, .book-download-inline"):
             unwanted.decompose()
+        # Print has no token-color CSS. Keep code semantics without tagging every token.
+        for token in article.select(".highlight pre span"):
+            if set(token.attrs) <= {"class"}:
+                token.unwrap()
         title = " ".join(article.find("h1").get_text().split())
         entry = soup.new_tag("li")
         link = soup.new_tag("a", href="#" + prefix)
@@ -125,6 +132,30 @@ def local_fetcher(site):
     return LocalAssets(allowed_protocols={"file"}, fail_on_errors=True)
 
 
+def optimize_pdf(source, output):
+    if source.resolve() == output.resolve():
+        raise ValueError("PDF optimization requires a separate output file")
+    with tempfile.TemporaryDirectory(prefix="book-pdf-", dir=output.parent) as work:
+        cleaned = Path(work) / "resources.pdf"
+        # Shared image dictionaries otherwise make every page reference every sketch.
+        with pikepdf.open(source) as pdf:
+            pdf.remove_unreferenced_resources()
+            pdf.save(cleaned, object_stream_mode=pikepdf.ObjectStreamMode.disable)
+        job = pikepdf.Job([
+            "pikepdf", "--linearize", "--object-streams=generate",
+            "--recompress-flate", "--compression-level=9", "--optimize-images",
+            f"--jpeg-quality={JPEG_QUALITY}", str(cleaned), str(output),
+        ])
+        job.run()
+        if job.exit_code != 0:
+            raise RuntimeError(f"PDF optimization failed with exit code {job.exit_code}")
+    with pikepdf.open(output) as pdf:
+        if not pdf.is_linearized or not pdf.check_linearization():
+            raise RuntimeError("The PDF fast-web-view layout is invalid")
+        if "/StructTreeRoot" not in pdf.Root or not pdf.Root.MarkInfo.Marked:
+            raise RuntimeError("PDF optimization lost the accessibility structure")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--html-dir", type=Path, default=Path("book/_build/html"))
@@ -137,6 +168,7 @@ def main():
     book = assemble_book(site, documents)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary_pdf = output.with_suffix(".tmp.pdf")
+    rendered_pdf = output.with_suffix(".render.pdf")
     print(f"Rendering {len(documents)} reading documents into one PDF", flush=True)
     css = Path(__file__).with_name("book_pdf.css")
     html_path = output.with_suffix(".print.html")
@@ -152,9 +184,13 @@ def main():
     logger = logging.getLogger("weasyprint")
     logger.addHandler(capture)
     try:
-        HTML(string=str(book), base_url=site.as_uri() + "/", url_fetcher=local_fetcher(site)).write_pdf(temporary_pdf, stylesheets=[CSS(filename=str(css))], pdf_tags=True, optimize_images=True)
+        # Let QPDF pack objects in small groups instead of parsing one giant object stream.
+        HTML(string=str(book), base_url=site.as_uri() + "/", url_fetcher=local_fetcher(site)).write_pdf(rendered_pdf, stylesheets=[CSS(filename=str(css))], pdf_tags=True, optimize_images=True, uncompressed_pdf=True)
         if messages:
             raise RuntimeError("PDF rendering warnings:\n" + "\n".join(messages))
+        rendered_bytes = rendered_pdf.stat().st_size
+        print("Optimizing images and preparing fast web view", flush=True)
+        optimize_pdf(rendered_pdf, temporary_pdf)
         reader = PdfReader(temporary_pdf)
         if not reader.pages or not reader.outline:
             raise RuntimeError("The PDF has no pages or bookmarks")
@@ -167,6 +203,7 @@ def main():
         logger.removeHandler(capture)
         html_path.unlink(missing_ok=True)
         temporary_pdf.unlink(missing_ok=True)
+        rendered_pdf.unlink(missing_ok=True)
     summary = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "filename": output.name,
@@ -176,6 +213,11 @@ def main():
         "chapter_documents": sum(p.name.startswith("ch") for p in documents),
         "figures": len(book.select("figure")),
         "warnings": messages,
+        "optimization": {
+            "rendered_bytes": rendered_bytes,
+            "jpeg_quality": JPEG_QUALITY,
+            "linearized": True,
+        },
     }
     output.with_suffix(".json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({k: v for k, v in summary.items() if k != "documents"}, indent=2), flush=True)
