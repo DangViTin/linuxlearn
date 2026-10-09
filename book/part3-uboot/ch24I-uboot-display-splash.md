@@ -1,113 +1,137 @@
 ---
-chapter: 24I
-title: U-Boot display and boot screen
-part: III - U-Boot, deeply
+chapter: "24I"
+title: "U-Boot display and boot screen"
+part: "III - U-Boot, deeply"
 estimated_pages: 16
 status: draft
 ---
 
 # Chapter 24I: U-Boot display and boot screen
 
-> **What:** add a simple boot screen to the U-Boot board port from Chapter 22. We enable U-Boot video support, load a BMP file from the boot partition, and show it before Linux starts.
->
-> **Why:** many products need visible feedback before the kernel and user space are ready. A boot screen can show the product logo, a recovery message, or a factory test result.
->
-> **Result:** when the board powers on, U-Boot initializes the LCD, loads `splash.bmp` from the FAT boot partition, displays it, then continues into the normal Linux boot command.
->
-> **Focus:** make the display work manually first. Only then add it to `bootcmd`.
+A lit backlight can make a completely uninitialized LCD look alive. The
+opposite is possible too: valid pixels are being scanned out, but the
+backlight is off and the screen appears black. Before adding a logo, separate
+those two paths: data reaches the panel through eLCDIF; light comes from a
+board-specific power and backlight circuit.
 
-This chapter assumes the board has an LCD panel connected to the i.MX6ULL eLCDIF controller. If your Point Atom MINI setup has no LCD carrier fitted, read the chapter for the method and skip the lab.
+We will prepare the U-Boot side of an RGB boot screen, using upstream
+**v2026.04** and the Chapter 22 `mx6ull_pa_mini` port. The reference MINI does
+not automatically include a qualified LCD carrier. Without the fitted
+panel/carrier schematic and panel datasheet, do the source/image exercises
+only; there is no universal LCD timing or backlight GPIO to copy.
 
 ## 24I.1  What a U-Boot boot screen really is
 
-A boot screen is not a Linux feature. It is just a framebuffer that U-Boot fills before it jumps to the kernel.
-
-The path is:
+A framebuffer is a RAM region containing pixels. eLCDIF repeatedly reads
+those pixels and produces the panel's clock, sync, and data signals. U-Boot
+loads a BMP into a **different** RAM region, decodes it, and writes the
+result into that framebuffer.
 
 ```text
-U-Boot starts
-  |
-  v
-U-Boot initializes the LCD controller
-  |
-  v
-U-Boot loads a BMP image into RAM
-  |
-  v
-U-Boot copies the BMP into the framebuffer
-  |
-  v
-U-Boot boots Linux
+trusted BMP on storage -> bounded image buffer -> BMP decoder -> framebuffer
+                                                                  |
+                                                       eLCDIF + board wiring
+                                                                  |
+                                                          powered RGB panel
 ```
 
-After Linux starts, Linux owns the display. If Linux has a framebuffer or DRM driver, it will reinitialize the panel and draw its own screen later.
+| Stage | Display owner |
+|---|---|
+| U-Boot | Its video driver, framebuffer, and optional text/BMP output |
+| Linux after its display driver probes | Its own driver and buffers |
 
-So there are two separate display owners:
+Linux may reset the controller/panel and redraw. Preserving the image across
+handoff is a separate integration project, not a property of `bmp display`.
+Changing Linux Device Tree does not fix U-Boot's own control DT or driver.
 
-| Time | Owner | What draws |
-|------|-------|------------|
-| Before kernel entry | U-Boot | The BMP splash or text console. |
-| After kernel display driver loads | Linux | Kernel console, logo, compositor, or application UI. |
+```{figure} ../illustrations/part3/17-pixels-and-backlight.png
+:name: fig-p3-pixels-backlight
+:figclass: concept-sketch
+:width: 100%
+:alt: A BMP buffer is decoded into a separate framebuffer that eLCDIF reads to drive an RGB panel. Board power and backlight use a distinct path to the panel.
 
-Do not debug the U-Boot splash by changing Linux. They are separate stages.
+Image bytes, scanout pixels, and panel light follow different paths. A black screen can therefore have more than one cause. The drawing is a data-flow model, not a carrier schematic or proof of display operation.
+```
 
 ## 24I.2  Files changed in this chapter
 
-| File | What changes |
-|------|--------------|
-| `configs/mx6ull_pa_mini_defconfig` | Enable video, BMP, FAT loading, and optional splash support. |
-| `arch/arm/dts/imx6ull-pa-mini.dts` | Describe eLCDIF, the panel timing, and the LCD pins. |
-| `include/configs/mx6ull_pa_mini.h` | Add `splashimage`, `splashfile`, and `show_splash` defaults. |
-| FAT boot partition on SD or eMMC | Add `splash.bmp`. |
+| File or area | Responsibility |
+|---|---|
+| `configs/mx6ull_pa_mini_defconfig` | DM video, MXS/eLCDIF driver, BMP formats, filesystem commands |
+| `arch/arm/dts/imx6ull-pa-mini.dts` | Verified display timing/pinmux description |
+| Board display integration | Rail, reset, and backlight sequencing, before the required operation |
+| `include/configs/mx6ull_pa_mini.h` | Optional splash command, without replacing safety policy |
+| Identified boot partition | Trusted, validated `splash.bmp` |
 
-No new board is created. This is a feature added to the Chapter 22 port.
+This extends the same board port. It does not create a second board or change
+its ROM/DCD boot path. DDR, display clocks, memory reservations, and power
+must already be qualified for the actual hardware.
 
 ## 24I.3  Enable the display-related configs
 
-Open `configs/mx6ull_pa_mini_defconfig` and add:
+In v2026.04 use:
 
 ```text
 CONFIG_VIDEO=y
 CONFIG_VIDEO_MXS=y
+CONFIG_VIDEO_BPP32=y
 CONFIG_CMD_BMP=y
 CONFIG_BMP=y
-CONFIG_SPLASH_SCREEN=y
-CONFIG_SPLASH_SCREEN_ALIGN=y
-CONFIG_CMD_CLS=y
-CONFIG_FS_FAT=y
+CONFIG_BMP_24BPP=y
 CONFIG_CMD_FAT=y
+CONFIG_FS_FAT=y
+CONFIG_CMD_ITEST=y
 ```
 
-What each option does:
+`VIDEO` is the driver-model video option in this release; there is no separate
+`DM_VIDEO` switch to add. `VIDEO_MXS` selects `drivers/video/mxsfb.c` for
+this LCDIF family. The inherited i.MX6UL DT compatible includes
+`fsl,imx6sx-lcdif`, which this driver matches. Its 24/18-bit output paths use
+**32-bit framebuffer storage**. `BMP_24BPP` enables decoding a 24-bit source
+BMP; the source-file format and framebuffer format are not the same setting.
 
-| Config | Meaning |
-|--------|---------|
-| `CONFIG_VIDEO` | Enables U-Boot video support. Without this, there is no framebuffer console and no place to draw a BMP. |
-| `CONFIG_VIDEO_MXS` | Enables the MXS/eLCDIF-style display driver used by i.MX6UL and i.MX6ULL in many U-Boot trees. If your tree renamed the driver, search `drivers/video/Kconfig` for `MXS` or `LCDIF`. |
-| `CONFIG_CMD_BMP` | Adds the `bmp` command. We use `bmp info` and `bmp display` for manual testing. |
-| `CONFIG_BMP` | Enables BMP image decoding. |
-| `CONFIG_SPLASH_SCREEN` | Enables U-Boot's splash-screen support. Useful for automatic display paths. |
-| `CONFIG_SPLASH_SCREEN_ALIGN` | Allows centered or positioned splash images when the splash framework is used. |
-| `CONFIG_CMD_CLS` | Adds the `cls` command to clear the video console. |
-| `CONFIG_FS_FAT` | Enables FAT filesystem support. |
-| `CONFIG_CMD_FAT` | Adds commands such as `fatload`, used to load `splash.bmp`. |
+`SPLASH_SCREEN`/`SPLASH_SCREEN_ALIGN` are optional framework choices, not
+requirements for the manual `bmp display` path used here. Enabling them alone
+does not load a file. Automatic framework loading requires its own preparation
+hook/source configuration. `CMD_CLS` is optional for console experiments.
 
-Build once after adding the configs:
+Build and inspect a separate output directory:
 
 ```sh
-$ make mx6ull_pa_mini_defconfig
-$ grep -E 'VIDEO|BMP|SPLASH|CMD_FAT|FS_FAT' .config
+$ . ~/imx6ull/scripts/env.sh
+$ cd ~/imx6ull/src/u-boot
+$ make O="$IMX6ULL_HOME/build/uboot-video" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" mx6ull_pa_mini_defconfig
+$ make O="$IMX6ULL_HOME/build/uboot-video" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" -j "$(nproc)"
+$ grep -E 'CONFIG_(VIDEO|VIDEO_MXS|VIDEO_BPP32|BMP|BMP_24BPP|CMD_BMP|CMD_FAT|CMD_ITEST)=' "$IMX6ULL_HOME/build/uboot-video/.config"
 ```
 
-If `CONFIG_VIDEO_MXS` is not accepted by your U-Boot version, do not guess. Open `drivers/video/Kconfig` and find the i.MX6ULL eLCDIF driver symbol used by your tree.
+The grep is an inspection after configuration, not a substitute for reading
+Kconfig dependencies or a successful build. The unmodified EVK defconfig
+has no enabled video path; it is not a ready-made MINI LCD configuration.
+
+The ULL EVK header also does not supply the base alias required by this
+driver. In the MINI header, retain the architecture register definitions and
+add the same alias used by the upstream UL/Colibri-ULL ports:
+
+```c
+#include <asm/arch/imx-regs.h>
+#define MXS_LCDIF_BASE MX6UL_LCDIF1_BASE_ADDR
+```
+
+Without it, enabling `VIDEO_MXS` on the ULL EVK-derived port fails to compile
+at `MXS_LCDIF_BASE`. This is a source integration requirement, not permission
+to write controller registers or a hardware validation result.
 
 ## 24I.4  Add the LCD to the U-Boot Device Tree
 
-The exact panel timing comes from the panel datasheet, not from U-Boot.
+The MXS driver reads an LCDIF `display` phandle, then `bits-per-pixel` and the
+**first** `display-timings` entry in that referenced node. In this version it
+does not use `bus-width` to choose the wire format or `native-mode` to select
+another timing entry. Match its actual parser, not just a Linux binding.
 
-This example uses an 800 x 480 RGB panel with a 33 MHz pixel clock. Replace the timing values if your panel is different.
-
-Add or update the LCD node in `arch/arm/dts/imx6ull-pa-mini.dts`:
+The following is a **timing-format example**, not a qualified MINI panel.
+Do not enable it on hardware until every value and wire is checked against
+the fitted carrier/panel. It assumes 24-bit RGB wiring and active-high DE:
 
 ```dts
 &lcdif {
@@ -118,12 +142,8 @@ Add or update the LCD node in `arch/arm/dts/imx6ull-pa-mini.dts`:
 
     display0: display {
         bits-per-pixel = <24>;
-        bus-width = <24>;
-
         display-timings {
-            native-mode = <&timing0>;
-
-            timing0: timing0 {
+            timing0 {
                 clock-frequency = <33000000>;
                 hactive = <800>;
                 vactive = <480>;
@@ -143,203 +163,221 @@ Add or update the LCD node in `arch/arm/dts/imx6ull-pa-mini.dts`:
 };
 ```
 
-Then add the pin group under `&iomuxc`:
+Supply the board-specific `pinctrl_lcdif` group under the existing IOMUXC
+node. For 24-bit wiring that normally includes LCD_CLK, ENABLE/DE, HSYNC,
+VSYNC, and DATA00..23 with the appropriate pad macros. An 18-bit panel needs
+its documented signal mapping and driver format; do not arbitrarily remove
+six wires. Review conflicts with NAND, Ethernet, and GPIO uses on the carrier.
+Pad drive strength and slew are electrical choices, not universal `0x79`
+settings.
 
-```dts
-&iomuxc {
-    pinctrl_lcdif: lcdifgrp {
-        fsl,pins = <
-            MX6UL_PAD_LCD_CLK__LCDIF_CLK        0x79
-            MX6UL_PAD_LCD_ENABLE__LCDIF_ENABLE  0x79
-            MX6UL_PAD_LCD_HSYNC__LCDIF_HSYNC    0x79
-            MX6UL_PAD_LCD_VSYNC__LCDIF_VSYNC    0x79
+The example's horizontal total is `800+40+88+48=976` clocks and vertical total
+`480+13+32+3=528` lines. Divide the pixel clock by their product to obtain the
+nominal frame rate. This is arithmetic, not a measured/calibrated clock or a
+panel-approved refresh rate. Verify actual clock capability, edge semantics,
+and DE polarity; this MXS implementation sets ENABLE polarity high during
+setup, so a DE-low panel needs source-level investigation rather than a DT
+promise alone.
 
-            MX6UL_PAD_LCD_DATA00__LCDIF_DATA00  0x79
-            MX6UL_PAD_LCD_DATA01__LCDIF_DATA01  0x79
-            MX6UL_PAD_LCD_DATA02__LCDIF_DATA02  0x79
-            MX6UL_PAD_LCD_DATA03__LCDIF_DATA03  0x79
-            MX6UL_PAD_LCD_DATA04__LCDIF_DATA04  0x79
-            MX6UL_PAD_LCD_DATA05__LCDIF_DATA05  0x79
-            MX6UL_PAD_LCD_DATA06__LCDIF_DATA06  0x79
-            MX6UL_PAD_LCD_DATA07__LCDIF_DATA07  0x79
-            MX6UL_PAD_LCD_DATA08__LCDIF_DATA08  0x79
-            MX6UL_PAD_LCD_DATA09__LCDIF_DATA09  0x79
-            MX6UL_PAD_LCD_DATA10__LCDIF_DATA10  0x79
-            MX6UL_PAD_LCD_DATA11__LCDIF_DATA11  0x79
-            MX6UL_PAD_LCD_DATA12__LCDIF_DATA12  0x79
-            MX6UL_PAD_LCD_DATA13__LCDIF_DATA13  0x79
-            MX6UL_PAD_LCD_DATA14__LCDIF_DATA14  0x79
-            MX6UL_PAD_LCD_DATA15__LCDIF_DATA15  0x79
-            MX6UL_PAD_LCD_DATA16__LCDIF_DATA16  0x79
-            MX6UL_PAD_LCD_DATA17__LCDIF_DATA17  0x79
-            MX6UL_PAD_LCD_DATA18__LCDIF_DATA18  0x79
-            MX6UL_PAD_LCD_DATA19__LCDIF_DATA19  0x79
-            MX6UL_PAD_LCD_DATA20__LCDIF_DATA20  0x79
-            MX6UL_PAD_LCD_DATA21__LCDIF_DATA21  0x79
-            MX6UL_PAD_LCD_DATA22__LCDIF_DATA22  0x79
-            MX6UL_PAD_LCD_DATA23__LCDIF_DATA23  0x79
-        >;
-    };
-};
-```
-
-This only routes pins and describes timing. It does not power the backlight.
-
-If the panel has a backlight enable GPIO, add a GPIO node and enable it in board code or in the video driver path. If the backlight is off, the framebuffer can be correct and the screen will still look black.
+The driver does **not** resolve a generic panel/backlight phandle and perform
+all carrier power/reset sequencing for you. Provide that reviewed integration
+before probe where needed: stabilize rails, apply reset timing, prepare valid
+scanout, then enable the backlight in the panel-approved order. A
+`gpio-backlight` node on its own is not proof that this path invokes it.
+Critical power checks from Chapter 24H must precede the operation they guard,
+not merely run later in `board_late_init()`.
 
 ## 24I.5  Prepare the BMP file
 
-Use a simple 24-bit uncompressed BMP.
+Use one trusted, uncompressed Windows-style BMP with a 40-byte DIB header,
+24-bit BGR pixels, positive height (bottom-up rows), no palette, and dimensions
+that fit the verified panel. Start with clear color bars and a border; they
+make swapped colors and shifted edges visible without a complex logo.
 
-For an 800 x 480 panel, create:
+For the **800 x 480 format example**, each row is padded to a multiple of
+four bytes:
 
 ```text
-splash.bmp
-size: 800 x 480
-format: 24-bit BMP
-compression: none
+row bytes = ((800 * 3 + 3) / 4 rounded down) * 4 = 2400
+pixel bytes = 2400 * 480 = 1152000
+file bytes = 14 + 40 + 1152000 = 1152054
+framebuffer bytes for the driver's 32-bit path = 800 * 480 * 4 = 1536000
 ```
 
-Keep the first test boring. Use a solid background, large text, and a few color bars. Do not start with a complex image. A simple image makes wrong colors and wrong alignment easy to see.
+These are calculated sizes for that format, not observed output. Inspect the
+actual file's header, offset, dimensions, compression, and total length on the
+host. U-Boot's `bmp info` reads header fields; it does not fully validate a
+file against a supplied buffer length. Do not feed arbitrary recovery-uploaded
+BMPs to a bootloader decoder as if it were a hardened image service.
 
-Copy it to the FAT boot partition:
-
-```sh
-$ sudo mount /dev/sdX1 /mnt
-$ sudo cp splash.bmp /mnt/
-$ sync
-$ sudo umount /mnt
-```
-
-If your boot partition is on eMMC, copy it there after booting Linux or use U-Boot's USB mass-storage command from Chapter 24.
+Put the checked file on the **identified** intended boot partition using the
+already approved storage-copy workflow. Do not use a guessed `/dev/sdX1`
+mount/copy recipe. If using Chapter 24G UMS, the host must own the exposed
+range exclusively and release it before U-Boot loads the file.
 
 ## 24I.6  Manual U-Boot display test
 
-Boot to the U-Boot prompt and run:
+First establish the image-buffer reservation using `bdinfo`, the port's
+memory layout, and the video framebuffer reservation. The image buffer must
+fit entirely inside qualified DDR and avoid U-Boot relocation/stack/malloc,
+control DT, framebuffer, kernel/DTB/initrd ranges, and decompression space.
+`0x88000000` is not safe merely because it is in DDR: video reserves memory
+near the top and the allocation depends on the build and RAM size.
+
+These placeholders must be replaced by the reviewed layout:
 
 ```text
-pa-mini=> mmc dev 0
-pa-mini=> fatls mmc 0:1
-pa-mini=> setenv splashimage 0x88000000
-pa-mini=> fatload mmc 0:1 ${splashimage} splash.bmp
+pa-mini=> bdinfo
+pa-mini=> dm tree
+pa-mini=> setenv splashimage <reserved image-buffer start>
+pa-mini=> setenv splash_max <reserved buffer size in hexadecimal bytes>
+pa-mini=> setenv splashpart <identified MMC device:boot-partition>
+pa-mini=> fatsize mmc ${splashpart} splash.bmp
+pa-mini=> printenv filesize
+```
+
+Confirm a nonzero file size no larger than `splash_max`, then load and inspect
+it. No host/other target writer may alter the file between size-check and load.
+
+```text
+pa-mini=> fatload mmc ${splashpart} ${splashimage} splash.bmp
 pa-mini=> bmp info ${splashimage}
 pa-mini=> bmp display ${splashimage} 0 0
 ```
 
-Expected result:
-
-- `fatload` reports bytes read.
-- `bmp info` reports `800 x 480`, `24 bits`.
-- The image appears at the top-left of the LCD.
-
-If the image appears manually, U-Boot video is working.
-
-Only after this test passes should you add the splash to `bootcmd`.
+Require actual successful commands and sensible dimensions/bit depth. A
+successful display command means the software path accepted the image; the
+panel observation is another checkpoint. Record both rather than copying an
+invented success log. If U-Boot console output also targets video, later text
+or scrolling may overwrite the splash. Retain serial as the debug console;
+change display console routing only after diagnosing it explicitly.
 
 ## 24I.7  Add the splash command to the default environment
 
-In `include/configs/mx6ull_pa_mini.h`, add:
+Only after the manual path works, merge this macro with the existing defaults.
+It deliberately leaves buffer address/size and partition to the reviewed
+board layout:
 
 ```c
 #define PA_MINI_SPLASH_ENV \
-    "splashimage=0x88000000\0" \
     "splashfile=splash.bmp\0" \
-    "show_splash=if fatload mmc ${mmcdev}:1 ${splashimage} ${splashfile}; then " \
-        "bmp display ${splashimage} 0 0; " \
-    "fi\0"
+    "show_splash=if test -n \"${splashimage}\" && " \
+        "test -n \"${splash_max}\" && test -n \"${splashpart}\"; then " \
+        "if fatsize mmc ${splashpart} ${splashfile}; then " \
+            "if itest ${filesize} -gt 0 && itest ${filesize} -le ${splash_max}; then " \
+                "if fatload mmc ${splashpart} ${splashimage} ${splashfile}; then " \
+                    "bmp display ${splashimage} 0 0; " \
+                "else echo Splash load failed; false; fi; " \
+            "else echo Splash exceeds reserved buffer or is empty; false; fi; " \
+        "else echo Splash file unavailable; false; fi; " \
+    "else echo Splash buffer not configured; false; fi\0"
 ```
 
-Then make your default boot command run it before normal boot:
+`fatsize` produces hexadecimal `filesize`; `itest` handles the numeric
+comparison. The command bounds the file load, not malformed BMP header reads.
+Use only the prevalidated trusted asset. Do not replace this with a truncated
+load and then try to decode an incomplete file.
 
-```c
-#define CFG_EXTRA_ENV_SETTINGS \
-    PA_MINI_SPLASH_ENV \
-    "mmcdev=0\0" \
-    "normal_boot=run mmcboot\0" \
-    "bootcmd=run show_splash; run normal_boot\0"
+For Chapter 24F's policy, a reviewed normal-path wrapper is:
+
+```text
+normal_with_splash=run show_splash; run boot_selected
+bootcmd=run normal_with_splash
 ```
 
-The `bootcmd` line contains semicolons because U-Boot command strings need separators. That is normal inside shell-like command text.
+Make that the single normal command definition, with matching compiled boot
+command settings. Keep `altbootcmd` and Chapter 24G/H overrides intact.
+Do not introduce a new `normal_boot=run mmcboot` that bypasses A/B selection
+or safety. Updating defaults does not replace saved variables; reconcile them
+manually without deleting unrelated settings. No `saveenv` is needed for
+initial RAM-only trials.
 
 ## 24I.8  If the display is black
 
-A black display does not always mean the LCD driver failed.
+| Observation/check | Next evidence |
+|---|---|
+| Backlight dark | Approved rail/enable measurement; a flashlight may reveal faint pixels |
+| File not loaded | Storage identity, `fatsize`, load status, actual asset path |
+| Header implausible | Reinspect trusted host file, do not keep decoding it |
+| No video device | Generated config, compatible match, control DT and probe errors |
+| Lit but blank/shifted panel | Reset sequence, pinmux, signal routing, clock/porches/polarities |
+| Wrong colors | Wire RGB order, framebuffer format, BMP format/conversion |
+| Image changes after display | Video-console output or Linux reinitialization |
+| Corruption elsewhere | Image/framebuffer/load/decompression memory overlap |
 
-Check in this order:
-
-| Check | How to test |
-|-------|-------------|
-| Backlight power | Shine a flashlight at the panel. If the image is faintly visible, only the backlight is off. |
-| BMP loaded | `fatload` must report bytes read. |
-| BMP format | `bmp info ${splashimage}` must print sane width, height, and bit depth. |
-| Video device exists | Run `dm tree` and look for the video device. |
-| LCD pins | Recheck the `pinctrl_lcdif` pad list against the schematic. |
-| Panel timing | Recheck pixel clock, porches, sync polarity, and active size against the panel datasheet. |
-| Framebuffer address | Use a safe DDR address. Do not overlap U-Boot, the malloc area, kernel load address, or DTB load address. |
-
-For this chapter we use `0x88000000` as the image load address because it is in DDR and away from the common kernel and DTB load addresses used earlier.
+Work outward from a known observation. A lit backlight does not prove pixel
+traffic, and a framebuffer in RAM does not prove electrical timing. Use only
+approved probing points and instruments; never change supply voltages to
+try to make the image brighter.
 
 ## 24I.9  Make the splash optional
 
-During development, a broken splash should not stop boot.
+`run show_splash; run boot_selected` intentionally ignores the first command's
+failure and still attempts the recorded normal boot policy. The second
+command's success/failure remains the wrapper's result. A missing logo does
+not choose another slot or mark a candidate good.
 
-The command above is intentionally written like this:
-
-```text
-if fatload ...; then bmp display ...; fi
-```
-
-If the file is missing, `fatload` fails and the board still continues to `normal_boot`.
-
-That is usually the right behavior for a logo. A missing logo is not a reason to brick the device.
-
-For factory test, you may want the opposite:
+For a factory image test, use a different wrapper:
 
 ```text
-show_splash=fatload mmc ${mmcdev}:1 ${splashimage} ${splashfile} && bmp display ${splashimage} 0 0
+factory_splash=if run show_splash; then echo TEST:SPLASH:COMMAND_OK; else echo TEST:SPLASH:FAIL; false; fi
 ```
 
-Now a missing image makes `show_splash` fail. Use this only when the boot screen is part of a test result.
+`COMMAND_OK` is not a panel inspection PASS. The fixture still needs optical
+or electrical evidence if display output is part of acceptance. Avoid an
+unconditional trailing success message that hides a failed BMP command.
 
 ## 24I.10  Production choices
 
-There are three common ways to store the boot screen.
+| Asset location | Tradeoff |
+|---|---|
+| Boot-partition BMP | Easy replacement, but file validity/access must be controlled |
+| Embedded asset | Fixed with the U-Boot build; requires a defined decode/display integration |
+| Verified FIT/partition | Authentication can cover the asset, only if it is actually checked before decoding |
 
-| Choice | Pros | Cons |
-|--------|------|------|
-| `splash.bmp` on FAT boot partition | Easy to change without rebuilding U-Boot. Good for products with field branding. | Anyone who can edit the boot partition can change it. |
-| BMP embedded in U-Boot | Cannot disappear from the boot partition. Good for fixed branding. | Requires rebuilding U-Boot to change the image. |
-| BMP in a signed FIT or verified partition | Can be authenticated. Good for secure products. | More setup. Save this for the secure boot chapters. |
-
-For this book, use the FAT file first. It is visible, simple, and easy to debug.
+A file residing inside a signed container is not automatically verified by
+`fatload` followed by `bmp display`. Keep image-size validation even when
+integrity is authenticated. Optional visual feedback must not weaken the
+recovery/power decision or delay watchdog service unpredictably.
 
 ## 24I.11  Lab
 
-1. Enable the video and BMP config options.
-2. Add or verify the LCD node in the U-Boot Device Tree.
-3. Build U-Boot and confirm a video device appears in `dm tree`.
-4. Copy a simple 24-bit `splash.bmp` to the FAT boot partition.
-5. Load and display it manually with `fatload`, `bmp info`, and `bmp display`.
-6. Add `show_splash` to the default environment.
-7. Reboot and confirm the screen appears before Linux starts.
+1. Without hardware, inspect v2026.04's MXS parser and configuration. Explain
+   the difference between source BMP depth, framebuffer depth, and RGB wires.
+2. Calculate file/framebuffer sizes for a chosen geometry, including row
+   padding. Reject an oversized or truncated host asset.
+3. With a documented fitted panel/carrier, review timing, all signal routes,
+   power/reset/backlight sequence, and operation-phase guards.
+4. Build the MINI port and reserve non-overlapping RAM before loading anything.
+5. On approved hardware, record actual load/header results and color-bar/panel
+   observations separately. No panel is assumed working by this chapter.
+6. Add the optional wrapper. Missing, empty, or oversized files must fail the
+   splash command while preserving the normal boot policy.
+7. Test held-key recovery and a modeled power fault: neither may fall into
+   the splash/normal path. Check the intentional Linux display handoff.
 
 ## 24I.12  Pitfalls
 
-- **Trying to use PNG or JPEG.** Use BMP for the first boot screen. U-Boot BMP support is simple and predictable.
-- **Using a compressed BMP.** Start with uncompressed 24-bit BMP.
-- **Wrong panel timing.** The panel may stay white, black, shifted, or rolling.
-- **Backlight not enabled.** The framebuffer can be correct while the user sees nothing.
-- **Loading over the framebuffer.** Do not load the BMP on top of U-Boot or the framebuffer.
-- **Expecting Linux to keep the image.** Linux usually reinitializes the display. That is normal.
-- **Adding splash to `bootcmd` before manual testing.** This hides the real error. Prove the pieces one by one.
+- **Backlight equals initialized panel.** They are separate paths.
+- **Linux binding equals U-Boot behavior.** Read this version's actual parser.
+- **Missing `BMP_24BPP`.** Generic BMP support alone is not every source format.
+- **Universal timing/pad settings.** Carrier and panel determine them.
+- **Loading over the framebuffer or kernel.** Reserve the complete range first.
+- **Decoding an untrusted/truncated image.** Header output is not full validation.
+- **A splash wrapper replacing safety policy.** Preserve A/B and both veto paths.
+- **Expecting seamless Linux takeover.** Reinitialization is a separate contract.
 
 ## 24I.13  Going deeper
 
-- `drivers/video/`, for U-Boot video drivers.
-- `cmd/bmp.c`, for the `bmp info` and `bmp display` commands.
-- `common/splash.c`, for the automatic splash-screen flow.
-- `doc/README.splashprepare`, in older U-Boot trees, for the board hook used by the splash framework.
-- Linux `drivers/gpu/drm/mxsfb/` or `drivers/video/fbdev/mxsfb.c`, for the kernel-side eLCDIF driver.
+- [v2026.04 MXS video driver](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/video/mxsfb.c)
+  and [video Kconfig](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/video/Kconfig).
+- [BMP command](https://github.com/u-boot/u-boot/blob/v2026.04/cmd/bmp.c) and
+  [video BMP conversion](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/video/video_bmp.c).
+- [Splash preparation](https://github.com/u-boot/u-boot/blob/v2026.04/doc/README.splashprepare)
+  and [splash code](https://github.com/u-boot/u-boot/blob/v2026.04/common/splash.c),
+  for the optional framework rather than this manual path.
+- The fitted panel's official timing/electrical specification and the carrier
+  schematic are prerequisites for a hardware exercise.
 
 ---
 

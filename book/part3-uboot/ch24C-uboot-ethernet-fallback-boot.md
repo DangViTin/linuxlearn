@@ -1,5 +1,5 @@
 ---
-chapter: 24C
+chapter: "24C"
 title: Ethernet fallback boot in U-Boot
 part: III - U-Boot, deeply
 estimated_pages: 18
@@ -8,102 +8,71 @@ status: draft
 
 # Chapter 24C: Ethernet fallback boot in U-Boot
 
-> **What:** make the board try normal local boot first. If the kernel or DTB is missing from SD/eMMC, U-Boot falls back to Ethernet and boots from TFTP.
->
-> **Why:** this is useful in real work. During bring-up, the local boot partition is often wrong. In production, a service technician may need a board to recover from a broken boot partition without reflashing the whole device.
->
-> **Result:** one `bootcmd` tries MMC first, then tries TFTP. The serial log clearly says which path was used.
->
-> **Focus:** Ethernet in U-Boot is not only for development convenience. It is also a recovery path and a board-port validation tool.
+Suppose U-Boot is running, but the boot partition has no kernel. Ethernet can supply a replacement kernel and DTB without repairing that partition first. The trap is that a failed load leaves old bytes in RAM: a script separated only by semicolons can boot those bytes instead of taking its fallback.
 
-This replaces a less common idea: asking a server for permission before boot. That can be useful in special systems, but most engineers need the pattern in this chapter first.
+This chapter builds a local-first loading policy for **U-Boot v2026.04**, commit `88dc2788777babfd6322fa655df549a019aa1e69`. Each path reaches `bootz` only after both files load. The commands are for an isolated development network, not an authenticated production recovery service.
+
+The board name remains `mx6ull_pa_mini`, its header `mx6ull_pa_mini.h`, and its base DTS `imx6ull-pa-mini.dts`. Ethernet wiring, PHY type/address, clock direction and reset pin must come from the schematic. The illustrative values below do not establish the MINI's wiring.
 
 ## 24C.1  The real use case
 
-In early board bring-up, this happens all the time:
+The policy has three outcomes:
 
-```text
-U-Boot works.
-MMC works sometimes.
-The FAT partition is empty or has the wrong filename.
-Linux image was copied to the wrong card.
-The DTB does not match the board.
-```
+1. Local kernel and DTB load, and U-Boot hands control to Linux.
+2. Local loading or a returning `bootz` fails; U-Boot tries the network path.
+3. The network path also fails; U-Boot returns to the prompt.
 
-Without fallback, every mistake means removing the card or entering many manual commands.
-
-With fallback:
-
-```text
-1. U-Boot tries SD/eMMC.
-2. If local kernel and DTB exist, boot them.
-3. If either file is missing, configure Ethernet.
-4. Fetch the kernel and DTB from the host with TFTP.
-5. Boot the network copy.
-```
-
-This gives a clean development and recovery path.
+This cannot recover a board on which U-Boot itself does not start. Nor does it detect that Linux later panics or cannot mount root: once control passes to the kernel, this script is no longer running. Watchdog and boot-attempt recovery are a separate subject in Chapter 24F.
 
 ## 24C.2  What this chapter is not
 
-This chapter is not NFS-root. Chapter 24 uses TFTP plus NFS for the fast development loop.
+TFTP supplies **kernel and DTB only**. The example root filesystem remains on MMC. If that rootfs is broken, loading the kernel by Ethernet does not repair it. Chapter 24's NFS-root workflow changes that assumption; a self-contained recovery initramfs is another design.
 
-This chapter only does:
-
-```text
-TFTP kernel + TFTP DTB + normal rootfs argument
-```
-
-The root filesystem can still be on SD/eMMC. We are using Ethernet only to recover the boot images.
+There is also no authenticity check on loose `zImage` and DTB files. TFTP has no image authentication. Chapter 24E explains why hashes alone do not solve this.
 
 ## 24C.3  Files changed in this chapter
 
-| File | What changes |
-|------|--------------|
-| `configs/mx6ull_pa_mini_defconfig` | Enable Ethernet, DHCP, ping, TFTP, and command scripting. |
-| `arch/arm/dts/imx6ull-pa-mini.dts` | Make sure FEC, MDIO, PHY reset, and pinmux are correct. |
-| `include/configs/mx6ull_pa_mini.h` | Add local boot, network boot, and fallback boot commands. |
-| TFTP server directory on host | Add `zImage` and `imx6ull-pa-mini.dtb`. |
+| File | Responsibility |
+|------|----------------|
+| `configs/mx6ull_pa_mini_defconfig` | Network, FEC/PHY, filesystem and scripting support. |
+| `arch/arm/dts/imx6ull-pa-mini.dts` | U-Boot control-DT wiring for FEC, MDIO and PHY. |
+| `include/configs/mx6ull_pa_mini.h` | Guarded local/network environment helpers. |
+| Existing host TFTP root | Matching `zImage` and `imx6ull-pa-mini.dtb`. |
 
-This chapter assumes the Chapter 22 board port already has an Ethernet node. Here we turn that port into a repeatable boot policy.
+The port must already initialize Ethernet clocks and pads. A network command's existence does not establish that the hardware is usable.
 
 ## 24C.4  Enable U-Boot network commands
 
-Open `configs/mx6ull_pa_mini_defconfig` and add:
+Merge this configuration fragment into the Chapter 22 port:
 
 ```text
 CONFIG_NET=y
+CONFIG_DM_ETH=y
+CONFIG_FEC_MXC=y
+CONFIG_PHYLIB=y
+CONFIG_DM_ETH_PHY=y
 CONFIG_CMD_NET=y
 CONFIG_CMD_PING=y
 CONFIG_CMD_DHCP=y
 CONFIG_CMD_TFTPBOOT=y
 CONFIG_HUSH_PARSER=y
-CONFIG_CMD_EXT4=y
-CONFIG_FS_EXT4=y
+CONFIG_HUSH_OLD_PARSER=y
+CONFIG_CMD_MMC=y
+CONFIG_CMD_FS_GENERIC=y
+CONFIG_CMD_BOOTZ=y
 CONFIG_CMD_FAT=y
 CONFIG_FS_FAT=y
+CONFIG_CMD_EXT4=y
+CONFIG_FS_EXT4=y
 ```
 
-What each option does:
+Select the driver for the **actual PHY**, not an arbitrary EVK PHY. `CMD_FS_GENERIC` provides the generic `load` used below; FAT/ext4 support handles the chosen filesystem. `CMD_BOOTZ` starts the loose ARM zImage. `CMD_DHCP` is optional for the static example, but permits the separate test in 24C.10.
 
-| Config | Meaning |
-|--------|---------|
-| `CONFIG_NET` | Enables U-Boot networking support. |
-| `CONFIG_CMD_NET` | Enables common network commands. |
-| `CONFIG_CMD_PING` | Adds `ping`, the first Ethernet test. |
-| `CONFIG_CMD_DHCP` | Adds `dhcp`, so the board can request an IP address. |
-| `CONFIG_CMD_TFTPBOOT` | Adds TFTP loading. In U-Boot, the command is usually `tftp` or `tftpboot`. |
-| `CONFIG_HUSH_PARSER` | Enables `if ... then ... else ... fi` in environment scripts. |
-| `CONFIG_CMD_EXT4` and `CONFIG_FS_EXT4` | Let U-Boot load files from ext4 partitions. |
-| `CONFIG_CMD_FAT` and `CONFIG_FS_FAT` | Let U-Boot load files from FAT partitions. |
-
-The Ethernet controller driver itself is SoC-specific. For the i.MX6ULL FEC driver, your board defconfig may already select it through the i.MX platform. If Ethernet commands exist but no network device appears, check the FEC driver symbol in `drivers/net/Kconfig`.
+In the prepared Ubuntu Bash terminal, run `. ~/imx6ull/scripts/env.sh`, require success, and use the established `arm-none-linux-gnueabihf-` compiler. Reconfigure and build out of tree as in 24B.3/24B.9; do not edit global shell setup.
 
 ## 24C.5  Device Tree check: FEC, PHY, and reset
 
-The U-Boot Device Tree must describe the Ethernet controller and PHY.
-
-Example:
+This is a **hypothetical integration fragment**, not a complete Ethernet port. It proposes FEC1, RMII, MDIO address 0 and a dedicated active-low reset on GPIO5_IO07:
 
 ```dts
 &fec1 {
@@ -127,171 +96,107 @@ Example:
 };
 ```
 
-What each line means:
+`pinctrl_enet1` must already contain schematic-qualified signal muxing. The fragment omits pad and clock setup deliberately. RMII needs a valid 50 MHz reference with the correct source/direction; MDIO/MDC and PHY supply must also work. `reg` comes from PHY straps. The two delays are example microsecond values to replace with that PHY's requirements.
 
-| Line | Meaning |
-|------|---------|
-| `phy-mode = "rmii"` | Electrical interface between i.MX6ULL FEC MAC and external PHY. |
-| `phy-handle = <&ethphy0>` | Points the MAC to the PHY node. |
-| `reg = <0>` | PHY address on the MDIO bus. This comes from hardware strap pins. |
-| `reset-gpios` | GPIO used to reset the PHY, if the board has one. |
-| `reset-assert-us` | How long reset stays active. |
-| `reset-deassert-us` | How long U-Boot waits after reset before talking to PHY. |
+In v2026.04, [the Ethernet PHY uclass](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/net/eth-phy-uclass.c) consumes these PHY-node reset properties with `DM_ETH_PHY` and `DM_GPIO`. [FEC](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/net/fec_mxc.c) also supports the older **MAC-node** `phy-reset-gpios`, `phy-reset-duration` and `phy-reset-post-delay`, whose delays are milliseconds. Do not specify both paths for the same GPIO or mix their units.
 
-If `ping` says the PHY cannot be found, check `reg = <...>` first. PHY address is a hardware strap, not a software preference.
+GPIO5_IO07 is an SNVS/tamper pad on this SoC: its pad mux belongs under IOMUXC-SNVS, with the relevant supply/domain considered. The reset line must not also be a recovery button, strap reader or another driver's output. Do not copy the proposed reset pin without schematic proof.
 
 ## 24C.6  MAC address: do not ignore it
 
-Ethernet needs a MAC address.
+A valid Ethernet MAC is six bytes, nonzero and unicast. All-ones is broadcast and is invalid. Valid syntax does not imply ownership or uniqueness.
 
-U-Boot normally uses the environment variable:
+These examples assume one enabled controller at U-Boot Ethernet sequence 0, using `ethaddr`. Sequence 1 uses `eth1addr`; do not assume the EVK's saved `ethprime` or enabled second FEC matches this port. Check the control-DT Ethernet aliases and actual selected device, and disable controllers that are not wired on the board.
 
-```text
-ethaddr=00:04:9f:12:34:56
-```
+Prefer an assigned, unique factory address from a documented source. A read-only SoC address may be usable if it is actually provisioned; a chip UID is not automatically a MAC allocation. An EEPROM/secure element/PMIC is only an identity source when the board has one with a defined record and provisioning process.
 
-For a lab board, you can set it manually:
+For an isolated lab, this is an **example locally administered unicast address**, not a shared default for every board:
 
 ```text
-pa-mini=> setenv ethaddr 00:04:9f:12:34:56
-pa-mini=> saveenv
+=> setenv ethaddr 02:7a:60:00:00:01
 ```
 
-For a product, do not make up random MAC addresses. Use one of:
-
-| Source | Good for |
-|--------|----------|
-| Factory-programmed EEPROM | Most boards. Can store MAC, serial, board revision together. |
-| SoC OCOTP fuse | Strong identity, but one-time programmable. |
-| PMIC or secure element storage | Products that already have a secure identity chip. |
-
-If MAC is missing, stop and print a clear message in production. Two boards with the same MAC address create strange network failures.
+Bit 1 of the first byte marks local administration; bit 0 is clear for unicast. Allocate a different address for each board on the lab network and check for collisions. Do not copy a vendor's public prefix, and do not `saveenv` merely to run a network test. Existing environment protection may reject changing an already assigned `ethaddr`; do not enable blanket overwrite as a workaround. Chapter 24D uses an explicit identity policy and checks assignment errors.
 
 ## 24C.7  Manual Ethernet test
 
-Use static IP first. It removes DHCP from the test.
+Use an isolated subnet that does not conflict with the host's VPN or existing adapters. `192.168.7.1` for the host and `.2` for one board are examples, not universal addresses.
 
-On the host:
-
-```sh
-$ ip addr show
-```
-
-Assume the host Ethernet adapter connected to the board is `192.168.7.1`.
-
-In U-Boot:
+Inspect the host's current adapters using `ip addr show`. Use Chapter 24's existing service setup rather than reinstalling packages or changing the host globally. With a qualified board and an interruptible autoboot:
 
 ```text
-pa-mini=> setenv ipaddr 192.168.7.2
-pa-mini=> setenv serverip 192.168.7.1
-pa-mini=> setenv netmask 255.255.255.0
-pa-mini=> ping 192.168.7.1
-Using FEC0 device
-host 192.168.7.1 is alive
+=> setenv ipaddr 192.168.7.2
+=> setenv serverip 192.168.7.1
+=> setenv netmask 255.255.255.0
+=> ping ${serverip}
 ```
 
-If this fails, stop here. Do not write fallback scripts yet.
-
-Common causes:
-
-| Symptom | Likely cause |
-|---------|--------------|
-| `No ethernet found` | FEC driver or DT node missing. |
-| `Could not initialize PHY` | Wrong PHY address, reset GPIO, clock, or MDIO pinmux. |
-| Link LED off | Cable, PHY reset, PHY power, or switch issue. |
-| Ping times out | Wrong IP/subnet, host firewall, bad cable, or no link. |
+There is no predicted board log here. Record the actual selected device and result. A failed ping can also be host ICMP filtering; it does not uniquely diagnose hardware. If initialization reports no controller/PHY, fix the driver, clock, reset, address and mux before attempting fallback.
 
 ## 24C.8  Manual TFTP test
 
-Set up the TFTP root on the host:
+Place the matching kernel and OS DTB in the **already configured** TFTP root from Chapter 24. Creating a directory does not configure the server to use it. Do not disable the host firewall globally; diagnose the service and its allowed traffic. TFTP uses UDP port 69 for the initial request and a server-selected transfer port afterward.
 
-```sh
-$ mkdir -p ~/imx6ull/tftp
-$ cp zImage ~/imx6ull/tftp/
-$ cp imx6ull-pa-mini.dtb ~/imx6ull/tftp/
-```
+The example RAM slots are:
 
-Use the TFTP setup from Chapter 24, or temporarily run a simple TFTP server.
+| Slot | Address | Qualification |
+|------|---------|---------------|
+| Kernel | `0x82000000` | Kernel payload and self-decompression must not overlap reserved data. |
+| OS DTB | `0x83000000` | DTB and later growth/relocation need space. |
 
-In U-Boot:
+Check `bdinfo`, actual file sizes, available DDR, U-Boot relocation/stack/malloc and boot memory limits. These addresses are not guarantees for every memory size or large image. A successful load does not mean the buffers were safely placed.
 
-```text
-pa-mini=> setenv kernel_addr_r 0x82000000
-pa-mini=> setenv fdt_addr_r 0x83000000
-pa-mini=> tftp ${kernel_addr_r} zImage
-pa-mini=> tftp ${fdt_addr_r} imx6ull-pa-mini.dtb
-```
-
-Expected:
+For a manual read-to-RAM test:
 
 ```text
-Bytes transferred = ...
+=> setenv kernel_addr_r 0x82000000
+=> setenv fdt_addr_r 0x83000000
+=> tftpboot ${kernel_addr_r} zImage
+=> tftpboot ${fdt_addr_r} imx6ull-pa-mini.dtb
 ```
 
-If `ping` works but TFTP fails:
-
-- Check host firewall.
-- Check TFTP root directory.
-- Check filename spelling.
-- Check file permissions.
-- Check that `serverip` points to the TFTP host.
+Inspect each result before proceeding. `filesize` describes the most recent successful load, not both files; failure may leave old RAM and old metadata. The automated scripts below use return status, not stale `filesize`, to decide whether boot is permitted.
 
 ## 24C.9  Local boot command
 
-First write the normal local boot.
+The complete header block in 24C.11 defines the commands. Read its local path first:
 
 ```text
-local_boot=echo Booting from local MMC; \
-    load mmc 0:1 ${kernel_addr_r} zImage; \
-    load mmc 0:1 ${fdt_addr_r} ${fdtfile}; \
-    setenv bootargs console=ttymxc0,115200 root=/dev/mmcblk0p2 rw rootwait; \
-    bootz ${kernel_addr_r} - ${fdt_addr_r}
+if mmc dev ${mmcdev} && mmc rescan; then
+    if load mmc ${mmcdev}:${bootpart} ${kernel_addr_r} zImage && load mmc ${mmcdev}:${bootpart} ${fdt_addr_r} ${fdtfile}; then
+        if run set_local_args; then
+            bootz ${kernel_addr_r} - ${fdt_addr_r}
+        else
+            false
+        fi
+    else
+        echo Local image load failed; false
+    fi
+else
+    echo MMC unavailable; false
+fi
 ```
 
-Test it manually:
+This is the **body of `local_boot`**, not a Bash program or a prompt assignment. `&&` stops after the first failure. Each failure branch ends in `false`, so an `echo` cannot accidentally convert failure into success. A `bootz` that returns reports its own status to the caller.
 
-```text
-pa-mini=> run local_boot
-```
-
-If it fails because files are missing, that is okay. The fallback will handle that.
+The `-` means no initrd. The illustrative `rootdev=/dev/mmcblk0p2` in the header must be checked against **Linux's** MMC numbering. U-Boot `mmcdev=0` does not prove Linux `mmcblk0`. A measured PARTUUID is often clearer; obtain it from the intended root partition, never invent one.
 
 ## 24C.10  Network boot command
 
-Now write the network fallback.
+The default network path deliberately uses static settings. It reapplies all three addresses before attempting TFTP, so no earlier DHCP attempt silently supplies different values. Both network loads must succeed before arguments are set and `bootz` is called.
+
+DHCP is an optional **separate** test:
 
 ```text
-net_boot=echo Booting kernel and DTB from TFTP; \
-    setenv autoload no; \
-    if dhcp; then echo DHCP ok; else echo DHCP failed, using static IP; fi; \
-    tftp ${kernel_addr_r} ${bootfile}; \
-    tftp ${fdt_addr_r} ${fdtfile}; \
-    setenv bootargs console=ttymxc0,115200 root=/dev/mmcblk0p2 rw rootwait; \
-    bootz ${kernel_addr_r} - ${fdt_addr_r}
+=> setenv autoload no
+=> dhcp
 ```
 
-This uses Ethernet for kernel and DTB, but still mounts the rootfs from `mmcblk0p2`.
-
-Why `autoload no`?
-
-`dhcp` can be configured to automatically download a file. For this chapter we want DHCP to only obtain network settings. We download exact filenames ourselves.
+`autoload=no` requests network configuration without the automatic boot-file transfer. If DHCP fails, printing "using static IP" does not restore overwritten or cleared variables. Explicitly reset `ipaddr`, `serverip`, `netmask` and any stale `gatewayip` before a static retry, as `net_boot` does below. If DHCP succeeds, its TFTP server and boot filename still need to match your intended server/payload; do not silently trust arbitrary DHCP boot options.
 
 ## 24C.11  Fallback boot command
 
-Now combine both:
-
-```text
-bootcmd=if run local_boot; then \
-            echo Local boot finished; \
-        else \
-            echo Local boot failed, trying network; \
-            run net_boot; \
-        fi
-```
-
-Important: `bootz` does not return when Linux starts. So the `else` path only runs when a command before `bootz` fails, such as a missing kernel or DTB file.
-
-Add defaults in `include/configs/mx6ull_pa_mini.h`:
+This is a complete macro definition for the two loading paths and their dispatcher. Merge it into the existing header, retaining unrelated board defaults. Replace the `normal_boot` placeholder from 24B, and remove duplicate address/filename keys. Keep the non-booting `recovery_boot` until a real recovery image exists.
 
 ```c
 #define PA_MINI_NET_FALLBACK_ENV \
@@ -299,109 +204,116 @@ Add defaults in `include/configs/mx6ull_pa_mini.h`:
     "fdt_addr_r=0x83000000\0" \
     "fdtfile=imx6ull-pa-mini.dtb\0" \
     "bootfile=zImage\0" \
-    "serverip=192.168.7.1\0" \
-    "ipaddr=192.168.7.2\0" \
-    "netmask=255.255.255.0\0" \
-    "local_boot=echo Booting from local MMC; " \
-        "load mmc 0:1 ${kernel_addr_r} zImage; " \
-        "load mmc 0:1 ${fdt_addr_r} ${fdtfile}; " \
-        "setenv bootargs console=ttymxc0,115200 root=/dev/mmcblk0p2 rw rootwait; " \
-        "bootz ${kernel_addr_r} - ${fdt_addr_r}\0" \
-    "net_boot=echo Booting kernel and DTB from TFTP; " \
-        "setenv autoload no; " \
-        "if dhcp; then echo DHCP ok; else echo DHCP failed, using static IP; fi; " \
-        "tftp ${kernel_addr_r} ${bootfile}; " \
-        "tftp ${fdt_addr_r} ${fdtfile}; " \
-        "setenv bootargs console=ttymxc0,115200 root=/dev/mmcblk0p2 rw rootwait; " \
-        "bootz ${kernel_addr_r} - ${fdt_addr_r}\0" \
-    "bootcmd=if run local_boot; then " \
-            "echo Local boot finished; " \
-        "else " \
-            "echo Local boot failed, trying network; " \
-            "run net_boot; " \
-        "fi\0"
+    "mmcdev=0\0" \
+    "bootpart=1\0" \
+    "rootdev=/dev/mmcblk0p2\0" \
+    "lab_ip=192.168.7.2\0" \
+    "lab_server=192.168.7.1\0" \
+    "lab_mask=255.255.255.0\0" \
+    "set_local_args=setenv bootargs console=ttymxc0,115200 " \
+        "root=${rootdev} rw rootwait\0" \
+    "local_boot=echo Trying local MMC; " \
+        "if mmc dev ${mmcdev} && mmc rescan; then " \
+            "if load mmc ${mmcdev}:${bootpart} ${kernel_addr_r} zImage && " \
+                "load mmc ${mmcdev}:${bootpart} ${fdt_addr_r} ${fdtfile}; then " \
+                "if run set_local_args; then " \
+                    "bootz ${kernel_addr_r} - ${fdt_addr_r}; " \
+                "else false; fi; " \
+            "else echo Local image load failed; false; fi; " \
+        "else echo MMC unavailable; false; fi\0" \
+    "net_boot=echo Trying static-IP TFTP; " \
+        "if setenv ipaddr ${lab_ip} && setenv serverip ${lab_server} && " \
+            "setenv netmask ${lab_mask} && setenv gatewayip; then " \
+            "if tftpboot ${kernel_addr_r} ${bootfile} && " \
+                "tftpboot ${fdt_addr_r} ${fdtfile}; then " \
+                "if run set_local_args; then " \
+                    "bootz ${kernel_addr_r} - ${fdt_addr_r}; " \
+                "else false; fi; " \
+            "else echo Network image load failed; false; fi; " \
+        "else echo Network setup failed; false; fi\0" \
+    "fallback_boot=if run local_boot; then true; " \
+        "else echo Local path returned failure; run net_boot; fi\0" \
+    "normal_boot=run fallback_boot\0"
 ```
 
-Then include `PA_MINI_NET_FALLBACK_ENV` in `CFG_EXTRA_ENV_SETTINGS`.
+Append this macro to `CFG_EXTRA_ENV_SETTINGS` once. Use `CONFIG_USE_BOOTCOMMAND=y` and `CONFIG_BOOTCOMMAND="run normal_boot"` from 24B. When board policy is enabled, its late hook selects either `run normal_boot`, `run recovery_boot`, or a blocked command. **Do not replace that hook's gate with an unconditional fallback bootcmd.**
+
+Successful kernel handoff does not return. Fallback can run after a failed load or a `bootz` error returned before handoff; it cannot run after a Linux failure. The `true` branch preserves success in a host mock or another returning command; it is not a "Linux finished" message.
 
 ## 24C.12  Make failure visible
 
-Good fallback logs are boring and clear:
+```{figure} ../illustrations/part3/11-fallback-before-handoff.png
+:name: fig-p3-fallback-before-handoff
+:figclass: concept-sketch
+:width: 100%
+:alt: Local and network paths each require a fresh kernel and DTB and successful checks before handoff. A returned local failure can try the network path, but Linux does not return to this dispatcher after handoff.
 
-```text
-Booting from local MMC
-Failed to load 'zImage'
-Local boot failed, trying network
-Booting kernel and DTB from TFTP
-Using FEC0 device
-TFTP from server 192.168.7.1; our IP address is 192.168.7.2
-Bytes transferred = ...
+Fallback handles failures returned before kernel handoff. Both paths must load their complete image pair and pass argument checks. A later Linux hang requires a separate reset and recovery policy.
 ```
 
-Do not hide the path. During field service, these lines tell the technician what happened.
+Log attempts at path boundaries, then keep the underlying load/PHY error. The code emits "Trying local MMC", "Local image load failed" or "MMC unavailable", and "Trying static-IP TFTP" as appropriate. Those are source strings, not promised serial output from this board.
+
+Distinguish three observations in your notes: which path was attempted, whether each payload loaded, and whether handoff occurred. A TFTP transfer alone establishes none of the kernel's rootfs, driver or application results.
 
 ## 24C.13  Optional: fetch a boot script
 
-A useful extension is to let the server provide a temporary boot script.
+A legacy `boot.scr` is executable command input. Its CRC is not authentication. A trusted lab may use one, but fetching a script from an untrusted server grants that server whatever commands the build exposes, including potential storage writes. A signed kernel FIT does not authenticate an unrelated script.
 
-Manual test:
+For an isolated, deliberate lab only, the following is the complete content of `boot.cmd`, to create in the editor:
 
 ```text
-pa-mini=> tftp ${scriptaddr} boot.scr
-pa-mini=> source ${scriptaddr}
+if tftpboot ${kernel_addr_r} zImage && tftpboot ${fdt_addr_r} imx6ull-pa-mini.dtb && run set_local_args; then
+    bootz ${kernel_addr_r} - ${fdt_addr_r}
+else
+    echo Script image load or argument setup failed
+fi
+exit 1
 ```
 
-A boot script is created on the host from plain text:
+The final `exit 1` is outside the conditional. It reports failure if either load or argument setup fails, or if `bootz` returns instead of handing control to Linux. Successful kernel handoff never reaches it. In this pinned old-hush multiline `source` path, a nested conditional ending in `false` can still return status 0 to its caller, even though it correctly blocks handoff. Do not use that structure to report packaged-script failure. The [pinned exit reference](https://github.com/u-boot/u-boot/blob/v2026.04/doc/usage/cmd/exit.rst) describes leaving the innermost script; the single-line `run` helpers in 24C.11 are unchanged.
+
+Using the host `mkimage` built from the pinned source:
 
 ```sh
-$ cat > boot.cmd <<'EOF'
-echo Boot script from TFTP
-tftp ${kernel_addr_r} zImage
-tftp ${fdt_addr_r} imx6ull-pa-mini.dtb
-setenv bootargs console=ttymxc0,115200 root=/dev/mmcblk0p2 rw rootwait
-bootz ${kernel_addr_r} - ${fdt_addr_r}
-EOF
-
-$ mkimage -A arm -T script -C none -n "pa-mini net script" \
-    -d boot.cmd boot.scr
+mkimage -A arm -T script -C none -n "pa-mini lab net script" -d boot.cmd boot.scr
 ```
 
-This is very useful in the lab because you can change boot behavior without rebuilding U-Boot or editing saved environment.
+With `CONFIG_CMD_SOURCE` and `CONFIG_LEGACY_IMAGE_FORMAT` deliberately enabled for this legacy lab script, a **single guarded command** is:
 
-For production, be careful. A network boot script can execute arbitrary U-Boot commands. Use it only on trusted service networks, or use signed FIT images and secure boot.
+```text
+=> if tftpboot ${scriptaddr} boot.scr; then source ${scriptaddr}; else echo Script load failed; false; fi
+```
+
+Define and qualify a separate `scriptaddr` first, for example `0x84000000` only after the RAM map is checked. Do not default to executing remotely supplied scripts in production. Required FIT signatures, trusted configuration policy and a verified boot chain require a separate security design, not simply this `source` command with a different image nearby.
 
 ## 24C.14  Lab
 
-1. Enable the network command configs.
-2. Confirm the U-Boot Device Tree has the FEC, MDIO, PHY address, reset GPIO, and RMII pinmux.
-3. Set `ethaddr` for the lab board.
-4. Set `ipaddr`, `serverip`, and `netmask`.
-5. Confirm `ping ${serverip}` works.
-6. Confirm `tftp ${kernel_addr_r} zImage` works.
-7. Add `local_boot`.
-8. Add `net_boot`.
-9. Add the fallback `bootcmd`.
-10. Remove or rename `zImage` on the boot partition and confirm U-Boot falls back to TFTP.
-11. Restore the local file and confirm local boot is used again.
+1. Compile the environment block and test its dispatcher in host/sandbox fixtures.
+2. Inject local kernel failure, local DTB failure, MMC failure and returning boot failure. Confirm only the intended cases invoke network loading.
+3. Inject either network load failure and argument-setting failure. Confirm no boot command is reached with stale bytes.
+4. Before any board networking, qualify MAC uniqueness, wiring, clocks, reset, RAM slots and root partition.
+5. On isolated hardware, test each transfer separately, using volatile settings and the existing TFTP service.
+6. Simulate a missing file by temporarily changing its filename in RAM, not by deleting files from live storage. Restore that variable afterward.
+
+No storage/environment write is needed. Any later persistence or media replacement must be deliberate and qualified on spare media.
 
 ## 24C.15  Pitfalls
 
-- **No MAC address.** Set `ethaddr` for the lab. Program a real unique MAC in production.
-- **Wrong PHY address.** Check schematic strap pins and the DT `reg` value.
-- **PHY reset timing too short.** Some PHYs need tens of milliseconds after reset.
-- **Host firewall blocks TFTP.** Ping can work while TFTP fails.
-- **Wrong rootfs argument.** In this chapter TFTP loads kernel and DTB only. Rootfs still comes from MMC unless you change `bootargs`.
-- **Assuming DHCP always works.** Static IP is simpler for board bring-up.
-- **Silent fallback.** Always print which path is used.
-- **Network script on an untrusted network.** `source boot.scr` runs commands. Treat it like code.
+- **Semicolon-only loads.** A later successful command can mask failure and boot stale data.
+- **Last-command status.** `echo` returns success; explicit failure branches must end in failure.
+- **DHCP retry state.** A message does not restore static settings.
+- **Rootfs assumption.** TFTP kernel/DTB does not fix MMC rootfs corruption.
+- **Reset domains and units.** PHY-node microseconds differ from legacy FEC-node milliseconds.
+- **Public or duplicate MAC.** Use an owned factory address, or unique locally administered lab addresses.
+- **Authentication.** Loose payloads and legacy boot scripts are not trusted merely because they transfer successfully.
 
 ## 24C.16  Going deeper
 
-- U-Boot `doc/usage/cmd/tftpboot.rst`, for TFTP loading behavior.
-- U-Boot `doc/usage/cmd/dhcp.rst`, for DHCP behavior.
-- U-Boot `doc/usage/environment.rst`, for `ipaddr`, `serverip`, `ethaddr`, `bootfile`, and `autoload`.
-- U-Boot `drivers/net/fec_mxc.c`, for the i.MX FEC driver.
-- Linux `drivers/net/ethernet/freescale/fec_main.c`, for the kernel driver that later takes over the same MAC.
+- [Command Kconfig](https://github.com/u-boot/u-boot/blob/v2026.04/cmd/Kconfig): `load`, networking, `bootz`, hush and legacy script options.
+- [Network commands](https://github.com/u-boot/u-boot/blob/v2026.04/cmd/net.c) and [BOOTP/DHCP](https://github.com/u-boot/u-boot/blob/v2026.04/net/bootp.c): return paths and `autoload` behavior.
+- [TFTP implementation](https://github.com/u-boot/u-boot/blob/v2026.04/net/tftp.c): transfer ports, loading and retries. The pinned tree has no separate `dhcp.rst` or `tftpboot.rst`; inspect `cmd/net.c` for those commands.
+- [Environment documentation](https://github.com/u-boot/u-boot/blob/v2026.04/doc/usage/environment.rst): network variables and defaults.
+- [FEC driver](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/net/fec_mxc.c) and [PHY uclass](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/net/eth-phy-uclass.c): actual consumers of reset properties.
 
 ---
 

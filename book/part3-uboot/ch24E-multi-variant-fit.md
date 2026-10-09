@@ -1,47 +1,53 @@
 ---
-chapter: 24E
+chapter: "24E"
 title: Multi-variant FIT images and DT overlays
-part: III - U-Boot, deeply (inserted v1.2)
+part: III - U-Boot, deeply
 estimated_pages: 14
 status: draft
 ---
 
 # Chapter 24E: Multi-variant FIT images and DT overlays
 
-> **What:** one FIT image that boots correctly on three different board variants, same kernel, different DTBs, with the variant selected at boot time from a strap pin or an EEPROM ID.
-> **FIT:** Flattened Image Tree, U-Boot's container format for kernels, DTBs, initramfs images, hashes, and signatures.
->
-> **Why:** Real products ship in revisions. Rev A has a 4.3-inch display, Rev B has a 7-inch display and a fan, Rev C drops the display and adds Wi-Fi. Three separate images means three OTA targets and three release pipelines. One image means one OTA stream and one QA artifact set.
->
-> **Focus:** the **runtime-selection mechanism**, strap pin or EEPROM ID read by U-Boot before `bootm` selects which `configurations` entry to apply. Plus DT overlays, which let you patch one base DTB with small fragments rather than maintaining N full DTBs.
-> **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
+A FIT configuration is a set of references: this kernel, this DTB, and optionally this ramdisk or overlay sequence. Several configurations can share a kernel without duplicating it. One release artifact is possible, but every supported hardware combination still needs testing.
 
+We will package the three **hypothetical common-DDR variants** from Chapter 24D and then examine overlays separately. The baseline is upstream **U-Boot v2026.04**, commit `88dc2788777babfd6322fa655df549a019aa1e69`. FIT means Flattened Image Tree. The DT-shaped container is not the OS hardware DTB stored inside it.
 
 ## 24E.1  The scenario
 
-Picture a shipping product on the i.MX6ULL with three hardware revs:
+| Identity LCD option | FIT configuration | Payload DTB |
+|---------------------|-------------------|-------------|
+| 0 | `conf-no-lcd` | `imx6ull-pa-mini-no-lcd.dtb` |
+| 1 | `conf-lcd43` | `imx6ull-pa-mini-lcd43.dtb` |
+| 2 | `conf-lcd70` | `imx6ull-pa-mini-lcd70.dtb` |
 
-- **Rev A:** Point Atom MINI as-is. No display.
-- **Rev B:** + 4.3" RGB display, GT911 capacitive touch on I²C2.
-- **Rev C:** Rev B + GT911-on-I²C2 + a small fan controller on PWM3.
+All three share qualified early DDR, a kernel and an MMC rootfs. This example includes **no initramfs**; its arguments still point to MMC. One FIT is not automatically a full recovery image or an OTA transaction.
 
-You have one rootfs (the application code is the same), one kernel (the same drivers compile in, just probe-as-needed), but **three different DTBs** because each board has different peripherals enabled. You want one OTA package.
+Actual panel timings, pinmux, power sequence and touch wiring require schematics and datasheets. Neither a panel size nor an example filename establishes those facts. Late FIT selection cannot change the ROM/DCD initialization already performed.
+
+```{figure} ../illustrations/part3/13-fit-configuration-references.png
+:name: fig-p3-fit-configuration-references
+:figclass: concept-sketch
+:width: 100%
+:alt: Two FIT configurations reference the same kernel and different matched DTBs. The no-display configuration selects the no-display tree, while the LCD43 configuration selects its LCD43 tree.
+
+Configurations reference payloads rather than duplicating the kernel. Two of our three proposed combinations are shown here. Hashes check bytes against stored values, but trusted required signatures and boot policy are needed for authentication.
+```
 
 ## 24E.2  The .its file with three configurations
 
-Extend the Chapter 23 single-config FIT to three:
+Place matching `zImage` and qualified DTBs beside this complete `multi.its`. No fallback default is specified: identity must select a supported configuration.
 
 ```dts
 /dts-v1/;
 
 / {
-    description = "Multi-variant FIT for mx6ull product line";
+    description = "mx6ull_pa_mini common-DDR variant lab";
     #address-cells = <1>;
 
     images {
         kernel-1 {
-            description = "Linux kernel 6.x";
-            data = /incbin/("./zImage");
+            description = "Shared ARM Linux zImage";
+            data = /incbin/("zImage");
             type = "kernel";
             arch = "arm";
             os = "linux";
@@ -50,311 +56,265 @@ Extend the Chapter 23 single-config FIT to three:
             entry = <0x82000000>;
             hash-1 { algo = "sha256"; };
         };
-
-        fdt-rev-a {
-            description = "DT for Rev A (no display)";
-            data = /incbin/("./imx6ull-mini-rev-a.dtb");
+        fdt-no-lcd {
+            description = "Qualified no-display DTB";
+            data = /incbin/("imx6ull-pa-mini-no-lcd.dtb");
             type = "flat_dt";
             arch = "arm";
             compression = "none";
             hash-1 { algo = "sha256"; };
         };
-
-        fdt-rev-b {
-            description = "DT for Rev B (4.3 LCD)";
-            data = /incbin/("./imx6ull-mini-rev-b.dtb");
+        fdt-lcd43 {
+            description = "Qualified 4.3-inch display DTB";
+            data = /incbin/("imx6ull-pa-mini-lcd43.dtb");
             type = "flat_dt";
             arch = "arm";
             compression = "none";
             hash-1 { algo = "sha256"; };
         };
-
-        fdt-rev-c {
-            description = "DT for Rev C (LCD + fan)";
-            data = /incbin/("./imx6ull-mini-rev-c.dtb");
+        fdt-lcd70 {
+            description = "Qualified 7-inch display DTB";
+            data = /incbin/("imx6ull-pa-mini-lcd70.dtb");
             type = "flat_dt";
             arch = "arm";
             compression = "none";
-            hash-1 { algo = "sha256"; };
-        };
-
-        ramdisk-1 {
-            description = "Application initramfs (same for all revs)";
-            data = /incbin/("./rootfs.cpio.gz");
-            type = "ramdisk";
-            arch = "arm";
-            os = "linux";
-            compression = "gzip";
             hash-1 { algo = "sha256"; };
         };
     };
 
     configurations {
-        default = "conf-rev-a";   /* fail-safe default */
-
-        conf-rev-a {
-            description = "Rev A — no display";
+        conf-no-lcd {
+            description = "No display";
             kernel = "kernel-1";
-            fdt = "fdt-rev-a";
-            ramdisk = "ramdisk-1";
+            fdt = "fdt-no-lcd";
         };
-
-        conf-rev-b {
-            description = "Rev B — 4.3 LCD";
+        conf-lcd43 {
+            description = "4.3-inch display";
             kernel = "kernel-1";
-            fdt = "fdt-rev-b";
-            ramdisk = "ramdisk-1";
+            fdt = "fdt-lcd43";
         };
-
-        conf-rev-c {
-            description = "Rev C — LCD + fan";
+        conf-lcd70 {
+            description = "7-inch display";
             kernel = "kernel-1";
-            fdt = "fdt-rev-c";
-            ramdisk = "ramdisk-1";
+            fdt = "fdt-lcd70";
         };
     };
 };
 ```
 
-Build:
+In the prepared Bash environment (`. ~/imx6ull/scripts/env.sh`, successful status), use host tools built from the pinned source:
 
 ```sh
 mkimage -f multi.its multi.itb
-ls -lh multi.itb
-# 6.5 MB — kernel 4 MB + 3 × DTBs 200 KB + rootfs 1 MB + overhead
+mkimage -l multi.itb
+stat -c '%n %s bytes' multi.itb
 ```
 
-The kernel is stored once, no matter how many configurations reference it. Same for the rootfs. FIT does not duplicate payloads.
+These write host artifacts, not board storage. Size depends on the actual inputs; there is no promised megabyte count. Listing the FIT is not a boot or signature-validation test.
+
+For the unsigned lab, enable `FIT`, `FIT_FULL_CHECK`, `SHA256`, `CMD_BOOTM` and the filesystem/hush support in 24D. Retain the port's ARM Linux boot support. Disable `FIT_BEST_MATCH` if omission of an explicit configuration should fail rather than attempt compatible matching. Our policy always names the configuration.
 
 ## 24E.3  Booting a specific configuration
 
-From U-Boot:
+Stage the FIT separately from its kernel destination: here `fit_addr_r=0x85000000`, while the kernel loads/enters at `0x82000000`. Do not stage this FIT at its own kernel load address and rely on an overlapping copy.
 
+For a later qualified board test, with correct root arguments already established:
+
+```text
+=> if load mmc ${mmcdev}:${bootpart} ${fit_addr_r} multi.itb; then bootm ${fit_addr_r}#conf-lcd43; else echo FIT load failed; false; fi
 ```
-=> load mmc 0:1 0x82000000 multi.itb
-=> bootm 0x82000000#conf-rev-b
-```
 
-The `#conf-rev-b` selects the configuration. With no `#`, the default (`conf-rev-a`) applies.
+24E.6 defines the variables and arguments. The attached `#` suffix is part of the `bootm` argument, not a shell comment. An unknown configuration fails, rather than selecting a nearby name. Without explicit selection, FIT defaults and matching options affect behavior; this FIT has no `default` property.
 
-The `bootm` flow:
+U-Boot resolves the selected image references, checks them according to verification policy, loads the kernel at its declared destination and prepares the OS DTB. `compression="none"` describes the outer payload; the zImage still decompresses itself. The DTB has no fixed `load` here, so U-Boot's FDT relocation policy applies. Its final address is not necessarily the FIT staging address.
 
-1. Parse the FIT header at `0x82000000`.
-2. Look up `configurations/conf-rev-b`.
-3. Find its `kernel`, `fdt`, `ramdisk` references.
-4. Verify hashes (for unsigned FIT) or signatures (Chapter 124).
-5. Move/decompress each image to its `load=` address.
-6. Branch to the kernel `entry=` with the DTB address in `r2`.
+Qualify usable DDR, actual sizes, kernel decompression, FDT growth/relocation, and U-Boot stack/malloc/reservations using the real RAM map and `bdinfo`. A reserved FIT window of, for example, 32 MiB at `0x85000000` is a packaging constraint, not a runtime bounds checker. These addresses do not guarantee safety for another memory size or large image.
 
-The whole thing is one command.
+### Hashes and trusted selection
+
+SHA-256 detects changed payload bytes when verification runs. It does not authenticate the producer: an attacker can replace payload **and hash**. Missing hash children are not equivalent to an enforced required signature. Keep lab verification enabled and inspect hash nodes, but do not call an unsigned FIT trusted boot.
+
+A product needs required signatures checked against trusted public keys in U-Boot's control DT, a verified chain to that U-Boot, and a policy binding the allowed kernel/DTB/overlay combination. `CONFIG_FIT_SIGNATURE=y` alone neither installs trusted keys nor requires signatures. Individually signed images without authenticated configuration policy can permit unwanted recombination. A valid signed configuration also does not prove it is allowed on this board; trusted identity and selection must decide that.
+
+Mutable environment, alternate unsigned boot paths, prompt access, writable EEPROM identity and rollback need separate treatment. No key-enrollment, production-signing or fuse-programming procedure is provided. Read the pinned [signature design](https://github.com/u-boot/u-boot/blob/v2026.04/doc/usage/fit/signature.rst) for image versus configuration authentication.
 
 ## 24E.4  Detecting which variant we are running on
 
-The interesting part is *automating* the selection. Three common patterns.
+Selection happens before `bootm`, in the single 24B/24D board hook. Use `fitconf` consistently, not a second `variant` variable with different names.
 
 ### Pattern A, Strap pin
 
-A GPIO is tied high or low by a populating resistor that differs by rev. U-Boot reads it in `board_late_init`:
+Request dedicated input descriptors, check errors, allow levels to settle and sample for stability. Follow 24B.10's ownership/polarity/cleanup method, but qualify strap timing separately from mechanical-key debounce.
 
-```c
-int board_late_init(void)
-{
-    int rev_pin = gpio_get_value(IMX_GPIO_NR(1, 9));   /* GPIO1_IO09 */
-    int rev2_pin = gpio_get_value(IMX_GPIO_NR(1, 10));
+This is a mapping table, not pin-reading code:
 
-    if (rev_pin == 0 && rev2_pin == 0)
-        env_set("variant", "conf-rev-a");
-    else if (rev_pin == 1 && rev2_pin == 0)
-        env_set("variant", "conf-rev-b");
-    else if (rev_pin == 0 && rev2_pin == 1)
-        env_set("variant", "conf-rev-c");
-    else
-        env_set("variant", "conf-rev-a");   /* fail-safe */
+| Qualified logical state | Selection |
+|-------------------------|-----------|
+| 00 | `conf-no-lcd` |
+| 01 | `conf-lcd43` |
+| 10 | `conf-lcd70` |
+| 11, changing readings or read failure | Closed gate; unsupported identity. |
 
-    return 0;
-}
-```
-
-Two pins encode four states. PCB assembly populates the strap resistors. Software reads them on every boot. The env var `variant` then feeds `bootcmd`:
-
-```
-bootcmd=load mmc 0:1 0x82000000 multi.itb; bootm 0x82000000#${variant}
-```
-
-The `${variant}` is shell-substituted before `bootm` runs.
+No GPIO1_IO09/IO10 wiring is asserted. Do not borrow boot pins, reset outputs or peripheral pads. Floating straps cannot be fixed with a software default. GPIO5/SNVS pads need IOMUXC-SNVS configuration if actually selected.
 
 ### Pattern B, EEPROM ID
 
-A small I²C EEPROM (e.g., 24C04) has a board-ID byte written at manufacture. U-Boot reads it:
+Use 24D's DM-I2C reader and full 64-byte validation: magic, version, length, CRC, options, valid MAC and bounded serial before publishing `fitconf` and `identity_ready`. It propagates binding/allocation errors and explicitly sets pointer width.
 
-```c
-int board_late_init(void)
-{
-    u8 id;
-    i2c_set_bus_num(0);
-    if (i2c_read(0x50, 0xFF, 1, &id, 1) != 0) {
-        printf("WARN: failed to read EEPROM ID, defaulting to Rev A\n");
-        env_set("variant", "conf-rev-a");
-        return 0;
-    }
+Do not substitute legacy global-bus `i2c_read()` or one unvalidated byte. Reading one byte to RAM and then using `setexpr.l` consumes a whole word, including three unrelated bytes. There is no reason to use the future kernel/FIT buffer as identity scratch space.
 
-    switch (id) {
-        case 0x01: env_set("variant", "conf-rev-a"); break;
-        case 0x02: env_set("variant", "conf-rev-b"); break;
-        case 0x03: env_set("variant", "conf-rev-c"); break;
-        default:
-            printf("WARN: unknown EEPROM ID 0x%02x, using Rev A\n", id);
-            env_set("variant", "conf-rev-a");
-    }
-    return 0;
-}
-```
-
-Advantages over strap pins: 256 possible IDs, you can reprogram in the field, and no extra pads if you already have an EEPROM for serial number or MAC address.
-> **MAC:** Media Access Control in networking and radio chapters. It is the layer that owns framing and medium access.
+Factory provisioning and readback remain separate. Reprogramming live identity is not a normal boot step or a lab exercise here.
 
 ### Pattern C, eFuse
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
-> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
+Already-provisioned, documented read-only fields may identify a chip. They require the exact fuse map, field ownership and board mapping. A one-time value is not automatically confidential or authenticated board-option data, or proof of tamper resistance.
 
-
-The i.MX6ULL has 96 words of OCOTP fuses. You can burn a board-ID into a dedicated fuse word at manufacture and read it from U-Boot:
-
-```c
-u32 board_id;
-fuse_read(BOARD_ID_BANK, BOARD_ID_WORD, &board_id);
-```
-
-One-time programmable, hard to copy, tamper-resistant. Used in security-critical production. If you burn the wrong value, you cannot clear it.
-
-For dev work, strap pins or EEPROM. For shipping security-critical products, eFuse.
+There is no generic "spare OCOTP word" in this example and no burn guidance. Reserved/security/boot fields are not interchangeable with identity storage. Use host records or schematic-qualified straps/EEPROM reads for the exercise.
 
 ## 24E.5  DT overlays, the alternative
 
-Instead of N full DTBs, you can have **one base DTB** and **N overlay files** that patch it. An overlay is a small DTS fragment that says "add this node, modify this property, delete this other thing." U-Boot applies the overlay before passing the DT to the kernel.
+An overlay adds or changes nodes/properties in a base DT. It suits optional blocks on a qualified common base. It is not a general runtime deletion mechanism: DTS source deletion directives are not arbitrary deletion operations carried through `fdt apply`.
 
-A Rev B overlay (`imx6ull-mini-rev-b.dtso`):
+This complete **host-only pair** changes a lab property, not display/PHY/power wiring. Never pass the toy base to Linux as the MINI hardware DTB.
+
+`lab-base.dts`:
+
+```dts
+/dts-v1/;
+/ {
+    model = "Host overlay fixture, not a board DTB";
+    compatible = "myorg,overlay-fixture";
+
+    lab: lab-options {
+        display-option = <0>;
+    };
+};
+```
+
+`lab-lcd43.dtso`:
 
 ```dts
 /dts-v1/;
 /plugin/;
 
-&i2c2 {
-    status = "okay";
-
-    gt911@5d {
-        compatible = "goodix,gt911";
-        reg = <0x5d>;
-        interrupt-parent = <&gpio1>;
-        interrupts = <11 2>;
-        reset-gpios = <&gpio1 12 GPIO_ACTIVE_HIGH>;
-        irq-gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
-        touchscreen-size-x = <800>;
-        touchscreen-size-y = <480>;
-    };
-};
-
-&lcdif {
-    status = "okay";
-    display = <&display0>;
-
-    display0: display@0 {
-        bits-per-pixel = <16>;
-        bus-width = <24>;
-
-        display-timings {
-            native-mode = <&timing0>;
-            timing0: 480x272 {
-                clock-frequency = <9000000>;
-                hactive = <480>;
-                vactive = <272>;
-                /* ... porch, sync widths ... */
-            };
-        };
-    };
+&lab {
+    display-option = <1>;
 };
 ```
 
-The overlay is compiled with `dtc -@ -O dtb` and shipped alongside the base DTB. U-Boot:
+Compile and merge on the host:
 
-```
-=> load mmc 0:1 0x82000000 zImage
-=> load mmc 0:1 0x83000000 imx6ull-mini-base.dtb
-=> load mmc 0:1 0x84000000 imx6ull-mini-rev-b.dtbo
-=> fdt addr 0x83000000
-=> fdt resize 8192            # room to merge
-=> fdt apply 0x84000000
-=> bootz 0x82000000 - 0x83000000
+```sh
+dtc -@ -I dts -O dtb -o lab-base.dtb lab-base.dts
+dtc -@ -I dts -O dtb -o lab-lcd43.dtbo lab-lcd43.dtso
+fdtoverlay -i lab-base.dtb -o lab-combined.dtb lab-lcd43.dtbo
+fdtget -t x lab-combined.dtb /lab-options display-option
 ```
 
-`fdt apply` merges the overlay into the base. The resulting in-memory DT is what the kernel sees.
+The resulting property should be 1. Both label-referencing inputs use `-@`; base symbols and overlay fixups allow the label to resolve. Real DTS files using preprocessor includes/macros need their normal build preprocessing, not an unqualified direct `dtc` call.
+
+For optional read-to-RAM board inspection, qualify nonoverlapping `fdt_addr_r`/`fdtoverlay_addr_r` slots with `0x2000` extra bytes after the base:
+
+```text
+if load mmc ${mmcdev}:${bootpart} ${fdt_addr_r} lab-base.dtb; then
+    if load mmc ${mmcdev}:${bootpart} ${fdtoverlay_addr_r} lab-lcd43.dtbo; then
+        if fdt addr ${fdt_addr_r} && fdt resize 2000 && fdt apply ${fdtoverlay_addr_r}; then
+            fdt print /lab-options
+        else
+            echo Overlay failed - reload both originals; false
+        fi
+    else
+        echo Overlay load failed; false
+    fi
+else
+    echo Base load failed; false
+fi
+```
+
+This is a complete compound U-Boot command, shown across lines for reading, not a Bash program. It deliberately does **not** boot. `fdt addr` without `-c` selects the **working FDT**; for real boot that must be a separately loaded OS DTB, never U-Boot's live control DT at `fdtcontroladdr`.
+
+`fdt resize 2000` parses hexadecimal: 8192 extra bytes, not decimal 2000. It changes the declared buffer size, not RAM allocation or neighboring-image bounds. Too little space causes an error, not silent truncation. Apply mutates its inputs; libfdt invalidates them on failure. Reload **both** originals before retrying. Do not boot after failure or assume the base remains untouched.
 
 ### Trade-offs vs separate DTBs
 
-| | One DTB per variant | Base + overlays |
-|---|---|---|
-| Source-tree size | N × full DTS | 1 × base + N × small overlays |
-| Mistake blast radius | Localized | A bad overlay can fail to apply, falling back to base |
-| Build complexity | Simple | Need `-@` flag on `dtc`; verify overlays apply cleanly |
-| Symbol references | None across DTBs | Overlay references base by label; must match |
-| Shipping format | N DTBs in FIT | Base + N overlays in FIT |
-| Tooling support | Universal | DT overlay applying is supported in modern U-Boot (>= 2020.07) |
+| Choice | Separate DTBs | Base plus overlays |
+|--------|---------------|--------------------|
+| Source maintenance | Share `.dtsi`; full DTBs need not duplicate source | Maintain shared labels and ordered sets. |
+| Failure handling | Select a qualified DTB | Stop on merge failure; reload inputs. |
+| Validation | Each complete board tree | Each supported final combination and ordering. |
+| Shipping | Several FDT image nodes | Base/overlays can also be FIT image nodes. |
 
-For a dev board with ~5 variants, separate DTBs are simpler. For a product line with ~50 variants, overlays scale better.
+There is no universal variant-count threshold. Overlays help only when shared hardware and combinations justify their additional contracts.
 
-For a dev board, you can usually ship one image per board model and call it done. This chapter exists because real product lines outgrow that approach: once you have three or more variants, the per-variant build matrix and OTA-channel overhead push you toward the multi-DTB or overlay model described above.
+For **automatic FIT overlays**, define the compiled base and overlays as separate `type="flat_dt"` image nodes, each with a hash. With `OF_LIBFDT_OVERLAY`, this is a **replacement configuration fragment**, not a complete ITS:
+
+```dts
+conf-lcd43 {
+    kernel = "kernel-1";
+    fdt = "fdt-base", "overlay-lcd43";
+};
+```
+
+Define `fdt-base` and `overlay-lcd43` under `images` with actual data. The first FDT is the base; later entries apply in order. The pinned interface also supports `bootm <addr>#<base-config>#<extra-config>` for deliberately selected add-ons. Do not accept arbitrary extra names from unauthenticated identity. A signed design must authenticate and permit the complete selected combination.
 
 ## 24E.6  Putting it together, the full multi-variant boot script
 
+Use 24D's C identification and 24B's gate ordering. This complete macro replaces 24C's normal path with **local FIT boot**; it does not silently fall back to unsigned network payloads.
+
+```c
+#define PA_MINI_MULTI_FIT_ENV \
+    "fit_addr_r=0x85000000\0" \
+    "fitfile=multi.itb\0" \
+    "mmcdev=0\0" \
+    "bootpart=1\0" \
+    "rootdev=/dev/mmcblk0p2\0" \
+    "set_fit_args=setenv bootargs console=ttymxc0,115200 " \
+        "root=${rootdev} rw rootwait\0" \
+    "boot_multi=if test \"${identity_ready}\" = \"1\"; then " \
+        "if mmc dev ${mmcdev} && mmc rescan; then " \
+            "if load mmc ${mmcdev}:${bootpart} ${fit_addr_r} ${fitfile}; then " \
+                "if setenv verify yes && run set_fit_args; then " \
+                    "bootm ${fit_addr_r}#${fitconf}; " \
+                "else echo FIT argument setup failed; false; fi; " \
+            "else echo FIT load failed; false; fi; " \
+        "else echo MMC unavailable; false; fi; " \
+    "else echo Identity not ready; false; fi\0" \
+    "normal_boot=run boot_multi\0"
 ```
-# In U-Boot environment, set once:
 
-bootcmd=run select_variant; run boot_multi
+Merge once into `CFG_EXTRA_ENV_SETTINGS`, removing conflicting definitions of the same keys. Keep `CONFIG_BOOTCOMMAND="run normal_boot"`; the late hook still installs blocked, normal or recovery dispatch. There is no default `fitconf` in this macro.
 
-select_variant=if i2c probe 0x50; then
-                  i2c read 0x50 0xFF 1 0x82000000;
-                  setexpr.l id *0x82000000;
-                  if test 0x${id} = 0x01; then setenv variant conf-rev-a;
-                  elif test 0x${id} = 0x02; then setenv variant conf-rev-b;
-                  elif test 0x${id} = 0x03; then setenv variant conf-rev-c;
-                  else setenv variant conf-rev-a; fi;
-                else
-                  setenv variant conf-rev-a;
-                fi
+Confirm Linux's actual root partition; U-Boot `${mmcdev}` does not establish its `/dev/mmcblk` name. Adding a FIT ramdisk later requires coordinated ITS, argument and memory changes, not simply an extra `rootfs.cpio.gz` reference.
 
-boot_multi=setenv bootargs console=ttymxc0,115200 root=/dev/mmcblk0p2 rw rootwait;
-            load mmc 0:1 0x82000000 multi.itb;
-            bootm 0x82000000#${variant}
-```
-
-That's an in-U-Boot embedded script. It probes the EEPROM, reads the ID byte, maps it to a configuration name, and `bootm`s the selected configuration.
-
-When you receive a unit, you don't have to ask which rev it is. The unit identifies itself at boot.
+Mutable `verify=yes` enables corruption checking in this unsigned lab. It is not required-signature enforcement or a bypass-resistant boot policy. Alternate boot routes must independently obey the final product's trust requirements.
 
 ## 24E.7  Lab
 
-1. **Build a multi-config FIT** with two configurations differing only in a model-string change in the DT. Verify both boot.
-2. **Add a strap-pin reader** in your custom `board_late_init`. Tie a GPIO high or low on the board. Verify U-Boot reads it correctly and `env_set`s the right `variant`.
-3. **Author a DT overlay.** Pick something small, add a new I²C node, and verify `fdt apply` succeeds. Confirm the kernel sees the added device (`/sys/bus/i2c/devices/...`).
-4. **Make a deliberately broken overlay** (reference a label that doesn't exist in the base). Observe the `fdt apply` failure and the fallback to the base DT.
-5. **Read U-Boot's `fdt apply` source.** `cmd/fdt.c` and `common/fdt_support.c`. Trace what happens when an overlay references a symbol that doesn't exist.
+1. Build the host overlay pair; inspect the merged property and symbol/fixup nodes.
+2. Make a host-only overlay reference a nonexistent label. Confirm merge failure; do not reuse its in-memory inputs.
+3. Package the complete ITS with host fixtures to test references. A dummy kernel is for inspection only, never boot it.
+4. Test 24D's three valid identities and invalid records against the FIT configuration names.
+5. In sandbox/mock dispatch, inject readiness, MMC, FIT-load and argument failures; confirm `bootm` is reached only after success.
+6. Only after real DTBs, kernel, RAM map and identity are qualified, test each configuration on matching hardware. Host packaging does not establish a hardware boot.
+
+No fuse writes, production signing, EEPROM programming or saved-environment changes are needed.
 
 ## 24E.8  Pitfalls
 
-- **Hash mismatch in FIT.** If you forget `hash-1 { algo = "sha256"; };` on an image, `bootm` may print a warning and proceed (depending on config). For production, *always* hash. For signed FIT (Chapter 124), hashes are mandatory.
-- **Strap pin floats.** If your strap GPIO has no pull resistor and your board mounting position can leave it floating, you may read a different rev on every boot. Always pull explicitly.
-- **EEPROM I²C address collision.** Many boards have multiple I²C devices at `0x50`-`0x57`. Verify your ID byte location vs sensor addresses.
-- **Overlay `dtc` without `-@`.** Without `-@`, no symbol table is emitted, and overlays can't reference labels in the base. Always `dtc -@`.
-- **`fdt resize` skipped.** Without it, applying an overlay can run out of space and silently truncate. Resize generously before `apply`.
-- **Configurations missing a `kernel` reference.** Boot fails. Every configuration must specify at minimum `kernel` and `fdt`.
+- **One artifact mistaken for one test.** Validate every supported final combination.
+- **Overlapping staging/destination.** Keep FIT clear of kernel decompression and relocated U-Boot.
+- **Unknown identity mapped to a default.** No variant is automatically safe for unknown hardware.
+- **Hash mistaken for authentication.** Payloads and hashes can be replaced together.
+- **Control DT mistaken for OS DTB.** Do not mutate driver model's live tree.
+- **Failed overlay reused.** Reload base and overlay originals.
+- **Source deletion mistaken for merge behavior.** Inspect the actual resulting tree.
 
 ## 24E.9  Going deeper
 
-- **`doc/usage/fit/` and `doc/uImage.FIT/`** in U-Boot source, FIT spec, signing, multi-config.
-- **Linux Documentation `Documentation/devicetree/overlay-notes.txt`**: what overlays can and cannot do.
-- **DENX FIT guide**: concise + practical.
-- **`tools/mkimage.c`** for FIT details. Particularly the `-r` (required) and `-K` (key) flags for signed-FIT prep.
+- [FIT source format](https://github.com/u-boot/u-boot/blob/v2026.04/doc/usage/fit/source_file_format.rst) and [implementation](https://github.com/u-boot/u-boot/blob/v2026.04/boot/image-fit.c): references, selection and hashes.
+- [FIT overlays](https://github.com/u-boot/u-boot/blob/v2026.04/doc/usage/fit/overlay-fdt-boot.rst): ordered FDT lists and extra configurations.
+- [Manual overlays](https://github.com/u-boot/u-boot/blob/v2026.04/doc/usage/fdt_overlays.rst), [FDT command](https://github.com/u-boot/u-boot/blob/v2026.04/cmd/fdt.c) and [libfdt apply](https://github.com/u-boot/u-boot/blob/v2026.04/scripts/dtc/libfdt/fdt_overlay.c): working-tree mutation and errors.
+- [FIT signatures](https://github.com/u-boot/u-boot/blob/v2026.04/doc/usage/fit/signature.rst) and [boot Kconfig](https://github.com/u-boot/u-boot/blob/v2026.04/boot/Kconfig): support versus required trusted signatures.
 
 **Previous:** [Chapter 24D: Board identity and variant selection in U-Boot](ch24D-uboot-board-identity-variants.md)
 
