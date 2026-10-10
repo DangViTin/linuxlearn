@@ -15,9 +15,17 @@ memory. An I2C ACK is similarly narrower than a visible OLED image.
 
 This chapter follows those bytes to a small status display. We use upstream
 **U-Boot v2026.04**, distinguish its drivers from Linux's, and provide a
-bounded SSD1306 command for one documented module profile. A fitted display,
-its wiring, and its initialization specification remain prerequisites, not
-features assumed present on the reference MINI.
+bounded SSD1306 command for one documented module profile. The supplied
+**MINI V2.2 has no fitted SPI LCD or I2C OLED**. Its RGBLCD socket belongs to
+Chapter 24I; a small serial display is an added module. We use the actual
+P4 expansion routes below, with a shared P1/I2C2 alternative for an OLED.
+The guide's ALPHA I2C/SPI sensor labs are not evidence
+that their devices exist on MINI.
+
+Begin with Chapter 19's MINI vendor baseline and UART1 console. The bus
+mapping below comes from the supplied MINI/core schematics; the code targets
+the separate **v2026.04 `mx6ull_pa_mini` migration**, not a drop-in vendor
+patch. Keep UART1 for diagnostics while bringing up the added module.
 
 ## 24J.1  First decision: what kind of display is it?
 
@@ -39,6 +47,13 @@ Use a full framebuffer only when you need it and have the complete transport
 integration. A rectangle indicating service mode needs far less code, but
 still needs correct initialization and errors. Calling the routine "tiny"
 does not exempt it from those requirements.
+
+For a first MINI extension, a documented **128 x 64 I2C SSD1306 module with
+3.3 V-compatible supply/logic and the specified charge-pump profile** needs
+fewer control wires than a color SPI LCD. Use I2C1 on P4 as described in
+Section 24J.8. A color module additionally needs a reviewed D/C, reset,
+backlight and initialization path; the transport helper alone will not
+display an image. Neither module is part of the stock-board acceptance test.
 
 ## 24J.2  What belongs in U-Boot?
 
@@ -65,11 +80,31 @@ status routine is not the product UI.
 | VCC/IOVCC | Correct voltage levels, power sequence, no powered GPIO back-feed |
 | Geometry | Controller RAM size, visible window offsets, rotation and RGB/BGR order |
 
-The MINI's GPIO1 bit 3 is already LED0, and other example GPIOs may have
-owners. Do not borrow GPIO1 bits 2/3/4 for D/C/reset/backlight. The BEEP route
-also uses SNVS_TAMPER1/GPIO5 bit 1 with an active-low PNP switch; it is not a
-spare active-high display output. Compare the fitted carrier schematic with
-Chapter 18B before assigning any pad.
+MINI sheet 3's **P4** exposes a useful ECSPI3 route, verified against the
+v2026.04 i.MX6UL pin-function definitions:
+
+| P4 pin | Schematic net / SoC pad | ECSPI3 function |
+|---|---|---|
+| 17 | UART2_TXD / UART2_TX_DATA | SS0 (native chip select) |
+| 18 | UART2_RXD / UART2_RX_DATA | SCLK |
+| 19 | UART2_RTS / UART2_RTS_B | MISO |
+| 20 | UART2_CTS / UART2_CTS_B | MOSI |
+
+The UART labels name physical routes, not the selected function. Disable
+UART2 ownership and configure the corresponding `__ECSPI3_*` pinmux plus
+the ECSPI3 controller in U-Boot's control DT. Do not use ALPHA's sensor
+connector wiring or switch ENET2 pads away from the MINI's onboard PHY.
+Confirm P4 pin 1/orientation on the actual assembly before attaching wires.
+
+P4 pin 47 is ground, 48 DCDC_3V3, and 46 DCDC_5V. These are board supply
+nets, not interchangeable module voltages; check the module's supply and
+IO levels, pull-ups, current budget and power-off behavior. D/C/reset and
+backlight still need separately assigned GPIOs/module circuits.
+UART1_CTS/GPIO1_IO18 is MINI KEY0; GPIO1_IO01 carries GBC_KEY/AP_INT, not
+that switch. GPIO1_IO03 is LED0, GPIO1_IO08 RGB backlight, and SNVS_TAMPER1/GPIO5
+bit 1 BEEP through an active-low PNP switch. GPIO1_IO04 also reaches camera
+PWDN, and GPIO1_IO02 camera RESET. A header pin is not automatically unowned: review accessories and
+the control DT before selecting the additional outputs.
 
 A typical controller sequence includes reset, sleep exit and its delay,
 power/gamma configuration, pixel format, memory orientation, a visible
@@ -122,7 +157,7 @@ If implementing a real DM video driver, use `CONFIG_VIDEO` and the required
 BMP formats as in Chapter 24I; **`CONFIG_DM_VIDEO` is not a v2026.04 symbol**.
 Do not enable generic video and claim it supplies the absent panel driver.
 Build the same MINI port with Chapter 3's sourced environment and a separate
-`O=` directory. Bus compilation does not validate carrier wiring.
+`O=` directory. Bus compilation does not validate the added module wiring.
 
 ## 24J.6  SPI LCD manual bring-up order
 
@@ -230,6 +265,32 @@ Linux's `solomon,ssd1306fb-i2c` binding does not imply a matching U-Boot driver.
 Keep the two control trees and ownership stages distinct. The board command
 below directly obtains a generic I2C chip on a **verified** bus/address.
 
+On MINI, use **I2C1 via P4 pin 43 UART4_TXD (SCL), pin 42 UART4_RXD (SDA)**,
+and the reviewed supply/ground connections. Pin 41 is ENET1_RXER, not SCL;
+pin 44 is UART5_RXD/I2C2 SDA, not I2C1 SDA. Do not infer UART or bus pairs
+from adjacent header rows. MINI sheet 1 shows R42/R57
+4.7 kOhm pull-ups to DCDC_3V3. Core sheet 6 and the upstream pin definitions
+map these pads to `MX6UL_PAD_UART4_TX_DATA__I2C1_SCL` and
+`MX6UL_PAD_UART4_RX_DATA__I2C1_SDA`. Disable UART4 on these pads, enable
+`&i2c1`, and supply its IOMUXC pinctrl group with the board's reviewed pad
+settings. Account for the module's own pull-ups rather than adding another
+pair automatically. Keep UART1/USB_TTL as the console.
+
+Use `i2c bus` to map this **hardware I2C1** to its U-Boot sequence, then set
+the command's `OLED_BUS` accordingly. The `0` below is an example sequence,
+not an assertion that every migrated DT assigns I2C1 sequence zero. I2C2
+is also routed to the RGB touch/camera connectors, so it is not an isolated
+spare bus on an accessorized MINI. Prefer the explicitly reviewed P4 route
+for this first module instead of probing an unknown shared bus.
+
+The layout also labels **P1 OLED/CAMERA**. Sheet 2 routes P1 pin 1 to
+DCDC_3V3, pin 2 to ground, pin 4 to I2C2 SCL and pin 6 to I2C2 SDA. A
+documented OLED adapter can use those wires after checking the shared
+camera/touch bus and module address. This is an alternative to P4/I2C1,
+not a promise that a generic four-pin OLED plugs into P1 directly; the
+connector's other pins carry camera signals. Select the corresponding
+I2C2 pinmux and actual U-Boot bus sequence if taking this route.
+
 For a dedicated U-Boot generic child, explicitly describing
 `u-boot,i2c-offset-len = <0>` prevents register-offset insertion. Its chosen
 compatible/driver must be reviewed; do not attach this property to an
@@ -260,8 +321,9 @@ This example covers **only a verified 128 x 64 SSD1306 I2C module with the
 internal charge-pump profile** described below. Before running it, the module
 must be powered and reset with its documented timing. Its segment/COM
 orientation, electrical settings, contrast, and power sequence must match
-its specification. Do not substitute a 128 x 32 or SH1106 module. No MINI
-bus/address or module qualification is claimed.
+its specification. Do not substitute a 128 x 32 or SH1106 module. The P4/I2C1
+route above is documented MINI hardware; the particular module, address
+strap, reset and supply profile still need matching.
 
 Create `board/myorg/mx6ull_pa_mini/oled_ssd1306.c` in your port. Change the
 bus/address constants only after mapping the actual controller and strap:
@@ -484,8 +546,10 @@ its missing layers have been built and tested.
 
 ## 24J.14  Lab
 
-1. Identify the actual module/controller, bus, voltage/reset profile, and
-   geometry. Without those documents, keep the exercise host-only.
+1. Trace MINI P4 pins 17-20 for ECSPI3, pin 43 for I2C1 SCL and pin 42 for
+   I2C1 SDA. Identify the added module/controller, supply/reset profile
+   and geometry. With no
+   module, finish the schematic/source and host-transaction exercises.
 2. Inspect the v2026.04 driver tree and generated config. Name which code
    really owns bus transfer, reset/init, rendering, and Linux handoff.
 3. For SPI, build the transport helper in a fixture. Check lengths 0, 1,
@@ -495,13 +559,20 @@ its missing layers have been built and tested.
    no inserted offset, page mode, eight pages, and 1024 pixel bytes.
 5. Inject an I2C failure at initialization, drawing, and display-on. The
    command must fail; invalid arguments must send nothing.
-6. Only on approved matching hardware, initialize and inspect a small SPI
-   window or `oled clear`/`oled bar`. Record observations, not template logs.
+6. Disable the conflicting UART2 or UART4 function in the modern control DT;
+   verify bus sequence, pinmux, power and GPIO ownership. Only on approved
+   matching hardware, inspect a small SPI window or `oled clear`/`oled bar`.
+   Record observations, not template logs.
 7. Add one optional normal-state hook and verify missing-display behavior,
    recovery/rollback precedence, power veto, and Linux takeover.
 
 ## 24J.15  Going deeper
 
+- Supplied MINI V2.2 schematic, sheets 1-3, and core sheets 5-6/8: P4 bus
+  routes, existing GPIO owners and I2C pull-ups. The guide's applicability
+  table (pp. 7-8) excludes the stock MINI from its ALPHA I2C/SPI sensor labs.
+- [v2026.04 i.MX6UL pin-function definitions](https://github.com/u-boot/u-boot/blob/v2026.04/dts/upstream/src/arm/nxp/imx/imx6ul-pinfunc.h):
+  UART2-to-ECSPI3 and UART4-to-I2C1 alternate functions.
 - [v2026.04 video drivers](https://github.com/u-boot/u-boot/tree/v2026.04/drivers/video)
   and [SPI API](https://github.com/u-boot/u-boot/blob/v2026.04/include/spi.h).
 - [I2C API](https://github.com/u-boot/u-boot/blob/v2026.04/include/i2c.h) and

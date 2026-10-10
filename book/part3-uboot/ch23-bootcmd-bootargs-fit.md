@@ -12,13 +12,15 @@ A U-Boot prompt tells you that the bootloader reached its command loop. What mus
 
 On an MCU, the linker script and startup code often fix those decisions at build time. Here, part of the policy is text in U-Boot's **environment**, a set of named string values. We will follow that text into Linux, then package the kernel and DTB into a FIT, or Flattened Image Tree.
 
-All U-Boot commands and host `mkimage` examples refer to **upstream v2026.04**, commit `88dc2788777babfd6322fa655df549a019aa1e69`. The MINI filenames are the local names from Chapter 22, not files supplied by upstream. A kernel and its **kernel DTB** must come from the matched build in Part IV; do not rename an EVK DTB and call it a MINI description.
+Start with Chapter 19's **vendor MINI build**, source commit `edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb`, config `mx6ull_alientek_emmc_defconfig`, in `~/imx6ull/src/uboot-mini-vendor`. The FAT/eMMC helper below follows that command set. The subsequent SD/PARTUUID, control-FDT and FIT exercises use Chapter 22's separate **upstream v2026.04 migration**, commit `88dc2788777babfd6322fa655df549a019aa1e69`, in `~/imx6ull/src/u-boot`. Do not assume modern features exist in the vendor build.
 
-> **Lab boundary:** Chapter 22's scaffold is not permission to run an image on a MINI. Target examples require a qualified bootloader, DDR and memory map for the exact board. Host packaging can be studied without a board. No media writes, persistent environment changes, signing-key enrollment or fuse programming are needed here.
+Vendor policy names Linux's `imx6ull-alientek-emmc.dtb`; modern exercises use local `imx6ull-pa-mini.dtb`. Both must be **kernel DTBs from matched Part IV builds**, checked for the actual MINI revision. Neither permits an EVK DTB or Chapter 22's U-Boot control DTB as the kernel tree.
+
+> **Lab boundary:** These builds provide source/API evidence, not board validation. Target examples require qualified DDR, bootloader and memory map. Host packaging needs no board. No media writes, persistent settings, key enrollment or fuse programming are needed.
 
 ## 23.1  `bootcmd`, U-Boot's autoboot
 
-`bootcmd` is a string evaluated by U-Boot's command interpreter during autoboot. `bootdelay` is the runtime delay setting, with `CONFIG_BOOTDELAY` as its build-time default; negative values have special meanings. The Chapter 22 scaffold uses `-1` to disable autoboot. Typing `run sdboot` still executes a named helper manually.
+`bootcmd` is a string evaluated by U-Boot's command interpreter during autoboot. `bootdelay` is the runtime delay setting, with `CONFIG_BOOTDELAY` as its build-time default; negative values have special meanings. The Chapter 19 lab patches and Chapter 22 migration disable autoboot. Typing `run emmcboot` or `run sdboot` still executes a helper manually.
 
 Before writing a helper, answer three questions: which storage device/partition has the files, where may they fit in RAM, and what should happen if a load fails? The following addresses are a **worked layout**, not a universal i.MX6ULL memory map:
 
@@ -31,7 +33,26 @@ Before writing a helper, answer three questions: which storage device/partition 
 
 Use these numbers only after checking actual DDR banks and reserved ranges, U-Boot relocation/stack/heap/control FDT, kernel decompression workspace and the uncompressed kernel destination. `bdinfo` helps inspect U-Boot's layout but is not a complete kernel-memory planner. Host file sizes must fit their planned windows **before** loading; a successful transfer can already have overwritten another object if the file was too large.
 
-First use `make O=... menuconfig` in your own build and enable **`CONFIG_CMD_PART=y`** with **`CONFIG_PARTITION_UUIDS=y`** for `part uuid`. The inherited EVK config has partition UUID support but does not enable the `part` command. Keep `CONFIG_HUSH_PARSER=y`, `CONFIG_CMD_FS_GENERIC=y`, the needed filesystem/MMC support and `CONFIG_CMD_BOOTZ=y`. Inspect the resulting `.config` and, on qualified hardware, `help part`, before relying on the helper.
+### Start with the vendor's eMMC/FAT route
+
+Normal vendor mapping is MMC 0 for USDHC1/SD and MMC 1 for USDHC2/eMMC. Published policy uses eMMC partition 1 for boot files and `/dev/mmcblk1p2` for Linux root. Confirm `mmc list`, contents and kernel enumeration: U-Boot indices do not guarantee Linux names. The vendor enables older `CONFIG_SYS_HUSH_PARSER`, FAT loading and `bootz`; Chapter 19's FAT compatibility fix belongs to that old build.
+
+After verifying the RAM plan above, define a temporary helper requiring both files and argument construction:
+
+```text
+=> setenv kernel_addr_r 0x82000000
+=> setenv fdt_addr_r 0x83000000
+=> setenv fdtfile imx6ull-alientek-emmc.dtb
+=> setenv emmcargs 'setenv bootargs console=ttymxc0,115200 root=/dev/mmcblk1p2 rootfstype=ext4 ro rootwait'
+=> setenv emmcboot 'if mmc dev 1 && mmc rescan && fatload mmc 1:1 ${kernel_addr_r} zImage && fatload mmc 1:1 ${fdt_addr_r} ${fdtfile} && run emmcargs; then bootz ${kernel_addr_r} - ${fdt_addr_r}; else echo eMMC load or arguments failed; false; fi'
+=> run emmcboot
+```
+
+The root path is the documented vendor assumption, not universal advice. Stop if it is not the intended device/partition. Inspect `help fatload`, `help bootz` and active environment. The helper neither writes media nor saves settings. Chapter 19's lab patches use RAM environment/no autoboot; the unmodified vendor header selects a persistent MMC backend.
+
+### Modern SD route with PARTUUID
+
+The rest of this section uses the modern migration. Chapter 22 enables **`CONFIG_CMD_PART=y`** and **`CONFIG_PARTITION_UUIDS=y`** for `part uuid`. Keep hush, generic filesystem/MMC support and `CONFIG_CMD_BOOTZ=y`. Inspect final config and `help part` before relying on it; do not infer support from the vendor command set.
 
 For the next example only, assume verified U-Boot MMC device `0`, boot-files partition `1`, and an ext4 root partition `2`. These are not guaranteed to be the same indices Linux later uses. The board's routed console must match `ttymxc0` at 115200 baud. Enter the commands at U-Boot, without copying the `=>` prompt:
 
@@ -54,9 +75,14 @@ Why not `load ...; load ...; bootz ...`? A semicolon continues after a failed co
 
 A successful `bootz` normally does not return to the prompt. If it fails before handoff, U-Boot remains available for inspection. Keep helpers temporary while debugging. Only after the complete chain is understood would `setenv bootcmd 'run sdboot'` change this session's autoboot policy; it does not make that policy persistent.
 
-### EVK's default `bootcmd` (cleaned up)
+(evks-default-bootcmd-cleaned-up)=
+### Read inherited policy before replacing it
 
-Now compare your small helper with the actual reference. In `configs/mx6ull_14x14_evk_defconfig`, v2026.04 supplies this command, reformatted for reading:
+The [pinned vendor header](https://github.com/alientek-openedv/uboot-imx-rel_imx_4.1.15_2.1.0_ga_alientek/blob/edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb/include/configs/mx6ull_alientek_emmc.h), not its small defconfig alone, defines default policy. Trace `findfdt`, `loadimage`, `loadfdt`, `mmcboot` and `netboot`. Its **`fdt_file=imx6ull-alientek-emmc.dtb`** is a Linux filename, not a carrier/PHY detector. Storage helpers use FAT and `mmcdev` starts from the environment device, normally 1.
+
+Published policy repeats `mmc dev`, permits DT-less fallback through `boot_fdt=try`, and does not fully gate the network kernel load. These are reasons for our helper, not patterns to retain. Chapter 19's lab patches disable automatic use and networking; inspect the binary rather than assuming patches were applied elsewhere.
+
+For comparison only, `configs/mx6ull_14x14_evk_defconfig` in v2026.04 supplies this EVK command, reformatted for reading. It is not the modern MINI default; Chapter 22 replaces it with an empty command:
 
 ```text
 run findfdt;
@@ -76,7 +102,7 @@ else
 fi
 ```
 
-The referenced helper definitions are in `include/configs/mx6ullevk.h`. Read them too. EVK `findfdt` uses **`fdt_file`**, not our **`fdtfile`**, and selects an EVK/ULZ-EVK kernel filename from its board-name/revision variables. It does not detect a MINI. Its MMC helpers use FAT, and `boot_fdt=try` allows an attempted DT-less fallback. Its network kernel load is not fully failure-gated. These are inherited reference policies, not the recommended checks for a new MINI port.
+EVK helpers live in `include/configs/mx6ullevk.h`. Its `findfdt` uses **`fdt_file`**, not our **`fdtfile`**, and chooses EVK/ULZ-EVK filenames from board-name/revision strings. Neither these nor similarly named vendor helpers detect the safe kernel tree for a changed carrier.
 
 A `boot.scr` is a packaged command script loaded by `loadbootscript` and executed by `source`; it is not plain text that U-Boot silently reads on every board. A stored environment from an old image can also override compiled defaults. On qualified hardware, inspect `printenv bootcmd` and each referenced variable. On the host, trace them in the versioned source without claiming that your board has those defaults.
 
@@ -128,7 +154,7 @@ Do not append a debug token and assume it survives `run bootcmd`. A helper such 
 
 ### Where `bootargs` ends up in the DT
 
-In v2026.04, the normal path reaches `fdt_chosen()` in `boot/fdt_support.c`, via OS FDT preparation in `boot/image-fdt.c`. The weak `board_fdt_chosen_bootargs()` defaults to returning the environment's `bootargs`. The result looks like this illustrative property:
+In v2026.04, the normal path reaches `fdt_chosen()` in `boot/fdt_support.c`, via OS FDT preparation in `boot/image-fdt.c`. The weak `board_fdt_chosen_bootargs()` defaults to returning the environment's `bootargs`. The vendor uses older `common/fdt_support.c` and does not configure this board with the modern control-FDT setup. Trace each release's callers rather than assuming identical paths. The resulting kernel property looks like this:
 
 ```dts
 chosen {
@@ -206,7 +232,9 @@ This creates a legacy script image. On a qualified board, with the file already 
 
 With separate files, how do you record that a particular kernel belongs with a particular DTB? FIT gives them names inside one container and lets a **configuration** choose the combination. It can also carry a ramdisk or other firmware, but those are optional. One bundle simplifies release bookkeeping; it does not make the underlying storage update atomic.
 
-First make the build support explicit. In your own v2026.04 build, use `make O=... menuconfig`, inspect/save the resulting `.config`, and ensure `CONFIG_FIT=y`, `CONFIG_SHA256=y` and `CONFIG_CMD_BOOTM=y`. Keep `CONFIG_CMD_BOOTZ`, hush, filesystem and DT command support for the preceding examples. Do not assume the EVK defconfig enabled FIT just because `bootm` exists. The unsigned lab below does not need `CONFIG_FIT_SIGNATURE` or keys.
+First make the build support explicit. In your own v2026.04 build, use `make O=... menuconfig`, inspect/save the resulting `.config`, and ensure `CONFIG_FIT=y`, `CONFIG_SHA256=y` and `CONFIG_CMD_BOOTM=y`. Keep `CONFIG_CMD_BOOTZ`, hush, filesystem and DT command support for the preceding examples. Do not assume vendor or EVK configs enable FIT just because `bootm` exists. The unsigned lab below does not need `CONFIG_FIT_SIGNATURE` or keys.
+
+This FIT exercise belongs to the **modern build**, not the initial vendor image. Host tool capabilities alone do not establish target FIT support.
 
 ### A FIT image source file (.its)
 
@@ -299,7 +327,7 @@ Keep the loader and root choice separate. A TFTP loader can hand the same kernel
 
 ### Boot from a USB stick
 
-USB mass storage is a **host-mode** path, unlike ROM USB serial download. The selected EVK defconfig does not guarantee a working `usb` command/host controller for your board. Enable and validate host/storage support, connector role and power first. With the same approved RAM map and a prepared stick whose device/partition mapping you have checked:
+USB mass storage is a **host-mode** path, unlike ROM USB serial download. The vendor header enables host/storage code, but that is not board validation. Chapter 22's modern minimum deliberately excludes USB and has no ready-to-use host command/controller. Enable and validate host/storage support, connector role and power first. With the same approved RAM map and a prepared stick whose device/partition mapping you have checked:
 
 ```text
 => if usb start && load usb 0:1 ${kernel_addr_r} zImage && load usb 0:1 ${fdt_addr_r} ${fdtfile}; then bootz ${kernel_addr_r} - ${fdt_addr_r}; else echo USB load failed; false; fi
@@ -328,7 +356,7 @@ What was the last operation that actually completed? A mount failure is a differ
 
 ## 23.8  Lab
 
-1. **Trace policy on the host.** Read the exact EVK `CONFIG_BOOTCOMMAND` and every referenced helper in v2026.04. Explain why EVK `fdt_file` does not name the MINI's DTB.
+1. **Trace policy on the host.** Trace the pinned vendor defaults/helpers, then compare EVK policy in v2026.04. Explain why filenames are not hardware detection and why the workspaces need separate configs.
 2. **Write a memory/size plan.** Include compressed kernel, decompression destination/workspace, kernel DTB, script/FIT buffers and U-Boot reservations. Mark any unknown range before running loads.
 3. **Package a script and FIT.** Build/list the artifacts with the pinned tools. Without a matched kernel/DTB, use clearly labeled dummy payloads only to learn packaging; never call that a bootable image.
 4. **Check failure gating.** On qualified lab hardware, temporarily request a nonexistent kernel, then a nonexistent DTB, with an otherwise working helper. Both failures must leave you in U-Boot without invoking a boot command. Do not save this deliberately broken policy.
@@ -341,7 +369,7 @@ What was the last operation that actually completed? A mount failure is a differ
 - **A later helper overwrites diagnostics.** Inspect the command that actually constructs `bootargs`, not just its earlier printed value.
 - **Stale RAM and stale `filesize`.** Gate every load; preserve an initramfs size immediately. A failed load is not permission to reuse old data.
 - **Confusing the two FDTs.** The control tree describes U-Boot's hardware/drivers and can hold trust keys. The working/kernel tree is prepared for Linux. Do not modify the control tree casually.
-- **Saving too early.** `setenv` is transient. `saveenv` writes a configured storage backend, and Chapter 22's scaffold has none. Production persistence needs a reviewed layout/recovery policy.
+- **Saving too early.** `setenv` is transient. `saveenv` writes a configured storage backend, and Chapter 22's modern migration has none; Chapter 19's lab patches also use RAM-only storage, unlike the unmodified vendor header. Production persistence needs a reviewed layout/recovery policy.
 - **Wrong format or architecture.** `bootm` consumes FIT/legacy images, not an arbitrary raw zImage. `arch = "arm64"` metadata does not convert a 32-bit ARM payload.
 - **Hashes mistaken for authorization.** A valid hash-only FIT is not signed, and an optional signature is not necessarily enforced. Do not treat a successful lab boot as verified boot.
 

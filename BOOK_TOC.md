@@ -17,7 +17,7 @@
 
 - **Part I — Foundations.** Host setup, the ARMv7-A architecture as it differs from Cortex-M, the i.MX6ULL SoC, the GNU toolchain, the Boot ROM's `IVT` / `DCD` / `BootData` contract, and a hardware bring-up checklist.
 - **Part II — Bare-metal i.MX6ULL.** Build the entire stack from the reset vector up: LED in pure assembly; a C runtime with hand-written startup and linker script; a Boot-ROM-acceptable image built by our own Python tool; UART + `printf`; CCM clocks; DDR3 + MMDC; exceptions and GIC; timers; MMU + caches; one chapter each of bare-metal I²C/SPI/LCD, button input, and bare-metal RTC.
-- **Part III — U-Boot, deeply.** Build mainline U-Boot, recognize Part II inside its source, understand SPL, trace the boot flow line by line, port U-Boot to a custom board, bring up U-Boot on a previously unsupported SoC, add real pre-boot policies with GPIO, I2C, display, network, board identity, rollback, factory recovery, and power checks, master `bootcmd` / `bootargs` / FIT, build a multi-variant FIT image, set up the TFTP + NFS + USB-OTG development loop.
+- **Part III — U-Boot, deeply.** Build a MINI-first vendor baseline, then use a separate mainline study tree to recognize Part II inside U-Boot, understand SPL, trace the boot flow line by line, and migrate MINI board support. Explore pre-boot policies with GPIO, I2C, display, network, board identity, rollback, factory recovery, and power checks. Master `bootcmd` / `bootargs` / FIT, build a multi-variant FIT image, and set up the TFTP + NFS + USB-OTG development loop with the MINI's actual hardware and optional modules distinguished.
 - **Part IV — The Kernel.** Build mainline Linux for i.MX6ULL, boot it from U-Boot, debug failed boots, describe a custom board with Device Tree, validate DT bindings, trace `start_kernel()` to PID 1, build an initramfs, turn it into a recovery system, manage product configs, and choose a kernel lifecycle.
 - **Part V — Root filesystem & user space.** A `busybox`-based hand-built rootfs; `/proc` `/sys` `devtmpfs`; init systems; libc and dynamic linking; Buildroot; bootable SD/eMMC and SPI NOR images; product board directories; Ubuntu-base as a fully-featured alternative; services, networking, time, logging, security, read-only root + overlayfs, and containers on embedded.
 - **Part VI — Driver development.** ~33 chapters covering every common subsystem from char devices and platform drivers through I²C/SPI/PWM/RTC/IIO/regmap/DMA/Net/Sound/DRM/USB, with deeper treatment of CAN, multi-touch, block devices, WIFI, cellular modems, HDMI bridges, kernel timers, async notification, watchdog, power management, PREEMPT_RT real-time, MTD/UBI, V4L2/GStreamer, and a Rust-for-Linux sidebar. **One canonical example per subsystem** — depth on real chips lives in Part VII.
@@ -254,16 +254,17 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 > *The register-level work from Part II gives us a way to read U-Boot's source. We will trace its framework, distinguish a build from board qualification, and test each boot decision before trusting it.*
 
 ### Chapter 19 — U-Boot from source, first boot
-- Pin upstream v2026.04 and use Chapter 3's portable Linux-target toolchain environment
-- Inspect the source layout and build the EVK reference in a separate output directory
-- Read the actual no-SPL artifacts and ROM+DCD image header
+- Pin Point Atom's public tutorial source for the documented 512 MiB DDR / 8 GB eMMC MINI core
+- Inspect its board files, make visible first-lab edits, and use Chapter 3's existing portable compiler
+- Build the MINI vendor target and inspect its no-SPL ROM+DCD image
 - Separate file offsets, SD placement, runtime addresses and the reserved environment range
 - Inspect commands without sweeping live memory or saving experimental policy
-- **Lab:** trace and build on the host, then consider boot only on independently qualified hardware
+- **Lab:** build and inspect, then use a checked spare SD card for the matching MINI and record actual results
 - **Pages:** ~16
 
 ### Chapter 20 — U-Boot SPL: the missing link
-- Compare ROM+DCD with ROM+SPL and identify who initializes DDR
+- Compare the MINI's ROM+DCD route with ROM+SPL and identify who initializes DDR
+- Introduce a separate pinned upstream v2026.04 study tree without replacing the vendor MINI image
 - Build a separate PICO i.MX6UL SPL reference for source study, not MINI flashing
 - Trace OCRAM startup, DDR-resident BSS, size limits and the board's handoff path
 - Distinguish the SPL wrapper, full payload format and raw MMC load sector
@@ -279,12 +280,12 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 - **Lab:** build the command and inspect its linker registration before any board test
 - **Pages:** ~26
 
-### Chapter 22 — Porting U-Boot to a custom board
-- Fork `board/nxp/mx6ullevk` into the consistent `mx6ull_pa_mini` teaching namespace
+### Chapter 22 — Porting U-Boot to the MINI
+- Build a concrete `mx6ull_pa_mini` modern migration from documented MINI/core wiring
 - Connect board Kconfig, defconfig, control DTS, header and ROM DCD
-- Build an EVK-derived scaffold with disabled autoboot and a RAM-only environment
-- Record schematic, fitted parts, DDR calibration, pad/clock/reset and power evidence
-- **Lab:** compile and audit the scaffold without calling it a qualified MINI image
+- Supply a MINI control tree without the EVK carrier include, and verify the ordered vendor DCD
+- Integrate UART1, TF, eight-bit eMMC reset and single ENET2 with a datasheet-matched PHY candidate
+- **Lab:** build the complete candidate, then validate physical boot, memory and peripherals separately
 - **Pages:** ~22
 
 ### Chapter 23 — `bootcmd`, `bootargs`, FIT images
@@ -311,23 +312,24 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 - Reuse generic ARMv7 startup and U-Boot frameworks under an independent teaching architecture
 - Show complete UART1, clock, GPT1 and USDHC2 PIO driver files and manual integration edits
 - Trace bounded polling, baud/clock calculations, reset behavior and card error recovery
-- Require a qualified fitted-board DDR input before producing a MINI boot image
+- Include the full pinned vendor DDR sequence for the documented 512 MiB eMMC core
 - Explain IVT/Boot Data fields, file/media/RAM offsets and evidence checkpoints
-- **Lab:** reproduce the source build and host checks, then qualify hardware separately
+- **Lab:** reproduce the complete source/image build and ordered-DCD checks, then validate hardware separately
 - **Pages:** ~76
 
 ## Applied U-Boot scenarios
 
 ### Chapter 24B - Supplementary: U-Boot board policy with GPIO and I2C
 - Add late policy to the existing port without duplicating its hook
-- Use a hypothetical TMP102 with signed fractional values and checked I2C errors
-- Claim a dedicated GPIO descriptor, handle logical polarity and debounce, then release ownership
+- Use MINI's stock KEY0 as the first policy input; keep TMP102 as an optional I2C1 add-on
+- Claim the GPIO1_IO18 descriptor, handle logical polarity and debounce, then release ownership
 - Keep failure closed and dispatch exactly one normal or recovery path
 - **Lab:** inject sensor, environment and key failures in host fixtures, not live saved policy
 - **Pages:** ~18
 
 ### Chapter 24C - Supplementary: Ethernet fallback boot in U-Boot
-- Review FEC/PHY wiring, reset/clock ownership and uniquely allocated MAC addresses
+- Use MINI's single ENET2 route and distinguish older LAN8720 from V2.2 SR8201F support
+- Review reset/clock ownership, driver matching and uniquely allocated MAC addresses
 - Apply explicit static network state and test DHCP separately
 - Gate fresh kernel/DTB loads and arguments on both local and TFTP paths
 - Keep fallback before kernel handoff and distinguish a local rootfs from network payloads
@@ -335,7 +337,7 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 - **Pages:** ~18
 
 ### Chapter 24D - Supplementary: Board identity and variant selection in U-Boot
-- Define a bounded versioned 64-byte EEPROM record with required CRC and byte-order rules
+- Define a bounded versioned 64-byte record for an optional external EEPROM, absent from stock MINI
 - Validate complete fields, MAC/serial values and supported hardware combinations
 - Publish readiness only after checked selection and identity assignments
 - Keep unknown identity closed rather than inventing a universally safe DTB
@@ -343,7 +345,7 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 - **Pages:** ~18
 
 ### Chapter 24E — Supplementary: Multi-variant FIT images and DT overlays at runtime
-- Package common-DDR no-display, LCD43 and LCD70 configurations with matching DTBs
+- Package fixed-core no-display, ID4342 and ID7016 configurations with matching OS DTBs
 - Stage the FIT separately from its kernel destination and name the selected configuration
 - Use a complete harmless host overlay fixture and reload both inputs after apply failure
 - Distinguish the working OS tree from U-Boot's control tree
@@ -361,23 +363,25 @@ The SNVS (Secure Non-Volatile Storage) is the only always-on domain on the chip;
 
 ### Chapter 24G - Supplementary: Factory and recovery modes in U-Boot
 - Distinguish ROM SDP, working-U-Boot services and Linux recovery dependencies
-- Review actual USB role/controller support and authorized device identity
+- Distinguish MINI USB_TTL, USB_OTG1 service and USB_OTG2 host connectors
+- Review modern controller support and authorized device identity
 - Expose only a reviewed disposable target through UMS or DFU
 - Require fresh write authorization and preserve exclusive host/target storage ownership
 - **Lab:** test mutually exclusive recovery policy and enumeration, not guessed raw flashing
 - **Pages:** ~18
 
 ### Chapter 24H - Supplementary: PMIC and power policy in U-Boot
-- Determine what the fitted power hardware can measure and when it can protect an operation
+- Trace MINI's discrete regulators, reset supervision and SNVS backup supply
 - Separate status/enable requests from coherent measured rail/energy evidence
-- Keep the chip-specific adapter unimplemented and refusing until real documentation exists
+- Keep an optional monitor's refusal adapter out of stock MINI boot until its hardware is implemented
 - Prioritize power veto over normal, alternate and writable recovery paths
 - **Lab:** inject power-assessment failures without changing real rails or thresholds
 - **Pages:** ~18
 
 ### Chapter 24I - Supplementary: U-Boot display and boot screen
 - Review the actual video/BMP symbols, LCDIF driver parsing and board header requirement
-- Qualify panel timing, pinmux, power and backlight separately
+- Use MINI J1 RGB888 wiring and preserve panel-ID/boot-strap isolation
+- Qualify the added panel's timing, power and GPIO1_IO08 backlight separately
 - Keep the bounded BMP file buffer distinct from scanout framebuffer and other RAM users
 - Make optional splash failure unable to bypass recovery, rollback or power policy
 - **Lab:** validate host assets and mocked failure paths before qualified panel inspection

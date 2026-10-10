@@ -12,7 +12,11 @@ Suppose you change one driver and want to try it again. Must that also mean rewr
 
 There is a catch worth understanding before setting this up: **U-Boot's Ethernet driver stops being responsible at kernel handoff**. Linux must bring up its own driver, configure its own address and reach the NFS server. A successful TFTP transfer is useful evidence, but it is not evidence that NFS-root will work.
 
-This chapter uses **upstream U-Boot v2026.04**, commit `88dc2788777babfd6322fa655df549a019aa1e69`, and the local `mx6ull_pa_mini`/`imx6ull-pa-mini.dtb` naming from Chapters 22-23. Target commands require a board-qualified image, the approved memory plan from Chapter 23, and matched kernel/DT/rootfs artifacts. Those later artifacts do not appear merely because U-Boot compiled. Without them, follow the source/policy exercises and return to hardware boot after Parts IV-V.
+Chapter 19's first vendor MINI build deliberately disables networking and video: it is a UART/SD/eMMC baseline, not a TFTP bootloader. The pinned vendor header selects SMSC support for older LAN8720A carriers; **MINI V2.2 uses SR8201F**. Shared core support does not establish a working link.
+
+Network examples here use Chapter 22's separate **upstream v2026.04 migration**, commit `88dc2788777babfd6322fa655df549a019aa1e69`, with ENET2/address-1 wiring and the source-checked RTL8201F ID-match candidate. They remain optional until actual PHY ID, reset, 50 MHz reference and transfers are validated on this carrier. Keep local storage from Chapter 23 while those tests remain undone.
+
+Target commands also require Chapter 23's approved RAM plan and matched kernel/DT/rootfs. Modern examples name the **kernel** `imx6ull-pa-mini.dtb`; a vendor-kernel set instead may contain `imx6ull-alientek-emmc.dtb` at another output path. Choose the matched pair explicitly, never rename an EVK or U-Boot control DTB. Without artifacts and board validation, follow host/policy exercises and return after Parts IV-V.
 
 > **Execution boundary:** The host checks assume the isolated lab services from Chapter 3 are already configured. Stop if that setup is missing rather than changing unrelated host exports or firewall rules. Target examples are optional until the board and artifacts are qualified. Keep environment edits temporary, preserve a known-good recovery path, and do not write media or change fuses for these exercises.
 
@@ -24,7 +28,7 @@ This chapter uses **upstream U-Boot v2026.04**, commit `88dc2788777babfd6322fa65
 | NFS, Network File System | Linux mounts the host's exported directory as root | Needs Linux drivers and server access before userspace exists |
 | USB serial download using `uuu` | ROM loads a board-compatible recovery bootloader | Later script steps may write persistent media; not automatically RAM-only |
 
-U-Boot itself may still come from SD/eMMC. For the selected Chapter 19 EVK-style path, ROM executes DCD and enters full U-Boot: **there is no SPL in this config**. A network-loaded kernel does not remove the need for a valid first-stage image or a separately qualified USB recovery path.
+U-Boot itself may still come from SD/eMMC. Both the selected vendor core recipe and modern candidate use ROM+DCD followed by full U-Boot: **no SPL in these configs**. A network-loaded kernel does not remove the need for a valid first-stage image or a separately qualified USB recovery path.
 
 Keep the lab on an isolated wired link. The example address plan is host `192.168.7.1/24`, board `192.168.7.2/24`, with no gateway required on that direct subnet. Use it only if Chapter 3's actual host interface and routing match. WSL's private NAT address is not automatically the host address a physical board can reach; USB visibility and NFS-server support also depend on the WSL/host arrangement.
 
@@ -58,7 +62,7 @@ Do not symlink from that secure root to `~/imx6ull/src/linux`. A chrooted server
 
 `known-good-r1` means artifacts with a recorded successful test on this exact board, not an EVK image renamed as a rescue set. The directory name records a lab artifact revision, not a Linux or U-Boot version.
 
-After the matched kernel build and qualified MINI kernel DT from Part IV exist, use the build output directory rather than guessing an in-source path. These commands assume `~/imx6ull/build/kernel` and a writable lab staging root already established in Chapter 3:
+After the matched kernel build and qualified MINI kernel DT from Part IV exist, use the build output directory rather than guessing an in-source path. These commands assume the **modern kernel layout**, `~/imx6ull/build/kernel/arch/arm/boot/dts/nxp/imx/`, and a writable lab staging root from Chapter 3. An old vendor kernel commonly puts DTBs directly under `arch/arm/boot/dts/`; inspect the selected output and use its actual MINI filename/path, not these paths unchanged:
 
 ```sh
 $ . ~/imx6ull/scripts/env.sh
@@ -91,12 +95,12 @@ At a qualified U-Boot prompt, check `help tftpboot`, the selected Ethernet inter
 => ping ${serverip}
 ```
 
-Clearing `gatewayip` is appropriate only for this direct-subnet example. MAC allocation, PHY routing, clocks and resets must already be qualified; do not copy an `ethaddr` from another board. The EVK's `ethprime=eth1` is an inherited preference, not proof of which MINI connector works.
+Clearing `gatewayip` is appropriate only for this direct-subnet example. MAC allocation, PHY routing, clocks and resets must already be qualified; do not copy an `ethaddr` from another board. The modern control DT aliases its sole enabled MAC, ENET2, as Ethernet 0; Linux interface naming is separate. Inspect actual enumeration. Inherited EVK `ethprime=eth1` or vendor `ethprime=FEC` is not board validation.
 
 For a transfer-only check, set a helper whose second load is gated by the first:
 
 ```text
-=> setenv netload 'if tftpboot ${kernel_addr_r} ${bootdir}/zImage; then setenv kernel_size ${filesize}; if tftpboot ${fdt_addr_r} ${bootdir}/${fdtfile}; then setenv fdt_size ${filesize}; else echo DTB transfer failed; false; fi; else echo Kernel transfer failed; false; fi'
+=> setenv netload 'if tftpboot ${kernel_addr_r} ${bootdir}/zImage && setenv kernel_size ${filesize}; then if tftpboot ${fdt_addr_r} ${bootdir}/${fdtfile} && setenv fdt_size ${filesize}; then true; else echo DTB transfer or size capture failed; false; fi; else echo Kernel transfer or size capture failed; false; fi'
 => run netload
 ```
 
@@ -147,7 +151,7 @@ Can Linux mount NFS before it loads a module from that same root? No. For **dire
 | Required pinctrl, clocks, regulator/reset providers and matched kernel DT | Hardware dependencies for that Ethernet path |
 | `CONFIG_IP_PNP_DHCP`, if choosing DHCP | A DHCP request cannot work from an option string alone |
 
-There may be further board/kernel dependencies. Verify them in the selected Part IV kernel `.config` and boot messages; the U-Boot config is not a substitute. An initramfs can supply modules and perform a different mount procedure, but then its `/init` owns that logic. An executable `/init` can prevent the direct `nfsroot=` path from being used.
+For MINI V2.2, check the Linux driver against the actual SR8201F ID and this carrier's reset/clock route. U-Boot's Realtek ID match is not a test of the selected kernel driver. There may be further board/kernel dependencies. Verify them in the selected Part IV kernel `.config` and boot messages; the U-Boot config is not a substitute. An initramfs can supply modules and perform a different mount procedure, but then its `/init` owns that logic. An executable `/init` can prevent the direct `nfsroot=` path from being used.
 
 For our static, direct-subnet example the final kernel command line is:
 
@@ -213,7 +217,7 @@ Use this review checklist, not a runnable placeholder script:
 | Optional persistent programming | Explicit storage controller/area, partition map, offsets, actual byte/block counts, backup and read-back procedure |
 | Return to normal boot | Documented strap restoration and a known-good image for this physical revision |
 
-Fastboot commands need a bootloader built and configured for that USB gadget path. The selected EVK defconfig is not a ready-made manufacturing image. Check NXP's [U-Boot requirements](https://github.com/nxp-imx/mfgtools/wiki/uboot-config-requirement) and the actual v2026.04 config rather than assuming `uuu` adds missing firmware features.
+Fastboot commands need a bootloader built and configured for that USB gadget path. Neither Chapter 19's baseline nor Chapter 22's modern minimum is a ready-made manufacturing image. The modern minimum excludes USB; the vendor host stack is not proof of a configured Fastboot gadget. Check NXP's [U-Boot requirements](https://github.com/nxp-imx/mfgtools/wiki/uboot-config-requirement) and the actual v2026.04 config rather than assuming `uuu` adds missing firmware features.
 
 A script containing `FB: flash`, `mmc write`, erases, or persistent environment saves changes storage even if its first operation only downloaded into RAM. Inspect every stage and any built-in recipe. Do not copy arbitrary block counts, wipe the first megabyte to simulate a fault, or burn fuses as part of a recovery exercise.
 
@@ -290,15 +294,15 @@ For a later session-level autoboot choice:
 => setenv bootcmd 'run devel_boot'
 ```
 
-Keep that assignment unsaved during bring-up. It does not alter Chapter 22's disabled-autoboot delay on its own. Persistent autoboot is a separate product decision requiring a qualified environment backend, failure/recovery policy and deliberate delay settings. Chapter 22's `ENV_IS_NOWHERE` scaffold cannot persist it.
+Keep that assignment unsaved during bring-up. It does not alter Chapter 22's disabled-autoboot delay on its own. Persistent autoboot is a separate product decision requiring a qualified environment backend, failure/recovery policy and deliberate delay settings. Chapter 22's `ENV_IS_NOWHERE` migration cannot persist it; Chapter 19's lab patches also use RAM environment, unlike the unmodified vendor header.
 
-For a one-shot local-root comparison, retain the `sdargs`/`sdboot` definitions from Chapter 23 and use `run sdboot`. That helper obtains a real root partition UUID and gates all loads. Do not silently replace the NFS arguments with guessed `/dev/mmcblk0p2` numbering or retain NFS arguments while testing a local root.
+For a modern one-shot local-root comparison, retain Chapter 23's `sdargs`/`sdboot` and use `run sdboot`. For the vendor baseline, use its separate `emmcargs`/`emmcboot`, restoring the matched vendor-kernel DTB filename and verified root mapping. That helper obtains a real root partition UUID and gates all loads. Do not silently replace the NFS arguments with guessed `/dev/mmcblk0p2` numbering or retain NFS arguments while testing a local root.
 
 **Prediction check:** if the DTB transfer fails but yesterday's DTB remains in RAM, will `devel_boot` start Linux? No. `netload` returns failure, so the only branch taken prints the error and stays in U-Boot. The old bytes are irrelevant to the decision.
 
 ## 24.7  Lab
 
-1. **Inventory prerequisites without changing services.** Record the host interface/address, TFTP root, active export, kernel built-in Ethernet/IP/NFS options, qualified bootloader and the board evidence. Mark missing items before booting.
+1. **Inventory prerequisites without changing services.** Record the host interface/address, TFTP root, active export, kernel built-in Ethernet/IP/NFS options, qualified bootloader and board evidence, including the actual carrier PHY revision and separately checked kernel driver. Mark missing items before booting.
 2. **Stage one artifact pair.** Use a new directory, record sizes/hashes and confirm server readability. Do not use an outside-root symlink or label untested artifacts as known-good.
 3. **Exercise transfer failure on qualified hardware.** Request a nonexistent kernel, then a nonexistent DTB. The gated helper must not call `bootz` in either case. Restore the known filenames without saving the broken settings.
 4. **Verify actual NFS-root.** Inspect `/proc/cmdline`, `/proc/mounts` and `/proc/net/pnp`. Read a harmless host-created marker from the target and record the observation, without assuming immediate cache coherence.

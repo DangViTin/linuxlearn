@@ -1,0 +1,58 @@
+diff --git a/configs/mx6ull_alientek_emmc_defconfig b/configs/mx6ull_alientek_emmc_defconfig
+--- a/configs/mx6ull_alientek_emmc_defconfig
++++ b/configs/mx6ull_alientek_emmc_defconfig
+@@ -3,3 +3,4 @@
+ CONFIG_ARCH_MX6=y
+ CONFIG_TARGET_MX6ULL_ALIENTEK_EMMC=y
+ CONFIG_CMD_GPIO=y
++# CONFIG_CMD_NET is not set
+diff --git a/fs/fat/fat.c b/fs/fat/fat.c
+--- a/fs/fat/fat.c
++++ b/fs/fat/fat.c
+@@ -824,6 +824,7 @@ int do_fat_read_at(const char *filename, loff_t pos, void *buffer,
+ 	fsdata datablock;
+ 	fsdata *mydata = &datablock;
+ 	dir_entry *dentptr = NULL;
++	dir_entry dent;
+ 	__u16 prevcksum = 0xffff;
+ 	char *subname = "";
+ 	__u32 cursect;
+@@ -1155,7 +1156,6 @@ rootdir_done:
+ 	while (isdir) {
+ 		int startsect = mydata->data_begin
+ 			+ START(dentptr) * mydata->clust_size;
+-		dir_entry dent;
+ 		char *nextname = NULL;
+ 
+ 		dent = *dentptr;
+diff --git a/include/configs/mx6ull_alientek_emmc.h b/include/configs/mx6ull_alientek_emmc.h
+--- a/include/configs/mx6ull_alientek_emmc.h
++++ b/include/configs/mx6ull_alientek_emmc.h
+@@ -304,7 +304,7 @@
+ 
+ 
+ /* USB Configs */
+-#define CONFIG_CMD_USB
++/* USB host disabled for the first UART/SD lab. */
+ #ifdef CONFIG_CMD_USB
+ #define CONFIG_USB_EHCI
+ #define CONFIG_USB_EHCI_MX6
+@@ -344,7 +344,7 @@
+ #define CONFIG_IMX_THERMAL
+ 
+ #ifndef CONFIG_SPL_BUILD
+-#define CONFIG_VIDEO
++/* Display disabled for the first UART/SD lab. */
+ #ifdef CONFIG_VIDEO
+ #define CONFIG_CFB_CONSOLE
+ #define CONFIG_VIDEO_MXS
+@@ -379,3 +379,9 @@
+ #endif
+ 
++/* First MINI lab: stay at the prompt and do not load or save an environment. */
++#undef CONFIG_BOOTDELAY
++#define CONFIG_BOOTDELAY -1
++#undef CONFIG_ENV_IS_IN_MMC
++#define CONFIG_ENV_IS_NOWHERE
++
+ #endif

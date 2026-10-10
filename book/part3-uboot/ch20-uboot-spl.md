@@ -11,14 +11,15 @@ status: draft
 Chapter 19 left us with a large U-Boot image and a small question: how could
 the ROM load it into DDR before U-Boot's C code had initialized that DDR?
 
-For the EVK configuration, the answer was the DCD. The ROM interpreted its
+For our MINI vendor configuration, the answer was the DCD. The ROM interpreted its
 register writes first. Another board can give that job to a small program
 instead. That program is **SPL**, the Secondary Program Loader.
 
-SPL is an alternative boot stage, not a file missing from our EVK build.
+SPL is an alternative boot stage, not a file missing from our MINI build.
 Knowing which route you have is more useful than memorizing a universal
 "ROM, SPL, U-Boot" diagram. We will read an actual SPL implementation, then
-compare its responsibilities with the EVK's ROM-driven setup.
+compare its responsibilities with the MINI's ROM-driven setup. The comparison
+uses another board's source on the host. It does not replace our MINI firmware.
 
 ## 20.1  Why two stages
 
@@ -29,17 +30,17 @@ must therefore begin in memory that is already usable.
 Two routes solve that dependency on this SoC family:
 
 ```{figure} ../illustrations/part3/02-two-ddr-boot-routes.png
-:alt: The EVK route lets the ROM run DCD writes before U-Boot in DDR. The SPL route runs a small program in OCRAM to initialize DDR first.
+:alt: The ROM and DCD route used by MINI and the reference EVK prepares DDR before full U-Boot. An alternative SPL route initializes DDR from a small program in OCRAM.
 :name: fig-p3-ddr-boot-routes
 :figclass: concept-sketch
 :width: 100%
 
-Follow the point where DDR becomes usable. The upper route assigns that work to ROM-interpreted data. The lower route assigns it to SPL code. Both still need the correct board settings.
+Our MINI uses the upper route too. The EVK label names another example of ROM-interpreted DDR setup, not the board we need to buy. The lower route assigns that work to SPL code.
 ```
 
 | Route | Who prepares DDR? | Where the first application code runs |
 |-------|-------------------|--------------------------------------|
-| EVK ROM + DCD | The Boot ROM executes the image's DDR setup data | Full U-Boot begins in DDR |
+| MINI ROM + DCD | The Boot ROM executes the image's DDR setup data | Full U-Boot begins in DDR |
 | ROM + SPL | A small executable runs its board-specific DDR setup | SPL begins in internal RAM, then loads full U-Boot into DDR |
 
 Both routes still need correct board-specific DDR values. Moving the writes
@@ -106,7 +107,36 @@ expanded configuration after changing a feature.
 
 ## 20.4  Where SPL lives in the source
 
-We need a real SPL-enabled configuration to read. In the same v2026.04 tree,
+Our MINI baseline has no SPL to inspect. For this comparison and the modern
+internals exercises that follow, create a **separate upstream v2026.04 study
+tree**. Keep the vendor tree and its MINI image from Chapter 19 unchanged:
+
+```sh
+$ cd ~/imx6ull/src
+$ git clone --branch v2026.04 https://source.denx.de/u-boot/u-boot.git u-boot
+$ cd u-boot
+$ git rev-parse HEAD
+88dc2788777babfd6322fa655df549a019aa1e69
+```
+
+If that directory already exists, inspect its revision and preserve local
+changes instead of cloning over it. This fixed release gives Chapters 20-24J
+one set of modern APIs to discuss. Their C patches belong here, **not** in the
+2016 vendor tree. Chapter 22 maps the MINI's hardware into this newer framework.
+
+We also need a full-U-Boot reference for Chapter 21's map and command exercise:
+
+```sh
+$ . ~/imx6ull/scripts/env.sh
+$ make O="$HOME/imx6ull/build/uboot-evk" mx6ull_14x14_evk_defconfig
+$ make O="$HOME/imx6ull/build/uboot-evk" -j4
+```
+
+This is a host-side comparison build, **not an image to flash to MINI**. Its
+host tools may need `libgnutls28-dev` in the Chapter 3 lab Ubuntu environment.
+That dependency does not change either project-local Arm toolchain.
+
+Now use a real SPL-enabled configuration. In this v2026.04 tree,
 use **`pico-imx6ul_defconfig`** as a separate host-side reference. It describes
 a TechNexion PICO i.MX6UL platform, not the i.MX6ULL EVK and not our MINI.
 **Do not flash its outputs to either board.**
@@ -120,10 +150,12 @@ $ arm-none-linux-gnueabihf-size \
     ~/imx6ull/build/uboot-pico-study/spl/u-boot-spl
 ```
 
-The different `O=` directory keeps this configuration out of our EVK build.
+The different `O=` directory keeps this configuration out of both the EVK study
+build and the MINI vendor build.
 The Arm-prefixed `size` program reads the target ELF on the host. It does not
 execute it. Its BSS count is useful, but does not describe stack usage or all
-packaging overhead.
+packaging overhead. We are borrowing a source example, not changing the MINI's
+documented boot route.
 
 Read these source files with the generated `.config` beside them:
 
@@ -215,7 +247,7 @@ For the PICO raw-MMC reference, inspect
 ```
 
 That explains an offset you may have seen in other i.MX6 SPL instructions.
-It does **not** change the EVK image placement in Chapter 19. The loader's
+It does **not** change the MINI image placement in Chapter 19. The loader's
 expected payload format matters as well: a legacy `u-boot.img`, a FIT, and a
 ROM-facing DCD image are not interchangeable just because they contain U-Boot.
 

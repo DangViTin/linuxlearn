@@ -14,11 +14,22 @@ backlight is off and the screen appears black. Before adding a logo, separate
 those two paths: data reaches the panel through eLCDIF; light comes from a
 board-specific power and backlight circuit.
 
-We will prepare the U-Boot side of an RGB boot screen, using upstream
-**v2026.04** and the Chapter 22 `mx6ull_pa_mini` port. The reference MINI does
-not automatically include a qualified LCD carrier. Without the fitted
-panel/carrier schematic and panel datasheet, do the source/image exercises
-only; there is no universal LCD timing or backlight GPIO to copy.
+The supplied **MINI V2.2 baseboard already has a 40-pin RGBLCD connector,
+J1**, with 24-bit RGB, sync/clock, backlight control, and touch signals. What
+you add is a compatible RGB panel module and its cable, not a hypothetical
+LCD carrier. An SPI/8080 MCU-interface module cannot plug into this RGB
+path merely because its size matches.
+
+Start with Chapter 19's MINI vendor baseline and identify the actual panel
+module before enabling a separate display build. Chapter 19's first vendor
+lab deliberately disables video; no panel is required there, and its legacy
+LCD-reset helper must not run during the UART/SD/eMMC starting exercise.
+We then prepare the modern boot
+screen using upstream **v2026.04** in the separate `mx6ull_pa_mini` migration.
+The old board display helpers and modern DM video APIs are not interchangeable.
+Without a panel, you can still inspect J1's routes and complete the host
+BMP/memory exercises; with a panel, its timing and power specification
+determine the remaining values.
 
 ## 24I.1  What a U-Boot boot screen really is
 
@@ -44,6 +55,25 @@ Linux may reset the controller/panel and redraw. Preserving the image across
 handoff is a separate integration project, not a property of `bmp display`.
 Changing Linux Device Tree does not fix U-Boot's own control DT or driver.
 
+The MINI connection is concrete (baseboard sheet 2, core sheets 5/8;
+guide MINI Section 5.4.4, pp. 267-268):
+
+| MINI route | Meaning for this exercise |
+|---|---|
+| LCD_DATA16..23 -> R0..7; DATA8..15 -> G0..7; DATA0..7 -> B0..7 | RGB888 wiring; the three highest color bits pass through switches |
+| LCD_PCLK, LCD_HSYNC, LCD_VSYNC, LCD_DE -> J1 | eLCDIF pixel/sync path, not SPI transfers |
+| DCDC_5V and ground -> J1 | Module supply connection; panel/module electrical limits still apply |
+| BLT_PWM -> J1 pin 34, GPIO1_IO08 on the SoC | Backlight control input to the module, not direct LED power |
+| RESET -> J1 pin 40 | Shared board reset network, not an independent arbitrary LCD-reset GPIO |
+| I2C2 SCL/SDA, CT_INT, CT_RST -> J1 | Touch-related routes; not required for drawing a BMP |
+
+U1-U3 are SGM3157 switches on LCD_DATA23/15/7. These pads also carry boot
+configuration bits, while compatible ATK panels use the corresponding lines
+for panel ID. R11 connects `SGM_CTRL` to LCD_VSYNC in the supplied schematic;
+R10's DE option and the R15-R17 bypasses are marked DNP. Preserve that
+startup isolation and switching arrangement. Do not bypass the switches or
+change strap resistors as a display troubleshooting shortcut.
+
 ```{figure} ../illustrations/part3/17-pixels-and-backlight.png
 :name: fig-p3-pixels-backlight
 :figclass: concept-sketch
@@ -64,8 +94,21 @@ Image bytes, scanout pixels, and panel light follow different paths. A black scr
 | Identified boot partition | Trusted, validated `splash.bmp` |
 
 This extends the same board port. It does not create a second board or change
-its ROM/DCD boot path. DDR, display clocks, memory reservations, and power
-must already be qualified for the actual hardware.
+its ROM/DCD boot path. These are modern-port filenames, not vendor target
+names. Establish UART1 and SD/eMMC first; then add video with a matched panel,
+verified DDR, display clocks, memory reservations, and power.
+
+The guide lists ATK RGB module IDs such as 4342 (480 x 272), 4384/7084
+(800 x 480), 7016 (1024 x 600), and 1018 (1280 x 800). Choose by the fitted
+module, not by screen diagonal alone. The public vendor eMMC board source
+currently defines a `TFT7016` mode and `detect = NULL`: neither a default
+`panel` string nor that table proves automatic MINI panel-ID detection.
+Its helper also treats GPIO5_IO09 as LCD reset, whereas the supplied core
+labels SNVS_TAMPER9 `nWDOG` in the shared reset network. Review that difference
+before enabling or migrating the helper; do not toggle it as a harmless
+independent panel reset. Keep the exact matched mode and observed baseline
+behavior as comparison evidence, rather than advertising every kit screen
+as supported by the same binary.
 
 ## 24I.3  Enable the display-related configs
 
@@ -129,9 +172,12 @@ The MXS driver reads an LCDIF `display` phandle, then `bits-per-pixel` and the
 does not use `bus-width` to choose the wire format or `native-mode` to select
 another timing entry. Match its actual parser, not just a Linux binding.
 
-The following is a **timing-format example**, not a qualified MINI panel.
-Do not enable it on hardware until every value and wire is checked against
-the fitted carrier/panel. It assumes 24-bit RGB wiring and active-high DE:
+The following is an **800 x 480 timing-format example**, not the vendor's
+TFT7016 mode or a timing selected from MINI panel-ID lines. For a fitted
+4384/7084 module, compare every clock/porch/polarity with its own timing
+specification; sharing a resolution does not qualify these values. For
+7016 or another module, replace the geometry too. It assumes 24-bit RGB
+wiring and active-high DE:
 
 ```dts
 &lcdif {
@@ -167,7 +213,8 @@ Supply the board-specific `pinctrl_lcdif` group under the existing IOMUXC
 node. For 24-bit wiring that normally includes LCD_CLK, ENABLE/DE, HSYNC,
 VSYNC, and DATA00..23 with the appropriate pad macros. An 18-bit panel needs
 its documented signal mapping and driver format; do not arbitrarily remove
-six wires. Review conflicts with NAND, Ethernet, and GPIO uses on the carrier.
+six wires. On MINI, retain the SGM3157/boot-strap arrangement described above
+and account for the shared reset and BLT_PWM pin ownership.
 Pad drive strength and slew are electrical choices, not universal `0x79`
 settings.
 
@@ -180,8 +227,11 @@ setup, so a DE-low panel needs source-level investigation rather than a DT
 promise alone.
 
 The driver does **not** resolve a generic panel/backlight phandle and perform
-all carrier power/reset sequencing for you. Provide that reviewed integration
-before probe where needed: stabilize rails, apply reset timing, prepare valid
+all module power/reset sequencing for you. GPIO1_IO08 can provide GPIO
+enable or PWM1 output according to the matched module's BLT_PWM contract;
+the net name alone does not establish polarity, duty limits or sequencing.
+Provide that reviewed integration before probe where needed: stabilize
+rails, apply reset timing, prepare valid
 scanout, then enable the backlight in the panel-approved order. A
 `gpio-backlight` node on its own is not proof that this path invokes it.
 Critical power checks from Chapter 24H must precede the operation they guard,
@@ -346,9 +396,12 @@ recovery/power decision or delay watchdog service unpredictably.
    the difference between source BMP depth, framebuffer depth, and RGB wires.
 2. Calculate file/framebuffer sizes for a chosen geometry, including row
    padding. Reject an oversized or truncated host asset.
-3. With a documented fitted panel/carrier, review timing, all signal routes,
-   power/reset/backlight sequence, and operation-phase guards.
-4. Build the MINI port and reserve non-overlapping RAM before loading anything.
+3. Trace MINI J1 and U1-U3. Identify the optional fitted RGB module and its
+   ID/timing specification; review GPIO1_IO08, shared RESET, power sequence,
+   and operation-phase guards. Do not modify straps or switch bypasses.
+4. Compare the matched vendor display setup, then build the modern MINI port
+   and reserve non-overlapping RAM before loading anything. Do not transplant
+   the old reset helper or select a mode solely from `panel=TFT7016`.
 5. On approved hardware, record actual load/header results and color-bar/panel
    observations separately. No panel is assumed working by this chapter.
 6. Add the optional wrapper. Missing, empty, or oversized files must fail the
@@ -361,7 +414,8 @@ recovery/power decision or delay watchdog service unpredictably.
 - **Backlight equals initialized panel.** They are separate paths.
 - **Linux binding equals U-Boot behavior.** Read this version's actual parser.
 - **Missing `BMP_24BPP`.** Generic BMP support alone is not every source format.
-- **Universal timing/pad settings.** Carrier and panel determine them.
+- **Universal timing/pad settings.** MINI routing and the actual module determine them.
+- **Ignoring the SGM3157 switches or shared reset.** They are part of this board, not optional decoration.
 - **Loading over the framebuffer or kernel.** Reserve the complete range first.
 - **Decoding an untrusted/truncated image.** Header output is not full validation.
 - **A splash wrapper replacing safety policy.** Preserve A/B and both veto paths.
@@ -369,6 +423,11 @@ recovery/power decision or delay watchdog service unpredictably.
 
 ## 24I.13  Going deeper
 
+- Supplied MINI V2.2 schematic, sheets 1-2, core schematic sheets 5/8,
+  and guide MINI Section 5.4.4 (pp. 267-268): J1 wiring, panel choices,
+  SGM3157 isolation, shared reset, and GPIO1_IO08 backlight control.
+- [Vendor eMMC board display implementation](https://github.com/alientek-openedv/uboot-imx-rel_imx_4.1.15_2.1.0_ga_alientek/blob/edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb/board/freescale/mx6ull_alientek_emmc/mx6ull_alientek_emmc.c):
+  inspect the configured mode and reset assumptions before migration.
 - [v2026.04 MXS video driver](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/video/mxsfb.c)
   and [video Kconfig](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/video/Kconfig).
 - [BMP command](https://github.com/u-boot/u-boot/blob/v2026.04/cmd/bmp.c) and

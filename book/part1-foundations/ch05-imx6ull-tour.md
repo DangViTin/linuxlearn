@@ -275,7 +275,7 @@ Our reference documents are the MINI v2.2 schematic and the core schematic with 
 | Hardware in the reference setup | What to check | Relevant lab |
 |---|---|---|
 | User LED, GPIO1_IO03 | Pad and active level | [Assembly LED](../part2-baremetal/ch09-asm-led.md) |
-| KEY0 / BEEP | Reference KEY0: GPIO1_IO01, ALT5, active-low; BEEP: SNVS_TAMPER1/GPIO5_IO01. Verify actual circuit/revision. | [Button and beep](../part2-baremetal/ch18B-button-beep.md) |
+| KEY0 / BEEP | MINI V2.2 KEY0: UART1_CTS / GPIO1_IO18, ALT5, active-low; BEEP: SNVS_TAMPER1/GPIO5_IO01. Verify actual circuit/revision. | [Button and beep](../part2-baremetal/ch18B-button-beep.md) |
 | Built-in UART1 bridge | TX/RX pads, bridge identity, power path | [UART](../part2-baremetal/ch12-uart-printf.md) |
 | DDR3L on core | Schematic names `NT5CC256M16EP-EK`; compare fitted marking and topology | [DDR initialization](../part2-baremetal/ch14-ddr3-init.md) |
 | eMMC on core | Schematic names `KLM8G1GETF`; verify fitted storage | [SD/eMMC](../part7-cookbook/ch66-sd-emmc.md) |
@@ -286,7 +286,7 @@ Our reference documents are the MINI v2.2 schematic and the core schematic with 
 
 ALPHA baseboards and NAND cores are revision-dependent alternatives, not verified equivalents of this schematic set. Before doing their labs, obtain their matching schematic/BOM and identify the fitted components. Audio, CAN, light sensors, IMUs, Wi-Fi, and modems may require add-ons: see [audio codecs](../part7-cookbook/ch89-audio-codecs.md), [CAN](../part6-drivers/ch55C-can-flexcan.md), [light sensors](../part7-cookbook/ch68-light-color.md), [SPI IMUs](../part7-cookbook/ch71-spi-imus.md), [SDIO Wi-Fi](../part7-cookbook/ch91-sdio-wifi.md), and [USB modems](../part7-cookbook/ch102-usb-lte.md). RS485 and GPS are covered in [RS485/Modbus](../part7-cookbook/ch108-rs485-modbus.md) and [GPS/PPS](../part7-cookbook/ch107-gps-pps.md).
 
-For the named schematic set, CORE sheet 8 labels J2 pin 49 `GPIO_1 / KEY0`, while pin 47 is `UART1_CTS / KEY2`. GPIO1_IO18 belongs to the latter GPIO function, not the MINI's KEY0. Do not carry a differently named/revised button example into this hardware without reconciling its mapping.
+Follow connector **pin numbers through both schematics**, not the core's accessory aliases alone. CORE sheet 8 labels J2 pin 49 `GPIO_1 / KEY0` and pin 48 `UART1_CTS / KEY2`. MINI V2.2 sheet 1 connects B49 to `GBC_KEY / AP_INT` and B48 to its onboard **KEY0**. Sheet 2 shows that button and its R12 pull-up. The MINI button therefore uses GPIO1_IO18; GPIO1_IO01 is a different module signal. The same core can meet baseboards with different button names.
 
 For another board, re-derive power/reset policy, oscillator sources, DDR topology/timings, boot-storage routing, PHY wiring, and pin assignments. The [board-directory pattern](../part2-baremetal/ch18A-project-organization.md) organizes those differences; it does not make incompatible hardware work unchanged. Do not use Chapter 14's DDR values without that comparison.
 

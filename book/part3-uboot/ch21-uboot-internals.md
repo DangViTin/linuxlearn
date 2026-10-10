@@ -17,7 +17,10 @@ We do not need to understand all of U-Boot at once. We need a route from a
 visible result to the code responsible for it. Start with the prompt. Work
 backward to the runtime that made it possible, then follow one command forward.
 
-Keep the Chapter 19 **v2026.04 EVK reference build** open. Its ROM + DCD route
+Keep the **v2026.04 study tree and EVK comparison build from Section 20.4** open.
+The MINI image from Chapter 19 stays in its separate vendor output directory.
+We use the newer tree here to learn current source organization and APIs, not
+to substitute an EVK image for the MINI. Its ROM + DCD route
 has already made DDR usable before full U-Boot executes. Chapter 20's SPL
 route can reach the same full-U-Boot entry through a different earlier stage.
 Neither route changes the distinction between the linked address and the
@@ -317,7 +320,7 @@ obj-$(CONFIG_CMD_BOOK_HELLO) += book_hello.o
 ```
 
 Finally, add `CONFIG_CMD_BOOK_HELLO=y` to the EVK study defconfig in your
-working tree, then rerun the two Chapter 19 build commands with the same
+working tree, then rerun the two Section 20.4 EVK build commands with the same
 output directory. This edits the configuration input, rather than relying
 on a hand-edited generated `.config` that a later defconfig command replaces.
 
@@ -460,7 +463,7 @@ to Linux.
 ## 21.8  Reading a real boot, end to end
 
 Use your own qualified board log, or study the source without claiming a run.
-For the Chapter 19 EVK route, map these kinds of messages to their owners:
+For the modern EVK comparison route, map these kinds of messages to their owners:
 
 | Observation | Source area to inspect |
 |-------------|------------------------|

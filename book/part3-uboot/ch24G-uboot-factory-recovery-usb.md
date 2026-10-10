@@ -16,13 +16,22 @@ to a host computer.
 The service port is also a new way to damage the board. A host that sees a
 writable disk can overwrite the accepted slot, credentials, or boot metadata.
 We will distinguish recovery levels first, then restrict what the host can
-reach. The baseline is upstream **U-Boot v2026.04**, using the Chapter 22
-`mx6ull_pa_mini` port, not an unmodified EVK image.
+reach. Begin with Chapter 19's **MINI vendor baseline and UART1 console**.
+The UMS/DFU configurations and board code below target upstream **U-Boot
+v2026.04**, in the separate `mx6ull_pa_mini` migration, not the older vendor
+tree. Keep the baseline boot/recovery route available while adding service.
 
-That port is initially an unqualified `ENV_IS_NOWHERE` scaffold with autoboot
-disabled. It supplies neither a prepared recovery medium nor persistent
-metadata. Source/host-mock exercises can use it; real USB service requires
-separate platform and storage-layout qualification first.
+The MINI already has the necessary connector routes; it does not need a
+generic EVK carrier. Chapter 22 now supplies a complete modern MINI source
+candidate for UART/storage and source-checked ENET2 support, with physical
+operation still unqualified. It deliberately omits USB, so integrate the
+device-mode path here and plan a writable service target explicitly.
+Its `ENV_IS_NOWHERE` environment is nonpersistent; that fact is separate
+from USB support or the safety of exposing media.
+
+Chapter 19's first vendor lab also disables `CMD_USB`. The USB_TTL serial
+bridge does not need that command; UMS/DFU below are later feature builds,
+not services promised by that initial UART/storage binary.
 
 ## 24G.1  Recovery levels
 
@@ -39,10 +48,26 @@ U-Boot. NXP's `uuu` can orchestrate multiple stages/protocols; its presence
 on the host does not identify which stage the target is running. Keep
 Chapter 8's exact ROM access procedure documented independently.
 
-The mainline EVK-derived path here uses ROM DCD initialization and
-`u-boot-dtb.imx`, with no SPL. Do not copy an `spl` DFU target or its raw offsets
-from an unrelated board. The EVK DCD itself is board-specific, not a DDR
-configuration certified for MINI.
+On **MINI V2.2**, the similarly shaped USB sockets have different jobs
+(supplied baseboard schematic, sheet 4; guide Sections 5.4.3, 5.4.10-11):
+
+| Board connector | Actual route | Use here |
+|---|---|---|
+| `USB_TTL`, Type-C | CH340C USB-to-UART bridge, then UART1 | Serial console; not ROM SDP, UMS or DFU |
+| `USB_OTG`, Type-C | i.MX6ULL USB_OTG1 D+/D-, ID/VBUS circuitry | ROM USB boot and the intended U-Boot peripheral service connection |
+| `USB_HOST`, Type-A | USB_OTG2, with board 5 V on VBUS | Host peripherals; not the host-PC service cable |
+
+Use a data-capable host-to-USB_OTG cable and keep the independent USB_TTL
+serial console. Apply Chapter 8's reviewed supply arrangement; connecting
+several powered cables is not a substitute for tracing the VBUS paths.
+ROM entry uses the MINI's BOOT_CFG1 switch bank and USB setting from its
+own sheet-1 table/silkscreen, not the recovery key or EVK switch positions.
+KEY0 service entry only works after U-Boot reaches the key hook.
+
+The modern image path uses ROM DCD initialization and `u-boot-dtb.imx`, with
+no SPL. Preserve the **MINI-matched DDR setup** established during migration.
+Do not copy an `spl` DFU target, raw offsets, or the EVK DCD from another
+board into the MINI repair procedure.
 
 ```{figure} ../illustrations/part3/15-recovery-layers.png
 :name: fig-p3-recovery-layers
@@ -62,7 +87,8 @@ Recovery begins at the layer that still works. ROM SDP and U-Boot's UMS or DFU a
 | `board/myorg/mx6ull_pa_mini/mx6ull_pa_mini.c` | Read the key and override both automatic boot paths |
 | `include/configs/mx6ull_pa_mini.h` | Reviewed recovery command defaults |
 
-Merge into the existing port. A second `board_late_init()` is a duplicate
+These are modern-port files, not vendor target filenames. Merge into the
+existing port. A second `board_late_init()` is a duplicate
 symbol, not an additional callback. Compiled defaults also do not overwrite
 an existing saved environment.
 
@@ -80,11 +106,29 @@ partition over a whole disk. DFU becomes useful when factory tools need a
 specific target, but an accepted image must remain outside that target.
 Neither protocol is a production update policy by itself.
 
+For MINI, choose USB plus local TF/eMMC access before relying on network
+recovery. There is **one RJ45 on ENET2**, with PHY address 1. The guide
+(pp. 274-275) identifies LAN8720 before V2.2 and SR8201F on V2.2 and later;
+the supplied V2.2 sheet 3 shows SR8201F. The public vendor eMMC header
+enables `CONFIG_PHY_SMSC`, which is not evidence of correct SR8201F support.
+Do not promise working TFTP on V2.2. A modern network path requires the
+actual PHY ID, reset and RMII clock behavior to be confirmed on the board.
+Chapter 22 has completed the **datasheet/source ID comparison**: SR8201F-VB
+ID words `0x001c`/`0xc816` give `0x001cc816`, matching v2026.04's RTL8201F
+UID/mask entry. This makes `PHY_REALTEK` a concrete driver candidate, not
+an observed MDIO ID or a bench-compatible link. Similar naming alone would
+not establish this match. The comparison uses the [CoreChips datasheet,
+Tables 13-14](https://datasheet.lcsc.com/datasheet/pdf/941fa6953df8b4f6a9945b2c95950f31.pdf?productCode=C378491)
+and the [pinned driver entry](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/net/phy/realtek.c).
+Chapter 19's first vendor lab disables networking
+before the legacy network conditionals; it does not run an unreviewed PHY
+hook or require Ethernet for the first UART/storage exercise.
+
 ## 24G.4  Enable USB recovery configs
 
-For the i.MX ChipIdea path in v2026.04, review this fragment together with
-the actual board's USB controller/PHY setup. Chapter 22's inherited setup
-is a source reference, not a qualified MINI USB path:
+For the MINI USB_OTG1 ChipIdea path in v2026.04, review this fragment with
+the migrated controller/PHY setup. A vendor USB implementation is a wiring
+and behavior reference, not a drop-in implementation of these modern APIs:
 
 ```text
 CONFIG_USB=y
@@ -112,9 +156,11 @@ uses i.MX EHCI setup through `usb_setup_ehci_gadget()`. Generic USB/gadget
 options alone are insufficient. Check the generated `.config` and the
 [controller implementation](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/usb/gadget/ci_udc.c).
 
-Retain only the OTG connector's verified controller with the intended
-peripheral role; inspect its DT `dr_mode`, PHY, VBUS handling, and any board
-hooks. Do not drive host VBUS while connected as a device. Chapter 8's power
+Select USB_OTG1 for the service connection, with the intended peripheral
+role; inspect its DT `dr_mode`, PHY, VBUS handling, and any board hooks.
+Sheet 4 shows the OTG port's MT9700 supply switch and VBUS/ID circuitry;
+do not invent a spare GPIO-based VBUS enable or treat USB_OTG2 as the gadget.
+Do not drive host VBUS while connected as a device. Chapter 8's power
 and back-power checks apply to USB and the serial adapter too.
 
 Set `USB_GADGET_MANUFACTURER`, `USB_GADGET_VENDOR_NUM`, and
@@ -129,9 +175,11 @@ identify the target medium and selected partition, ensure no target command
 will also access it, and disable host automount through the host's normal
 per-session controls. Use a dedicated lab host if that cannot be guaranteed.
 
-Chapter 24F's table proposes a layout; Chapter 22 does not prepare or reserve
-it. Before this hardware service, qualify the medium and every exposed byte
-range, separately from the host-mock scaffold. If using the A/B layout, pass
+Use the MINI's identified spare TF card as the first service medium; the
+core's eMMC is a separate target, and the MMC commands below do not expose
+NAND. Inventory the medium on the UART console first. Chapter 24F's table
+proposes a layout, not one installed by the vendor baseline or Chapter 22.
+Before service, qualify every exposed byte range. If using A/B, pass
 24F.3's persistence/layout gate too. UMS itself does not require a persistent
 environment, but RAM-only environment support does not make storage exposure
 safe. On that qualified disposable layout, exposing B's boot partition is
@@ -244,22 +292,29 @@ not authentication or a durable-write guarantee.
 
 ## 24G.8  Detect the recovery key in board code
 
-The reference MINI **KEY0 is GPIO1_IO01, GPIO1 bit 1, active-low**, as traced
-in Chapter 18B. GPIO1 bit 18 is the separate UART1_CTS/KEY2 route. This key
-must remain an input; do not use `gpio set` or `gpio clear` on it.
+On **MINI V2.2, KEY0 connects through IMX1 B48 to UART1_CTS**, muxed here
+as **GPIO1_IO18, GPIO1 bit 18, active-low**. Sheet 2's R12 supplies the
+10 kOhm pull-up and the switch pulls the net to ground. This agrees with
+the guide's MINI Section 5.4.13. Trace the baseboard connection, not the
+core sheet's inherited KEY aliases: B49/GPIO1_IO01 instead carries
+`GBC_KEY`/`AP_INT`, and is not this KEY0 switch.
+
+Retain UART1_TXD/RXD for the USB_TTL console, but disable any competing
+UART1 CTS hardware-flow-control ownership on this pad. KEY0 must remain an
+input; do not use `gpio set` or `gpio clear` on it.
 
 Add a board-owned property to the existing `/chosen` node:
 
 ```dts
 / {
     chosen {
-        myorg,recovery-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;
+        myorg,recovery-gpios = <&gpio1 18 GPIO_ACTIVE_LOW>;
     };
 };
 
 &iomuxc {
     pinctrl_recovery: recoverygrp {
-        fsl,pins = <MX6UL_PAD_GPIO1_IO01__GPIO1_IO01 0x1b0b0>;
+        fsl,pins = <MX6UL_PAD_UART1_CTS_B__GPIO1_IO18 0x1b0b0>;
     };
 };
 ```
@@ -329,7 +384,7 @@ logical **1**. The error path blocks automatic boot instead of interpreting
 an I/O error as a released key. Call this helper from the existing
 `board_late_init()` only after critical power policy allows service; do not
 save its temporary overrides. Chapter 24F's increment/limit selection occurs
-later, so both commands must be overridden. In the RAM-only scaffold there
+later, so both commands must be overridden. In the nonpersistent modern candidate there
 is no persistent candidate metadata to preserve, and reset reloads defaults.
 Once 24F.3's gate has selected persistent storage, with `BOOTCOUNT_ENV` the
 temporary `upgrade_available=0` is essential: it suppresses the later **whole-environment
@@ -346,7 +401,7 @@ Confirm the actual name through `gpio status -a`, then read the physical level:
 
 ```text
 pa-mini=> setenv key_level
-pa-mini=> gpio read key_level GPIO1_1
+pa-mini=> gpio read key_level GPIO1_18
 pa-mini=> printenv key_level
 ```
 
@@ -381,10 +436,14 @@ fixture's PASS must correspond to a defined measurement, expected identity,
 and limits. Keep command status as well as printed tokens. Never print
 `TEST:I2C:PASS` merely because `i2c probe` ran.
 
-A display or buzzer can report state only after its own safe wiring check.
-The MINI BEEP route is SNVS_TAMPER1/GPIO5 bit 1, active-low through a PNP
-high-side switch; it is not a generic active-high GPIO. Keep serial output
-as the primary diagnostic channel.
+Start a MINI factory worksheet with UART1 console, identified TF/eMMC
+enumeration, KEY0 input, and the optional display's separate checks. LED0
+is GPIO1_IO03, active-low; BEEP is SNVS_TAMPER1/GPIO5 bit 1, active-low
+through sheet 2's S8550 PNP high-side switch. Neither should be driven
+before reviewing its ownership/startup state. An I2C OLED or PMIC is not
+fitted on this baseboard, so do not require its ACK as a stock-board PASS.
+Ethernet remains a separate V2.2 PHY qualification, not an assumed fixture
+dependency. Keep serial output as the primary diagnostic channel.
 
 ## 24G.11  Recovery safety rules
 
@@ -401,9 +460,10 @@ as the primary diagnostic channel.
 
 ## 24G.12  Lab
 
-1. Identify and qualify the OTG controller/connector, safe power arrangement,
-   medium and allowed byte range/partition. The Chapter 22 scaffold is not
-   this qualification; if integrating A/B, pass 24F.3's gate as well.
+1. On the Chapter 19 MINI baseline, distinguish USB_TTL, USB_OTG and USB_HOST
+   by their actual routes. Record the spare TF identity and approved power
+   arrangement. In the modern port, qualify USB_OTG1 peripheral support and
+   the allowed target range; if integrating A/B, pass 24F.3's gate as well.
 2. Build and inspect the USB/GPIO config. Confirm pinmux and KEY0 physical
    readings first; do not change its direction to output.
 3. On a disposable layout, enumerate bounded UMS without host automount.
@@ -431,6 +491,10 @@ as the primary diagnostic channel.
 
 ## 24G.14  Going deeper
 
+- Supplied MINI V2.2 schematic, sheets 1-4, and the guide's **MINI**
+  Sections 5.4.3, 5.4.10-13, 5.4.15-19: connector roles, KEY0/BEEP routes,
+  TF/Wi-Fi sharing and the V2.2 PHY change. Use the revision's schematic
+  when the guide's copied prose disagrees.
 - [UMS command](https://docs.u-boot.org/en/v2026.04/usage/cmd/ums.html) and
   [cmd/usb_mass_storage.c](https://github.com/u-boot/u-boot/blob/v2026.04/cmd/usb_mass_storage.c).
 - [DFU grammar](https://docs.u-boot.org/en/v2026.04/usage/dfu.html) and

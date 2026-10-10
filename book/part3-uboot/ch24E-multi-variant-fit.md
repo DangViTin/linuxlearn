@@ -10,19 +10,21 @@ status: draft
 
 A FIT configuration is a set of references: this kernel, this DTB, and optionally this ramdisk or overlay sequence. Several configurations can share a kernel without duplicating it. One release artifact is possible, but every supported hardware combination still needs testing.
 
-We will package the three **hypothetical common-DDR variants** from Chapter 24D and then examine overlays separately. The baseline is upstream **U-Boot v2026.04**, commit `88dc2788777babfd6322fa655df549a019aa1e69`. FIT means Flattened Image Tree. The DT-shaped container is not the OS hardware DTB stored inside it.
+We will package Chapter 24D's three display choices for **one fixed MINI core/baseboard assembly**: no panel, optional ID4342, or optional ID7016 at RGBLCD J1. The board connector and panel options are documented; the matching OS trees and automatic EEPROM selector are exercises to implement and qualify. We then examine overlays separately.
+
+The baseline is upstream **U-Boot v2026.04**, commit `88dc2788777babfd6322fa655df549a019aa1e69`, for host study and modern MINI migration. These APIs and security options are not a promise about Chapter 19's older vendor build. FIT means Flattened Image Tree. The DT-shaped container is not the OS hardware DTB stored inside it.
 
 ## 24E.1  The scenario
 
-| Identity LCD option | FIT configuration | Payload DTB |
+| Lab LCD option / MINI attachment | FIT configuration | Payload DTB |
 |---------------------|-------------------|-------------|
-| 0 | `conf-no-lcd` | `imx6ull-pa-mini-no-lcd.dtb` |
-| 1 | `conf-lcd43` | `imx6ull-pa-mini-lcd43.dtb` |
-| 2 | `conf-lcd70` | `imx6ull-pa-mini-lcd70.dtb` |
+| 0 / no panel | `conf-no-lcd` | `imx6ull-pa-mini-no-lcd.dtb` |
+| 1 / ID4342, 480 x 272 | `conf-lcd43` | `imx6ull-pa-mini-lcd43.dtb` |
+| 2 / ID7016, 1024 x 600 | `conf-lcd70` | `imx6ull-pa-mini-lcd70.dtb` |
 
-All three share qualified early DDR, a kernel and an MMC rootfs. This example includes **no initramfs**; its arguments still point to MMC. One FIT is not automatically a full recovery image or an OTA transaction.
+All three must share the **same chosen early DDR/storage setup**, kernel and MMC rootfs. Do not include the guide's 256 MiB NAND core and 512 MiB eMMC core in this late display selector: ROM/DCD initialization has already happened. This example includes **no initramfs**; its arguments still point to MMC. One FIT is not automatically a full recovery image or an OTA transaction.
 
-Actual panel timings, pinmux, power sequence and touch wiring require schematics and datasheets. Neither a panel size nor an example filename establishes those facts. Late FIT selection cannot change the ROM/DCD initialization already performed.
+Use the MINI RGB888/I2C2/backlight/shared-reset wiring described in 24D, then complete timing, power and touch-controller details from the fitted module's specification. The same-size ID4384 and ID7084 panels are not aliases for the two choices above. These files are not shipped MINI DTBs and have not been bench-tested. Late FIT selection cannot change the ROM/DCD initialization already performed.
 
 ```{figure} ../illustrations/part3/13-fit-configuration-references.png
 :name: fig-p3-fit-configuration-references
@@ -35,13 +37,13 @@ Configurations reference payloads rather than duplicating the kernel. Two of our
 
 ## 24E.2  The .its file with three configurations
 
-Place matching `zImage` and qualified DTBs beside this complete `multi.its`. No fallback default is specified: identity must select a supported configuration.
+Place matching `zImage` and qualified MINI OS DTBs beside this complete `multi.its`. No fallback default is specified: an explicit fixed-hardware choice or a validated add-on identity must select a supported configuration.
 
 ```dts
 /dts-v1/;
 
 / {
-    description = "mx6ull_pa_mini common-DDR variant lab";
+    description = "mx6ull_pa_mini fixed-core display lab";
     #address-cells = <1>;
 
     images {
@@ -57,7 +59,7 @@ Place matching `zImage` and qualified DTBs beside this complete `multi.its`. No 
             hash-1 { algo = "sha256"; };
         };
         fdt-no-lcd {
-            description = "Qualified no-display DTB";
+            description = "MINI no-display OS DTB";
             data = /incbin/("imx6ull-pa-mini-no-lcd.dtb");
             type = "flat_dt";
             arch = "arm";
@@ -65,7 +67,7 @@ Place matching `zImage` and qualified DTBs beside this complete `multi.its`. No 
             hash-1 { algo = "sha256"; };
         };
         fdt-lcd43 {
-            description = "Qualified 4.3-inch display DTB";
+            description = "MINI ID4342 480x272 OS DTB";
             data = /incbin/("imx6ull-pa-mini-lcd43.dtb");
             type = "flat_dt";
             arch = "arm";
@@ -73,7 +75,7 @@ Place matching `zImage` and qualified DTBs beside this complete `multi.its`. No 
             hash-1 { algo = "sha256"; };
         };
         fdt-lcd70 {
-            description = "Qualified 7-inch display DTB";
+            description = "MINI ID7016 1024x600 OS DTB";
             data = /incbin/("imx6ull-pa-mini-lcd70.dtb");
             type = "flat_dt";
             arch = "arm";
@@ -89,12 +91,12 @@ Place matching `zImage` and qualified DTBs beside this complete `multi.its`. No 
             fdt = "fdt-no-lcd";
         };
         conf-lcd43 {
-            description = "4.3-inch display";
+            description = "ID4342 4.3-inch display";
             kernel = "kernel-1";
             fdt = "fdt-lcd43";
         };
         conf-lcd70 {
-            description = "7-inch display";
+            description = "ID7016 7-inch display";
             kernel = "kernel-1";
             fdt = "fdt-lcd70";
         };
@@ -118,13 +120,13 @@ For the unsigned lab, enable `FIT`, `FIT_FULL_CHECK`, `SHA256`, `CMD_BOOTM` and 
 
 Stage the FIT separately from its kernel destination: here `fit_addr_r=0x85000000`, while the kernel loads/enters at `0x82000000`. Do not stage this FIT at its own kernel load address and rely on an overlapping copy.
 
-For a later qualified board test, with correct root arguments already established:
+For a later qualified board test **with an ID4342 panel and the selected fixed core**, with correct root arguments already established:
 
 ```text
 => if load mmc ${mmcdev}:${bootpart} ${fit_addr_r} multi.itb; then bootm ${fit_addr_r}#conf-lcd43; else echo FIT load failed; false; fi
 ```
 
-24E.6 defines the variables and arguments. The attached `#` suffix is part of the `bootm` argument, not a shell comment. An unknown configuration fails, rather than selecting a nearby name. Without explicit selection, FIT defaults and matching options affect behavior; this FIT has no `default` property.
+24E.6 defines the variables and arguments. Manual explicit selection can also study FIT on a stock MINI with no identity EEPROM: choose `conf-no-lcd` when no panel is fitted, or the configuration for the actual module. Do not manufacture `identity_ready=1` to bypass the EEPROM-mode helper. The attached `#` suffix is part of the `bootm` argument, not a shell comment. An unknown configuration fails, rather than selecting a nearby name. Without explicit selection, FIT defaults and matching options affect behavior; this FIT has no `default` property.
 
 U-Boot resolves the selected image references, checks them according to verification policy, loads the kernel at its declared destination and prepares the OS DTB. `compression="none"` describes the outer payload; the zImage still decompresses itself. The DTB has no fixed `load` here, so U-Boot's FDT relocation policy applies. Its final address is not necessarily the FIT staging address.
 
@@ -140,13 +142,13 @@ Mutable environment, alternate unsigned boot paths, prompt access, writable EEPR
 
 ## 24E.4  Detecting which variant we are running on
 
-Selection happens before `bootm`, in the single 24B/24D board hook. Use `fitconf` consistently, not a second `variant` variable with different names.
+Automatic add-on selection happens before `bootm`, in the single 24B/24D board hook. A stock MINI has neither our proposed EEPROM nor dedicated variant straps; use an explicit fixed-hardware selection until such an identification design exists. Use `fitconf` consistently, not a second `variant` variable with different names.
 
 ### Pattern A, Strap pin
 
 Request dedicated input descriptors, check errors, allow levels to settle and sample for stability. Follow 24B.10's ownership/polarity/cleanup method, but qualify strap timing separately from mechanical-key debounce.
 
-This is a mapping table, not pin-reading code:
+This is a **proposed dedicated add-on strap** mapping table, not MINI wiring or pin-reading code:
 
 | Qualified logical state | Selection |
 |-------------------------|-----------|
@@ -155,11 +157,11 @@ This is a mapping table, not pin-reading code:
 | 10 | `conf-lcd70` |
 | 11, changing readings or read failure | Closed gate; unsupported identity. |
 
-No GPIO1_IO09/IO10 wiring is asserted. Do not borrow boot pins, reset outputs or peripheral pads. Floating straps cannot be fixed with a software default. GPIO5/SNVS pads need IOMUXC-SNVS configuration if actually selected.
+No GPIO1_IO09/IO10 wiring is asserted. Do not repurpose MINI BOOT_CFG1, KEY0, ENET2 reset or the LCD_DATA7/15/23 panel-ID/boot-strap circuit as generic free inputs. Reading the stock panel ID requires its own SGM3157 switching/pad-ownership sequence; this table does not implement that. Floating straps cannot be fixed with a software default. GPIO5/SNVS pads need IOMUXC-SNVS configuration if actually selected.
 
 ### Pattern B, EEPROM ID
 
-Use 24D's DM-I2C reader and full 64-byte validation: magic, version, length, CRC, options, valid MAC and bounded serial before publishing `fitconf` and `identity_ready`. It propagates binding/allocation errors and explicitly sets pointer width.
+With the **optional EEPROM on MINI I2C1/P4** fitted, use 24D's DM-I2C reader and full 64-byte validation: magic, version, length, CRC, options, valid MAC and bounded serial before publishing `fitconf` and `identity_ready`. It propagates binding/allocation errors and explicitly sets pointer width. The stock schematics do not contain this EEPROM; the record's profile revision is not a MINI silkscreen or an automatic panel probe.
 
 Do not substitute legacy global-bus `i2c_read()` or one unvalidated byte. Reading one byte to RAM and then using `setexpr.l` consumes a whole word, including three unrelated bytes. There is no reason to use the future kernel/FIT buffer as identity scratch space.
 
@@ -173,7 +175,9 @@ There is no generic "spare OCOTP word" in this example and no burn guidance. Res
 
 ## 24E.5  DT overlays, the alternative
 
-An overlay adds or changes nodes/properties in a base DT. It suits optional blocks on a qualified common base. It is not a general runtime deletion mechanism: DTS source deletion directives are not arbitrary deletion operations carried through `fdt apply`.
+An overlay adds or changes nodes/properties in a base DT. It suits optional blocks on a qualified common base. For MINI, keep the chosen core, storage and onboard ENET2 PHY in the base; a display or camera add-on must describe its real connector and resources. LCD touch and camera share I2C2, and display ID pins share boot-strap circuitry, so "optional" does not mean independent or conflict-free. An overlay cannot supply missing SR8201F driver support or fix an already executed DCD.
+
+It is not a general runtime deletion mechanism: DTS source deletion directives are not arbitrary deletion operations carried through `fdt apply`.
 
 This complete **host-only pair** changes a lab property, not display/PHY/power wiring. Never pass the toy base to Linux as the MINI hardware DTB.
 
@@ -259,7 +263,7 @@ Define `fdt-base` and `overlay-lcd43` under `images` with actual data. The first
 
 ## 24E.6  Putting it together, the full multi-variant boot script
 
-Use 24D's C identification and 24B's gate ordering. This complete macro replaces 24C's normal path with **local FIT boot**; it does not silently fall back to unsigned network payloads.
+For the **EEPROM-equipped exercise**, use 24D's C identification and 24B's gate ordering. This complete macro replaces 24C's normal path with **local FIT boot**; it does not silently fall back to unsigned network payloads. A stock fixed-hardware MINI uses the explicit configuration route in 24E.3 instead, not this mandatory-EEPROM dispatcher.
 
 ```c
 #define PA_MINI_MULTI_FIT_ENV \
@@ -284,7 +288,7 @@ Use 24D's C identification and 24B's gate ordering. This complete macro replaces
 
 Merge once into `CFG_EXTRA_ENV_SETTINGS`, removing conflicting definitions of the same keys. Keep `CONFIG_BOOTCOMMAND="run normal_boot"`; the late hook still installs blocked, normal or recovery dispatch. There is no default `fitconf` in this macro.
 
-Confirm Linux's actual root partition; U-Boot `${mmcdev}` does not establish its `/dev/mmcblk` name. Adding a FIT ramdisk later requires coordinated ITS, argument and memory changes, not simply an extra `rootfs.cpio.gz` reference.
+The example follows 24C's TF/USDHC1 path, without an SDIO WiFi module on the shared bus. Confirm the modern port's device sequence and Linux's actual root partition; U-Boot `${mmcdev}` does not establish its `/dev/mmcblk` name. eMMC/USDHC2 requires coordinated media/root arguments on an eMMC core. Adding a FIT ramdisk later requires coordinated ITS, argument and memory changes, not simply an extra `rootfs.cpio.gz` reference.
 
 Mutable `verify=yes` enables corruption checking in this unsigned lab. It is not required-signature enforcement or a bypass-resistant boot policy. Alternate boot routes must independently obey the final product's trust requirements.
 

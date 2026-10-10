@@ -28,13 +28,16 @@ uses this same reference route.
 
 | Signal | Schematic path | Software meaning |
 |---|---|---|
-| KEY0 | MINI sheet 2: switch to GND, R12 10 kOhm to DCDC_3V3; CORE sheet 8: J2 pin 49, GPIO_1 / KEY0 | Pad GPIO1_IO01, ALT5, GPIO1 bit 1; released = 1, pressed = 0 |
+| KEY0 | MINI sheet 2: switch to GND, R12 10 kOhm to DCDC_3V3; MINI sheet 1: IMX1 B48, UART1_CTS; CORE sheet 8: J2 pin 48 | Pad UART1_CTS, ALT5, GPIO1 bit 18; released = 1, pressed = 0 |
 | BEEP | CORE sheet 8: J2 pin 5, SNVS_TAMPER1 / BEEP; MINI sheet 2: R21 1 kOhm to Q1 base, Q1 S8550 emitter to DCDC_3V3, collector to BEEP1 positive terminal, other terminal to GND | Pad SNVS_TAMPER1, ALT5, GPIO5 bit 1; low enables the PNP, high disables it |
-| LED0 | CORE sheet 8: J2 pin 48, GPIO_3 / LED0; MINI sheet 2: LED and R6 to DCDC_3V3 | GPIO1 bit 3, active-low, as in Chapter 9 |
+| LED0 | CORE sheet 8: J2 pin 47, GPIO_3 / LED0; MINI sheet 1: IMX1 B47; sheet 2: LED and R6 to DCDC_3V3 | GPIO1 bit 3, active-low, as in Chapter 9 |
 
-CORE J2 pin 47 is `UART1_CTS / KEY2`, whose GPIO function is GPIO1_IO18.
-It is not this MINI's KEY0. Keep the schematic net, package pad, and GPIO
-bank/bit distinct even when their names look similar.
+CORE J2 pin 48 carries the accessory alias `KEY2`, but MINI sheet 1 connects
+that pin to its onboard **KEY0**. Pin 49's core alias `KEY0` instead reaches
+MINI's `GBC_KEY / AP_INT` module signal. Follow physical connector pin numbers
+into the baseboard circuit before trusting an inherited button name. UART1
+TX/RX remain our console; do not enable CTS hardware flow control on this pad
+while using it as the button input.
 
 The S8550 is a **PNP high-side switch**. Pulling its base down through R21
 allows load current to flow from 3V3 through the transistor; the GPIO sinks
@@ -50,18 +53,19 @@ Add these board-specific names **inside** `imx6ull.h`, before its closing
 
 ```c
 /* MINI v2.2 / CL6Y2CB_V1.9 board routes. */
-#define KEY_BIT             (1u << 1)
+#define KEY_BIT             (1u << 18)
 #define BEEP_BIT            (1u << 1)
 #define LED_BIT             (1u << 3)
-#define KEY_MUX             0x020E0060u
-#define KEY_PAD             0x020E02ECu
+#define KEY_MUX             0x020E008Cu
+#define KEY_PAD             0x020E0318u
 #define BEEP_MUX            0x0229000Cu
 #define BEEP_PAD            0x02290050u
 #define LED_MUX             0x020E0068u
 #define LED_PAD             0x020E02F4u
 ```
 
-KEY0's addresses are in RM Sections 32.6.8 and 32.6.154; BEEP's are in
+Find KEY0's `SW_MUX_CTL_PAD_UART1_CTS_B` and `SW_PAD_CTL_PAD_UART1_CTS_B`
+registers in RM Chapter 32; BEEP's registers are in Sections
 32.5.4 and 32.5.21. IOMUXC_SNVS is a separate pad-control block, not the
 SNVS RTC block. GPIO5's SNVS-powered pads do not mean that its CPU register
 interface remains usable with main power removed. Its interface gate is
@@ -330,7 +334,7 @@ void led_init(void)
 The clock, mux, pad, OFF-latch, and output-direction order matches Chapter
 10. Keep its reference board and fresh-ROM prerequisites; the pad setting
 is not a generic value for other loads or boards. Only the GPIO1 bit-3
-latch/direction changes here, leaving KEY0's bit-1 input configuration intact.
+latch/direction changes here, leaving KEY0's bit-18 input configuration intact.
 
 ### Application
 
@@ -405,9 +409,9 @@ prints release. A build alone does not establish those observations.
 
 ## 18B.6  Pitfalls
 
-- **Wrong key route.** GPIO1 bit 18 is the UART1_CTS/KEY2 route in the supplied core schematic. KEY0 here is GPIO1 bit 1.
+- **Wrong key route.** MINI V2.2's onboard KEY0 is GPIO1 bit 18. The core's `KEY0` alias on pin 49 names a different baseboard signal here; follow both connector drawings.
 - **Wrong SNVS pad offsets.** BEEP uses `0x0229000C` and `0x02290050`, not offsets 0 and 0x18. A plausible-looking wrong address can change another pad.
-- **Reading a latch instead of a pad.** Use PSR for this input. Check GDIR is input and the mux reaches GPIO1_IO01 before tuning debounce.
+- **Reading a latch instead of a pad.** Use PSR for this input. Check GDIR is input and UART1_CTS is muxed to GPIO1_IO18 before tuning debounce.
 - **Noisy or floating level.** Check R12 and the fitted circuit with power off; a steady read alone is not proof that the pull-up is correctly fitted. Do not substitute a new pull configuration without considering other owners of the pad.
 - **Calling every loop iteration a tick.** The history window counts samples, not milliseconds. Late foreground work stretches the window; repeated immediate catch-up calls falsely claim extra observations.
 - **Unexpected sound.** Check buzzer type, polarity, idle-high initialization, clock gates, and GPT setup. Do not assume an oscillator-equipped buzzer will play requested notes.
@@ -417,6 +421,7 @@ prints release. A build alone does not establish those observations.
 
 - **Supplied MINI v2.2 schematic**, sheet 2, and **CORE schematic**, sheets 6 and 8: transistor circuit, package pad, and connector route.
 - **IMX6ULLRM Rev. 1**, Chapters 28 and 32: GPIO PSR/GDIR and the exact mux/pad fields, including the tamper-pad qualification.
+- [Pinned UART1_CTS pin-function definition](https://github.com/u-boot/u-boot/blob/v2026.04/dts/upstream/src/arm/nxp/imx/imx6ul-pinfunc.h): offset `0x008C` for mux, `0x0318` for pad, ALT5 for GPIO1_IO18. Add the main IOMUXC base `0x020E0000` to obtain the addresses used here.
 - **Jack Ganssle, [A Guide to Debouncing](https://www.ganssle.com/debouncing.htm)**: measured contact behavior and filter design. Use measurements to choose a window rather than adopting one value for every switch.
 - **Linux drivers/input/keyboard/gpio_keys.c**: the event/debounce path we meet in Chapter 45. **drivers/pwm/pwm-imx27.c** illustrates the PWM controller, not proof of a PWM route to BEEP.
 

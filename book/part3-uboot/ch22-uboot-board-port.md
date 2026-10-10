@@ -1,43 +1,49 @@
 ---
 chapter: 22
-title: "Porting U-Boot to a custom board"
+title: "Porting U-Boot to the MINI"
 part: "III - U-Boot, deeply"
 estimated_pages: 22
 status: draft
 ---
 
-# Chapter 22: Porting U-Boot to a custom board
+(chapter-22-porting-u-boot-to-a-custom-board)=
+# Chapter 22: Porting U-Boot to the MINI
 
-You have built U-Boot for the EVK. Can you put that image on a MINI just because both boards use an i.MX6ULL? Think back to the first LED program: the instruction set could be correct while the clock gate or pad was wrong. A bootloader has the same problem, with an additional dependency. Its normal C code needs working DDR before it can help you diagnose anything.
+Chapter 19 builds PointAtom's existing support for the MINI's core. Why port anything now? Understanding that vendor recipe and maintaining the same hardware on a newer upstream release are different jobs. Ask **which settings describe our core, and which describe another carrier or PHY?** A successful EVK build cannot answer that question.
 
-We will give the new board its own identity, `mx6ull_pa_mini`, and trace which files must change. The reference throughout is **upstream U-Boot v2026.04**, commit `88dc2788777babfd6322fa655df549a019aa1e69`, not a vendor BSP or a moving branch. The starting config is `mx6ull_14x14_evk_defconfig`. It uses **ROM-executed DCD followed by full U-Boot, without SPL**. DCD means Device Configuration Data: register-write instructions packaged in the i.MX boot image.
+Keep two source workspaces. The vendor tree, `~/imx6ull/src/uboot-mini-vendor`, is pinned to `edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb` with `mx6ull_alientek_emmc_defconfig`. It is the documented starting recipe for the **512 MiB DDR3L / 8 GB eMMC core shared by ALPHA and MINI**. The migration in this chapter uses `~/imx6ull/src/u-boot`, based on **upstream v2026.04**, commit `88dc2788777babfd6322fa655df549a019aa1e69`. Old vendor header macros and modern Kconfig APIs are not interchangeable.
 
-The host-only result is a buildable **EVK-derived scaffold**, not a MINI-safe image. A completed port also needs the exact schematic revision, populated components, DDR setup and measurements for the physical board. A model string, prompt or successful compilation supplies none of that evidence.
+The hardware references are the supplied **MINI V2.2 carrier and CORE V2.0 schematics**. The guide's PDF pages 7-8 and 236-239 establish shared tutorial/core support; pages 263-283 describe MINI circuits, and Chapter 33 (860-911) explains the original vendor port. Its older LAN8720A procedure is not automatically support for V2.2's SR8201F. When carrier prose and the supplied schematic disagree, follow the schematic and populated revision.
 
-> **Hardware boundary:** Do not run the copied EVK image on the MINI. The examples below retain EVK settings for source/build study until each setting is replaced or justified against the supplied board documents. No board boot, DDR qualification, media write or fuse programming is claimed here.
+> **Port status:** This is a concrete, host-buildable modern MINI candidate, not an EVK image with a new name. It implements documented UART1, SD, eight-bit eMMC and ENET2 wiring, with a source-checked SR8201F driver candidate. No board boot, DDR qualification, Ethernet test or media write is claimed. Keep Chapter 19's vendor UART/storage build as the baseline; replacing a persistent bootloader requires the gates in Section 22.8.
 
 ## 22.1  What "porting" means
 
-Start with a smaller question than "which files do I copy?": **what changed between the two boards?** A different prompt is policy. A different PHY reset GPIO is wiring. A different DDR device or layout affects code that runs before the prompt exists. Those changes belong to different parts of the boot path.
+On an MCU you compare clock, pad and peripheral tables. Here ordering adds another constraint: ROM initializes DDR from **DCD**, Device Configuration Data, before full U-Boot runs there. Both selected board paths use ROM+DCD, **not SPL**.
 
-| Change | Evidence to gather | Likely software owner |
-|--------|--------------------|-----------------------|
-| Prompt, filenames, autoboot policy | Product/development requirements | Defconfig and default environment |
-| UART, storage and Ethernet wiring | Schematic net names, pads, voltage domains, reset/clock routes | Control DT and, where needed, board hooks |
-| DDR geometry, timing and calibration | Populated part marking, datasheet, PCB revision and qualified DDR results | DCD in this selected boot path |
-| Rail sequencing or enables | Power-tree schematic and measured sequencing | Hardware/ROM assumptions, board code and regulator description as applicable |
-| Boot source and environment storage | Boot straps, ROM layout, partition map and recovery plan | Image configuration, Kconfig and storage policy |
+Create a port ledger in `~/imx6ull/notes/mini-port.md`. This is its document-checked starting content, conditional on matching supplied revisions and populated components:
 
-A PMIC is a programmable power-management chip; a board may instead use discrete regulators. Do not add a PMIC driver because the EVK has one, or omit power sequencing because a DT node compiled. Establish what powers the CPU and DDR *before* ROM uses the DCD.
+| Chain | Hardware evidence | Implementation decision |
+|-------|-------------------|-------------------------|
+| DDR | Core sheet 3: one NT5CC256M16EP-EK x16 DDR3L, 256M x 16 bits = 512 MiB; sheet 1: `DRAM_1V35` | Compare the published vendor DCD; modern DT reports 512 MiB. Physical qualification remains separate. |
+| Power | Core sheet 1 and MINI sheet 4: discrete converters/LDOs, `PMIC_ON_REQ` sequencing | No invented EVK PFUZE3000 or GPIO-controlled peripheral rail. Actual rails must be ready before DCD. |
+| Console | MINI sheet 4: UART1 TX/RX through analog switches to CH340C and `USB_TTL` | UART1 DCE TX/RX, no flow control; kernel example console ttymxc0. `USB_TTL` is not ROM USB download. |
+| SD | MINI sheets 1-2: SD1 CLK/CMD/DATA0-3, CD on `UART1_RTS_B` / `GPIO1_IO19`, VDD from `DCDC_3V3` | USDHC1, four bits, active-low CD; no copied EVK `GPIO1_IO09` power switch. |
+| eMMC | Core sheet 4: KLM8G1GETF, SD2 CLK/CMD/DATA0-7 on NAND pads; `SD2_nRST` on `NAND_ALE` / `GPIO4_IO10`; sheet 1: `NVCC_NAND` at 3.3 V | USDHC2, eight bits, non-removable, no 1.8 V switching. Vendor `USDHC2_PWR_GPIO` is reset, not a rail enable. |
+| Ethernet | MINI sheet 3: one SR8201F, ENET2 RMII, MDIO address 1, reset `SNVS_TAMPER8` / `GPIO5_IO08` | One MAC, with actual PHY-ID/driver matching, not copied Micrel/SMSC assumptions. |
+| Ethernet clock | MINI sheet 3: PHY 25 MHz crystal, CLK_CTL pull-up for TXC input, `ENET2_TX_CLK` routed to TXC | SoC supplies the separate 50 MHz RMII reference. Crystal frequency is not RMII reference frequency. |
+| Optional I/O | MINI sheets 1-2: LED0 `GPIO1_IO03`; `KEY0` `UART1_CTS` / `GPIO1_IO18`, active low; active buzzer `SNVS_TAMPER1` | Exclude these, display/touch, camera, CAN, Wi-Fi and USB from the minimum boot port. TF and optional SDIO Wi-Fi share USDHC1. |
 
-For your MINI, make a port ledger in `~/imx6ull/notes/mini-port.md`. Record the source page/net for each setting, the inherited EVK value, the intended replacement, and its status: unknown, document-checked, or hardware-qualified. In particular, do not infer DDR capacity, PHY address, eMMC bus width, buzzer type or active polarity from the board's marketing name.
+Inspect actual DDR/eMMC/PHY markings before using this ledger on hardware. A NAND-populated core, another DDR population or an older carrier is a different target. The guide identifies **LAN8720A before MINI V2.2 and SR8201F from V2.2 onward**, both on ENET2/address 1. An address does not identify a driver.
+
+MINI has one RJ45 despite a copied ALPHA "two interfaces" sentence. On the supplied schematic, `KEY0` is connector B48 / `UART1_CTS` / `GPIO1_IO18` with R12 and an active-low switch. `SNVS_TAMPER0` is `WIFI_REG_ON`, not `KEY0`; `GPIO1_IO01` at B49 is `GBC_KEY/AP_INT` for the ATK module. Do not confuse those three nets. CAN1 uses `UART3 CTS/RTS`, not the console's pads.
 
 (the-five-files-and-one-directory-that-define-a-board)=
 ## 22.2  The files that connect a board to U-Boot
 
-In v2026.04 our selected reference lives at **`board/nxp/mx6ullevk/`**. Its Kconfig selects `include/configs/mx6ullevk.h` and its own `imximage.cfg`. There is no `spl.c` in this board directory. See the [versioned EVK config](https://github.com/u-boot/u-boot/blob/v2026.04/configs/mx6ull_14x14_evk_defconfig) and [board Kconfig](https://github.com/u-boot/u-boot/blob/v2026.04/board/nxp/mx6ullevk/Kconfig).
+The vendor support already exists in `board/freescale/mx6ull_alientek_emmc/`, with `include/configs/mx6ull_alientek_emmc.h`. Its small defconfig passes an old `IMX_CONFIG` path through `CONFIG_SYS_EXTRA_OPTIONS`. In modern v2026.04 the reference is **`board/nxp/mx6ullevk/`**, and board Kconfig supplies `IMX_CONFIG`. Neither path is a universal naming rule.
 
-Our local teaching port uses these names consistently:
+Our modern local port uses:
 
 ```text
 board/myorg/mx6ull_pa_mini/
@@ -52,9 +58,9 @@ arch/arm/dts/imx6ull-pa-mini.dts
 arch/arm/dts/imx6ull-pa-mini-u-boot.dtsi
 ```
 
-`myorg` is a teaching namespace, not an already registered DT vendor prefix. A real upstream submission needs an appropriate vendor prefix and compatible binding. The underscore form names the U-Boot target/header; the hyphen form names the DT source and resulting `imx6ull-pa-mini.dtb`.
+`myorg` is a teaching namespace, not a registered DT vendor prefix. Underscores name the target/header; hyphens name the DT. A real upstream submission needs an appropriate prefix/binding and actual maintainers.
 
-Two integration files sit outside that directory: `arch/arm/mach-imx/mx6/Kconfig` must expose/source the board, and `arch/arm/dts/Makefile` must list the DTB for this legacy-DTS reference. Other v2026.04 boards use `dts/upstream/`; do not mix that route into this exercise without deliberately migrating the DT setup.
+Source the board Kconfig from `arch/arm/mach-imx/mx6/Kconfig` and list its DTB in `arch/arm/dts/Makefile`. This follows the selected reference's legacy-DTS route, not a silent migration to `dts/upstream/`.
 
 ```{figure} ../illustrations/part3/04-board-facts-and-files.png
 :name: fig-p3-board-facts-files
@@ -65,9 +71,12 @@ Two integration files sit outside that directory: `arch/arm/mach-imx/mx6/Kconfig
 Board facts belong to different files. In this ROM+DCD route, DDR setup must be qualified before U-Boot can use it. A new filename or a successful build does not supply that qualification.
 ```
 
-## 22.3  Step 1, Fork the EVK
+Read the pinned [vendor board source](https://github.com/alientek-openedv/uboot-imx-rel_imx_4.1.15_2.1.0_ga_alientek/blob/edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb/board/freescale/mx6ull_alientek_emmc/mx6ull_alientek_emmc.c) beside the [modern reference](https://github.com/u-boot/u-boot/blob/v2026.04/board/nxp/mx6ullevk/mx6ullevk.c). Carry forward hardware evidence, not every inherited optional hook.
 
-Work in your own U-Boot checkout from Chapter 19, not a shared read-only reference. Chapter 21 may already have added commits on your custom branch, so `HEAD` need not be the release commit. Check the pinned base and inspect the work on top of it:
+(step-1-fork-the-evk)=
+## 22.3  Step 1, Create the modern MINI target
+
+Work in your own modern checkout. Chapter 21 may already have added commits, so HEAD need not equal the release tag:
 
 ```sh
 $ . ~/imx6ull/scripts/env.sh
@@ -79,11 +88,9 @@ $ git status --short
 $ git log --oneline v2026.04..HEAD
 ```
 
-The tag must resolve to `88dc2788777babfd6322fa655df549a019aa1e69`. The ancestry command prints nothing; the immediately following `echo $?` reports `0` if the pinned release is an ancestor of `HEAD`, `1` if it is not, or another nonzero value for an error. Stop and inspect a failed check rather than resetting away your Chapter 21 work. The exact-tag `HEAD` check from Chapter 19 belongs before those custom commits. See [Git's ancestry check](https://git-scm.com/docs/git-merge-base).
+The tag must resolve to `88dc2788777babfd6322fa655df549a019aa1e69`; the ancestry check must return zero. The immediately following `echo $?` reads its silent result. Stop on failure instead of resetting your work. Review extra commits and uncommitted changes too: ancestry establishes the base, not today's entire source. See [Git's ancestry check](https://git-scm.com/docs/git-merge-base).
 
-Review the extra commits and uncommitted changes too: ancestry establishes the starting revision, not that today's source is unchanged. Keep your Chapter 3 compiler directory names, including `arm-gnu-toolchain-13.2.Rel1-x86_64-arm-none-linux-gnueabihf`; the compiler prefix is `arm-none-linux-gnueabihf-`. There is no need to edit `.bashrc` or a system toolchain path.
-
-If a destination below already exists, inspect it instead of copying over it. For new destinations:
+For destinations that do not already exist:
 
 ```sh
 $ mkdir -p board/myorg
@@ -91,17 +98,15 @@ $ cp -a board/nxp/mx6ullevk board/myorg/mx6ull_pa_mini
 $ mv board/myorg/mx6ull_pa_mini/mx6ullevk.c board/myorg/mx6ull_pa_mini/mx6ull_pa_mini.c
 $ cp include/configs/mx6ullevk.h include/configs/mx6ull_pa_mini.h
 $ cp configs/mx6ull_14x14_evk_defconfig configs/mx6ull_pa_mini_defconfig
-$ cp arch/arm/dts/imx6ull-14x14-evk.dts arch/arm/dts/imx6ull-pa-mini.dts
-$ cp arch/arm/dts/imx6ull-14x14-evk-u-boot.dtsi arch/arm/dts/imx6ull-pa-mini-u-boot.dtsi
 ```
 
-The new C file is untracked at this point, so ordinary `mv`, not `git mv`, is appropriate. Preserve the inherited licence/copyright notices. The copied `plugin.S` is not used by this DCD exercise; do not enable `CONFIG_USE_IMXIMG_PLUGIN` or treat it as MINI support.
+Inspect existing files rather than overwriting them. The new C file is untracked, so ordinary `mv` is appropriate. Preserve copied licence/copyright notices. We create the DTS afresh instead of retaining the EVK board include and its unrelated regulators, codec and shift register.
 
-Open `arch/arm/mach-imx/mx6/Kconfig` in your editor. In its board-choice block, beside the EVK target, add:
+In the board-choice block of `arch/arm/mach-imx/mx6/Kconfig`, add:
 
 ```kconfig
 config TARGET_MX6ULL_PA_MINI
-    bool "Point Atom MINI (unvalidated scaffold)"
+    bool "PointAtom MINI V2.2 / eMMC core (migration candidate)"
     depends on MX6ULL
     select BOARD_LATE_INIT
     select DM
@@ -110,7 +115,7 @@ config TARGET_MX6ULL_PA_MINI
     imply CMD_DM
 ```
 
-Near the existing board `source` lines in that same file, add this separate line. Merely creating a `board/myorg/Kconfig` does not make Kconfig discover it.
+Near its existing board source lines add:
 
 ```kconfig
 source "board/myorg/mx6ull_pa_mini/Kconfig"
@@ -136,112 +141,419 @@ config IMX_CONFIG
 endif
 ```
 
-Notice `IMX_CONFIG`: renaming the C file without redirecting this option would still package the EVK's image configuration. In the copied board Makefile, keep its notices and replace the object line with:
+In the copied Makefile preserve notices and replace the object line:
 
 ```make
 obj-y := mx6ull_pa_mini.o
 ```
 
-No SPL object is added. In the copied `imximage.cfg`, update the inactive `PLUGIN` path to `board/myorg/mx6ull_pa_mini/plugin.bin` so an old EVK path is not hidden in the new directory. This does **not** qualify the plugin or any DCD value.
+No SPL object is added. Update the inactive PLUGIN path in `imximage.cfg` to `board/myorg/mx6ull_pa_mini/plugin.bin`; keep `CONFIG_USE_IMXIMG_PLUGIN` disabled. Section 22.6 checks the actual DDR sequence rather than leaving copied writes unexplained.
 
-## 22.4  Step 2, Edit the defconfig
+(step-2-edit-the-defconfig)=
+## 22.4  Step 2, Edit the defconfig and header
 
-Open `configs/mx6ull_pa_mini_defconfig`. Replace the target/DT lines and add the prompt and disabled-autoboot settings shown below. This is a change list, not a complete defconfig:
+Replace the copied defconfig with this complete modern minimum:
 
-```diff
--CONFIG_TARGET_MX6ULL_14X14_EVK=y
-+CONFIG_TARGET_MX6ULL_PA_MINI=y
--CONFIG_DEFAULT_DEVICE_TREE="imx6ull-14x14-evk"
-+CONFIG_DEFAULT_DEVICE_TREE="imx6ull-pa-mini"
-+CONFIG_SYS_PROMPT="pa-mini=> "
-+CONFIG_BOOTDELAY=-1
--CONFIG_BOOTCOMMAND="run findfdt;mmc dev ${mmcdev}; if mmc rescan; then if run loadbootscript; then run bootscript; else if run loadimage; then run mmcboot; else run netboot; fi; fi; else run netboot; fi"
-+CONFIG_BOOTCOMMAND=""
--CONFIG_ENV_IS_IN_MMC=y
--CONFIG_ENV_RELOC_GD_ENV_ADDR=y
--CONFIG_ENV_MMC_DEVICE_INDEX=1
--CONFIG_ENV_OFFSET=0xC0000
-+CONFIG_ENV_IS_NOWHERE=y
+```text
+CONFIG_ARM=y
+CONFIG_ARCH_MX6=y
+CONFIG_TEXT_BASE=0x87800000
+CONFIG_SYS_MALLOC_LEN=0x1000000
+CONFIG_NR_DRAM_BANKS=1
+CONFIG_ENV_SIZE=0x2000
+CONFIG_MX6ULL=y
+CONFIG_TARGET_MX6ULL_PA_MINI=y
+CONFIG_DM_GPIO=y
+CONFIG_DEFAULT_DEVICE_TREE="imx6ull-pa-mini"
+CONFIG_SUPPORT_RAW_INITRD=y
+CONFIG_USE_BOOTCOMMAND=y
+CONFIG_BOOTCOMMAND=""
+CONFIG_BOOTDELAY=-1
+CONFIG_SYS_PROMPT="pa-mini=> "
+CONFIG_SYS_PBSIZE=532
+CONFIG_BOARD_EARLY_INIT_F=y
+CONFIG_HUSH_PARSER=y
+CONFIG_SYS_MAXARGS=32
+CONFIG_CMD_BOOTZ=y
+CONFIG_CMD_GPIO=y
+CONFIG_CMD_MMC=y
+CONFIG_CMD_PART=y
+CONFIG_PARTITION_UUIDS=y
+CONFIG_CMD_DHCP=y
+CONFIG_CMD_PING=y
+CONFIG_CMD_CACHE=y
+CONFIG_CMD_EXT2=y
+CONFIG_CMD_EXT4=y
+CONFIG_CMD_FAT=y
+CONFIG_CMD_FS_GENERIC=y
+CONFIG_OF_CONTROL=y
+CONFIG_ENV_IS_NOWHERE=y
+CONFIG_BOUNCE_BUFFER=y
+CONFIG_FSL_USDHC=y
+CONFIG_PHYLIB=y
+CONFIG_PHY_REALTEK=y
+CONFIG_DM_ETH_PHY=y
+CONFIG_FEC_MXC=y
+CONFIG_MII=y
+CONFIG_PINCTRL=y
+CONFIG_PINCTRL_IMX6=y
+CONFIG_DM_SERIAL=y
+CONFIG_MXC_UART=y
+CONFIG_IMX_THERMAL=y
 ```
 
-This scaffold has RAM-only environment changes. It cannot save them to a copied EVK MMC location. Leave `CONFIG_ENV_SIZE=0x2000` as the inherited environment capacity. A later persistent environment needs a deliberately reserved area, correct controller/device/partition selection and backup/recovery procedure before `saveenv` is allowed.
+No copied Micrel PHY, QSPI/NAND, SPI shift register, I2C PMIC, video or USB stack remains. `CONFIG_PHY_REALTEK` is the SR8201F ID-match candidate examined below, not tested networking. Older LAN8720A carriers need their own reviewed driver selection.
 
-The inherited link address is **`CONFIG_TEXT_BASE=0x87800000`**, not the older `CONFIG_SYS_TEXT_BASE`. It is not a free-RAM declaration or a media offset. Keep it for build comparison only until the board's memory map is qualified. **Do not add `CONFIG_SPL=y`.** That would require a separately designed early loader, build layout and handoff.
+Environment changes are RAM-only. `ENV_SIZE` is capacity, not reserved media. `CONFIG_TEXT_BASE` is a link address, not a media offset. There is no SPL; FIT/script support is a separate extension in Chapter 23.
 
-In `include/configs/mx6ull_pa_mini.h`, give the include guard a unique name such as `__MX6ULL_PA_MINI_CONFIG_H`. Replace the entire inherited `CFG_EXTRA_ENV_SETTINGS` macro with this small, nonbooting default set:
+Keep the header's notices and replace its guard/body with:
 
 ```c
+#ifndef __MX6ULL_PA_MINI_CONFIG_H
+#define __MX6ULL_PA_MINI_CONFIG_H
+
+#include <asm/arch/imx-regs.h>
+#include <linux/sizes.h>
+#include "mx6_common.h"
+
+#define PHYS_SDRAM_SIZE SZ_512M
+#define PHYS_SDRAM MMDC0_ARB_BASE_ADDR
+#define CFG_SYS_SDRAM_BASE PHYS_SDRAM
+#define CFG_SYS_INIT_RAM_ADDR IRAM_BASE_ADDR
+#define CFG_SYS_INIT_RAM_SIZE IRAM_SIZE
+#define CFG_MXC_UART_BASE UART1_BASE
+#define CFG_SYS_FSL_ESDHC_ADDR USDHC2_BASE_ADDR
+#define CFG_SYS_FSL_USDHC_NUM 2
+#define CFG_FEC_ENET_DEV 1
+
 #define CFG_EXTRA_ENV_SETTINGS \
     "fdtfile=imx6ull-pa-mini.dtb\0" \
     "console=ttymxc0\0"
+
+#endif
 ```
 
-This also removes the EVK macro's reference to `CONFIG_ENV_MMC_DEVICE_INDEX`. Keep a note of every remaining EVK constant in the header. For example, `PHYS_SDRAM_SIZE` and `CFG_FEC_ENET_DEV` are not established MINI facts. Configuration symbols use `CONFIG_*`; many remaining board-header constants use `CFG_*`. Do not mechanically rename either family without checking its consumers.
+`CFG_FEC_ENET_DEV=1` names the second FEC hardware instance in our clock hook, not Linux's interface number. Modern constants use `CFG_*` where appropriate; the vendor still uses many `CONFIG_SYS_*` macros. Check their consumers instead of globally renaming symbols.
 
-## 22.5  Step 3, Update the device tree
+(step-3-update-the-device-tree)=
+(step-3-device-tree)=
+## 22.5  Step 3, Describe the actual MINI wiring
 
-Which DT are you changing? This file becomes U-Boot's **control FDT**, the flattened tree used by its driver model. The kernel DTB loaded later is a separate artifact. Similar filenames do not make the blobs interchangeable.
+This DTS becomes U-Boot's **control FDT**, used by driver model. It is not the kernel DTB loaded in Chapter 23. The vendor config instead configures many pads directly in C; its Linux DTB filename does not establish a U-Boot control tree.
 
-For the compile-only scaffold, replace just the root model/compatible block in the copied DTS with:
+Create `arch/arm/dts/imx6ull-pa-mini.dts`. Include only the SoC description, not `imx6ul-14x14-evk.dtsi`:
 
 ```dts
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/dts-v1/;
+#include "imx6ull.dtsi"
+
 / {
-    model = "Point Atom i.MX6ULL MINI (unvalidated scaffold)";
+    model = "PointAtom MINI V2.2 with 512MiB eMMC core";
     compatible = "myorg,imx6ull-pa-mini", "fsl,imx6ull";
+
+    aliases {
+        /delete-property/ ethernet1;
+        ethernet0 = &fec2;
+        mmc0 = &usdhc1;
+        mmc1 = &usdhc2;
+    };
+    chosen {
+        stdout-path = "serial0:115200n8";
+    };
+    memory@80000000 {
+        device_type = "memory";
+        reg = <0x80000000 0x20000000>;
+    };
+};
+
+&cpu0 {
+    clock-frequency = <528000000>;
+    /delete-property/ operating-points;
+    /delete-property/ fsl,soc-operating-points;
+};
+
+&clks {
+    assigned-clocks = <&clks IMX6UL_CLK_PLL3_PFD2>;
+    assigned-clock-rates = <320000000>;
+};
+
+&uart1 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_uart1>;
+    status = "okay";
+};
+
+&usdhc1 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_usdhc1>;
+    bus-width = <4>;
+    cd-gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
+    no-1-8-v;
+    max-frequency = <25000000>;
+    status = "okay";
+};
+
+&usdhc2 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_usdhc2>;
+    bus-width = <8>;
+    non-removable;
+    no-1-8-v;
+    max-frequency = <25000000>;
+    status = "okay";
+};
+
+&fec1 {
+    status = "disabled";
+};
+
+&fec2 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&pinctrl_enet2 &pinctrl_enet2_reset>;
+    phy-mode = "rmii";
+    phy-handle = <&mini_phy>;
+    phy-reset-gpios = <&gpio5 8 GPIO_ACTIVE_LOW>;
+    phy-reset-duration = <100>;
+    phy-reset-post-delay = <100>;
+    status = "okay";
+
+    mdio {
+        #address-cells = <1>;
+        #size-cells = <0>;
+        mini_phy: ethernet-phy@1 {
+            compatible = "ethernet-phy-ieee802.3-c22";
+            reg = <1>;
+        };
+    };
+};
+
+&iomuxc {
+    pinctrl_uart1: uart1grp {
+        fsl,pins = <
+            MX6UL_PAD_UART1_TX_DATA__UART1_DCE_TX 0x1b0b1
+            MX6UL_PAD_UART1_RX_DATA__UART1_DCE_RX 0x1b0b1
+        >;
+    };
+    pinctrl_usdhc1: usdhc1grp {
+        fsl,pins = <
+            MX6UL_PAD_SD1_CLK__USDHC1_CLK 0x17059
+            MX6UL_PAD_SD1_CMD__USDHC1_CMD 0x17059
+            MX6UL_PAD_SD1_DATA0__USDHC1_DATA0 0x17059
+            MX6UL_PAD_SD1_DATA1__USDHC1_DATA1 0x17059
+            MX6UL_PAD_SD1_DATA2__USDHC1_DATA2 0x17059
+            MX6UL_PAD_SD1_DATA3__USDHC1_DATA3 0x17059
+            MX6UL_PAD_UART1_RTS_B__GPIO1_IO19 0x1b0b0
+        >;
+    };
+    pinctrl_usdhc2: usdhc2grp {
+        fsl,pins = <
+            MX6UL_PAD_NAND_RE_B__USDHC2_CLK 0x17059
+            MX6UL_PAD_NAND_WE_B__USDHC2_CMD 0x17059
+            MX6UL_PAD_NAND_DATA00__USDHC2_DATA0 0x17059
+            MX6UL_PAD_NAND_DATA01__USDHC2_DATA1 0x17059
+            MX6UL_PAD_NAND_DATA02__USDHC2_DATA2 0x17059
+            MX6UL_PAD_NAND_DATA03__USDHC2_DATA3 0x17059
+            MX6UL_PAD_NAND_DATA04__USDHC2_DATA4 0x17059
+            MX6UL_PAD_NAND_DATA05__USDHC2_DATA5 0x17059
+            MX6UL_PAD_NAND_DATA06__USDHC2_DATA6 0x17059
+            MX6UL_PAD_NAND_DATA07__USDHC2_DATA7 0x17059
+        >;
+    };
+    pinctrl_enet2: enet2grp {
+        fsl,pins = <
+            MX6UL_PAD_GPIO1_IO07__ENET2_MDC 0x1b0b0
+            MX6UL_PAD_GPIO1_IO06__ENET2_MDIO 0x1b0b0
+            MX6UL_PAD_ENET2_RX_EN__ENET2_RX_EN 0x1b0b0
+            MX6UL_PAD_ENET2_RX_ER__ENET2_RX_ER 0x1b0b0
+            MX6UL_PAD_ENET2_RX_DATA0__ENET2_RDATA00 0x1b0b0
+            MX6UL_PAD_ENET2_RX_DATA1__ENET2_RDATA01 0x1b0b0
+            MX6UL_PAD_ENET2_TX_EN__ENET2_TX_EN 0x1b0b0
+            MX6UL_PAD_ENET2_TX_DATA0__ENET2_TDATA00 0x1b0b0
+            MX6UL_PAD_ENET2_TX_DATA1__ENET2_TDATA01 0x1b0b0
+            MX6UL_PAD_ENET2_TX_CLK__ENET2_REF_CLK2 0x4001b031
+        >;
+    };
+};
+
+&iomuxc_snvs {
+    pinctrl_enet2_reset: enet2resetgrp {
+        fsl,pins = <
+            MX6ULL_PAD_SNVS_TAMPER8__GPIO5_IO08 0x1b0b0
+        >;
+    };
 };
 ```
 
-Leave the includes and clock block intact for this first build. In particular, `imx6ul-14x14-evk.dtsi` still supplies EVK memory, regulators, peripherals and pads. **Changing the root identity does not remove that inherited hardware.** The copied `imx6ull-pa-mini-u-boot.dtsi` marks the EVK UART pinctrl and RNG for early use with `bootph-all`. Those are also reference settings, not a new pad audit.
+The 25 MHz storage cap is an initial conservative policy, not a measured maximum. We omit high-speed/UHS modes and voltage switching. The core's `SD1_VSELECT` circuit can switch its I/O rail, while the carrier socket remains on 3.3 V; do not request a 1.8 V mode without implementing and validating the complete chain. An already powered rail needs no fabricated switch GPIO.
 
-In `arch/arm/dts/Makefile`, add a separate entry:
+The SoC include contains generic CPU operating points not established by the core schematic's MCIMX6Y2CVM05AB label. The override removes those tables and labels 528 MHz; it does not program or qualify CPU clocks/voltage. Check actual silicon and clock setup independently. This control tree is not a production Linux CPU-frequency/power description.
+
+The PHY compatible permits actual MDIO discovery rather than forcing a guessed Micrel/SMSC ID. Reset durations are conservative candidate values, not measured timings. These **MAC-node reset properties** are consumed by this release's FEC driver; a property at another location is not automatically equivalent.
+
+Create `arch/arm/dts/imx6ull-pa-mini-u-boot.dtsi`:
+
+```dts
+// SPDX-License-Identifier: GPL-2.0+
+&pinctrl_uart1 {
+    bootph-all;
+};
+```
+
+Add this separate line in `arch/arm/dts/Makefile`:
 
 ```make
 dtb-$(CONFIG_MX6ULL) += imx6ull-pa-mini.dtb
 ```
 
-For a physical MINI port, replace the EVK board-level include with a local board description and audit its complete expanded tree. Keep SoC definitions such as `imx6ull.dtsi`; rewrite board wiring from the actual schematic. Work through one dependency chain at a time:
-
-1. **Console:** UART instance, TX/RX pad functions, electrical settings, clocks and `chosen/stdout-path` must refer to the routed connector. `ttymxc0` is an example for the kernel's UART1 path, not proof of your connector routing.
-2. **Storage:** identify the wired USDHC controller, bus width, card detect, supply, reset and voltage switching. `non-removable` only describes soldered media. It does not initialize or identify an eMMC for you.
-3. **Ethernet:** identify the MAC instance, PHY model and strapped MDIO address, RMII/MII mode, reference-clock direction, reset polarity/timing and supplies. A PHY node with `reg = <0>` is correct only if the straps establish address zero.
-4. **Optional I/O:** add LED, key or buzzer nodes only after locating the exact nets and the matching driver/binding. A passive PWM beeper and an active GPIO-controlled buzzer are different circuits. There is no generic `pwm0` shortcut in this i.MX6ULL tree.
-
-Do not declare a convenient memory size to make a build pass. The DT's memory description must agree with populated DDR geometry and the bootloader's detected/usable banks. Likewise, disabling a DT peripheral does not undo an unrelated C hook that drives its clock or reset.
+Optional nodes can follow after their dependencies are reviewed. For example, MINI P4 exposes I2C1 SCL on **pin 43 / `UART4_TXD`** and SDA on **pin 42 / `UART4_RXD`**, not a guessed adjacent row pair; pin 41 is `ENET1_RXER`, pin 44 `UART5_RXD`/I2C2 SDA, pin 45 `UART5_TXD`/I2C2 SCL. These connectors do not require I2C in the minimum bootloader. Review Linux's own tree/bindings separately.
 
 (step-4-ddr-config-in-spl-c)=
 ## 22.6  Step 4, DDR config in DCD
 
-For this selected defconfig, **there is no `spl.c` to edit**. The DDR initialization is the DCD in `board/myorg/mx6ull_pa_mini/imximage.cfg`. ROM applies it before entering U-Boot in DDR. The inherited `dram_init()` calls `imx_ddr_size()` to report the already configured controller; it does not replace the DCD with fresh timing setup.
+There is no `spl.c` in this target. ROM applies the DCD before entering U-Boot; `dram_init()` reports the configured memory through `imx_ddr_size()`, not a new timing initialization.
 
-Open the [v2026.04 EVK DCD](https://github.com/u-boot/u-boot/blob/v2026.04/board/nxp/mx6ullevk/imximage.cfg). Its `DATA` entries program clocks, DDR pads and MMDC, the memory controller. For example, the grammar is:
+We have more evidence than "both boards have DDR": the supplied core shows the x16 512 MiB DDR3L part/rail, and the pinned vendor publishes its initialization recipe. Compare the **ordered DATA entries** against the copied modern image config:
 
-```text
-DATA <register-width-in-bytes> <register-address> <value>
+```sh
+$ cd ~/imx6ull/src/u-boot
+$ diff -u \
+    <(awk '$1 == "DATA" {sub(/\r$/, "", $4); print $1, $2, $3, $4}' \
+      ../uboot-mini-vendor/board/freescale/mx6ull_alientek_emmc/imximage.cfg) \
+    <(awk '$1 == "DATA" {sub(/\r$/, "", $4); print $1, $2, $3, $4}' \
+      board/myorg/mx6ull_pa_mini/imximage.cfg)
 ```
 
-That is explanatory syntax, not input to paste into the file. The real file contains concrete register writes. None are offered here as MINI calibration values.
+This is Bash process substitution, run in the Linux shell. It removes a possible Windows carriage return from the final field, but preserves hexadecimal case and entry order. For the pinned inputs, the DATA sequences match. The candidate therefore carries forward the **document-compared vendor sequence**, not a newly invented calibration table. Keep modern conditional names such as `CONFIG_USE_IMXIMG_PLUGIN` and `CONFIG_IMX_HAB`; do not replace the whole file with the old preprocessor wrapper.
 
-What would justify replacing them? Gather the populated DDR part/speed grade, voltage, bus width, ranks/chip selects, geometry and the exact PCB revision. Use the relevant NXP DDR tooling and its supported setup procedure from Chapter 14 to derive and validate a register sequence. Keep the tool version, input configuration, calibration output, test scope and environmental conditions with the port ledger. A stress result at one voltage/temperature is evidence for that test, not product qualification across all conditions.
+Identical bytes establish provenance, not electrical qualification. Confirm populated DDR, core/PCB revision and rail sequencing, then use the matching NXP DDR tooling/test procedure from Chapter 14. Preserve tool/input versions, calibration output and environmental test scope. No measurements of these rails or DDR margins have been performed for this text.
 
-Then map the qualified sequence into DCD entries, preserving required ordering and initialization commands. Compare the generated image's DCD with the reviewed input. If power, pads or DDR evidence is missing, stop at the build scaffold. Moving the same unverified numbers into an SPL struct does not solve the evidence gap.
+DCD syntax is `DATA <width-in-bytes> <register-address> <value>`; ordering and initialization commands matter. Review the generated image's DCD too. A DT memory size cannot repair incorrect initialization. Chapter 20's PICO SPL study is a different board/architecture, not a MINI substitute.
 
-An SPL reference such as `pico-imx6ul_defconfig` in Chapter 20 is useful for studying a different boot architecture. Its image and DDR settings are **not** a MINI recovery image and are not part of this port.
+(step-5-per-board-iomux-and-peripheral-init)=
+## 22.7  Step 5, Board hooks the drivers still need
 
-## 22.7  Step 5, Per-board IOMUX and peripheral init
+Why not describe every operation in DT? A binding works only if the selected driver consumes it. This release's USDHC driver does **not** call the `mmc-pwrseq-emmc` implementation. Adding that node alone would leave the reset pulse unexecuted. We use a small hook for `NAND_ALE` / `GPIO4_IO10` instead, following the vendor route without calling it "power."
 
-On an MCU, alternate-function selection and output electrical settings may be adjacent register fields. Here, **IOMUX** chooses the pad function, pad control chooses electrical behavior, and input daisy selection can choose which pad feeds a peripheral input. U-Boot's pinctrl driver can apply these from the control DT. Adding a second C pad table unnecessarily creates two owners for the same pins.
+Preserve the copied C file's licence/copyright notices and replace its implementation with:
 
-Read the actual `mx6ull_pa_mini.c` you copied. The EVK source's early hook is empty; its Ethernet hook configures an internal 50 MHz clock path, and `board_phy_config()` writes a PHY register. Do not replace this with an invented generic `board_eth_init()` that assumes all Ethernet setup is non-driver-model. Match the selected driver's call path and the actual PHY datasheet.
+```c
+#include <init.h>
+#include <asm/arch/clock.h>
+#include <asm/arch/crm_regs.h>
+#include <asm/arch/imx-regs.h>
+#include <asm/arch/iomux.h>
+#include <asm/arch/mx6-pins.h>
+#include <asm/arch/sys_proto.h>
+#include <asm/global_data.h>
+#include <asm/gpio.h>
+#include <asm/io.h>
+#include <asm/mach-imx/iomux-v3.h>
+#include <env.h>
+#include <linux/delay.h>
+#include <linux/sizes.h>
+#include <miiphy.h>
 
-For the source scaffold, make only the identity changes in `board_late_init()` and `checkboard()`: replace EVK board-name/revision strings with `PA-MINI`/`unvalidated`, and change the printed board string to `Point Atom MINI (unvalidated scaffold)`. Preserve function signatures and return values. This is a useful way to check that the new object was linked without toggling an unknown GPIO.
+DECLARE_GLOBAL_DATA_PTR;
 
-Before physical use, audit or remove the inherited `setup_fec()` and PHY-register write. If a board hook is required, return errors through the caller instead of reporting success after a failed clock/PHY setup. Do not mask a bring-up failure by adding more delays until a prompt happens to appear.
+int dram_init(void)
+{
+    gd->ram_size = imx_ddr_size();
+    return 0;
+}
 
-**Prediction check:** if the MINI's PHY uses an external oscillator, can the EVK's internal-clock setup be retained just because both trees say `phy-mode = "rmii"`? No. The interface mode does not establish the source/direction of the reference clock. The schematic, PHY requirements and SoC clock mux must agree.
+int board_early_init_f(void)
+{
+    return 0;
+}
+
+static int mini_emmc_reset(void)
+{
+    const unsigned int reset = IMX_GPIO_NR(4, 10);
+    int ret;
+
+    imx_iomux_v3_setup_pad(MX6_PAD_NAND_ALE__GPIO4_IO10 |
+                          MUX_PAD_CTRL(0x1b0b0));
+    ret = gpio_request(reset, "mini-emmc-reset");
+    if (ret)
+        return ret;
+    ret = gpio_direction_output(reset, 0);
+    if (ret)
+        return ret;
+    udelay(500);
+    ret = gpio_set_value(reset, 1);
+    if (ret)
+        return ret;
+    mdelay(1);
+    return 0;
+}
+
+#ifdef CONFIG_FEC_MXC
+static int mini_fec_clock(void)
+{
+    struct iomuxc *regs = (struct iomuxc *)IOMUXC_BASE_ADDR;
+    int ret;
+
+    /* Internal ENET2 reference; REF_CLK2 drives the PHY's TXC input. */
+    clrsetbits_le32(&regs->gpr[1], IOMUX_GPR1_FEC2_MASK,
+                   IOMUX_GPR1_FEC2_CLOCK_MUX1_SEL_MASK);
+    ret = enable_fec_anatop_clock(CFG_FEC_ENET_DEV, ENET_50MHZ);
+    if (ret)
+        return ret;
+    enable_enet_clk(1);
+    return 0;
+}
+
+int board_phy_config(struct phy_device *phydev)
+{
+    if (phydev->drv->config)
+        return phydev->drv->config(phydev);
+    return 0;
+}
+#endif
+
+int board_init(void)
+{
+    int ret;
+
+    gd->bd->bi_boot_params = PHYS_SDRAM + 0x100;
+    ret = mini_emmc_reset();
+    if (ret)
+        return ret;
+#ifdef CONFIG_FEC_MXC
+    return mini_fec_clock();
+#else
+    return 0;
+#endif
+}
+
+int board_late_init(void)
+{
+    return env_set("board_name", "PA-MINI");
+}
+
+int checkboard(void)
+{
+    puts("Board: PointAtom MINI V2.2 migration candidate\n");
+    return 0;
+}
+```
+
+UART1's pre-relocation pinctrl belongs to the control DT, not a second C pad table. USDHC bus pads also stay in DT; only eMMC reset is owned by this hook. It requests the GPIO, asserts low and releases it, propagating API failures. Assertion follows the vendor's 500 microseconds, with an initial conservative release delay. Whether the device honors hardware reset also depends on its existing configuration; do not change irreversible eMMC reset-enable fields as a lab shortcut.
+
+ENET2 retains the internal 50 MHz reference path needed by the supplied SR8201F input strap. The PHY's 25 MHz crystal is a separate circuit. PHY reset belongs to the FEC driver's DT path, not this C hook.
+
+Check the driver by ID. The [CoreChips SR8201F-VB datasheet](https://datasheet.lcsc.com/datasheet/pdf/941fa6953df8b4f6a9945b2c95950f31.pdf?productCode=C378491), register tables 13-14, gives ID words 0x001c and 0xc816, combined **0x001cc816**. This matches the [v2026.04 RTL8201F entry](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/net/phy/realtek.c), UID 0x1cc816/mask 0xffffff. It is a **datasheet/source match**, not an observed board ID or proof of complete silicon compatibility. Confirm actual suffix/revision and MDIO ID before qualifying the link.
+
+Leave `CONFIG_RTL8201F_PHY_S700_RMII_TIMINGS` disabled: it chooses another platform's adjustments. The normal driver uses generic autonegotiation/startup. Real reset recovery, clock direction and packet transfers remain hardware tests.
+
+This board hook removes the inherited unconditional PHY write **`0x1f = 0x8190`**. On SR8201F that address is a page selector, not a universal board register. It returns the selected driver's config status instead of discarding it. Do not transplant the guide's LAN8720A global-reset workaround into modern generic PHY code.
+
+The old vendor header enables **`CONFIG_PHY_SMSC` only**. That supports its older intended LAN8720A path, not a known-working SR8201F network claim. Generic fallback is not qualification. Chapter 19's first lab build explicitly disables video and networking, so its inherited display and PHY hooks are not executed. It also disables USB commands to avoid the old USB/network dependency. Any later re-enablement needs carrier-specific review; this modern candidate replaces the inherited PHY write rather than copying it.
 
 ## 22.8  Step 6, Build and flash
 
-First build; flashing is a separate decision. Use a new output directory rather than cleaning a source tree containing your other work:
+First build the modern migration in a fresh output directory, without cleaning either source workspace:
 
 ```sh
 $ . ~/imx6ull/scripts/env.sh
@@ -251,48 +563,52 @@ $ make O="$HOME/imx6ull/build/u-boot-mini-2026.04" \
     ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- mx6ull_pa_mini_defconfig
 $ make O="$HOME/imx6ull/build/u-boot-mini-2026.04" \
     ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- -j"$(nproc)"
-$ grep -E 'CONFIG_(TARGET_MX6ULL_PA_MINI|IMX_CONFIG|DEFAULT_DEVICE_TREE|TEXT_BASE|ENV_IS_NOWHERE|SPL)=' \
+$ grep -E 'CONFIG_(TARGET_MX6ULL_PA_MINI|IMX_CONFIG|DEFAULT_DEVICE_TREE|TEXT_BASE|ENV_IS_NOWHERE|PHY_REALTEK|SPL)=' \
     ~/imx6ull/build/u-boot-mini-2026.04/.config
 $ ls -l ~/imx6ull/build/u-boot-mini-2026.04/u-boot-dtb.imx
 $ ~/imx6ull/build/u-boot-mini-2026.04/tools/mkimage -l \
     ~/imx6ull/build/u-boot-mini-2026.04/u-boot-dtb.imx
 ```
 
-The grep above only selects assignments. An unset SPL option may appear as `# CONFIG_SPL is not set`, or be absent when SPL support is not exposed by the selected target. Check the target's Kconfig, final config and actual output set together. Check the generated `arch/arm/dts/imx6ull-pa-mini.dtb`, not just the existence of an `.imx` file. Use `make O=... savedefconfig` after intentional menu changes, then manually compare the generated `defconfig` with your source file before copying it back.
+Keep Chapter 3's compiler directory name, `arm-gnu-toolchain-13.2.Rel1-x86_64-arm-none-linux-gnueabihf`, and prefix `arm-none-linux-gnueabihf-`. No `.bashrc`/global path edits are needed. Old-source compatibility patches from Chapter 19 belong to the vendor build, not automatically to this release.
 
-Read the image listing with the source caveat from Chapter 19: in v2026.04's `tools/imximage.c`, the non-plugin v2 line labeled `Load Address` prints the IVT's **BootData pointer**, not `BootData.start`. It is not another kernel buffer address. Inspect the actual header/BootData and DCD when checking the ROM load range; `Mode: DCD` alone does not prove that a board-qualified DDR sequence is present.
+Inspect final config, generated `arch/arm/dts/imx6ull-pa-mini.dtb`, linked board object and image DCD/header. Grep above selects assignments; unset SPL may appear as a comment or be absent. Check actual artifacts too. After menu changes, run `make O=... savedefconfig` and manually compare its output before updating your source defconfig.
 
-For this reference, the product is `u-boot-dtb.imx`. The [versioned EVK board documentation](https://github.com/u-boot/u-boot/blob/v2026.04/doc/board/nxp/mx6ullevk.rst) describes a media offset of **1 KiB for that EVK SD route**, not SPL at 1 KiB plus U-Boot at 69 KiB. Do not turn that fact into a blanket MINI or eMMC instruction.
+The modern product is `u-boot-dtb.imx`, distinct from the vendor build's `u-boot.imx`. For this modern release's `tools/imximage.c`, the non-plugin v2 **Load Address** label prints the IVT's BootData pointer, not `BootData.start`. See the upstream inspection in Chapter 24A Section 21; do not assume the vendor tool displays the same fields. Inspect actual fields to calculate the ROM range.
 
-Before any later physical write, all of the following must be established:
+Flashing is a separate decision. The modern EVK documentation's 1 KiB SD offset is an EVK-route fact, not a blanket eMMC-area instruction. Compare the modern image's actual format/length with Chapter 19's MINI vendor layout evidence. There is no SPL-at-1-KiB / full-U-Boot-at-69-KiB recipe here.
 
-- The image's DCD, power assumptions, pads and enabled peripherals match the exact board revision and populated parts.
-- The selected boot medium, ROM offset, image length, partition table and reserved environment area are documented and do not overlap.
-- The host device is identified by model/size/transport and stable identity, its mounts are understood, and a backup exists. A U-Boot MMC index is not a Linux host `/dev` name.
-- A known-good recovery path/image is available and qualified for this board, without changing fuses.
-- The planned write and read-back verification are reviewed for the actual removable media or eMMC area.
+Before a later physical write, establish all of these:
 
-Until then, keep the scaffold on the host. This chapter deliberately provides no raw write command.
+- Matching core/carrier population, DCD/power/pad evidence and qualified boot/memory map.
+- Actual medium/eMMC area, ROM offset, image length, partition map and reserved environment regions, without overlap.
+- Host device identity, mounts and backup; U-Boot MMC indices are not Linux host device names.
+- A qualified board-specific recovery image/path without fuse changes.
+- Reviewed write/read-back procedure, not a copied block count.
+
+No raw write command or target execution is supplied here. A successful build completes the source/API check, not the hardware gate.
 
 ## 22.9  Verify per-peripheral
 
-Only after the hardware gate above is satisfied should target bring-up begin. Interrupt autoboot and collect the actual banner/config first. A renamed prompt proves identity, not DDR reliability.
+After the hardware/recovery gate, interrupt autoboot and record real identity. Start with UART/storage; Ethernet is not a prerequisite for reaching the first prompt.
 
-| Check | What it can establish | What it cannot establish |
-|-------|-----------------------|--------------------------|
-| `version`, `bdinfo` | Build identity and reported memory/relocation layout | DDR margin or all reserved-memory boundaries |
-| `mmc list`, then `mmc dev`/`mmc info` for the verified controller | Enumerated storage and card information | Correct boot-media layout or write safety |
-| `printenv`, `help` | Active policy and commands compiled in | That defaults match a stored environment from an older image |
-| `ping` on an isolated, approved link | One ICMP exchange using the selected MAC/PHY path | Linux Ethernet driver readiness or NFS availability |
-| `i2c bus` | U-Boot's configured bus inventory | Which physical chips are safe to probe |
+| Qualified-board check | Evidence to record | Limit |
+|-----------------------|--------------------|-------|
+| `version`, `bdinfo`, `printenv`, `help` | Build, reported memory/relocation, active defaults/commands | Not DDR margin or proof that saved settings fit the new build |
+| `mmc list`, verified `mmc dev / mmc info` | SD/eMMC routing and enumerated properties | Not image-layout/write safety |
+| Read-only listing/load into reserved RAM | Prepared filesystem files and load status | Wrong addresses/sizes can overwrite live RAM |
+| ENET2 MDIO ID inspection using an actually available command | Actual address 1/ID, reset/clock evidence and driver | Management-bus response is not packet communication |
+| Isolated `ping`, then controlled TFTP checks | Actual link and transfer results | Not Linux PHY readiness, NFS-root or reliability qualification |
 
-Record observed output and compare it with the ledger. Do not fabricate bus counts, device numbering, DDR sizes or successful ping lines for the MINI. I2C scanning sends transactions and is not harmless for every attached device; inspect the devices and permitted operations before probing.
+Normal vendor mapping is MMC 0 for USDHC1/SD and MMC 1 for USDHC2/eMMC. Modern aliases preserve that intent. Still record enumeration: vendor fuse-based mapping and Linux aliases are additional layers, not permission to guess `/dev/mmcblkN`.
 
-Do not run `mtest` over a guessed live-DDR range. It can overwrite U-Boot, its stack/heap, the control FDT or loaded images. DDR qualification needs a dedicated, documented test setup from Chapter 14, not a console memory sweep chosen from the apparent capacity.
+Compare the real PHY ID with Section 22.7, inspect RMII reference/reset if needed, and preserve failure logs. Stop if the observed device differs. A banner saying "FEC" is not a successful network test.
+
+Do not run `mtest` over a guessed live-DDR range. It can overwrite U-Boot, stack/heap, control FDT or images. DDR qualification uses a dedicated setup with known ownership and a documented test plan.
 
 ## 22.10  MAINTAINERS file
 
-Replace the inherited EVK ownership entry. Fill in an actual maintainer before submission; the following is a template:
+Replace copied EVK ownership. Before submission, fill in actual maintainer details:
 
 ```text
 MX6ULL_PA_MINI BOARD
@@ -305,31 +621,32 @@ F: arch/arm/dts/imx6ull-pa-mini.dts
 F: arch/arm/dts/imx6ull-pa-mini-u-boot.dtsi
 ```
 
-This records ownership and helps `scripts/get_maintainer.pl` find reviewers. It is not a certification that the board works. Keep the hardware ledger and test record alongside the port documentation even if it remains a local product port.
+This routes review, not certification. Keep hardware revisions, DCD provenance and actual tests beside the port.
 
 ## 22.11  Lab
 
-1. **Trace the reference before copying.** Find the v2026.04 target, its board Kconfig, `IMX_CONFIG`, DCD, header and control DTS. Explain who initializes DDR in this config.
-2. **Build the separate scaffold.** Apply Sections 22.3-22.5 and the identity-only edits in 22.7. Verify the final `.config`, object/DT names and `.imx` artifact. Do not boot it on the MINI.
-3. **Audit one chain from the supplied schematic.** Choose UART, USDHC or Ethernet. Record every pad, supply, clock and reset dependency, including unknowns. Do not fill missing values from memory.
-4. **Prepare the DDR evidence plan.** Identify the actual memory and the supported test configuration. If hardware or documents are unavailable, mark this step blocked by evidence, not "passed" because the build works.
-5. **Review the diff.** Use `git diff --check` and inspect both tracked changes and new files with your editor. Confirm the new target does not accidentally retain an EVK `IMX_CONFIG` or persistent MMC environment backend.
-6. **Optional qualified-board bring-up.** Only after the hardware/write/recovery gates are met, follow an approved board procedure and record real results from Section 22.9. Keep this evidence separate from host compilation.
+1. **Separate workspaces.** Record vendor commit/config and modern ancestry. Explain why old `board/freescale` and modern `board/nxp` paths can both be correct.
+2. **Trace the core.** Find DDR part/rail, eight-bit eMMC pads and reset on the supplied sheets. Compare ordered DCD writes; distinguish provenance from qualification.
+3. **Build the modern candidate.** Apply Sections 22.3-22.7, inspect config/DT/image, and keep it on the host until the hardware gates are satisfied.
+4. **Audit the PHY revision.** Explain LAN8720A versus SR8201F, address versus ID, and crystal versus RMII reference. Identify the old header's missing Realtek selection and inherited PHY write.
+5. **Review optional hardware.** List exclusions and SD/Wi-Fi sharing. Locate `KEY0`, `WIFI_REG_ON` and `GBC_KEY/AP_INT` independently; do not enable all connector functions by default.
+6. **Review the diff and test plan.** Use `git diff --check` and inspect new files. Confirm no EVK board include or persistent environment backend remains; list unperformed board tests before any write.
 
 ## 22.12  Pitfalls
 
-- **A new name with old hardware.** Including the EVK `.dtsi` retains its regulators and pads. Audit the expanded tree and all C hooks, not only `model`.
-- **Changing DT memory but leaving DCD.** DT reports hardware; it does not initialize DDR before ROM loads U-Boot. Geometry and initialization must agree.
-- **Wrong integration path.** A new board Kconfig must be sourced. A misspelled selected DTS normally fails the build; there is no dependable "fall back to EVK" mechanism to rely on.
-- **Confusing addresses.** `CONFIG_TEXT_BASE` is a link address. DCD register addresses, RAM load buffers and media offsets are different address spaces.
-- **Blindly copied environment storage.** EVK `ENV_OFFSET=0xC0000`, size `0x2000` and MMC device index `1` are reference facts, not reserved space on your product. The scaffold uses `ENV_IS_NOWHERE`.
-- **Wrong PHY or MAC policy.** PHY address comes from hardware straps; PHY register programming comes from its datasheet. MAC addresses need a collision-free allocation policy, not one copied from an EVK or an unreviewed chip-ID hash.
-- **Treating one boot as qualification.** A prompt and a small transfer do not cover DDR corners, storage endurance, rail sequencing or recovery behavior.
+- **ALPHA prose used as MINI wiring.** Follow supplied schematics and the populated revision.
+- **Vendor source treated as universal support.** Shared core support does not establish the changed carrier PHY.
+- **DCD matching confused with validation.** Published-sequence provenance is not measured DDR margin.
+- **Eight-bit eMMC treated as four-bit SD.** Include DATA4-7 and the actual reset; do not turn reset into rail control.
+- **Unused DT power-sequence node.** Check driver consumers; this USDHC implementation needs the explicit hook.
+- **PHY names/addresses used as driver matches.** Compare real ID/mask, then qualify reset/clock/data behavior.
+- **Wrong address space.** Link, DCD registers, RAM buffers and media offsets have different purposes.
+- **Saving inherited policy.** Modern `ENV_IS_NOWHERE` and the vendor's MMC backend are different; neither permits unreviewed persistent writes.
 
 ## 22.13  Going deeper
 
-Read the [v2026.04 board C source](https://github.com/u-boot/u-boot/blob/v2026.04/board/nxp/mx6ullevk/mx6ullevk.c) beside its Kconfig and image config. Follow a real hook into its caller before adding another one. The [v2026.04 DT control documentation](https://docs.u-boot.org/en/v2026.04/develop/devicetree/control.html) explains the tree used by U-Boot's own drivers.
+Follow the [v2026.04 DT control guide](https://docs.u-boot.org/en/v2026.04/develop/devicetree/control.html), [USDHC driver](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/mmc/fsl_esdhc_imx.c), [FEC driver](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/net/fec_mxc.c) and [PHY driver](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/net/phy/realtek.c) alongside the schematic. Find each property's consumer before relying on it.
 
-For ROM and DDR decisions, return to the matching i.MX6ULL reference manual, memory datasheet and supplied board schematic revision from Parts I-II. Application-note numbers and another board's successful configuration are not substitutes for those documents. Keep the distinction between build evidence and physical evidence visible in the port's README.
+Vendor Chapter 33 explains the original pad/storage/LAN8720A port, but its old symbols, global-PHY workaround and unconditional boot strings are not modern patches. Keep the supplied schematics, matched device datasheets and i.MX6ULL reference manual from Parts I-II beside both trees.
 
-> Next chapter: **Chapter 23: `bootcmd`, `bootargs`, FIT images.** With a qualified bootloader, what must it load, and what information must it hand to Linux? We can study that contract on the host before claiming a MINI boot.
+> Next chapter: **Chapter 23: `bootcmd`, `bootargs`, FIT images.** Inspect the vendor storage policy, replace unsafe load chains with explicit gates, and study FIT separately in the modern workspace.

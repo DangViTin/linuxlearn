@@ -10,13 +10,13 @@ status: draft
 
 On an MCU, you can often reach `main()` by supplying a vector table, a linker script, and a few clock writes. Here the Boot ROM must first make external memory usable, load a much larger executable, and transfer control to it. U-Boot then builds its own runtime: a stack, global data, device discovery, relocation, and finally a command interpreter. A serial message at one stage does not prove that the later stages work.
 
-Chapter 22 uses U-Boot's existing i.MX support. This chapter takes an educational alternative: keep the generic ARMv7 startup and U-Boot frameworks, but give UART1, GPT1, and USDHC2 their own small register-level implementations. The silicon is not new to upstream U-Boot. Our new `ARCH_IMX6ULL` selection is a separate teaching route, not a replacement for the normal `ARCH_MX6` port and not a qualified full-chip port.
+Chapter 19's first practical MINI build uses the official Alientek vendor source at commit `edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb` with `mx6ull_alientek_emmc_defconfig`. Keep that baseline for first board work. This optional chapter takes a deeper educational route on upstream U-Boot: keep the generic ARMv7 startup and frameworks, but give UART1, GPT1, and USDHC2 their own small register-level implementations. The silicon is not new to upstream U-Boot. Our new `ARCH_IMX6ULL` selection is a separate teaching route, not a replacement for the normal `ARCH_MX6` port and not a qualified full-chip port.
 
-The supplied C, Device Tree, Kconfig, and Makefile listings can be built against **upstream v2026.04, commit `88dc2788777babfd6322fa655df549a019aa1e69`**. That is a source-build checkpoint, not a board-test result. Producing a MINI boot image additionally requires a qualified DDR initialization sequence for the fitted core board. Section 24A.14 makes that missing input explicit. No measured DDR calibration or successful board boot is claimed here.
+The supplied listings build against **upstream v2026.04, commit `88dc2788777babfd6322fa655df549a019aa1e69`** and include the vendor-documented DDR initializer for the supplied 512 MiB eMMC core-board design. Section 24A.14 identifies its exact provenance, and section 24A.21 creates the actual ROM+DCD image without an omitted file. Source compilation and image inspection are verified checkpoints, not board-test results. No DDR calibration measured by us or successful boot of this custom port is claimed here.
 
 This chapter follows one rule:
 
-> Each supplied new file is shown in full. For existing files, insertion fragments identify the manual edit location; they are not standalone `git apply` patches. The board-qualified DDR input is a prerequisite, not a file invented by the tutorial. Framework code is named where it enters our boot path.
+> Each supplied new file is shown in full. For existing files, insertion fragments identify the manual edit location; they are not standalone `git apply` patches. DDR constants come from a named vendor source, not from a guessed table. Framework code is named where it enters our boot path.
 
 We reuse U-Boot's architecture startup, driver model, MMC protocol state machine, block layer, and command shell. Our three small drivers make the peripheral boundary visible. We do not implement power management, all clock roots, security setup, or every silicon erratum. Treat those omissions as reasons to use the upstream platform for product work, not as proof that they are unnecessary.
 
@@ -30,7 +30,7 @@ This chapter uses this exact target:
 |------|-----------------|
 | Board | Point Atom MINI i.MX6ULL board |
 | CPU | NXP i.MX6ULL, one Cortex-A7 core |
-| DDR | Supplied core schematic shows one x16 512 MiB DDR3L device; fitted part and qualified initializer still required |
+| DDR | Supplied core V2.0: one x16 512 MiB DDR3L `NT5CC256M16EP-EK`, using the documented eMMC-core vendor DCD |
 | First boot medium | Removable SD card |
 | On-board storage to inspect later | eMMC on USDHC2, eight wired data lines; begin in 1-bit legacy mode |
 | Console | UART1 through the board's built-in USB-to-TTL circuit |
@@ -40,7 +40,7 @@ This chapter uses this exact target:
 
 `ARCH_IMX6ULL` is our new architecture symbol. We deliberately do not select `ARCH_MX6` or link `arch/arm/mach-imx/`. In v2026.04, the standard `mx6ull_14x14_evk_defconfig` uses `board/nxp/mx6ullevk/`; it has a ROM+DCD image and no SPL. We inspect that source to check APIs and formats, but do not borrow its EVK DDR values as MINI board data.
 
-Use the supplied core V2.0 and MINI baseboard V2.2 schematics as wiring evidence, then compare them with the actual assembly. A schematic part label is not a measurement of fitted memory, and it does not qualify a DCD. Keep a hardware ledger with the board revision, fitted DDR/eMMC markings, rail voltages, BSP revision, DDR clock, and calibration record. Until those entries are supported, stop at source and image-format checks.
+The supplied core V2.0 and MINI baseboard V2.2 schematics, the vendor guide's MINI applicability table, and its eMMC-core DDR description support this documented target. Compare them with the actual assembly before hardware work: the guide explicitly allows future DDR substitutions. Keep a hardware ledger with board revision, fitted DDR/eMMC markings, rails, BSP revision, inherited DDR clock, and calibration/test records. The complete source image can be built now, but its suitability for a particular physical assembly and its runtime stability remain hardware checks.
 
 ### Values that must change on another board
 
@@ -99,14 +99,14 @@ U-Boot after relocation
   3. Shows the imx6ull=> prompt
 ```
 
-There is no SPL in this design. The ROM executes the board-qualified DCD before the first U-Boot instruction. `dram_init()` later reports a memory bank; it cannot repair an incorrect DCD because its own code is already running from DDR.
+There is no SPL in this design. The ROM executes the documented board-specific DCD before the first U-Boot instruction. `dram_init()` later reports a memory bank; it cannot repair an incorrect DCD because its own code is already running from DDR.
 
 ### Memory map used by this port
 
 | Address or range | Use |
 |------------------|-----|
 | `0x00900000` to `0x0091FFFF` | 128 KiB OCRAM used for the first stack and global data after ROM handoff |
-| `0x80000000` to `0x9FFFFFFF` | Conditional 512 MiB DDR bank, after qualification |
+| `0x80000000` to `0x9FFFFFFF` | Configured 512 MiB DDR bank for the documented core, subject to physical validation |
 | `0x80000100` | Linux boot-parameter address reported by the board code |
 | `0x82000000` | Default kernel or test-file load address |
 | `0x83000000` | Default Device Tree load address for Linux |
@@ -1138,28 +1138,37 @@ Add this line beside the other timer-driver object lines:
 ```
 
 (a-14-write-the-complete-boot-rom-dcd-table)=
-## 24A.14  Supply a qualified Boot ROM DCD
+## 24A.14  Use the documented MINI core-board DCD
 
-DDR is the boundary that a source-only exercise cannot cross by assertion. The supplied core schematic labels an `NT5CC256M16EP-EK`, a single x16 4 Gbit device, consistent with 512 MiB. It does not establish what is fitted to every board, the programmed DDR clock, measured byte-lane delays, or a tested initialization sequence. The generic register table previously associated with this exercise has no traceable factory/BSP/calibration record. It is therefore not supplied as a bootable MINI initializer.
+DDR is board-specific, but that does not require inventing an initializer. The official Alientek repository supplies one in [`board/freescale/mx6ull_alientek_emmc/imximage.cfg`](https://github.com/alientek-openedv/uboot-imx-rel_imx_4.1.15_2.1.0_ga_alientek/blob/edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb/board/freescale/mx6ull_alientek_emmc/imximage.cfg), at **commit `edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb`**. Its `mx6ull_alientek_emmc_defconfig` selects that file. We copy its seven clock-gate writes and all 53 DDR IOMUX/MMDC writes, preserving their values and order. Only the UART1 and USDHC2 pad/reset/daisy groups after the DDR block are additions for our teaching drivers. No vendor runtime driver or old configuration header is imported into v2026.04.
 
-Before image creation, obtain the matching board BSP or a separately qualified DDR bring-up record. Follow Part II's DDR worksheet: reconcile geometry, clock/timing units, active lanes, mode-register commands, refresh, ZQ, calibration, and relevant errata. Preserve the write order. A successful compile checks C and linker contracts; `mkimage` checks image syntax. Neither evaluates electrical timing.
+The supplied *I.MX6U Embedded Linux Driver Development Guide V1.81* marks both its DDR chapter 23 and U-Boot porting chapter 33 as MINI-compatible on page 7. Pages 531-533 and 537-543 identify the eMMC core's `NT5CC256M16EP-EK`: one x16, 4 Gbit device, 15 row bits, 10 column bits, eight internal banks, and one chip select. That is `2^15 * 2^10 * 8 * 2 = 536870912` bytes, or 512 MiB, matching the supplied core V2.0 schematic. The NAND core's 256 MiB configuration is not interchangeable with it.
 
-Record these inputs alongside the source:
+The guide's DDR worksheet uses a nominal 400 MHz clock, with page 537 describing the normal ROM's 396 MHz PLL2/PFD2 path. Our DCD copies the vendor timing/geometry/calibration data without retuning that memory clock. Pages 545-550 explain calibration and stress testing, but their example results are **not** the constants in this pinned vendor DCD. For example, the vendor uses `MPDGCTRL0=0x41640158`, `MPRDDLCTL=0x40403237`, and `MPWRDLCTL=0x40403C33`. Do not replace those with the guide's example calibration or an image-format fixture. Neither the guide nor this source comparison proves margins on the reader's individual board.
 
-| Required evidence | Check before accepting the DCD |
-|-------------------|--------------------------------|
-| Core revision and fitted DDR marking | Match the actual assembly, not just the schematic title. |
-| BSP source/revision and DDR clock | Identify the file that supplied each timing/geometry value. |
-| Calibration provenance | Record the method, active x16 byte lanes, resulting values, and conditions. |
-| Independent memory validation | Cover address aliasing, the whole usable bank, repeated cold/warm starts, and temperature/voltage conditions appropriate to the board. |
-| Bank size | Reconcile this result with `IMX6ULL_DDR_SIZE` and the DTS memory node. |
+The source provenance is now complete. Keep its evidence separate from the physical acceptance record:
 
-Manually create `board/point-atom/imx6ull-mini/board-ddr-qualified.inc` from that approved record. It contains only the ordered DDR DCD directives and provenance comments, not another `IMAGE_VERSION` or `BOOT_FROM`. It must define `BOARD_DDR_QUALIFIED` after the sequence has been reviewed. This file is intentionally not filled with plausible constants here. Defining the macro without supplying qualified initialization only bypasses a guard; it does not make memory work.
+| Evidence | What it establishes or still requires |
+|----------|----------------------------------------|
+| Vendor commit and selected image file | Traceable ordered initializer, reproduced in full below. |
+| Guide and core V2.0 schematic | Documented 512 MiB x16 eMMC-core design and MINI applicability, not an inspection of fitted silicon. |
+| Core revision, fitted marking, and rails | Confirm the actual assembly matches before trying the image. A replacement part needs its own matching BSP or DDR work. |
+| DDR clock and calibration record | Vendor values are reused, not newly measured. Record the inherited clock and validate the active byte lanes on hardware. |
+| Independent memory validation | Cover aliasing, the whole usable bank, cold/warm starts, and relevant voltage/temperature conditions. A banner is insufficient. |
+| Bank size | Keep `IMX6ULL_DDR_SIZE` and the DTS memory node consistent with the accepted geometry. |
+
+There is no separate DDR include to supply and no macro claiming qualification. Follow Part II's DDR worksheet to understand the preserved write order, timing units, mode-register commands, refresh, ZQ, and calibration. A successful compile checks software contracts; `mkimage` checks syntax and layout. Neither evaluates electrical timing.
 
 Create `board/point-atom/imx6ull-mini/imximage.cfg` with the complete content below:
 
 ```text
-/* SPDX-License-Identifier: GPL-2.0+ */
+/*
+ * Copyright (C) 2016 Freescale Semiconductor, Inc.
+ * SPDX-License-Identifier: GPL-2.0+
+ * Clock/DDR data: Alientek edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb,
+ * board/freescale/mx6ull_alientek_emmc/imximage.cfg (non-plugin DCD).
+ * Documented 512 MiB x16 eMMC core, not our own bench calibration.
+ */
 
 IMAGE_VERSION 2
 BOOT_FROM sd
@@ -1173,10 +1182,60 @@ DATA 4 0x020C4078 0xFFFFFFFF
 DATA 4 0x020C407C 0xFFFFFFFF
 DATA 4 0x020C4080 0xFFFFFFFF
 
-#include "board-ddr-qualified.inc"
-#ifndef BOARD_DDR_QUALIFIED
-#error Supply the qualified DDR sequence before making a board image
-#endif
+/* Vendor DDR block: preserve every address, value, and write order. */
+DATA 4 0x020E04B4 0x000C0000
+DATA 4 0x020E04AC 0x00000000
+DATA 4 0x020E027C 0x00000030
+DATA 4 0x020E0250 0x00000030
+DATA 4 0x020E024C 0x00000030
+DATA 4 0x020E0490 0x00000030
+DATA 4 0x020E0288 0x000C0030
+DATA 4 0x020E0270 0x00000000
+DATA 4 0x020E0260 0x00000030
+DATA 4 0x020E0264 0x00000030
+DATA 4 0x020E04A0 0x00000030
+DATA 4 0x020E0494 0x00020000
+DATA 4 0x020E0280 0x00000030
+DATA 4 0x020E0284 0x00000030
+DATA 4 0x020E04B0 0x00020000
+DATA 4 0x020E0498 0x00000030
+DATA 4 0x020E04A4 0x00000030
+DATA 4 0x020E0244 0x00000030
+DATA 4 0x020E0248 0x00000030
+DATA 4 0x021B001C 0x00008000
+DATA 4 0x021B0800 0xA1390003
+DATA 4 0x021B080C 0x00000004
+DATA 4 0x021B083C 0x41640158
+DATA 4 0x021B0848 0x40403237
+DATA 4 0x021B0850 0x40403C33
+DATA 4 0x021B081C 0x33333333
+DATA 4 0x021B0820 0x33333333
+DATA 4 0x021B082C 0xF3333333
+DATA 4 0x021B0830 0xF3333333
+DATA 4 0x021B08C0 0x00944009
+DATA 4 0x021B08B8 0x00000800
+DATA 4 0x021B0004 0x0002002D
+DATA 4 0x021B0008 0x1B333030
+DATA 4 0x021B000C 0x676B52F3
+DATA 4 0x021B0010 0xB66D0B63
+DATA 4 0x021B0014 0x01FF00DB
+DATA 4 0x021B0018 0x00201740
+DATA 4 0x021B001C 0x00008000
+DATA 4 0x021B002C 0x000026D2
+DATA 4 0x021B0030 0x006B1023
+DATA 4 0x021B0040 0x0000004F
+DATA 4 0x021B0000 0x84180000
+DATA 4 0x021B0890 0x00400000
+DATA 4 0x021B001C 0x02008032
+DATA 4 0x021B001C 0x00008033
+DATA 4 0x021B001C 0x00048031
+DATA 4 0x021B001C 0x15208030
+DATA 4 0x021B001C 0x04008040
+DATA 4 0x021B0020 0x00000800
+DATA 4 0x021B0818 0x00000227
+DATA 4 0x021B0004 0x0002552D
+DATA 4 0x021B0404 0x00011006
+DATA 4 0x021B001C 0x00000000
 
 /* UART1 on UART1_TX_DATA and UART1_RX_DATA pads. */
 DATA 4 0x020E0084 0x00000000
@@ -1240,7 +1299,7 @@ Each `DATA 4 address value` line tells the Boot ROM to perform one 32-bit write.
 | UART pad writes | Connect UART1 to the pads wired to the board's built-in USB-to-TTL circuit. |
 | USDHC2 pad writes | Select the schematic's NAND-pad route; electrical/reset validation is still required. |
 | DDR IOMUX writes | Set DDR signal voltage, drive strength, and pad behavior. |
-| MMDC calibration writes | Compensate read and write timing for this PCB's trace delays. |
+| MMDC calibration writes | Apply the vendor's stored read/write delay settings, not calibration measured by this exercise. |
 | MMDC timing writes | Describe memory geometry, row timing, refresh, and controller behavior. |
 | JEDEC commands | Reset and configure the DDR3L device itself. |
 
@@ -1269,7 +1328,7 @@ static void apply_dcd(const struct dcd_write *table, unsigned int count)
 }
 ```
 
-This helper is an explanation, not another file to add. A real SPL initializer must also implement any required waits, checks, and sequencing; simply converting an unqualified table into C does not qualify it. Here the ROM is the table executor. Stop before section 24A.21 if `board-ddr-qualified.inc` is unavailable; you can still complete the U-Boot source build without it.
+This helper explains the `DATA` writes, not the `SET_BIT` read/modify/write commands, and is not another file to add. A real SPL initializer must also implement the required waits, checks, and sequencing. Here the ROM is the table executor, and the complete documented DCD above is the input to section 24A.21. Reusing that input makes image creation reproducible, not board qualification automatic.
 
 ## 24A.15  Describe the SoC and board with Device Tree
 
@@ -2296,7 +2355,7 @@ Run U-Boot's whitespace check before compiling:
 $ git diff --check
 ```
 
-No output means the tracked diff passed that whitespace check. It does not inspect untracked new files, resolve Kconfig, or validate register values. Review `git status --short` against the two file inventories; do not accidentally include unrelated experiments. The additional `board-ddr-qualified.inc` is required only for a real board image, and must remain absent rather than fabricated when qualification is unavailable.
+No output means the tracked diff passed that whitespace check. It does not inspect untracked new files, resolve Kconfig, or validate register values. Review `git status --short` against the two file inventories; do not accidentally include unrelated experiments. The DDR block is part of the supplied `imximage.cfg`, so the inventory has no missing board-specific include.
 
 ## 24A.20  Configure and build U-Boot
 
@@ -2352,7 +2411,7 @@ $ arm-none-linux-gnueabihf-nm -n "$UBOOT_OUT/u-boot" | head
 
 Check that the ELF is ARM and `_start` is at `0x87800000`. In `.config`, also check `SKIP_LOWLEVEL_INIT_ONLY=y`, `SYS_ICACHE_OFF=y`, `SYS_DCACHE_OFF=y`, the three custom drivers, and the disabled MMC-write/high-speed features. Decompile the built DTB with `$UBOOT_OUT/scripts/dtc/dtc -I dtb -O dts "$UBOOT_OUT/dts/dt.dtb"` and inspect its selected console, timer, one-bit MMC width, and 20 MHz ceiling. A disabled Kconfig option can disappear during dependency resolution; reading the generated file is more reliable than assuming the defconfig line took effect.
 
-The supplied original and revised source sets were separately compiled against the pinned commit during the chapter review. This establishes a reproducible source milestone only. Neither build was executed on a board. The revised image configuration deliberately fails preprocessing without the qualified DDR include.
+The complete listings, including the documented vendor DDR block, were compiled in a fresh private copy of the pinned upstream source with Arm GNU 13.2.Rel1 during this review. The actual image was then generated and its encoded DCD compared with the vendor source. These establish source and image milestones only. This custom port was not executed on a board.
 
 ### Read build failures literally
 
@@ -2372,7 +2431,7 @@ Do not respond to the first compiler error by enabling unrelated Kconfig symbols
 
 `u-boot.bin` alone is not bootable on this SoC. It has no i.MX IVT, Boot Data, or DCD. Build those around it in two visible commands.
 
-Proceed only after section 24A.14's DDR input has been supplied and reviewed. Preprocess the configuration to expand that include and remove C comments:
+Section 24A.14 now supplies every directive, including the documented DDR block. Preprocess the configuration to remove C comments. This uses the actual board image configuration, not a substitute header-format fixture:
 
 ```sh
 $ cpp -P -x c board/point-atom/imx6ull-mini/imximage.cfg \
@@ -2412,6 +2471,32 @@ The report should identify an i.MX image and show the `0x87800000` entry address
 $ ls -l "$UBOOT_OUT/u-boot.bin" "$UBOOT_OUT/u-boot-imx6ull.imx"
 ```
 
+Read the actual IVT and Boot Data fields as well. This small host-side check decodes little-endian words and resolves the Boot Data pointer relative to `self`:
+
+```sh
+$ python3 - "$UBOOT_OUT/u-boot-imx6ull.imx" "$UBOOT_OUT/u-boot.bin" <<'PY'
+import struct
+import sys
+from pathlib import Path
+
+image = Path(sys.argv[1]).read_bytes()
+payload = Path(sys.argv[2]).read_bytes()
+assert image[:4] == bytes.fromhex("d1 00 20 40"), "Not this v2 IVT"
+entry, reserved, dcd, boot_data, self, csf, reserved2 = struct.unpack_from("<7I", image, 4)
+start, size, plugin = struct.unpack_from("<3I", image, boot_data - self)
+assert (entry, self, boot_data, dcd, start, plugin, csf) == (
+    0x87800000, 0x877FF400, 0x877FF420, 0x877FF42C, 0x877FF000, 0, 0)
+assert image[0xC00:0xC00 + len(payload)] == payload, "Payload differs"
+assert size >= 0x1000 + len(payload), "Boot Data load size is too small"
+for name, value in (("entry", entry), ("self", self), ("DCD", dcd),
+                    ("Boot Data pointer", boot_data), ("Boot Data start", start),
+                    ("Boot Data size", size)):
+    print(f"{name}: 0x{value:08X}")
+PY
+```
+
+These assertions are specific to this chapter's non-plugin, unsigned SD image. They detect a changed layout or payload, not DDR electrical faults. The encoded DCD must also retain section 24A.14's ordered vendor block and teaching pad/reset additions.
+
 ### What `mkimage` adds
 
 ```text
@@ -2442,7 +2527,7 @@ These relationships follow the pinned `tools/imximage.c` generator. Check them a
 
 ## 24A.22  Write the image to an SD card
 
-This is a later hardware procedure, not part of the source-build exercise. Do not run it without a qualified image and a dedicated expendable card. A write beginning at 1 KiB can still overwrite a GPT entry array or an existing bootloader. Use a reviewed raw/MBR layout with an explicitly reserved boot gap; this offset is not a general guarantee of partition safety.
+This is a later hardware procedure, not part of the source-build exercise. Confirm the fitted core matches the documented DDR target and complete the image/layout checks before using a dedicated expendable card. Establish a power-off/recovery plan for this untested teaching runtime, and retain Chapter 19's vendor baseline. A write beginning at 1 KiB can still overwrite a GPT entry array or an existing bootloader. Use a reviewed raw/MBR layout with an explicitly reserved boot gap; this offset is not a general guarantee of partition safety.
 
 Identify the whole removable device by size, model, transport, and physical insertion/removal before doing anything destructive:
 
@@ -2596,16 +2681,16 @@ The supplied source covers the teaching runtime and can be built against the pin
 - A driver-model serial driver
 - A driver-model timer driver
 - A driver-model USDHC2 PIO driver
-- A ROM image configuration with an explicit qualified-DDR prerequisite
+- A complete ROM image configuration with the pinned vendor's documented 512 MiB eMMC-core DDR initializer
 - A SoC `.dtsi` and board `.dts`
 - A complete defconfig
-- Conditional image creation, later SD provisioning, and verification procedures
+- Reproducible image creation, later SD provisioning, and separate physical verification procedures
 
 These features are not silently assumed. They are deliberately postponed:
 
 | Feature not added | Reason to add it later |
 |-------------------|------------------------|
-| SPL | A different boot-chain design, not a missing stage of the normal EVK ROM+DCD flow. Chapter 20 uses a separate source/build-only SPL reference; it is not a MINI image. |
+| SPL | A different boot-chain design, not a missing stage of this MINI ROM+DCD flow. Any Chapter 20 SPL example is a separate source/build-only reference, not a MINI image. |
 | Data cache and MMU | Need a tested memory-region map. Enable them after the basic port is stable. |
 | Pin controller driver | The first DCD performs the exact pad writes. A reusable pinctrl driver becomes useful when many peripherals and runtime pin states are added. |
 | Clock controller driver | The first port has three explicit clock consumers. A driver-model clock tree becomes useful as the peripheral count grows. |
@@ -2616,7 +2701,7 @@ These features are not silently assumed. They are deliberately postponed:
 
 Postponed does not mean optional forever. It means the feature is outside the first dependency chain and has a named later step.
 
-Qualification also remains outside the source result: DDR calibration, full-bank stability, inherited clocks/watchdogs, boot straps, eMMC rails/reset, and controller/card error recovery have not been measured. Product hardening would additionally review security state, silicon revision/errata, reset/power management, watchdog servicing, and kernel handoff. Do not turn an unchecked item into a successful result by changing a chapter label from draft to complete.
+Qualification also remains outside the source result: we did not measure DDR calibration, full-bank stability, inherited clocks/watchdogs, boot straps, eMMC rails/reset, or controller/card error recovery. The DDR values have vendor-source provenance, while our peripheral drivers and additional pad/reset policy remain untested on hardware. Product hardening would additionally review security state, silicon revision/errata, reset/power management, watchdog servicing, and kernel handoff. Do not turn an unchecked item into a successful result by changing a chapter label from draft to complete.
 
 ## 24A.27  The porting method to carry to a truly new SoC
 
@@ -2647,6 +2732,7 @@ Use the pinned sources and your ledger to answer these questions before collecti
 
 ### Primary sources for this chapter
 
+- [Official Alientek eMMC-core DCD](https://github.com/alientek-openedv/uboot-imx-rel_imx_4.1.15_2.1.0_ga_alientek/blob/edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb/board/freescale/mx6ull_alientek_emmc/imximage.cfg) and [its defconfig](https://github.com/alientek-openedv/uboot-imx-rel_imx_4.1.15_2.1.0_ga_alientek/blob/edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb/configs/mx6ull_alientek_emmc_defconfig) establish the copied initializer. The supplied guide V1.81 page 7, DDR pages 525-550, and chapter 33 pages 860-911 establish MINI applicability and the documented eMMC-core design. The supplied core V2.0 schematic confirms the labelled DDR and wiring, not our own bench validation.
 - [Pinned U-Boot source](https://github.com/u-boot/u-boot/tree/88dc2788777babfd6322fa655df549a019aa1e69): `arch/arm/cpu/armv7/start.S`, `arch/arm/lib/crt0.S`, `common/board_f.c`, and `common/board_r.c` establish startup and relocation.
 - [Image generator](https://github.com/u-boot/u-boot/blob/88dc2788777babfd6322fa655df549a019aa1e69/tools/imximage.c) and [format definitions](https://github.com/u-boot/u-boot/blob/88dc2788777babfd6322fa655df549a019aa1e69/include/imximage.h) establish the IVT/DCD layout. [EVK documentation](https://github.com/u-boot/u-boot/blob/88dc2788777babfd6322fa655df549a019aa1e69/doc/board/nxp/mx6ullevk.rst) describes that board's DCD image, not a MINI qualification.
 - [MMC API](https://github.com/u-boot/u-boot/blob/88dc2788777babfd6322fa655df549a019aa1e69/include/mmc.h), [MMC core](https://github.com/u-boot/u-boot/blob/88dc2788777babfd6322fa655df549a019aa1e69/drivers/mmc/mmc.c), and [upstream USDHC implementation](https://github.com/u-boot/u-boot/blob/88dc2788777babfd6322fa655df549a019aa1e69/drivers/mmc/fsl_esdhc_imx.c) are comparison evidence for callback/protocol contracts, not hidden linked drivers in this custom port.

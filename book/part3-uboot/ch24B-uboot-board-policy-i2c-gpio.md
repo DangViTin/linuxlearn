@@ -10,7 +10,7 @@ status: draft
 
 A bootloader can read a temperature register correctly and still make the wrong decision. A truncated negative value, a stale saved `bootcmd`, or a recovery check followed unconditionally by normal boot can undo the intended gate. The important part is carrying the input all the way to the boot decision.
 
-We will add a once-per-boot policy to the Chapter 22 port. These examples target upstream **U-Boot v2026.04**, commit `88dc2788777babfd6322fa655df549a019aa1e69`, with the established names:
+We will add a once-per-boot policy to the Chapter 22 MINI migration port. These examples target upstream **U-Boot v2026.04**, commit `88dc2788777babfd6322fa655df549a019aa1e69`, with the established names:
 
 ```text
 board/myorg/mx6ull_pa_mini/mx6ull_pa_mini.c
@@ -19,7 +19,18 @@ arch/arm/dts/imx6ull-pa-mini.dts
 include/configs/mx6ull_pa_mini.h
 ```
 
-The TMP102 at `0x48`, its bus and pads, and the recovery button below are **hypothetical additions**, not verified MINI hardware. Confirm the schematic, supply voltage and pin ownership before adapting them. Without that hardware, use host tests; do not install a mandatory sensor gate and expect normal boot.
+The supplied MINI V2.2 schematic gives us a real starting point: the stock **KEY0** button and two routed I2C buses. The TMP102 at `0x48` is an **optional lab add-on**, not an onboard temperature sensor. We will study its error handling on the host, then use KEY0 for a policy that needs no added sensor.
+
+These are modern driver-model exercises, not patches to paste into Chapter 19's vendor U-Boot. The vendor baseline establishes the documented MINI starting point; compiling v2026.04 helpers does not establish a working modern MINI image. Keep the two source trees, configurations and build outputs separate.
+
+| MINI V2.2 resource | Documented connection | Use here |
+|--------------------|-----------------------|----------|
+| KEY0 | UART1_CTS pad / GPIO1_IO18; switch to ground, R12 10 kOhm to 3.3 V | Stock recovery input. |
+| I2C1 | UART4 TX/RX pads; P4 pin 43 is SCL, pin 42 is SDA when muxed to I2C | Optional TMP102, later identity EEPROM. |
+| I2C2 | UART5 TX/RX pads; P4 pin 45 is SCL, pin 44 is SDA, also RGBLCD J1 and camera P1 | Leave to fitted display/touch/camera hardware. |
+| ON/OFF, RESET, BOOT_CFG1 | Power control, shared hardware reset, ROM boot selection | Not recovery GPIOs. |
+
+This mapping comes from MINI schematic sheets 1-3 and CORE sheet 6. CORE connector aliases describe several possible baseboards; the **MINI** sheet decides what is actually connected. In particular, MINI SNVS_TAMPER0 is `WIFI_REG_ON`, not KEY0. The guide's pp7-8 applicability table excludes the stock ALPHA I2C experiments on MINI; that is not the absence of an I2C controller or connector.
 
 These checks run in full U-Boot after DDR initialization. The pinned mainline EVK reference uses ROM plus DCD and `u-boot-dtb.imx`, not SPL at a second storage offset. A late check cannot protect hardware during ROM/DCD initialization.
 
@@ -42,7 +53,7 @@ Stopping at the prompt leaves the board powered. It is not thermal shutdown, and
 | File | Responsibility |
 |------|----------------|
 | `configs/mx6ull_pa_mini_defconfig` | Select interfaces, commands and the late hook. |
-| `arch/arm/dts/imx6ull-pa-mini.dts` | Describe proposed wiring in U-Boot's **control DT**. |
+| `arch/arm/dts/imx6ull-pa-mini.dts` | Describe MINI wiring and fitted add-ons in U-Boot's **control DT**. |
 | `board/myorg/mx6ull_pa_mini/mx6ull_pa_mini.c` | Read inputs and dispatch policy once. |
 | `include/configs/mx6ull_pa_mini.h` | Extend default environment without duplicate keys. |
 
@@ -82,7 +93,7 @@ Use the Linux-target compiler, not `arm-none-eabi-`. Keep the original Arm toolc
 
 ## 24B.4  Add the I2C sensor to the U-Boot Device Tree
 
-This **DTS integration fragment** assumes an unused I2C1 bus, a TMP102 at 7-bit address `0x48`, and UART4 pads routed to it. Merge existing nodes; do not duplicate labels or reuse pads owned by UART4.
+This **DTS integration fragment** uses the documented MINI I2C1 route: UART4_TX at P4 pin **43** is SCL, UART4_RX at P4 pin **42** is SDA. These are not the two pins in one connector row. Pin 41 is ENET1_RXER, and pin 44 is UART5_RX/I2C2_SDA. A separately wired, 3.3 V-compatible TMP102 at 7-bit `0x48` is the proposed add-on. The MINI already has R42/R57 4.7 kOhm pull-ups to `DCDC_3V3` on these nets. Check the module's additional pull-ups and total loading; do not attach 5 V pull-ups or enable UART4 on the same pads. Merge existing nodes rather than duplicating labels.
 
 ```dts
 / {
@@ -113,7 +124,7 @@ This **DTS integration fragment** assumes an unused I2C1 bus, a TMP102 at 7-bit 
 };
 ```
 
-Both macros exist in the pinned `imx6ul-pinfunc.h`: TX maps to SCL and RX to SDA. The value includes SION and electrical pad-control bits. Decode it against the SoC manual and wiring; it is not a universal I2C setting. Confirm external pull-ups, voltage domains, loading and clock rate.
+Both macros exist in the pinned `imx6ul-pinfunc.h`: TX maps to SCL and RX to SDA. The value includes SION and electrical pad-control bits. Decode it against the SoC manual and wiring; it is not a universal I2C setting. I2C2 has its own R40/R41 pull-ups and shared connectors; do not move the example there without auditing attached modules and addresses.
 
 The alias intends U-Boot sequence 0 for I2C1. Inspect the built control DT and `i2c bus`, rather than assuming Linux adapter numbering. Behind an I2C mux, select the **child bus**, with its mux driver and DT enabled; an upstream bus number is insufficient.
 
@@ -121,7 +132,7 @@ The raw reader does not need a TMP102-specific U-Boot driver. The I2C uclass can
 
 ## 24B.5  Test I2C before writing policy code
 
-These are commands for a later, schematic-qualified test, not captured board output. Reads and address probes create bus traffic. Do not scan an unknown bus containing PMICs or devices with side effects.
+These are commands for a later test **with the TMP102 add-on fitted**, not captured board output. Reads and address probes create bus traffic. Do not scan another bus or assume an ACK from a different module is the sensor.
 
 ```text
 => i2c bus
@@ -226,7 +237,7 @@ The fixed threshold removes loose environment parsing from the decision. Samples
 
 In the pinned [post-relocation sequence](https://github.com/u-boot/u-boot/blob/v2026.04/common/board_r.c), environment loading precedes `board_late_init`, and network initialization and the main loop follow it. Driver model is available, but devices still probe on demand and may fail.
 
-Merge this hook into the existing hook, rather than creating a second definition:
+The following is the **temperature-add-on hook**. Install it only in a build whose hardware contract includes that sensor. On an unmodified MINI, use the stock KEY0 hook in 24B.10 instead. Merge into the existing hook rather than creating a second definition:
 
 ```c
 int board_late_init(void)
@@ -275,7 +286,9 @@ Test these on the host first. For a later qualified board test, interrupt autobo
 
 Use a dedicated, externally biased input. A raw GPIO number does not establish mux, polarity, ownership or debounce. Do not use `gpio input` on another driver's PHY reset, PMIC enable or boot strap: it changes direction. `gpio status -a` is inspection, not permission to take a pin.
 
-This **control-DT fragment** names GPIO1_IO18 for the proposed active-low key. It does not assert that the pad is free on the MINI. Merge the name into index 18 of an existing line-name array, preserving other names; the empty entries below are only for a new array:
+Use the stock MINI V2.2 **KEY0**, not a new button: schematic sheet 2 shows the ground switch and R12 pull-up, and sheet 1 routes `KEY0` to UART1_CTS / GPIO1_IO18. UART1 TX/RX still serve the serial console, but CTS must not simultaneously be UART hardware flow control or another GPIO consumer.
+
+This **control-DT fragment** names that line. Merge the name into index 18 of an existing line-name array, preserving other names; the empty entries below are only for a new array:
 
 ```dts
 &gpio1 {
@@ -286,7 +299,9 @@ This **control-DT fragment** names GPIO1_IO18 for the proposed active-low key. I
 };
 ```
 
-The board's existing pad setup must mux and bias the actual input before the helper runs; a line-name lookup does not automatically select pinctrl. A line name does not encode polarity either: the C descriptor explicitly marks this proposed key active low. SNVS/tamper pads belong to **IOMUXC-SNVS**, not an arbitrary group under `&iomuxc`. Do not move GPIO5/SNVS pads into the main controller to make an example compile.
+The board's pad setup must select `MX6UL_PAD_UART1_CTS_B__GPIO1_IO18` before the helper runs; a line-name lookup does not automatically select pinctrl. Retain the external R12 pull-up and qualify the input pad settings. A line name does not encode polarity either: the C descriptor explicitly marks KEY0 active low.
+
+The CORE connector's `KEY0` accessory alias on J2 pin 49 names GPIO1_IO01, but MINI uses that signal for `GBC_KEY / AP_INT`, not its onboard button. SNVS_TAMPER0 is another separate signal, `WIFI_REG_ON`, and must not be borrowed as a recovery key. SNVS/tamper pads belong to **IOMUXC-SNVS**, not an arbitrary group under `&iomuxc`. The actual KEY0 route above is a main-IOMUXC UART pad.
 
 Add this complete helper and its includes to the same C file:
 
@@ -329,7 +344,28 @@ release:
 
 Lookup does not claim the pin. A successful request owns it until release, including when direction setup or a read fails. A failed request must not free someone else's claim. `dm_gpio_get_value()` returns **logical active** with descriptor polarity applied: a pressed active-low key gives 1. Five equal samples over 20 ms are a bounded teaching debounce policy, not a switch specification. An unstable sample blocks this example; a product may choose a bounded retry.
 
-Replace the final dispatch assignment in 24B.8 with this **hook fragment**, adding `bool pressed;` to its declarations:
+For a **stock MINI without a temperature sensor**, this is the complete replacement hook. It uses the same blocked-first dispatch and the helper above:
+
+```c
+int board_late_init(void)
+{
+    bool pressed;
+    int ret;
+
+    if (env_set("bootcmd", "echo Boot blocked by board policy; false"))
+        return -EIO;
+    ret = pa_mini_recovery_key(&pressed);
+    if (ret) {
+        printf("Recovery key check blocked boot: %d\n", ret);
+        return 0;
+    }
+    if (env_set("bootcmd", pressed ? "run recovery_boot" : "run normal_boot"))
+        return -EIO;
+    return 0;
+}
+```
+
+For the **sensor-equipped exercise**, instead replace the final dispatch assignment in 24B.8 with this **hook fragment**, adding `bool pressed;` to its declarations. The temperature gate then remains mandatory:
 
 ```c
     ret = pa_mini_recovery_key(&pressed);
@@ -353,7 +389,7 @@ Recovery and normal boot are exclusive. Changing `bootcmd` inside a running comm
 | Invalid board identity | Hold in Chapter 24D | No invented "safe" DTB. |
 | Optional peripheral absent | Product-specific | Do not silently weaken a mandatory check. |
 
-A PMIC fault input needs documented polarity, latching and power behavior. No attached PMIC or fault pin is assumed here. Boot policy is not a substitute for hardware protection.
+MINI sheet 4 and CORE sheet 1 show discrete regulators, not an I2C PFUZE3000 PMIC. The vendor board file's inherited "I2C1 for PMIC and EEPROM" comment is not a MINI parts list. A future PMIC fault input would need its own documented polarity, latching and power behavior; there is none to read in this exercise. Boot policy is not a substitute for hardware protection.
 
 ```{figure} ../illustrations/part3/10-policy-dispatch.png
 :name: fig-p3-policy-dispatch
@@ -361,16 +397,16 @@ A PMIC fault input needs documented polarity, latching and power behavior. No at
 :width: 100%
 :alt: Required identity, temperature and key-input checks gate a mutually exclusive choice between recovery and normal boot. Any required check failure holds at the prompt.
 
-Open only one path after its prerequisites pass. This diagram shows the combined policy developed across these chapters, not a hardware safety circuit. Holding at the prompt does not remove power.
+Open only one path after its prerequisites pass. This diagram shows the combined sensor/identity add-on policy developed across these chapters. A stock MINI uses KEY0 without those absent devices. It is not a hardware safety circuit. Holding at the prompt does not remove power.
 ```
 
 ## 24B.12  Lab
 
 1. Inspect pinned Kconfig and generated configuration.
 2. Test signed conversion, boundaries and read failures on the host.
-3. Integrate the temperature-only hook in a private build; retain non-booting defaults until loading commands are ready.
-4. With a schematic-qualified sensor, observe actual configuration and temperature reads.
-5. Test key claim failure, polarity, changing samples and cleanup in a fixture before using a GPIO.
+3. Integrate the stock KEY0 hook in a private modern-port build; retain non-booting defaults until loading commands are ready.
+4. Keep the temperature helpers as host tests unless the optional sensor is fitted and electrically checked. Only that add-on build installs the temperature gate.
+5. Test key claim failure, polarity, changing samples and cleanup in a fixture before using the documented KEY0 GPIO.
 6. Verify recovery cannot fall through to normal boot. Keep environment tests volatile.
 
 No step needs EEPROM programming, fuse operations or environment storage writes. Later deployment requires a deliberate, separately qualified spare-media procedure.

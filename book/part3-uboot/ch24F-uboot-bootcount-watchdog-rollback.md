@@ -16,14 +16,22 @@ this image was being tried, and choose a different one next time.
 We will give U-Boot that piece of memory. Linux will confirm success only
 after checking the system it actually booted. This is an **A/B policy
 demonstration**, not a production updater: authentication, interrupted image
-writes, metadata durability, and rescue remain separate requirements. The
-baseline is upstream **U-Boot v2026.04**. The Chapter 22 MINI port follows
-the EVK's ROM + DCD + full U-Boot path, not an SPL boot path.
+writes, metadata durability, and rescue remain separate requirements.
 
-Chapter 22 deliberately stops at a RAM-only, nonbooting scaffold using
-`CONFIG_ENV_IS_NOWHERE=y`. It does not reserve or qualify a persistent
-environment on a MINI. You can compile and host-mock the policy below there,
-but hardware A/B reset trials require the separate gate in Section 24F.3.
+Start with the **MINI vendor baseline from Chapter 19**: identify the fitted
+core, reach UART1 through the board's USB_TTL connector, and establish SD or
+eMMC access. This chapter then develops the policy against upstream
+**U-Boot v2026.04**. The `mx6ull_pa_mini` target and `imx6ull-pa-mini.dts`
+are the book's modern migration work, not names for the vendor firmware.
+Do not paste these APIs/configs into the older vendor tree unchanged.
+
+The modern path uses ROM + board-matched DCD + full U-Boot, not SPL.
+Chapter 22 supplies a complete, host-buildable MINI source/image candidate with
+documented UART/storage wiring and a source-checked PHY-driver candidate.
+Its physical operation remains unqualified. `CONFIG_ENV_IS_NOWHERE=y`
+means its **environment is RAM-only**, not that the whole firmware is merely
+a mock; it cannot yet implement persistent A/B. Keep the vendor baseline
+available and pass the separate storage/persistence gate in Section 24F.3.
 
 ## 24F.1  The problem in one timeline
 
@@ -81,10 +89,27 @@ rollback cannot happen. See the [bootcount documentation](https://docs.u-boot.or
 
 ## 24F.3  Storage layout for the lab
 
-Chapter 22's `ENV_IS_NOWHERE` scaffold holds environment changes in RAM only.
-It cannot retain a candidate flag, slot choice or bootcount across reset.
-Its inherited `ENV_SIZE` is RAM environment capacity, not a reserved media
-range. The real boot medium and environment layout remain unqualified.
+The supplied MINI V2.2 baseboard has a **TF/microSD socket on USDHC1**. The
+core-board design offers **eMMC on USDHC2 or NAND**, depending on the fitted
+variant; the two flash drawings do not mean both chips are installed.
+The SDIO Wi-Fi connector shares USDHC1 with the TF socket, so do not use
+both during this lab. These routes are visible on MINI schematic sheets
+1-2 and core sheet 4, and explained in the guide's MINI Sections 5.2.3 and
+5.4.16-17.
+
+Use an identified spare microSD as the first disposable A/B medium, leaving
+the vendor baseline and accepted installation recoverable. An eMMC-core
+owner can later qualify the eMMC user area separately. A NAND-core owner
+can still use the microSD lab: **the MMC/PARTUUID policy below is not a NAND
+or UBI updater**. Do not translate its partition numbers into NAND offsets.
+
+Record the baseline's `mmc list`, `mmc info`, `part list`, environment
+settings, and Linux storage identity before planning changes. Hardware
+USDHC1/2 names do not establish U-Boot sequence numbers. Chapter 22's modern
+candidate deliberately uses `ENV_IS_NOWHERE`: environment changes, candidate flags,
+slot choice and bootcount cannot survive reset. `ENV_SIZE` alone reserves
+no media range. Neither a vendor storage driver nor the modern MINI candidate
+allocates the new A/B layout for you.
 
 **Mandatory persistence and layout gate before hardware A/B:**
 
@@ -98,14 +123,14 @@ range. The real boot medium and environment layout remain unqualified.
 3. Select a persistent environment backend supported by that storage and
    configure its approved device, hardware partition, offset, size and any
    redundancy. Replace `ENV_IS_NOWHERE` only in this qualified hardware
-   variant; retain it for the unqualified source/host-mock scaffold.
+   variant; retain it for host modeling and the nonpersistent candidate.
 4. Under the approved storage-qualification procedure, establish successful
    environment writes, readback and reload across the required reset/power
    cycles, plus a defined invalid-environment/recovery path. Merely seeing a
    RAM variable change or compiling `BOOTCOUNT_ENV` does not pass this gate.
 5. Before Linux can confirm an attempt, establish its matching `fw_env.config`
    from that same approved layout and compare read-only results with U-Boot.
-   Keep the scaffold's disabled autoboot until the hardware variant's boot
+   Keep the modern lab build's autoboot disabled until its boot
    command, load ranges and recovery policy have also been reviewed.
 
 Without this evidence, stop at source inspection and host fixtures. This is
@@ -170,19 +195,21 @@ enables the driver-model watchdog API. Leave autostart off for initial
 command/policy work; later qualify the watchdog handoff deliberately. Check
 the generated `.config`, including filesystem support selected by commands.
 
-`BOOTCOUNT_ENV` is not an environment-storage driver. Chapter 22 selects
-`ENV_IS_NOWHERE`, not a persistent backend or approved media offsets. This
-fragment does not change that: it can compile for host study, but the stored
-count cannot survive reset in the RAM-only scaffold. Complete Section 24F.3's
-gate before selecting persistent storage; do not restore the EVK's MMC
-settings as assumed MINI values. In [bootcount_env.c](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/bootcount/bootcount_env.c),
+`BOOTCOUNT_ENV` is not an environment-storage driver. This fragment does
+not turn `ENV_IS_NOWHERE` into persistent storage; a RAM-only build can host
+the policy exercise but not retain attempts. Complete Section 24F.3's gate
+before hardware trials, even if the vendor baseline already saves its own
+environment. Its storage map must be reconciled with the modern build and
+the new slots. Do not restore EVK MMC settings as assumed MINI values.
+In [bootcount_env.c](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/bootcount/bootcount_env.c),
 `upgrade_available` nonzero enables loading the stored count and saving each
 increment through `env_save()`. With it zero, the backend loads zero and
 does not save increments; a RAM `bootcount` may still appear. This backend
 **does not propagate environment-save errors**. Failed persistence can defeat
 the attempt bound.
 
-Build your reviewed v2026.04 MINI source, not an unmodified EVK image:
+Build your reviewed v2026.04 MINI migration source in its own checkout,
+separate from Chapter 19's vendor source:
 
 ```sh
 $ . ~/imx6ull/scripts/env.sh
@@ -195,7 +222,7 @@ Build success does not validate the MINI's DDR or reset circuit.
 
 ## 24F.6  Manual bootcount test
 
-This hardware test is unavailable in the `ENV_IS_NOWHERE` scaffold. First
+This cross-reset persistence test is unavailable with `ENV_IS_NOWHERE`. First
 pass the mandatory gate in Section 24F.3; until then use the paper/host-mock
 tests instead. Before `saveenv`, confirm the approved storage range, record
 current boot variables, and keep Chapter 8 ROM recovery available. This writes persistent
@@ -226,7 +253,7 @@ Append this demonstration macro to the existing `CFG_EXTRA_ENV_SETTINGS`
 in `mx6ull_pa_mini.h`. Remove duplicate `bootcmd`/`altbootcmd` definitions;
 they need one owner. Keep the port's `CONFIG_BOOTCOMMAND` default consistent.
 Use it as a host fixture before qualification, or in the hardware variant
-only after Section 24F.3's gate. Do not enable the scaffold's autoboot merely
+only after Section 24F.3's gate. Do not enable the candidate's autoboot merely
 because this macro compiles.
 
 ```c
@@ -266,8 +293,9 @@ because this macro compiles.
 ```
 
 Supply qualified, non-overlapping `kernel_addr_r` and `fdt_addr_r` for the
-actual hardware variant; Chapter 22's scaffold does not qualify these load
-ranges. No guessed RAM addresses are supplied here. Device 0 is fixed in both
+actual hardware variant. Chapter 22 supplies a source memory layout, but
+its load ranges still require physical DDR and overlap qualification for
+this A/B workflow. No additional RAM addresses are guessed here. Device 0 is fixed in both
 partition mappings: changing `ab_mmc` alone does not change those mappings.
 
 The `&&` operators matter. A failed kernel or DTB load must not call `bootz`
@@ -304,13 +332,20 @@ not the first step before copying files.
 ## 24F.9  Linux marks the boot good
 
 First prove that Linux's environment tools access the same bytes as U-Boot.
-The RAM-only scaffold has no persistent environment bytes for these tools;
+The modern NOWHERE candidate has no persistent environment bytes for these tools;
 do not install or run a hardware writer against a guessed location.
-For the **unchanged EVK reference only**, v2026.04 specifies byte offset
-`0xC0000`, size `0x2000`, and U-Boot MMC device index 1. That does not establish
-the MINI's device mapping or reserve that range. The `/etc/fw_env.config`
-shape below is deliberately non-executable and requires the independently
-approved layout:
+There is a concrete vendor starting point to inspect: the supplied public
+vendor tree's `include/configs/mx6ull_alientek_emmc.h` defines fallback MMC
+environment device 1 (commented USDHC2), hardware partition 0 (user area), byte offset
+`12 * 64 KiB = 0xC0000`, and size `8 KiB = 0x2000` in its MMC branch. These
+are **that source target's defaults**, not authorization to use them on a
+microSD, NAND variant, changed build, or repartitioned eMMC. In that vendor
+tree, `mmc_get_env_dev()` in `arch/arm/cpu/armv7/mx6/soc.c` derives the device
+from the boot controller when booted from SD/MMC; the board mapping can
+adjust it. Thus an SD-booted session need not save to the header's device 1.
+Check the generated configuration and this runtime mapping before deriving
+Linux's path.
+The `/etc/fw_env.config` shape below requires the approved matching layout:
 
 ```text
 <matching Linux block device/hardware partition> <approved byte offset> <approved environment byte size>
@@ -383,6 +418,14 @@ propagate failure. Merely waiting some seconds is not a health test.
 ## 24F.10  Watchdog role
 
 Read the reset circuit and watchdog DT properties before starting it.
+On the supplied core schematic, `SNVS_TAMPER9` is labeled `nWDOG` and joins
+the reset network; MINI's RESET button also reaches that network. A net
+label is not proof that the i.MX watchdog peripheral is muxed onto that pad.
+Retain the established baseline reset behavior while reviewing the modern
+driver. UART1_CTS/GPIO1_IO18 belongs to the MINI KEY0 switch, and GPIO1_IO08
+to RGB backlight. GPIO1_IO01 instead reaches GBC_KEY/AP_INT on this baseboard;
+an inherited EVK watchdog-output pinmux there still needs its actual net and
+accessory ownership reviewed, not a copied KEY0 assumption.
 `fsl,ext-reset-output` changes reset routing, not generic reliability. The
 v2026.04 i.MX driver has **no stop operation**; `wdt stop` cannot be relied on
 to disable a started device.
@@ -416,7 +459,7 @@ environment. Save errors do not stop this backend's bootcount logic.
 
 | Storage choice | What still needs proof |
 |---|---|
-| RAM-only `ENV_IS_NOWHERE` | No cross-reset persistence; source/host-mock scaffold only, not hardware rollback |
+| RAM-only `ENV_IS_NOWHERE` | The complete modern candidate can use RAM variables, but cannot retain hardware rollback metadata across reset |
 | Single environment | Torn write can lose policy and count; no production guarantee |
 | Redundant environment | Separate ranges, CRC/selection rules, matching Linux config, power-cut behavior |
 | Filesystem bootcount | Exact backend/config and interrupted filesystem write recovery; a file is not automatically atomic |
@@ -430,8 +473,10 @@ chosen safe path, not an accidental slot choice.
 
 ## 24F.12  Lab
 
-1. Trace counts 0 through 4 with limit 3 on paper. Why does the fourth entry
-   select the alternate command?
+1. Record the MINI base/core revision and fitted flash, then inventory the
+   Chapter 19 baseline through UART1. Identify the spare TF medium without
+   disturbing eMMC/NAND or attaching SDIO Wi-Fi. Trace counts 0 through 4
+   with limit 3 on paper: why is the fourth entry alternate?
 2. Inspect the mandatory Section 24F.3 gate. With `ENV_IS_NOWHERE` or an
    unqualified medium/layout, use only paper and host-mock tests. Hardware
    A/B must wait for the independent storage/persistence qualification.
@@ -459,12 +504,17 @@ policy test does not establish power-cut safety.
 - **Missing resets.** A hung Linux stays hung without a reset mechanism.
 - **Assuming counts persist.** This backend ignores save errors.
 - **Treating RAM variables as boot metadata.** `ENV_IS_NOWHERE` cannot retain
-  state across reset; a compile-only scaffold does not qualify storage.
+  state across reset; a complete firmware build does not qualify persistence.
 - **Treating A/B as rescue.** Both slots and metadata can fail; keep recovery.
 - **Overriding only normal boot.** Safety choices must cover `altbootcmd` too.
 
 ## 24F.14  Going deeper
 
+- Supplied `IMX6ULL_MINI_V2.2_(Mini_base_plate_schematic).pdf`, sheets 1-2,
+  and `IMX6ULL_CORE_V2.0_(core_board_schematic).pdf`, sheets 1, 4, 5-6:
+  storage routes, fitted-variant choices, and reset/pad ownership.
+- [Vendor eMMC target header](https://github.com/alientek-openedv/uboot-imx-rel_imx_4.1.15_2.1.0_ga_alientek/blob/edb7ca5ac4be2d978be60a2a12c61e0b6d1f7feb/include/configs/mx6ull_alientek_emmc.h):
+  a baseline map to inspect, not a modern A/B allocation.
 - [Bootcount API](https://docs.u-boot.org/en/v2026.04/api/bootcount.html),
   [include/bootcount.h](https://github.com/u-boot/u-boot/blob/v2026.04/include/bootcount.h),
   and [common/autoboot.c](https://github.com/u-boot/u-boot/blob/v2026.04/common/autoboot.c): increment and selection order.
