@@ -587,13 +587,13 @@ Some products use containers to isolate the application from the base system, so
 - Kernel namespaces, cgroups, and overlayfs requirements
 - Bind-mounting `/sys/class/leds` into a container to talk to hardware
 - OCI image format; how to build one without Docker on the host
+- **Key Notes:** Containers package applications separately from the base system, but share its kernel. Application rollback and kernel or bootloader rollback are different update boundaries.
 
 ### Appendix — Userspace tooling reference
 - One table per tool family (networking, audio, BT, cellular, sensors, debug, …) with both **Ubuntu-base `apt install`** and **Buildroot `BR2_PACKAGE_*`** lines
 - "Install everything" cheat sheets (Ubuntu-base one-liner, Buildroot Kconfig fragment)
 - Per-Part subsets so a reader doing only Part VI/VII/VIII can install just what they need
 - Pitfalls (libgpiod v1↔v2 CLI, missing WiFi firmware, mesh-vs-classic BlueZ, etc.)
-- **Key Notes:** Containers package applications separately from the base system, but share its kernel. Application rollback and kernel or bootloader rollback are different update boundaries.
 
 
 ---
@@ -1481,7 +1481,7 @@ Many readers came here from VSCode and would rather debug there than learn `tui`
 - The real product problems: crash isolation, security boundaries, mixed criticality, legacy BSP containment, and device ownership
 - Containers vs PREEMPT_RT vs TrustZone vs remoteproc/OpenAMP vs Xen vs Jailhouse
 - Why a hypervisor is sometimes the clean answer and sometimes architectural overkill
-- The rule for this part: every chapter must end with something visible and testable
+- Match the required failure boundary to the ownership model before selecting tools
 - **Key Notes:** The choice begins with a failure to contain and the workload that must survive it. A process, container, guest, partition or companion MCU provides a different boundary.
 
 ### Chapter 128 — QEMU as a virtual hardware model
