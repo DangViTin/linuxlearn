@@ -22,7 +22,7 @@
 - **Part V — Root filesystem & user space.** A `busybox`-based hand-built rootfs; `/proc` `/sys` `devtmpfs`; init systems; libc and dynamic linking; Buildroot; bootable SD/eMMC and SPI NOR images; product board directories; Ubuntu-base as a fully-featured alternative; services, networking, time, logging, security, read-only root + overlayfs, and containers on embedded.
 - **Part VI — Driver development.** ~33 chapters covering every common subsystem from char devices and platform drivers through I²C/SPI/PWM/RTC/IIO/regmap/DMA/Net/Sound/DRM/USB, with deeper treatment of CAN, multi-touch, block devices, WIFI, cellular modems, HDMI bridges, kernel timers, async notification, watchdog, power management, PREEMPT_RT real-time, MTD/UBI, V4L2/GStreamer, and a Rust-for-Linux sidebar. **One canonical example per subsystem** — depth on real chips lives in Part VII.
 - **Part VII — Device cookbook.** 54 chapters compare device choices through electrical interfaces, Linux subsystem support, data flow, timing and failure limits. Schematics, Device Tree and code examples illustrate those choices. Storage, sensors, converters, displays, cameras, audio, wireless links, industrial buses and actuators can be read as independent references.
-- **Part VIII — Debug, production, advanced.** JTAG/OpenOCD/GDB across layers; kernel debugging without JTAG (ftrace, eBPF, kgdb); user-space debugging; a capstone custom-board port; build your own toolchain with crosstool-NG; Yocto layer development; secure boot (HAB) and OP-TEE; field updates (RAUC, SWUpdate, Mender); the mainline patch-submission workflow; CI/CD for embedded; BSP → mainline migration playbook; VSCode + gdbserver remote debug.
+- **Part VIII — Debug, production, advanced.** Observability across layers, kernel and userspace debugging, board-port design contracts, build inputs, Yocto layer development, secure boot, field updates, upstream maintenance, CI evidence and BSP migration.
 - **Part IX — Applied virtualization and mixed-criticality systems.** QEMU as a virtual hardware model, ARM HYP mode, Xen guest boundaries, device ownership, DMA and isolation limits, Jailhouse partitioning, and STM32MP1's Linux/RTOS A7/M4 split. Virtual examples explain architecture, not MINI electrical or timing qualification.
 
 ---
@@ -164,13 +164,11 @@ Start with Chapter 1. Follow the problem, then the mechanism and its design cons
 ### Chapter 13 — CCM clock tree bring-up
 - The clock tree, drawn end-to-end for i.MX6ULL: 24 MHz XTAL → ARM PLL / System PLL → root clocks → peripheral gates
 - CCM, CCM_ANALOG, and PMU register groups
-- Booting the ARM core at 696 MHz (vs the 396 MHz default)
+- Auditing selected clock paths without changing live operating points
 - AHB and IPG bus clocks
 - The CCGR gating registers: each peripheral has 2 bits, what they mean
 - Side topic: how to compute power for a given clock configuration
-PFD where used, muxes and dividers. CCGR gates control availability, not rate.
-- **Key Notes:** A frequency belongs to a complete selected path: reference, PLL or bypass,
-PFD where used, muxes and dividers. CCGR gates control availability, not rate.
+- **Key Notes:** A frequency belongs to a complete selected path: reference, PLL or bypass, PFD where used, muxes and dividers. CCGR gates control availability, not rate.
 
 ### Chapter 14 — DDR3 initialization with MMDC
 - DDR3 fundamentals refresher: banks, ranks, rows, columns, CL/tRCD/tRP/tRAS
@@ -180,35 +178,23 @@ PFD where used, muxes and dividers. CCGR gates control availability, not rate.
 - Calibration: write leveling, DQS gating, read/write delay calibration
 - Using NXP's DDR Stress Tool to verify your settings before trusting them
 - Translating verified register values into a DCD script
-- **Focus:** this is the chapter that distinguishes you from someone who only ever used eval boards
-timing/command sequence, refresh and calibration. A valid address or a
-copied delay table establishes none of that configuration by itself.
-- **Key Notes:** DDR availability depends on a matched clock, geometry, electrical setup,
-timing/command sequence, refresh and calibration. A valid address or a
-copied delay table establishes none of that configuration by itself.
+- **Focus:** matching initialization assumptions to fitted memory and its qualification limits
+- **Key Notes:** DDR availability depends on a matched clock, geometry, electrical setup, timing/command sequence, refresh and calibration. A valid address or a copied delay table establishes none of that configuration by itself.
 
 ### Chapter 15 — Exceptions and the GIC
-- The ARMv7-A exception vector table (8 entries) — write it by hand
+- The ARMv7-A exception vector table (8 entries) and its software responsibilities
 - High vs low vectors (`VBAR` register)
 - The GIC v2 (Generic Interrupt Controller): Distributor + CPU Interface, register maps
 - Configuring an SPI (Shared Peripheral Interrupt) and an SGI (Software-Generated Interrupt)
 - Top-half ISR pattern in bare-metal: save context, ack the GIC, call C handler, return from exception
-preservation, stack alignment and exception return. A C handler alone is
-not an exception-entry interface.
-- **Key Notes:** Cortex-A7 banks IRQ SP/LR and saves CPSR, but software owns shared-register
-preservation, stack alignment and exception return. A C handler alone is
-not an exception-entry interface.
+- **Key Notes:** Cortex-A7 banks IRQ SP/LR and saves CPSR, but software owns shared-register preservation, stack alignment and exception return. A C handler alone is not an exception-entry interface.
 
 ### Chapter 16 — Timers (EPIT and GPT)
 - EPIT (Enhanced Periodic Interrupt Timer): a 1 ms tick
 - GPT (General Purpose Timer): free-running counter for delay/timestamp
 - Building `udelay()` and `mdelay()` primitives
 - Using GPT as a profiling tool: cycle-count any function
-service. Their clocksource/clockevent roles separate time measurement from
-scheduling, without prescribing Linux's eventual timer selection.
-- **Key Notes:** GPT's free-running count represents elapsed ticks. EPIT requests periodic
-service. Their clocksource/clockevent roles separate time measurement from
-scheduling, without prescribing Linux's eventual timer selection.
+- **Key Notes:** GPT's free-running count represents elapsed ticks. EPIT requests periodic service. Their clocksource/clockevent roles separate time measurement from scheduling, without prescribing Linux's eventual timer selection.
 
 ### Chapter 17 — MMU and caches
 - Why we want the MMU on, even in "bare-metal": cache control
@@ -577,12 +563,13 @@ For projects where binary size is not the constraint but **familiarity is** (eng
 - **Key Notes:** Link state, IP configuration, routing and DNS are separate layers. Success at one layer narrows a diagnosis but does not establish that the next layer works.
 
 ### Chapter 35B — Supplementary: Read-only rootfs + overlayfs (the industrial pattern)
-Every shipping industrial product should consider this. A read-only rootfs means: power-cycle anywhere, corrupt nothing. The overlayfs trick lets `/var/log/`, `/etc/`, and other writable subtrees live in tmpfs or on a separate persistent partition.
+An immutable base separates the shipped system from writable runtime state. Tmpfs and persistent overlays have different lifetimes, durability requirements and recovery policies. A read-only mount does not make the complete product immune to power loss.
 - Mounting `ext4` with `ro`; what fails (`/etc/resolv.conf`, `/var/run/utmp`, `/tmp`)
 - `overlayfs` mount syntax: `lowerdir`, `upperdir`, `workdir`
 - `/etc/fstab` for an RO root + writable overlays
 - The data-partition split: `/data/` for app data, `/var/log/` for logs
-- Power-cycle test: 100 reboots, mid-write, no corruption
+- Power-loss boundaries, application commit policy and storage qualification
+- Factory reset as a data-lifecycle decision, not live-overlay deletion
 - **Key Notes:** An immutable rootfs separates the shipped system from changing data. Read-only mounting reduces exposure to interrupted writes to that filesystem, but does not make the storage device or the entire product immune to power loss.
 
 ### Chapter 35H — Supplementary: Rootfs security basics
@@ -1403,9 +1390,10 @@ If you write a driver in this book and it's good, it can go upstream. We walk th
 - **Key Notes:** A patch carries both a code change and its rationale. One logical change per patch makes the affected interface and regression risk visible.
 
 ### Chapter 121 — Custom board port as a system design
-- Take your *own* PCB (or rework the Point Atom into a non-trivial variant)
-- Port U-Boot, port kernel DT, write at least one peripheral driver for something the original board didn't have
-- Reproducible build script: clean checkout → bootable SD in one command
+- Compare unchanged MINI hardware, attached-device variants and custom PCBs
+- Follow ownership across early hardware, U-Boot, kernel description and rootfs
+- Separate reproducible artifact production from physical deployment
+- Explain failure boundaries, recovery and the evidence behind design decisions
 - **Key Notes:** A board port connects fitted hardware to several software descriptions. Power and reset behavior, early DDR setup, U-Boot configuration, kernel DT, and rootfs contents have distinct owners.
 
 ### Chapter 121A — Supplementary: CI/CD for embedded Linux
