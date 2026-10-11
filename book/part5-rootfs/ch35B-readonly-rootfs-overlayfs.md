@@ -19,13 +19,9 @@ status: draft
 
 ## 35B.1  The problem this solves
 
-A standard development rootfs is mounted `rw` (read-write). The kernel buffers writes in its page cache and flushes them to disk lazily. If power drops between the page-cache write and the disk flush, you can end up with:
+A standard development rootfs is mounted `rw` (read-write). A successful write can still leave data buffered in memory. If power disappears before that data reaches persistent storage, the next boot may see an older file or an incomplete update.
 
-- Files partially written (data in disk blocks that the inode doesn't yet point to)
-- Inodes updated but their containing block not yet flushed (vice versa)
-- Journal entries half-committed (ext4's journal recovers some of these on next mount)
-
-`fsck` runs on next boot and tries to fix what it can. Sometimes it succeeds. Sometimes a critical config file ends up with garbage in it and your system boots into a degraded state. Sometimes `fsck` decides the filesystem is unrecoverable and aborts to a recovery shell.
+The filesystem and the application protect different things. Ext4's default journal protects metadata updates, not complete application transactions. A filesystem can recover its structure while a configuration file remains unusable. Journal replay and any boot-time filesystem check also depend on the filesystem and boot policy. A repair tool cannot reconstruct application data that never reached storage. See the [ext4 journal documentation](https://docs.kernel.org/filesystems/ext4/journal.html).
 
 The risk belongs to both the filesystem and the application: a filesystem can remain mountable while a partially updated configuration is unusable.
 
@@ -96,17 +92,17 @@ When the application writes to `/etc/hostname`, overlayfs copies `/etc/hostname`
 The deeper trade-off:
 
 - **More flexible** than Pattern A, you can change config files post-deployment.
-- **More complex**: you need a second partition, a setup script that mounts the overlay, and a story for "what if the overlay partition gets corrupted?" (Hint: factory reset = mount without the overlay, you get the pristine rootfs.)
+- **More complex**: early boot must mount the overlay and handle an unreadable upper layer. Falling back to base defaults is safe only if the product can operate without the settings or identity stored in that layer.
 
-We'll set up both. Pattern A first because it's simpler.
+The following examples show where each pattern puts its writable state. Pattern A has fewer boot dependencies, so it comes first.
 
 ## 35B.3  Pattern A in practice
 
 Assume the rootfs we built in Chapter 31 or Chapter 35 lives on `/dev/mmcblk1p2` (the second eMMC partition. `p1` is FAT for boot, `p2` is ext4 root).
 
-Build the rootfs as normal, with whatever method you prefer. Then customise `/etc/fstab` as in §35B.2 above. Save.
+The rootfs build owns the `/etc/fstab` entries shown in §35B.2. Runtime services must agree with those mount boundaries.
 
-On the host, **before deploying**, make sure no `rw` paths sneak in:
+Searching configuration files can help identify expected writers, but a text search cannot prove that every service respects a read-only root:
 
 ```sh
 # What writes to /etc/ at runtime?
@@ -120,16 +116,15 @@ Common culprits to fix:
 - `/etc/machine-id` (systemd), needs to be persistent. Pre-generate at install time, then it's not written at boot.
 - `/var/log/*`: ensure your tmpfs has enough space (`size=8M` in our fstab) and you have log rotation. Otherwise the tmpfs fills up.
 
-Adjust bootargs (in U-Boot env):
+The `ro` boot argument expresses the initial root-mount policy. Persistent environment changes are a separate bootloader design decision, not a requirement for this example:
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 
 ```
 => setenv bootargs 'console=ttymxc0,115200 earlycon root=/dev/mmcblk1p2 ro rootwait ...'
-=> saveenv
 ```
 
-Boot. From the shell:
+An illustrative shell transcript shows the distinction:
 
 ```
 [root@pa-mini:~]# mount | head -1
@@ -143,11 +138,11 @@ touch: /etc/test: Read-only file system
 /var/log/test                            ← writable, in tmpfs
 ```
 
-`/` is RO. Tmpfs paths are RW. The system is now power-cycle safe.
+This output illustrates the intended write boundary: `/` rejects ordinary writes and the tmpfs paths accept disposable state. It does not establish power-loss resilience for the complete system.
 
 ## 35B.4  Pattern B, overlayfs
 
-For changes that need to persist, set up overlayfs. We'll make `/etc/`, `/var/`, and `/home/` overlay-mounted on top of the RO rootfs, with the upper layer on a separate eMMC partition.
+For changes that need to persist, this example overlays `/etc/`, `/var/`, and `/home/` on the read-only rootfs. A separate eMMC partition holds the upper layer.
 
 ### Partition layout
 
@@ -161,27 +156,17 @@ For changes that need to persist, set up overlayfs. We'll make `/etc/`, `/var/`,
 /dev/mmcblk1p3   ext4 overlay upper + data (RW, ~500 MB)
 ```
 
-Create them with `fdisk` or `parted`. Format:
-
-```sh
-$ sudo mkfs.ext4 -L rootfs   /dev/mmcblk1p2
-$ sudo mkfs.ext4 -L overlay  /dev/mmcblk1p3
-```
+These names describe an example target layout, not disks to format on the host. Provisioning must identify the actual medium and separate image installation from the runtime mounting policy.
 
 ### Initial population
 
-```sh
-$ sudo mount /dev/mmcblk1p2 /mnt/rootfs
-$ sudo tar -xzf rootfs.tar.gz -C /mnt/rootfs/
-$ sudo mount /dev/mmcblk1p3 /mnt/overlay
-$ sudo mkdir /mnt/overlay/{upper-etc,work-etc,upper-var,work-var,upper-home,work-home,data}
-```
+The installed base contains the rootfs and its mount points. The persistent partition contains an upper/work directory pair for each overlaid tree: `upper-etc` with `work-etc`, and equivalent pairs for `var` and `home`. Each work directory starts empty and shares a filesystem with its upper directory. Data kept outside the overlay has its own retention policy.
 
 ### Boot-time overlay setup
 
-The overlay mount has to happen *after* the kernel mounts the rootfs but *before* `init` runs significant other things. The cleanest place is an initramfs that does the overlay setup, then exec's the real init. Or, if you don't have an initramfs, in `/etc/init.d/rcS` very early (before `mount -a`).
+The overlay must exist before services start using the affected paths. An initramfs can establish those mounts before handing control to the real rootfs. A late overlay risks hiding files that a service has already opened.
 
-Here's the initramfs approach (preferred). Build an initramfs (Ch 29) with a `/init` like:
+The following `/init` fragment illustrates that handoff. It assumes the layout and directories described above. A production implementation also needs checked mount results, a recovery branch and device discovery appropriate to the actual board:
 
 ```sh
 #!/bin/sh
@@ -248,46 +233,33 @@ You wrote to `/etc/test`. The kernel copy-up'd to `/overlay/upper-etc/test`. The
 
 Reboot. `/etc/test` survives. The RO rootfs is unchanged.
 
-## 35B.5  Power-cycle test
+<span id="b-5-power-cycle-test"></span>
+## 35B.5  Power-loss failure boundaries
 
-The whole point. Let's verify:
+Imagine the product updating its network settings when power disappears. The base image may still be usable, but an incomplete setting in the upper layer can hide its default. Recovery therefore needs more than a read-only mount.
 
-```
-[root@pa-mini:~]# cat > /var/log/important.txt <<EOF
-> some important production log entry
-> EOF
+| State | Design responsibility |
+|---|---|
+| Base image | Keep runtime changes out of the shipped system and retain a recovery path if the image cannot be read. |
+| Tmpfs state | Treat its contents as disposable and recreate them during startup. |
+| Persistent upper layer | Define application commit boundaries and a response to incomplete or unreadable state. |
+| Storage device | Qualify the actual medium and power behavior. Separate partitions are not independent physical devices. |
 
-[root@pa-mini:~]# while true; do
->   echo "$(date) tick" >> /var/log/important.txt
->   sleep 1
-> done
-```
+There is no universal "last two seconds" loss window or failure percentage. Durability depends on the application, filesystem and storage stack. Synchronization must be explicit when persistence matters, with errors handled rather than ignored. Overlayfs does not make several application writes one transaction. Its [durability documentation](https://www.kernel.org/doc/html/latest/filesystems/overlayfs.html#durability-and-copy-up) explains that boundary.
 
-While that's running, **yank the power**. (Use the SD card. Pull it. Reinsert. Power up.)
+Even `ro` needs context: ext4 can replay its journal during a read-only mount. Suppressing replay is not a general repair strategy for an inconsistent filesystem. See the [ext4 mount documentation](https://docs.kernel.org/admin-guide/ext4.html).
 
-After reboot:
-
-- The rootfs at `/dev/mmcblk1p2` is intact. `fsck` shows clean (it was mounted RO. No journal entries to recover).
-- `/var/log/important.txt`'s last few lines may be missing or partial, but **only the lines written in the second or two before power loss**. The earlier content is preserved.
-- The system boots cleanly.
-
-Compare with the same test on a RW rootfs: half the time you get a clean boot. Half the time `fsck` finds something that needs manual intervention. Over a thousand power cycles, the difference is large enough to count.
+Power-loss qualification belongs to a controlled hardware validation plan, not a required reading exercise. This chapter provides no measured MINI power-cut results.
 
 ## 35B.6  Factory reset
 
-A nice property of Pattern B: **factory reset is trivial**. Erase the overlay partition:
+With Pattern B, an empty upper layer exposes the base defaults again. That makes reset possible without reflashing the base image, but deciding what to discard is a product responsibility.
 
-```
-[root@pa-mini:~]# for d in /overlay/upper-etc /overlay/upper-var /overlay/upper-home; do
->   [ -d "$d" ] && find "$d" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-> done
-[root@pa-mini:~]# sync
-[root@pa-mini:~]# reboot
-```
+User settings may be disposable. Device identity, credentials, calibration and retained records may not be. Keep those lifetimes separate instead of putting everything into one erasable layer.
 
-Next boot, the overlay has nothing, so user-space sees the pristine rootfs. No actual reflashing of the rootfs needed, it was never written to.
+A recovery environment can prepare replacement upper/work directories while the overlay is unmounted. Deleting backing files under a live overlay is not valid: the kernel documents [undefined behavior for such changes](https://www.kernel.org/doc/html/latest/filesystems/overlayfs.html#changes-to-underlying-filesystems).
 
-A common production button-combination is "hold the recovery button at boot for 5 seconds → wipe overlay → reboot." The user gets a factory-fresh system in 30 seconds.
+The reset design also needs a recoverable state if power disappears halfway through, and a path that works when the old upper layer cannot be mounted. A button gesture requests this policy. It does not, by itself, implement it or promise a fixed reset time.
 
 <span id="b-7-lab"></span>
 ## 35B.7  Key Notes
