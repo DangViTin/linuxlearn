@@ -524,16 +524,13 @@ gst-launch-1.0 v4l2src device=/dev/video0 ! jpegenc ! rtpjpegpay ! udpsink host=
 
 i.MX6ULL has no GPU/VPU, so JPEG/H.264 encoding is software, slow. Practical: ~5–10 fps at VGA for encoded streams. Raw capture is faster.
 
-## 87.8  Lab
+<span id="lab"></span>
+## 87.8  Key Notes
 
-1. **Power + clock first.** Verify the sensor's MCLK is present (scope CSI_MCLK) before debugging I²C. Without MCLK, the sensor won't ACK I²C.
-2. **Detect the sensor.** `i2cdetect -y 1`, OV5640 at 0x3C, OV7725 at 0x21. Read the chip-id register.
-3. **From-scratch subdev.** Build `mysensor.ko` (adapt the chip-id + init to your actual sensor). Verify it appears in `media-ctl -p`.
-4. **Capture raw.** `v4l2-ctl --stream-to=frames.raw --stream-count=10`. Convert a YUYV frame to PNG with ffmpeg. Verify you see an image.
-5. **Mainline OV5640.** Switch to `compatible = "ovti,ov5640"`. Configure full pipeline. Capture. Verify the built-in AE/AWB give a properly-exposed image.
-6. **Resolution change.** With the OV5640, set QVGA, VGA, 720p. Note the frame-rate and bandwidth changes.
-7. **Exposure control.** `v4l2-ctl --set-ctrl=exposure_auto=1` then manual exposure. Observe brightness changes.
-8. **GStreamer display.** Pipe the camera to the LCD via fbdevsink. Live preview.
+- A parallel camera has a control path over I2C and a pixel path into CSI. A sensor probe proves only the first of those boundaries.
+- V4L2 subdevices and media endpoints describe a pipeline whose pad formats, bus widths and synchronization must agree.
+- The sensor owns exposure and output timing, the capture controller owns transfer into buffers, and user space owns later processing or presentation.
+- Resolution, frame rate, pixel format and processing all consume bandwidth or CPU. The i.MX6ULL's parallel CSI path is not a MIPI receiver or a hardware video-encoding guarantee.
 
 ## 87.9  Pitfalls
 

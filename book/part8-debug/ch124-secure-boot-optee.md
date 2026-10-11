@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 124: Secure boot (HAB) and OP-TEE
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Examples and production:** Do not burn fuses, enroll production keys, or sign release images while using these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -412,18 +412,16 @@ Real TAs include:
 - **Secure storage of credentials**: passwords, tokens, certificates that survive a kernel compromise.
 - **Attestation**: proving to a server that the firmware running here is what the server expects.
 
-## 124.11  Lab
 
-1. **Generate keys.** Run `hab4_pki_tree.sh`. Inspect outputs. Keep keys safe.
-2. **Build signed U-Boot.** Run CST. Produce signed `u-boot-signed.imx`. Flash to SD.
-3. **HAB open verification.** Without blowing fuses, boot the signed image. `hab_status` in U-Boot should show no events. Then flash a deliberately-wrong-signed image. `hab_status` shows events.
-4. **(IRREVERSIBLE!) Close HAB on a sacrificial board.** Don't do this on your only board, it will refuse to boot anything unsigned forever.
-5. **Sign FIT.** Build a signed FIT with kernel+DTB. Verify U-Boot's `bootm` validates before transferring control.
-6. **dm-verity.** Format a partition with veritysetup. Add the root hash to cmdline. Boot. Verify mount succeeds. Then modify a byte of the rootfs partition (offline). Boot. Mount fails as expected.
-7. **OP-TEE build + boot.** Build tee.bin. Add to FIT. Verify `dmesg` shows OP-TEE initialized.
-8. **Hello TA.** Write the hello TA + host. Cross-compile both. Run on target. Verify OP-TEE serial log shows the message.
-9. **Secure storage TA.** Use OP-TEE's secure-storage API to save a value. Reboot. Recover it. Demonstrate that even a hostile kernel can't read it.
-10. **Attestation TA (stretch).** Implement a TA that signs a server challenge with a key held in Secure World. Server verifies. Can't be forged from Normal World.
+(12411-lab)=
+## 124.11  Key Notes
+
+- HAB anchors bootloader authentication in ROM and a provisioned key hash. FIT verification, rootfs integrity, and module policy extend trust only when their inputs are protected.
+- Open-mode observations and closed-mode enforcement are different states. Fuse closure and key revocation are irreversible provisioning decisions, not reading requirements.
+- Key custody, backups, authorized signing, revocation, and recovery determine whether future updates remain possible. Signed images are only one part of that lifecycle.
+- dm-verity detects changes using a trusted root hash and block hashes. Writable logs and persistent data need storage separate from the verified read-only rootfs.
+- TrustZone separates Normal World from Secure World. The monitor, OP-TEE, Linux client driver, and TA interfaces define which requests and buffers cross the boundary.
+- A Trusted Application narrows access to secrets but has its own validation and update obligations. Secure boot alone does not prevent rollback or guarantee runtime correctness.
 
 ## 124.12  Pitfalls
 

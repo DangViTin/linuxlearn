@@ -14,7 +14,7 @@ This chapter builds a local-first loading policy for **U-Boot v2026.04**, commit
 
 The modern port name remains `mx6ull_pa_mini`, its header `mx6ull_pa_mini.h`, and its base DTS `imx6ull-pa-mini.dts`. The supplied MINI V2.2 schematic establishes **one RJ45, on ENET2**, with an **SR8201F at MDIO address 1**. Earlier MINI revisions use LAN8720 at the same address. We will use that wiring, not the EVK's two-port assumptions.
 
-Hardware documentation is not a claim of a working link. Chapter 19's vendor source selects an SMSC driver, and our first-lab build disables that network path. Section 22.7 compares the SR8201F-VB datasheet's `0x001cc816` ID with the modern RTL8201F driver's match table and enables `CONFIG_PHY_REALTEK` as a concrete candidate. Confirm the fitted PHY's actual ID and behavior before a V2.2 network test. A source/datasheet ID match is stronger than a similar name or generic fallback, but still does not establish complete silicon compatibility, RMII timing or measured packet transfers.
+Hardware documentation is not a claim of a working link. Chapter 19's vendor source selects an SMSC driver, and our initial build disables that network path. Section 22.7 compares the SR8201F-VB datasheet's `0x001cc816` ID with the modern RTL8201F driver's match table and enables `CONFIG_PHY_REALTEK` as a concrete candidate. Confirm the fitted PHY's actual ID and behavior before a V2.2 network test. A source/datasheet ID match is stronger than a similar name or generic fallback, but still does not establish complete silicon compatibility, RMII timing or measured packet transfers.
 
 ## 24C.1  The real use case
 
@@ -168,7 +168,7 @@ There is no predicted board log here. Record the actual selected device and resu
 
 ## 24C.8  Manual TFTP test
 
-Place the matching kernel and OS DTB in the **already configured** TFTP root from Chapter 24. `imx6ull-pa-mini.dtb` is the modern exercise's OS-tree name; the vendor environment instead chooses `imx6ull-alientek-emmc.dtb`. Neither U-Boot's control DT nor a renamed unrelated DTB substitutes for a kernel-compatible MINI OS tree. Creating a directory does not configure the server to use it. Do not disable the host firewall globally; diagnose the service and its allowed traffic. TFTP uses UDP port 69 for the initial request and a server-selected transfer port afterward.
+Place the matching kernel and OS DTB in the **already configured** TFTP root from Chapter 24. `imx6ull-pa-mini.dtb` is the modern example's OS-tree name; the vendor environment instead chooses `imx6ull-alientek-emmc.dtb`. Neither U-Boot's control DT nor a renamed unrelated DTB substitutes for a kernel-compatible MINI OS tree. Creating a directory does not configure the server to use it. Do not disable the host firewall globally; diagnose the service and its allowed traffic. TFTP uses UDP port 69 for the initial request and a server-selected transfer port afterward.
 
 The example RAM slots are:
 
@@ -212,7 +212,7 @@ fi
 
 This is the **body of `local_boot`**, not a Bash program or a prompt assignment. `&&` stops after the first failure. Each failure branch ends in `false`, so an `echo` cannot accidentally convert failure into success. A `bootz` that returns reports its own status to the caller.
 
-The `-` means no initrd. This exercise chooses the **MINI TF slot on USDHC1** as local media, conventionally U-Boot `mmcdev=0` in the vendor board code. The eMMC core's USDHC2 is conventionally `mmcdev=1`; a NAND core does not gain eMMC merely by changing that variable. Confirm the modern port's device sequences before use. Optional SDIO WiFi at P2 shares USDHC1 with TF, so do not fit/use that module while relying on this TF path.
+The `-` means no initrd. This example chooses the **MINI TF slot on USDHC1** as local media, conventionally U-Boot `mmcdev=0` in the vendor board code. The eMMC core's USDHC2 is conventionally `mmcdev=1`; a NAND core does not gain eMMC merely by changing that variable. Confirm the modern port's device sequences before use. Optional SDIO WiFi at P2 shares USDHC1 with TF, so do not fit/use that module while relying on this TF path.
 
 The illustrative `rootdev=/dev/mmcblk0p2` in the header must be checked against **Linux's** MMC numbering. U-Boot `mmcdev=0` does not prove Linux `mmcblk0`. A measured PARTUUID is often clearer; obtain it from the intended root partition, never invent one. To use eMMC instead, coordinate device, partitions, root arguments and matching kernel/DTB; do not merely change one number.
 
@@ -321,16 +321,15 @@ With `CONFIG_CMD_SOURCE` and `CONFIG_LEGACY_IMAGE_FORMAT` deliberately enabled f
 
 Define and qualify a separate `scriptaddr` first, for example `0x84000000` only after the RAM map is checked. Do not default to executing remotely supplied scripts in production. Required FIT signatures, trusted configuration policy and a verified boot chain require a separate security design, not simply this `source` command with a different image nearby.
 
-## 24C.14  Lab
+(c-14-lab)=
+## 24C.14  Key Notes
 
-1. Compile the environment block and test its dispatcher in host/sandbox fixtures.
-2. Inject local kernel failure, local DTB failure, MMC failure and returning boot failure. Confirm only the intended cases invoke network loading.
-3. Inject either network load failure and argument-setting failure. Confirm no boot command is reached with stale bytes.
-4. Before any board networking, identify the MINI baseboard revision and qualify its PHY ID/driver, MAC uniqueness, clocks, reset, RAM slots and TF/eMMC root partition. V2.2 SR8201F support is a prerequisite, not a result of the vendor build.
-5. On isolated hardware, test each transfer separately, using volatile settings and the existing TFTP service.
-6. Simulate a missing file by temporarily changing its filename in RAM, not by deleting files from live storage. Restore that variable afterward.
-
-No storage/environment write is needed. Any later persistence or media replacement must be deliberate and qualified on spare media.
+- Local-first fallback responds to load failures or a boot command returning before handoff. It cannot diagnose a later Linux failure or recover a bootloader that never starts.
+- Every path gates both payload loads and argument setup. Explicit failure status prevents an error message's successful `echo` from making stale RAM bootable.
+- TFTP supplies the kernel and DTB here, not the MMC root filesystem. Network loading does not repair a corrupt root or authenticate loose images.
+- ENET2 hardware numbering differs from driver-model Ethernet sequence numbering. The sole-interface `ethaddr` contract, unique MAC allocation and revision-specific PHY/reset/clock path remain distinct requirements.
+- Static retry must restore actual address variables after DHCP. A message announcing static fallback does not restore state that an earlier attempt changed.
+- Filesystem loads need a qualified RAM and root-partition mapping even when they do not write storage. Remote legacy scripts carry executable authority and can bypass a separate signed-image path.
 
 ## 24C.15  Pitfalls
 

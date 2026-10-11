@@ -10,12 +10,12 @@ status: draft
 > **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 
-> **What:** the kernel's Kconfig system, `make menuconfig`, the `.config` file, defconfig snapshots, and the dozen config options that matter most for an i.MX6ULL embedded image. By the end you should be able to enable/disable any kernel feature, save a clean `defconfig`, and explain to a teammate why each option is set.
+> **What:** the kernel's Kconfig system, configuration editors, `.config`, defconfig snapshots and the options that shape an i.MX6ULL image's capabilities and boot dependencies.
 >
-> **Why:** Through Chapter 29 we used `imx_v6_v7_defconfig` as a black box. For real products you'll customise: smaller kernels for smaller flash, PREEMPT_RT for real-time, specific debug options on engineering builds. Knowing where each knob lives lets you build a kernel that fits your product, not just one that boots.
+> **Why:** earlier examples used `imx_v6_v7_defconfig` as a starting point. Product configuration makes choices about image size, scheduling, device support and engineering diagnostics explicit.
 > **PREEMPT_RT:** the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
 >
-> **Focus:** `.config` is the canonical file. `menuconfig`, `xconfig`, and the others are just UIs that edit it. Read it, edit through the UI, and rebuild.
+> **Focus:** `.config` is the resolved configuration. `menuconfig`, `xconfig` and other editors operate within Kconfig dependency rules rather than independently choosing what can compile.
 
 
 ## 30.1  The Kconfig system
@@ -188,7 +188,7 @@ General setup
   ()  Initramfs source file(s)             ← optional, embeds an initramfs
 ```
 
-Required for Chapter 29. The source field embeds a cpio archive directly into `zImage`.
+These options support the initramfs designs discussed in Chapter 29. The source field embeds a cpio archive directly into `zImage`.
 
 ### Modules, `CONFIG_MODULES` and `CONFIG_MODULE_UNLOAD`
 
@@ -321,13 +321,17 @@ $ make ARCH=arm olddefconfig
 
 You start from a known baseline and apply targeted changes. Easier to maintain than committing a full bespoke defconfig.
 
-## 30.8  Lab
 
-1. **Read the help for ten random options.** Press `/` to search for something innocuous (`PREEMPT`, `DEVTMPFS`, etc.), press `?` on each, read the help. Get a feel for how Kconfig documentation reads.
-2. **Trim the kernel.** Starting from `imx_v6_v7_defconfig`, disable five features you're confident you don't need on the i.MX6ULL MINI. Rebuild. Measure `zImage` size before and after.
-3. **Generate a custom defconfig.** After trimming, run `make ARCH=arm savedefconfig`. Inspect `defconfig`. Save as `arch/arm/configs/myboard_defconfig`. Verify another `make distclean && make myboard_defconfig && make` reproduces the same trimmed kernel.
-4. **Enable a kernel module.** Find a driver currently `=y` (e.g., `CONFIG_USB_F_MASS_STORAGE`). Change it to `=m`. Rebuild. Confirm a corresponding `.ko` appears under `drivers/usb/gadget/function/`.
-5. **Read `Documentation/admin-guide/kernel-parameters.txt`** for any 10 cmdline tokens. Cross-reference with the `.config` options that produce them.
+(30-8-lab)=
+## 30.8  Key Notes
+
+- Kconfig resolves requested options against dependencies and defaults. A hand-edited symbol does not necessarily survive resolution or become compiled code.
+- `.config` records the complete resolved state, while a defconfig records a compact starting point relative to defaults. Its meaning is tied to the architecture and kernel revision.
+- Built-in support is available before module loading. Root storage and filesystem dependencies cannot live only in modules on the rootfs that they are needed to mount.
+- Configuration enables capabilities, DT describes hardware, and bootargs select behavior for a boot. Changing a root device or console argument is not the same as enabling its driver.
+- Trimming removes functionality as well as bytes. Recovery storage, consoles and optional maintenance paths remain requirements even when the normal product does not use them.
+- Preemption, timer and idle choices balance latency, overhead and power. An option name alone does not establish a measured real-time bound.
+- Debug information and runtime diagnostics serve different purposes. Host-side symbols and development-only interfaces need explicit ownership across product configurations.
 
 ## 30.9  Pitfalls
 
@@ -347,5 +351,5 @@ You start from a known baseline and apply targeted changes. Easier to maintain t
 - **`scripts/kconfig/`**: the Kconfig parser and UI source. Worth a skim if you write your own Kconfig.
 - **`Documentation/admin-guide/`**: runtime-tunable options many of which correspond to `.config` choices.
 
-> Next chapter: **Chapter 30A: Kernel lifecycle decision framework.** Now that you can configure any kernel, the question becomes *which* kernel, mainline, stable, LTS, or vendor BSP. The single most important architectural decision in any product.
+> Next chapter: **Chapter 30A: Kernel lifecycle decision framework.** Configuration choices sit within a longer-lived decision: which source and maintenance track can support the product's field life?
 > **BSP:** Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.

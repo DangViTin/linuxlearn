@@ -285,28 +285,13 @@ int main(void) {
 
 This is for understanding. In real Linux code you go through the regulator framework via the consumer driver, never directly poke PMIC registers from an unrelated process.
 
-## 116.8  Lab
+<span id="lab"></span>
+## 116.8  Key Notes
 
-> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
-> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
-
-
-1. **Identify PMIC.** If your i.MX6ULL board has a PMIC: `i2cdetect -y 0` to find it. Read DEV_ID register. Verify it matches the chip's datasheet.
-2. **DT skeleton.** If your kernel isn't using the PMIC: write a DT overlay with the PMIC node + a few rails. Rebuild kernel. Verify `regulator_summary` lists them.
-3. **Power measurement.** Insert a shunt resistor between PSU and VDDARM rail. Measure current at 696 MHz idle, then at 396 MHz idle, then with cpufreq's `userspace` governor forcing each freq. Compute power.
-4. **DVFS active.** Set the cpufreq governor to `ondemand`. Run a CPU-bound benchmark (`stress-ng --cpu 1`). Watch the regulator voltage change in real-time:
-   ```sh
-   watch -n0.1 cat /sys/class/regulator/regulator.0/microvolts
-   ```
-5. **Per-rail enable test.** Identify a non-critical rail (e.g., one for an unused peripheral). Manually disable it via sysfs `enable` knob. Verify the peripheral indeed goes dead.
-> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
-6. **Sleep state.** Trigger suspend-to-RAM (`echo mem > /sys/power/state`). Measure VDDARM rail, should be 0 V during suspend. Wake. Resume. Verify rail restored.
-7. **Fault interrupt.** PMICs typically have an INT pin. Configure it as a kernel IRQ. Over-current the chip (short a rail momentarily). Verify the kernel sees the fault.
-> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-8. **OPP tuning.** Add a custom OPP (e.g., 528 MHz at 1.1 V, slightly under the safe-spec to see what fails). Run stress tests. Record where the SoC starts to glitch (you may corrupt files. Use a scratch SD).
-9. **From-scratch I²C peek.** Use `pmic_test.c` to read every register. Dump them. Identify which rail is which by toggling each and observing what dies.
-10. **Cold start sequencing trace.** With a scope on each rail's output, capture the power-on sequence. Verify timing matches the i.MX6ULL datasheet's required order.
+- Regulator providers describe rails and consumers request the supplies they need. This dependency graph should match the physical power tree.
+- Voltage and frequency transitions need safe ordering and settling time. Operating points must come from qualified silicon and board requirements, not trial undervolting.
+- Cold-start sequencing, runtime power changes and suspend state have different constraints. Kernel-managed supplies do not eliminate pre-kernel power dependencies.
+- PMIC access changes live hardware state. Raw register access, shorted rails and guessed settings are not valid substitutes for a documented power design.
 
 ## 116.9  Pitfalls
 

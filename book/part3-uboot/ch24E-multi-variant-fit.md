@@ -10,13 +10,13 @@ status: draft
 
 A FIT configuration is a set of references: this kernel, this DTB, and optionally this ramdisk or overlay sequence. Several configurations can share a kernel without duplicating it. One release artifact is possible, but every supported hardware combination still needs testing.
 
-We will package Chapter 24D's three display choices for **one fixed MINI core/baseboard assembly**: no panel, optional ID4342, or optional ID7016 at RGBLCD J1. The board connector and panel options are documented; the matching OS trees and automatic EEPROM selector are exercises to implement and qualify. We then examine overlays separately.
+We will package Chapter 24D's three display choices for **one fixed MINI core/baseboard assembly**: no panel, optional ID4342, or optional ID7016 at RGBLCD J1. The board connector and panel options are documented; the matching OS trees and automatic EEPROM selector are examples to implement and qualify. We then examine overlays separately.
 
 The baseline is upstream **U-Boot v2026.04**, commit `88dc2788777babfd6322fa655df549a019aa1e69`, for host study and modern MINI migration. These APIs and security options are not a promise about Chapter 19's older vendor build. FIT means Flattened Image Tree. The DT-shaped container is not the OS hardware DTB stored inside it.
 
 ## 24E.1  The scenario
 
-| Lab LCD option / MINI attachment | FIT configuration | Payload DTB |
+| Example LCD option / MINI attachment | FIT configuration | Payload DTB |
 |---------------------|-------------------|-------------|
 | 0 / no panel | `conf-no-lcd` | `imx6ull-pa-mini-no-lcd.dtb` |
 | 1 / ID4342, 480 x 272 | `conf-lcd43` | `imx6ull-pa-mini-lcd43.dtb` |
@@ -114,7 +114,7 @@ stat -c '%n %s bytes' multi.itb
 
 These write host artifacts, not board storage. Size depends on the actual inputs; there is no promised megabyte count. Listing the FIT is not a boot or signature-validation test.
 
-For the unsigned lab, enable `FIT`, `FIT_FULL_CHECK`, `SHA256`, `CMD_BOOTM` and the filesystem/hush support in 24D. Retain the port's ARM Linux boot support. Disable `FIT_BEST_MATCH` if omission of an explicit configuration should fail rather than attempt compatible matching. Our policy always names the configuration.
+For the unsigned example, enable `FIT`, `FIT_FULL_CHECK`, `SHA256`, `CMD_BOOTM` and the filesystem/hush support in 24D. Retain the port's ARM Linux boot support. Disable `FIT_BEST_MATCH` if omission of an explicit configuration should fail rather than attempt compatible matching. Our policy always names the configuration.
 
 ## 24E.3  Booting a specific configuration
 
@@ -134,7 +134,7 @@ Qualify usable DDR, actual sizes, kernel decompression, FDT growth/relocation, a
 
 ### Hashes and trusted selection
 
-SHA-256 detects changed payload bytes when verification runs. It does not authenticate the producer: an attacker can replace payload **and hash**. Missing hash children are not equivalent to an enforced required signature. Keep lab verification enabled and inspect hash nodes, but do not call an unsigned FIT trusted boot.
+SHA-256 detects changed payload bytes when verification runs. It does not authenticate the producer: an attacker can replace payload **and hash**. Missing hash children are not equivalent to an enforced required signature. Keep example verification enabled and inspect hash nodes, but do not call an unsigned FIT trusted boot.
 
 A product needs required signatures checked against trusted public keys in U-Boot's control DT, a verified chain to that U-Boot, and a policy binding the allowed kernel/DTB/overlay combination. `CONFIG_FIT_SIGNATURE=y` alone neither installs trusted keys nor requires signatures. Individually signed images without authenticated configuration policy can permit unwanted recombination. A valid signed configuration also does not prove it is allowed on this board; trusted identity and selection must decide that.
 
@@ -165,13 +165,13 @@ With the **optional EEPROM on MINI I2C1/P4** fitted, use 24D's DM-I2C reader and
 
 Do not substitute legacy global-bus `i2c_read()` or one unvalidated byte. Reading one byte to RAM and then using `setexpr.l` consumes a whole word, including three unrelated bytes. There is no reason to use the future kernel/FIT buffer as identity scratch space.
 
-Factory provisioning and readback remain separate. Reprogramming live identity is not a normal boot step or a lab exercise here.
+Factory provisioning and readback remain separate. Reprogramming live identity is not a normal boot step or a lab example here.
 
 ### Pattern C, eFuse
 
 Already-provisioned, documented read-only fields may identify a chip. They require the exact fuse map, field ownership and board mapping. A one-time value is not automatically confidential or authenticated board-option data, or proof of tamper resistance.
 
-There is no generic "spare OCOTP word" in this example and no burn guidance. Reserved/security/boot fields are not interchangeable with identity storage. Use host records or schematic-qualified straps/EEPROM reads for the exercise.
+There is no generic "spare OCOTP word" in this example and no burn guidance. Reserved/security/boot fields are not interchangeable with identity storage. Use host records or schematic-qualified straps/EEPROM reads for the example.
 
 ## 24E.5  DT overlays, the alternative
 
@@ -179,7 +179,7 @@ An overlay adds or changes nodes/properties in a base DT. It suits optional bloc
 
 It is not a general runtime deletion mechanism: DTS source deletion directives are not arbitrary deletion operations carried through `fdt apply`.
 
-This complete **host-only pair** changes a lab property, not display/PHY/power wiring. Never pass the toy base to Linux as the MINI hardware DTB.
+This complete **host-only pair** changes a demonstration property, not display/PHY/power wiring. Never pass the toy base to Linux as the MINI hardware DTB.
 
 `lab-base.dts`:
 
@@ -263,7 +263,7 @@ Define `fdt-base` and `overlay-lcd43` under `images` with actual data. The first
 
 ## 24E.6  Putting it together, the full multi-variant boot script
 
-For the **EEPROM-equipped exercise**, use 24D's C identification and 24B's gate ordering. This complete macro replaces 24C's normal path with **local FIT boot**; it does not silently fall back to unsigned network payloads. A stock fixed-hardware MINI uses the explicit configuration route in 24E.3 instead, not this mandatory-EEPROM dispatcher.
+For the **EEPROM-equipped example**, use 24D's C identification and 24B's gate ordering. This complete macro replaces 24C's normal path with **local FIT boot**; it does not silently fall back to unsigned network payloads. A stock fixed-hardware MINI uses the explicit configuration route in 24E.3 instead, not this mandatory-EEPROM dispatcher.
 
 ```c
 #define PA_MINI_MULTI_FIT_ENV \
@@ -290,18 +290,17 @@ Merge once into `CFG_EXTRA_ENV_SETTINGS`, removing conflicting definitions of th
 
 The example follows 24C's TF/USDHC1 path, without an SDIO WiFi module on the shared bus. Confirm the modern port's device sequence and Linux's actual root partition; U-Boot `${mmcdev}` does not establish its `/dev/mmcblk` name. eMMC/USDHC2 requires coordinated media/root arguments on an eMMC core. Adding a FIT ramdisk later requires coordinated ITS, argument and memory changes, not simply an extra `rootfs.cpio.gz` reference.
 
-Mutable `verify=yes` enables corruption checking in this unsigned lab. It is not required-signature enforcement or a bypass-resistant boot policy. Alternate boot routes must independently obey the final product's trust requirements.
+Mutable `verify=yes` enables corruption checking in this unsigned example. It is not required-signature enforcement or a bypass-resistant boot policy. Alternate boot routes must independently obey the final product's trust requirements.
 
-## 24E.7  Lab
+(e-7-lab)=
+## 24E.7  Key Notes
 
-1. Build the host overlay pair; inspect the merged property and symbol/fixup nodes.
-2. Make a host-only overlay reference a nonexistent label. Confirm merge failure; do not reuse its in-memory inputs.
-3. Package the complete ITS with host fixtures to test references. A dummy kernel is for inspection only, never boot it.
-4. Test 24D's three valid identities and invalid records against the FIT configuration names.
-5. In sandbox/mock dispatch, inject readiness, MMC, FIT-load and argument failures; confirm `bootm` is reached only after success.
-6. Only after real DTBs, kernel, RAM map and identity are qualified, test each configuration on matching hardware. Host packaging does not establish a hardware boot.
-
-No fuse writes, production signing, EEPROM programming or saved-environment changes are needed.
+- FIT configurations share payloads through named references. One bundle simplifies release bookkeeping but does not reduce the set of hardware combinations that need qualification or make updates atomic.
+- Explicit fixed-hardware selection and validated add-on identity are different dispatch modes. This container supplies no default configuration for unknown hardware.
+- FIT staging, kernel destination/decompression and FDT growth have separate memory ownership. Metadata can describe destinations without checking that the chosen windows are safe.
+- Required signatures, trusted keys and authenticated configuration policy address different trust questions from payload hashes. A signed combination still needs authorization for the actual board.
+- Overlays mutate a separately loaded OS tree, not U-Boot's live control FDT. Symbols/fixups and application order are interfaces, and a failed apply requires fresh base and overlay inputs.
+- Separate complete DTBs trade larger artifact sets for simpler final-tree selection. Overlays reduce shared-source repetition only when their combination and failure contracts justify the extra machinery.
 
 ## 24E.8  Pitfalls
 

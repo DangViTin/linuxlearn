@@ -267,16 +267,13 @@ A 100 Hz control loop is adequate for a brushed motor. Mechanical dynamics are m
 > **MCU bridge:** Think of Linux PWM like an MCU timer output channel, except the driver exposes period, duty cycle, polarity, and enable state through a subsystem.
 > **PWM:** Pulse-Width Modulation, a timer output whose duty cycle controls average power or encodes timing.
 
-## 111.9  Lab
+<span id="lab"></span>
+## 111.9  Key Notes
 
-1. **Knob → terminal.** Wire a Bourns PEC11 mechanical encoder (5-pin: A, B, common, switch, common). Use `rotary_encoder` DT binding. `evtest` to see relative events.
-2. **Software qdec.** Wire an optical incremental (LPD3806-100BM-G5-24C-100ppr, $20). Run the user-space qdec. Spin the encoder by hand. Verify count tracks. Spin fast. Note where counts start dropping (~10 kHz on i.MX6ULL).
-3. **LS7366R external.** Wire LS7366R between encoder and i.MX SPI. Read the 32-bit count via SPI. Spin the encoder at 5,000 RPM (use a drill). Verify no missed counts.
-4. **Index pulse / homing.** Add Z (index) input. On every revolution, the Z pulse should fire. Verify your count is a multiple of `4 × PPR`. Use Z to home an axis on startup.
-5. **AS5048A absolute.** Wire AS5048A. Verify IIO `in_angl0_raw` tracks shaft rotation. Verify boot-up reads the correct angle without homing.
-6. **Velocity closed loop.** Combine the velocity loop with the DC motor driver from Ch 112 (BTS7960). Tune Kp, Ki for stable 1000 RPM.
-7. **Position closed loop.** Same loop, but track a target angle. Test for steady-state error. Add an integrator if needed.
-8. **Direction-detection robustness.** Spin the encoder back-and-forth rapidly. Verify the count is consistent and direction is right. If counts are wrong, check the QDEC_TABLE.
+- Quadrature encoders report relative transitions, while absolute encoders report a position within their defined range. Homing and accumulated turns are different state problems.
+- Edge rate, debounce and capture timing determine whether software decoding can preserve counts. Increasing thread priority does not establish a no-loss bound.
+- A hardware counter or external decoder can own fast edge capture while Linux reads accumulated state. Its existence and support must be established for the actual SoC and board.
+- Count scaling, direction, index handling and coordinate origin must agree with the control system. A plausible number is not evidence of a safe motion loop.
 
 ## 111.10  Pitfalls
 

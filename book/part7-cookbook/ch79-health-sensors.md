@@ -455,16 +455,13 @@ That's the textbook approach. Production systems add:
 
 Maxim's reference code includes the algorithm. Apple Watch's algorithm is patented and proprietary. For a hobby/demo: peak-finding + a 10-second running average works.
 
-## 79.7  Lab
+<span id="lab"></span>
+## 79.7  Key Notes
 
-1. **Wire MAX30102** to your I²C bus + a GPIO for the IRQ.
-2. **Build and load `mymax30102.ko`.** Verify probe in dmesg.
-3. **Bare-finger test.** Cover the sensor with your fingertip. Verify red_raw and ir_raw jump from ~3000 (ambient) to 100k+.
-4. **Stream + process.** Capture 30 s of data. Use a Python script (see §79.6) to extract HR. Compare to a real pulse oximeter or your own pulse rate (count for 15 s × 4).
-5. **SpO₂ check.** Compute R-ratio + SpO₂. At rest, healthy adults are 95–99 %. Compare to medical pulse-oximeter on the other finger if available.
-6. **Motion artifacts.** Capture while moving the sensor. Verify HR-extraction algorithm goes haywire. This is why fitness watches use accelerometer-gated HR.
-7. **LED current sweep.** Vary `LED1_PA` and `LED2_PA` from 0x10 to 0x60. Observe DC level scaling linearly. Higher currents = stronger signal but higher noise from photodiode saturation.
-8. **Compare against a MAX30100** (if available). Same code. Different chip-id. ~14-bit vs 18-bit visible in signal SNR.
+- The sensor supplies optical samples, while signal processing estimates pulse-related quantities. Raw red and infrared counts are not heart rate or oxygen saturation.
+- Motion, ambient light, contact and perfusion affect signal quality. Invalid measurements need to remain distinguishable from a reassuring numeric result.
+- FIFO framing and timestamps preserve the input to the algorithm. Lost or mismatched samples can invalidate the estimate even when the bus continues to work.
+- The example is an architecture illustration, not a medically qualified instrument. An empirical formula and comparison reading do not establish clinical accuracy or suitability.
 
 ## 79.8  Pitfalls
 

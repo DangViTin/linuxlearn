@@ -105,7 +105,7 @@ Safer pattern:
 - Dom0 exposes a narrow service,
 - DomU asks through a controlled channel.
 
-For first labs, do not pass GPIO controllers.
+For initial examples, do not pass GPIO controllers.
 
 ## 136.5  Why I2C and SPI buses are tricky
 
@@ -165,7 +165,7 @@ If you cannot answer, do not pass it through.
 
 | Model | Risk | Example |
 |-------|------|---------|
-| Dom0 owns real device, DomU has no access | lowest | first labs |
+| Dom0 owns real device, DomU has no access | lowest | initial examples |
 | Dom0 owns real device, DomU uses paravirtual frontend | low | virtual network/block |
 | Dom0 owns device, exports narrow custom service | medium | sensor proxy |
 | DomU owns simple non-DMA MMIO device | medium | simple UART |
@@ -304,78 +304,28 @@ Questions:
 
 If the answer is "not sure", this is not a first design.
 
-## 136.14  Lab A: extract device facts from DTB
+<span id="lab-a-extract-device-facts-from-dtb"></span>
+## 136.14  Device descriptions and their limits
 
-Use your board DTB:
+A DTB can expose MMIO ranges, interrupts and references to clocks, pinctrl and reset resources. Those facts help reveal the dependency graph, but the DTB is a software description, not independent evidence of fitted wiring or DMA containment.
 
-```sh
-$ dtc -I dtb -O dts -o imx6ull-board.dts imx6ull-board.dtb
-```
+A device assignment must consider the whole usable resource set. Passing one controller while another domain changes its shared clock, GPIO bank or reset can violate both domains' assumptions.
 
-Find:
+<span id="lab-b-ownership-table"></span>
+## 136.15  Key Notes
 
-```sh
-$ grep -n -A12 "serial" imx6ull-board.dts
-$ grep -n -A20 "ethernet" imx6ull-board.dts
-$ grep -n -A20 "usdhc" imx6ull-board.dts
-$ grep -n -A20 "gpio@" imx6ull-board.dts | head -80
-$ grep -n -A20 "i2c@" imx6ull-board.dts
-$ grep -n -A20 "spi@" imx6ull-board.dts
-```
+- Every hardware resource needs one control owner, including its configuration, reset and recovery path. Sharing requires a defined mediation interface.
+- A GPIO pin may sit in a bank whose registers control many pins. The assignable hardware granularity can be larger than the application wants.
+- I2C and SPI peripherals share a controller and bus state. Giving devices separate names does not create independent bus ownership.
+- CPU stage-2 translation does not automatically confine DMA. A device's bus-mastering reach needs its own isolation argument.
+- Watchdog health, update compatibility and reset reasons are system policies. They cannot be delegated to every guest without a coordination rule.
 
-Fill:
+<span id="lab-c-passthrough-rejection-note"></span>
+## 136.16  Why rejecting passthrough can be the right design
 
-```text
-Device:
-MMIO reg:
-IRQ:
-Clocks:
-Pinctrl:
-DMA:
-Reset GPIO:
-Owner:
-```
+A guest's need for a device does not justify giving it the complete controller. Assignment can be unsuitable when DMA cannot be confined, supporting resources are shared, or no recovery owner can reset the device independently.
 
-## 136.15  Lab B: ownership table
-
-Create:
-
-```text
-notes/device-ownership-imx6ull-xen.md
-```
-
-Include:
-
-| Device | Owner | Shared? | DMA? | Why |
-|--------|-------|---------|------|-----|
-| UART console | | | | |
-| SD/eMMC | | | | |
-| Ethernet | | | | |
-| watchdog | | | | |
-| GPIO banks | | | | |
-| I2C buses | | | | |
-| SPI buses | | | | |
-
-The table is complete only if every device has one owner.
-
-## 136.16  Lab C: passthrough rejection note
-
-Pick one device you are tempted to give to DomU.
-
-Write:
-
-```text
-Device:
-Why DomU wants it:
-MMIO:
-IRQ:
-DMA risk:
-Clock/reset/pinctrl dependencies:
-Recovery owner:
-Reason accepted or rejected:
-```
-
-It is fine if the answer is "rejected." A rejected unsafe design is progress.
+A mediated interface may keep physical ownership in Dom0 while exposing a narrower service. That adds protocol and availability dependencies, but makes the authority being granted explicit. Rejection is a design outcome, not a missing implementation.
 
 ## 136.17  Pitfalls
 

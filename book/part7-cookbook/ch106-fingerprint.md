@@ -14,7 +14,7 @@ status: draft
 >
 > **Focus:** modules are stateful, they remember which template ID is enrolled in which slot, and protocol commands operate on that state. Enrollment is a three-step sequence: capture image 1, capture image 2, combine into template, store at chosen ID. Matching is one command: capture, compare to all stored, return ID + score. The framing protocol is trivial (header + length + cmd + data + checksum), but the **state model** (which template is at slot N, what happens if you re-enroll into an occupied slot, how power-cycle affects state) is where most integrations fail.
 >
-> **Tooling.** This chapter uses Just a UART terminal (`picocom`). The PAM 2FA lab needs `libpam-dev` to build a custom PAM module.
+> **Tooling.** The UART examples use `picocom`. The PAM integration example needs the PAM development headers to build a custom module.
 > - **Ubuntu-base (target):** `apt install picocom libpam0g-dev`
 > - **Buildroot:** `BR2_PACKAGE_PICOCOM=y BR2_PACKAGE_LINUX_PAM=y`
 > **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
@@ -328,17 +328,13 @@ fprintd-verify username
 
 This is a different ecosystem from the embedded UART modules. Choose based on form factor and integration needs.
 
-## 106.9  Lab
+<span id="lab"></span>
+## 106.9  Key Notes
 
-1. **R503 UART up.** Wire to UART. Baud 57600 default. Send `AT+VFY-PWD` (system-handshake. Alias for "command 0x13 verify password" with default `0x00000000`). Verify ACK.
-2. **Enroll 3 fingers.** Slots 1, 2, 3, different real fingers (or same finger from different angles).
-3. **1:N search.** Touch a finger. Should match its enrolled slot with score > 100.
-4. **Try unenrolled finger.** Should return "no match."
-5. **LED feedback.** Configure aura LED via `AuraLedConfig`: red=denied, green=approved, blue=scanning. Tie into your matching loop.
-6. **Touch-interrupt wake.** Wire the R503's IRQ to a GPIO. Sleep the i.MX6ULL. Touch the sensor. Verify wake-from-suspend.
-7. **Template export/import.** Use `UpChar` and `DownChar` commands to upload a template to the host and back. Stores templates per-user in `/var/lib/myapp/`.
-8. **PAM 2FA (stretch).** Write `pam_r503.so`. Configure `sshd` to require fingerprint after password. Test SSH login from another machine.
-9. **Hostile re-enroll detection.** What happens if an attacker tries to enroll their finger over your slot 0? The chip will replace it silently. Add a server-side flag that requires admin re-confirmation for any enroll/delete operation.
+- The module owns image capture and matching, while the host owns enrollment authority, user identity and the action permitted after a result.
+- Template slots are persistent state. Slot overwrite, deletion, backup and module replacement need a mapping that remains consistent with the host's user records.
+- A match score is an algorithm-specific result, not a universal confidence or security guarantee. Acceptance policy must consider both false acceptance and false rejection.
+- Biometric records are sensitive and difficult to replace. Transport trust, storage protection, deletion and fallback access belong in the design, not only in the UART parser.
 
 ## 106.10  Pitfalls
 

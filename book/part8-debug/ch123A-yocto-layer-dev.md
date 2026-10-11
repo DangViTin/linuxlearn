@@ -351,18 +351,18 @@ do_install:append() {
 
 Place `sshd_config` in `recipes-connectivity/openssh/openssh/sshd_config`. Yocto finds it via `FILESEXTRAPATHS`.
 
-## 123A.12  Lab
+<a id="lab"></a>
 
-1. **Create a layer.** `bitbake-layers create-layer ../meta-mybsp`. Add it to `bblayers.conf`. Verify it's in the build.
-2. **Add a machine.** Write `imx6ull-myboard.conf`. Set MACHINE in `local.conf`. `bitbake -e core-image-minimal | grep ^MACHINE` to verify it took.
-3. **Add a custom kernel patch.** Write `linux-imx_%.bbappend` with a config fragment. Rebuild kernel. Verify your config is enabled.
-4. **Custom recipe.** Write a `.bb` for a hello-world C program. `bitbake myapp`. Verify it builds.
-5. **Image recipe.** Write `myapp-image.bb`. `bitbake myapp-image`. Verify rootfs contains your binary.
-6. **wic image.** Write a .wks. Build a .wic image. `dd` it to an SD. Boot.
-7. **Variant via bbappend.** Add `meta-mybsp-mini` with priority 12. Bbappend the kernel to disable a peripheral the MINI doesn't have. Verify per-machine differentiation.
-8. **Distro layer.** Create `meta-mybsp-distro`. Set OpenSSL pinned to 3.x. Verify all your packages use it.
-9. **SRC_URI mirror.** Run `bitbake --runall=fetch`. Archive downloads. Rebuild on an offline VM.
-10. **Reproducibility.** Build the same image twice. `diff` the `.wic` files, should be byte-identical with `BB_HASHSERVE` set up.
+<span id="a-12-lab"></span>
+(123a12-lab)=
+## 123A.12  Key Notes
+
+- `MACHINE` describes hardware, `DISTRO` expresses shared policy, and image recipes select shipped contents. Separating these responsibilities limits variant leakage.
+- Recipes own component build and packaging behavior. `bbappend` files extend matching recipes, so their version patterns and effective overrides are maintenance contracts.
+- `DEPENDS` supplies build inputs, while `RDEPENDS` supplies deployed dependencies. A successful recipe build does not establish that a service can run in the image.
+- Pinned `SRCREV` values, layer revisions, and retained downloads identify inputs. Offline access and cache hits do not independently prove reproducibility.
+- Wic describes storage layout in an artifact. Copying that artifact to a medium is destructive and requires separate identification of the intended device.
+- A/B layout and RAUC slots must agree with bootloader selection and success reporting. Installing the update package alone does not provide rollback.
 
 ## 123A.13  Pitfalls
 
@@ -381,7 +381,7 @@ Place `sshd_config` in `recipes-connectivity/openssh/openssh/sshd_config`. Yocto
 
 ## 123A.14  Going deeper
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Examples and production:** Do not burn fuses, enroll production keys, or sign release images while using these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 

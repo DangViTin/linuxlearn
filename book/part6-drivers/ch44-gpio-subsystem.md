@@ -358,15 +358,17 @@ my_device {
 
 The driver code is *unchanged*, `devm_gpiod_get(&pdev->dev, "reset", ...)` works the same way. The only difference is that operations like `gpiod_set_value` may now sleep (they trigger an I²C transaction), so you must use `gpiod_set_value_cansleep` when the GPIO might be on an expander. **For portable driver code, always use `_cansleep` in process context.**
 
-## 44.8  Lab
+<a id="lab"></a>
 
-1. **Build and run the button-blinker driver.** Verify it works end-to-end.
-2. **Use libgpiod to drive the LED instead.** `gpioset gpiochip3 14=1`. Confirm same outcome.
-3. **Monitor button events from user-space.** `gpiomon --falling-edge gpiochip0 19` while pressing the button. Compare latency against your driver's IRQ-handler latency (ftrace).
-4. **Add a sleep state.** Define `pinctrl_blinker_sleep` that pulls down the button pin and tristates the LED. In probe, set both states. Add a runtime sysfs attribute to switch states.
-> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
-5. **Wire a fake GPIO expander.** Add an `mcp23017` node to your DT (even if you don't have the chip, just to verify the binding parses). With the chip absent, the driver will fail to probe. Observe `dev_err_probe` deferring and the eventual timeout.
-6. **Read pin state without a driver.** Cold-boot, then `gpioinfo`, see which pins are claimed by which drivers. Useful for debugging "is the kernel using this pin I want?"
+(ch44-lab)=
+## 44.8  Key Notes
+
+- Pinctrl owns mux and pad configuration, while GPIO consumers own direction and logical value through descriptors. Successful descriptor acquisition does not establish correct board wiring.
+- `<purpose>-gpios` connects a consumer role to a controller and line. Active-low flags translate logical assertion into electrical polarity and must agree with the attached circuit.
+- GPIO ownership prevents competing consumers from treating the same line as independent resources. A kernel driver and a user-space line request are alternatives, not two simultaneous control paths.
+- Bus-backed GPIOs may sleep during access. Portable consumers use sleeping-context operations rather than assuming every descriptor maps to local MMIO.
+- Active and sleep pinctrl states are electrical design choices. Pulls, output levels, and wake routing must remain safe when the peripheral's power or clocks change.
+- The chapter's example pin assignments illustrate the interface, not verified MINI button or LED wiring. Physical use requires the fitted carrier/core mapping and electrical limits to be identified.
 
 ## 44.9  Pitfalls
 

@@ -109,13 +109,13 @@ The structure mirrors Ch 83's `myst7789.c`, but the pixel-write path uses a quad
 
 For the i.MX6ULL reader: **prefer parallel RGB (Ch 82) for big/fast displays, plain SPI (Ch 83) for small ones.** QSPI displays are a "know it exists, use on a better SoC" topic.
 
-## 84.6  Lab
+<span id="lab"></span>
+## 84.6  Key Notes
 
-1. **Bandwidth measurement.** On your plain-SPI ST7789 from Ch 83, measure full-frame update time. Compute the theoretical QSPI improvement (4×).
-2. **Check QSPI spi_mem support.** On your i.MX6ULL kernel, look for whether the QSPI controller registers as a `spi_mem` controller capable of quad data-out. `dmesg | grep -i qspi` and inspect `drivers/spi/spi-fsl-qspi.c` capabilities.
-3. **If on a capable SoC** (i.MX8M, etc.): wire a QSPI round display. Adapt the Ch 83 driver's data path to quad `spi_mem_op`. Measure the frame-rate improvement.
-4. **Round-display geometry.** A round display still has a square framebuffer. The corners are simply not visible. Verify your UI accounts for the circular visible area (draw within the inscribed circle).
-5. **Comparison writeup.** Document, for your specific board, whether QSPI display is feasible. If not, justify the fallback (plain SPI / parallel RGB).
+- Quad data lanes can reduce pixel-transfer time, but command phases, overhead and refresh synchronization still affect usable frame rate.
+- The i.MX6ULL QSPI controller is flash-oriented. A display design needs demonstrated compatibility between its transaction model, Linux support and the panel protocol.
+- Command lane width and data lane width are separate fields of a transaction. Lane order, chip select and initialization must match the module.
+- Transport speed does not remove tearing or power constraints. A plain SPI or parallel RGB design may be more appropriate when support for quad display transfers is uncertain.
 
 ## 84.7  Pitfalls
 

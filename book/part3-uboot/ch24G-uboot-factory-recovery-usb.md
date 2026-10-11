@@ -29,7 +29,7 @@ device-mode path here and plan a writable service target explicitly.
 Its `ENV_IS_NOWHERE` environment is nonpersistent; that fact is separate
 from USB support or the safety of exposing media.
 
-Chapter 19's first vendor lab also disables `CMD_USB`. The USB_TTL serial
+Chapter 19's initial vendor example also disables `CMD_USB`. The USB_TTL serial
 bridge does not need that command; UMS/DFU below are later feature builds,
 not services promised by that initial UART/storage binary.
 
@@ -120,9 +120,9 @@ an observed MDIO ID or a bench-compatible link. Similar naming alone would
 not establish this match. The comparison uses the [CoreChips datasheet,
 Tables 13-14](https://datasheet.lcsc.com/datasheet/pdf/941fa6953df8b4f6a9945b2c95950f31.pdf?productCode=C378491)
 and the [pinned driver entry](https://github.com/u-boot/u-boot/blob/v2026.04/drivers/net/phy/realtek.c).
-Chapter 19's first vendor lab disables networking
+Chapter 19's initial vendor example disables networking
 before the legacy network conditionals; it does not run an unreviewed PHY
-hook or require Ethernet for the first UART/storage exercise.
+hook or require Ethernet for the first UART/storage example.
 
 ## 24G.4  Enable USB recovery configs
 
@@ -458,26 +458,16 @@ dependency. Keep serial output as the primary diagnostic channel.
 | Document ROM SDP separately | U-Boot cannot repair itself if it cannot run |
 | Restrict physical service access | A button is not authentication; storage may contain secrets |
 
-## 24G.12  Lab
+(g-12-lab)=
+## 24G.12  Key Notes
 
-1. On the Chapter 19 MINI baseline, distinguish USB_TTL, USB_OTG and USB_HOST
-   by their actual routes. Record the spare TF identity and approved power
-   arrangement. In the modern port, qualify USB_OTG1 peripheral support and
-   the allowed target range; if integrating A/B, pass 24F.3's gate as well.
-2. Build and inspect the USB/GPIO config. Confirm pinmux and KEY0 physical
-   readings first; do not change its direction to output.
-3. On a disposable layout, enumerate bounded UMS without host automount.
-   Record which exact host LUN appeared. Exit only after host release.
-4. List the bounded DFU file target and confirm its name with `dfu-util -l`.
-   Listing is the checkpoint here, not flashing.
-5. Add the C key hook. Holding KEY0 must select service, release must retain
-   normal boot, and a modeled GPIO error must stop automatic boot. Without
-   current write-power authorization, the service must refuse to start.
-6. Test held-key entry with bootcount already above its limit. It must still
-   reach recovery rather than rollback. Test service failure/exit: neither
-   may continue into normal/network boot.
-7. Model disconnect, write failure, and watchdog reset on a host fixture
-   before any separately approved storage-repair qualification.
+- ROM SDP, U-Boot USB service and Linux recovery require progressively more working software. A U-Boot gadget cannot repair an image that prevents U-Boot from starting.
+- USB_TTL is the UART bridge, USB_OTG is the intended peripheral-service route, and USB_HOST supplies host peripherals. Connector shape does not establish role or safe power routing.
+- UMS grants writable block access within its exposed range. One host or target filesystem owner is required, with completed flush/unmount before ownership returns to U-Boot.
+- DFU alternates describe target grammar and ranges, not authenticated or atomic updates. A file target narrows exposure, while raw block ranges and downloaded scripts enlarge it.
+- Fixed partition-3 service defaults are not a dynamic inactive-slot selector. Once B becomes accepted, that same mapping can expose the accepted image.
+- KEY0 dispatch overrides normal and alternate commands and suppresses the later bootcount save through a temporary candidate flag. Service exit deliberately does not fall through to boot.
+- Fresh write-power permission and restricted service access are separate requirements. Enumeration proves neither storage repair nor a factory PASS, and a physical button is not authentication.
 
 ## 24G.13  Pitfalls
 

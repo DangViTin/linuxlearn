@@ -552,16 +552,13 @@ Mainline driver: `drivers/hwmon/ina3221.c`. The DT specifies channels via subnod
 
 Result: `/sys/class/hwmon/hwmon0/in*_label`, `in*_input`, `curr*_input` × 3 channels. Production-grade 3-rail monitoring on one chip with one I²C address.
 
-## 75.9  Lab
+<span id="lab"></span>
+## 75.9  Key Notes
 
-1. **Build a test rig.** Wire INA219 high-side on a 5 V rail going to your i.MX6ULL through a known current, say a 47 Ω resistor to GND (≈ 100 mA load).
-2. **i2cdetect.** Verify 0x40. With A0/A1 pin strapping you can put up to 16 INA219s on one bus.
-3. **Build and load `myina219.ko`.** Verify `in1_input` ≈ 5000 (5 V), `curr1_input` ≈ 106 mA.
-4. **Vary the load.** Swap the resistor. Verify current scales linearly.
-5. **Sanity-check shunt voltage.** `in0_input` should equal `R_shunt × I = 0.025 × 0.106 = 2.65 mV`. The 16-bit shunt-voltage register holds raw value 265 (since 265 × 10 µV = 2650 µV = 2.65 mV).
-6. **Forget the calibration.** Modify `mi_init` to skip the `mi_write16(... REG_CALIBRATION ...)` line. Reload. Verify Current/Power read zero, while Shunt and Bus still work. This is the classic gotcha.
-7. **Switch to the mainline driver.** Use `compatible = "ti,ina219"`, set `shunt-resistor`, reboot. Confirm same values.
-8. **`sensors` output.** Install lm-sensors. Run `sensors`. Verify your INA appears with all channels.
+- The shunt, analog input range and calibration setting define the current measurement. Digital resolution alone does not determine useful accuracy.
+- A larger shunt improves small-signal voltage at the cost of dissipation and voltage drop. Placement and common-mode limits constrain the circuit.
+- Averaged telemetry and instantaneous peak protection serve different purposes. A slow monitor can report a reasonable mean while missing a harmful transient.
+- Hwmon exposes monitoring quantities, while IIO is suited to sampled-data interfaces. The framework choice should follow how the system uses the measurements.
 
 ## 75.10  Pitfalls
 

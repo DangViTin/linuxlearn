@@ -12,7 +12,7 @@ status: draft
 >
 > **Why:** before Xen, Dom0, DomU, or Jailhouse enter the story, the reader must understand a plain ARM Linux boot with no hidden board support package. Kernel, DTB, initramfs, command line, console. Those are the pieces.
 >
-> **Focus:** QEMU is our clean-room board. We will build every input explicitly, boot it, inspect it from inside Linux, then break each input on purpose.
+> **Focus:** kernel, Device Tree and initramfs are separate boot inputs with different owners. QEMU makes their interfaces easier to inspect. A failure in one input can produce symptoms in another layer, so the boot contract matters more than the command sequence.
 > **QEMU:** a machine emulator. Here it creates a fake ARM board with RAM, CPU, UART, timer, interrupt controller, and virtio devices.
 > **DTB:** Device Tree Blob, the binary hardware description passed to the Linux kernel.
 > **initramfs:** a cpio archive the kernel unpacks into RAM and runs as the first root filesystem.
@@ -430,7 +430,7 @@ Ctrl-a x
 | Option | Meaning |
 |--------|---------|
 | `-M virt` | create QEMU's generic ARM virtual board |
-| `-cpu cortex-a15` | emulate an ARMv7-A CPU suitable for this lab |
+| `-cpu cortex-a15` | emulate an ARMv7-A CPU suitable for this example |
 | `-m 256M` | give the guest 256 MiB RAM |
 | `-nographic` | connect guest serial to the terminal |
 | `-kernel boot/zImage` | load the Linux kernel directly |
@@ -463,107 +463,23 @@ Without `rdinit=`, the kernel tries the usual paths:
 
 Our initramfs has `/init`, so we tell the kernel exactly what to run.
 
-## 129.13  Break it on purpose
+<span id="break-it-on-purpose"></span>
+<span id="failure-1-wrong-console"></span>
+<span id="failure-2-no-initramfs"></span>
+<span id="failure-3-init-not-executable"></span>
+<span id="failure-4-wrong-architecture-user-space"></span>
+<span id="failure-5-wrong-dtb"></span>
+## 129.13  Failure cases in the boot contract
 
-This chapter is not finished until you have seen the common failures.
+| Mismatch | Consequence | Boundary |
+|----------|-------------|----------|
+| Console does not name the configured UART | Useful output can disappear despite continued execution | Observation path |
+| No usable root filesystem or initramfs | The kernel cannot start initial user space | Kernel-to-user-space handoff |
+| `/init` lacks executable permission or a usable interpreter | Finding the file does not make it executable | Filesystem and exec contract |
+| `/init` is built for another architecture | Execution can fail with a format error | Target ABI |
+| DTB does not describe the modeled machine | Device discovery or startup can fail | Hardware description |
 
-### Failure 1: wrong console
-
-Change:
-
-```text
-console=ttyS0
-```
-
-Run and save:
-
-```sh
-$ qemu-system-arm ... \
-    -append "console=ttyS0 root=/dev/ram0 rdinit=/init" \
-    2>&1 | tee logs/qemu-linux-wrong-console.log
-```
-
-Expected symptom: QEMU starts, but useful Linux output disappears or appears only before the console handoff. The kernel is talking to the wrong UART.
-
-Lesson: `console=` must match the UART driver and DTB.
-
-### Failure 2: no initramfs
-
-Remove:
-
-```text
--initrd boot/initramfs.cpio.gz
-```
-
-Expected symptom: kernel panic because there is no root filesystem and no init.
-
-Look for text like:
-
-```text
-VFS: Cannot open root device
-Kernel panic - not syncing
-```
-
-Lesson: the kernel image is not user space.
-
-### Failure 3: `/init` not executable
-
-Break it:
-
-```sh
-$ chmod -x rootfs/init
-$ cd rootfs
-$ find . -print0 | cpio --null -ov --format=newc | gzip -9 > ../boot/initramfs-bad-init.cpio.gz
-```
-
-Boot with:
-
-```text
--initrd boot/initramfs-bad-init.cpio.gz
-```
-
-Expected symptom: the kernel finds `/init` but cannot execute it, then panics.
-
-Restore:
-
-```sh
-$ chmod +x rootfs/init
-```
-
-### Failure 4: wrong architecture user space
-
-Copy a host binary into the initramfs as `/init`:
-
-```sh
-$ cp /bin/echo rootfs/init
-```
-
-Pack and boot.
-
-Expected symptom: exec format error or failure to run init.
-
-Restore the shell script after the test.
-
-Lesson: the kernel is ARM. User-space binaries must be ARM too.
-
-### Failure 5: wrong DTB
-
-Boot with no DTB:
-
-```sh
-$ qemu-system-arm \
-    -M virt \
-    -cpu cortex-a15 \
-    -m 256M \
-    -nographic \
-    -kernel boot/zImage \
-    -initrd boot/initramfs.cpio.gz \
-    -append "console=ttyAMA0 root=/dev/ram0 rdinit=/init"
-```
-
-Depending on QEMU and kernel behavior, QEMU may provide a DTB automatically or the boot may fail differently. The lesson is still important: on real ARM boards, the DTB is not decoration. It is how Linux discovers devices.
-
-For a stronger failure, pass a DTB from a different machine and watch devices disappear.
+QEMU can generate a DTB in some direct-boot paths, so omitting an explicit DTB argument is not by itself a universal failure. What matters is whether the kernel receives a description consistent with the machine. These are diagnostic relationships, not required fault-injection tasks.
 
 ## 129.14  Clean rebuild script
 
@@ -593,26 +509,14 @@ $ ./run-direct.sh
 
 This script is the input to Chapter 130. U-Boot will replace QEMU's direct loader, but the artifacts stay the same.
 
-## 129.15  Lab
+<span id="lab"></span>
+## 129.15  Key Notes
 
-Deliverables:
-
-1. `boot/zImage`
-2. `boot/qemu-virt-arm.dtb`
-3. `boot/qemu-virt-arm.dts`
-4. `boot/initramfs.cpio.gz`
-5. `run-direct.sh`
-6. `logs/qemu-linux-direct.log`
-7. Failure logs for wrong console, missing initramfs, bad `/init`, and wrong-architecture `/init`
-
-The lab is complete when you can answer without looking:
-
-- Which file is the kernel?
-- Which file describes hardware?
-- Which file becomes `/`?
-- Which program becomes PID 1?
-- Which UART is the console?
-- What breaks when each input is missing?
+- The kernel, Device Tree and initramfs are separate boot inputs. They provide executable kernel code, a hardware description and the initial user-space tree respectively.
+- PID 1 is a runtime role with specific failure consequences, not just an arbitrary shell. The `/init` path must contain an executable compatible with the target and its available interpreter or libraries.
+- Console routing determines where evidence is visible. An invisible console and an unbooted kernel are different failure cases.
+- A static BusyBox reduces initramfs dependencies at a footprint cost. Dynamic linking instead requires a consistent loader and library set.
+- QEMU demonstrates this boot contract, not the physical MINI's hardware support.
 
 ## 129.16  Pitfalls
 

@@ -321,18 +321,13 @@ ip link set lowpan0 up
 
 This is the **raw research path**. RPL (the IPv6 routing protocol for 802.15.4 meshes) can run on top via `contiki-ng` or `unstrung` daemons. But for products, Thread + otbr wins.
 
-## 100.10  Lab
+<span id="lab"></span>
+## 100.10  Key Notes
 
-1. **CC2531 USB ZigBee.** Buy a Sonoff CC2652P stick (or CC2531 if you find one). Plug into i.MX6ULL's USB. Confirm `/dev/ttyACM0` appears.
-2. **Bring up zigbee2mqtt.** Install, configure `configuration.yaml`, start. Watch logs for "started."
-3. **Pair an IKEA bulb / Aqara sensor.** Permit-join, factory-reset the device. Observe zigbee2mqtt's interview + MQTT topic generation.
-4. **Control via MQTT.** `mosquitto_pub` to the device's `set` topic. Watch the bulb toggle. Subscribe to its state. See the report come back.
-5. **Multi-node + relay.** Add 3+ mains-powered devices (they become routers). Add a battery sensor (end device). Move the sensor far from the gateway. Verify it still reports (it routes through a mains-powered intermediate).
-6. **nRF52840 as RCP.** Flash OpenThread RCP firmware. Plug in via USB. Bring up otbr-agent on i.MX6ULL.
-7. **Thread CLI device.** Flash a second nRF52840 with the `cli` sample. Paste the dataset from otbr. `thread start`. Observe the joining log on otbr. `ip -6 neigh show dev wpan0` lists the new node.
-8. **IPv6 ping a Thread node.** From the i.MX6ULL, `ping6 fd11:22::abcd...`. Latency ~10–50 ms. Throughput ~30 kbps (one hop).
-9. **Matter commissioning (stretch).** Install `chip-tool`. Commission a Matter device (Eve Door & Window sensor is cheap and Matter-native). Read its attributes via `chip-tool`.
-10. **Home Assistant integration.** Install HA. Auto-discover the MQTT-bridged ZigBee devices and the Matter devices. Build a dashboard that shows them and reacts to one.
+- IEEE 802.15.4 is a radio/MAC foundation, not a synonym for Zigbee, Thread or Matter. Shared radio hardware does not make those networks interchangeable.
+- The host-controller split determines what the co-processor firmware owns and what a Linux gateway daemon must implement. ZNP, NCP and RCP interfaces have different contracts.
+- Provisioning, network credentials and gateway state need persistent ownership and a recovery policy. A temporarily open join window is not normal operating policy.
+- Sleepy end devices trade downlink responsiveness for energy savings. Mesh reach, interference and routing behavior must fit the intended topology.
 
 ## 100.11  Pitfalls
 

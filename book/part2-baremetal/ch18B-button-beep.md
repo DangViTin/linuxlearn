@@ -13,10 +13,10 @@ wants one **press event**, followed later by one **release event**. Before
 debouncing those transitions, follow the switch's wire to its GPIO input.
 Then each sample has a clear meaning: the level at that pad, at that moment.
 
-We will trace the input and buzzer circuits, add their drivers to the Chapter
-18A layout, and sample the button at a fixed interval. Begin with foreground
-polling so the event path is visible. Interrupt-driven sampling is an
-extension, not a prerequisite for the first test.
+The Chapter 18A layout separates the input and buzzer circuits' drivers from
+an application that samples the button at a fixed interval. Foreground
+polling keeps the event path visible. Interrupt-driven sampling is an
+alternative design, not a required implementation step.
 
 ## 18B.1  The hardware on the Point Atom MINI
 
@@ -45,7 +45,7 @@ base current rather than supplying the buzzer directly. Idle must be high.
 The schematic names BEEP1 only as BEEP: it does **not** establish whether
 the fitted buzzer has an internal oscillator or whether it is piezoelectric.
 Check its part marking/BOM. An active buzzer needs an on/off envelope; the
-square-wave exercise in Section 18B.3 requires a verified passive transducer
+square-wave example in Section 18B.3 requires a verified passive transducer
 and suitable drive circuit.
 
 Add these board-specific names **inside** `imx6ull.h`, before its closing
@@ -74,7 +74,7 @@ the supplied RM marks that field reserved.
 
 RM 32.5.4 also qualifies ALT5 by the TAMPER_PIN_DISABLE fuse setting. Use a
 board already provisioned for that GPIO route. **Do not program fuses or
-disable security/tamper protections to make this exercise work.** Stop if the
+disable security/tamper protections to use this output.** Stop if the
 board's ownership or provisioning is unknown. Keep the Chapter 8 power and
 back-power checks in force before any hardware test.
 
@@ -246,7 +246,7 @@ void beep_set(unsigned on)
 int beep_tone(uint32_t hz, uint32_t ms)
 {
     beep_set(0u);
-    /* Lab limits also bound the multiplication and reject division by zero. */
+    /* Input limits bound the multiplication and reject division by zero. */
     if (hz < 200u || hz > 5000u || ms == 0u || ms > 1000u)
         return -1;
 
@@ -274,7 +274,7 @@ For a verified passive load, `beep_tone(1000, 200)` requests approximately
 and the GPT clock affect the waveform and duration. A 1 us timer tick is
 resolution, not a guarantee of 1 us waveform accuracy. Measure the output
 with suitable equipment before treating pitch or duty cycle as calibrated.
-Only this foreground driver should modify GPIO5's output latch in the lab:
+Only this foreground driver should modify GPIO5's output latch in the example:
 read/modify/write operations can lose a concurrent writer's update.
 
 ### Why not only a GPIO toggle in a tight loop?
@@ -283,7 +283,7 @@ The delay-based loop still occupies the CPU for the whole note. A hardware
 timer or PWM can generate a waveform while the application does other work,
 but only if its output can reach the load. RM 32.5.4 lists GPIO5_IO01, not a
 PWM alternate function, for SNVS_TAMPER1. Chapter 48's PWM framework cannot
-reroute the reference BEEP wire by software. A hardware PWM exercise needs
+reroute the reference BEEP wire by software. A hardware PWM design needs
 a separately verified PWM-capable pad and load connection. Keep that as a
 different hardware setup, not a promised replacement on this net.
 
@@ -342,7 +342,7 @@ This first integration uses no EPIT callback, GIC setup, or `wfi`: sampling
 and event handling share the foreground loop. For the later interrupt
 version, Chapter 16's `epit_init(ipg_hz)` takes a clock rate, not a sampling
 period; count ten of its 1 ms ticks between key samples.
-Leave IRQ/FIQ masked for this polled test. `printf` below means your existing
+Leave IRQ/FIQ masked for this polled example. `printf` below means the earlier
 bare-metal implementation, not an automatically linked libc.
 
 ```c
@@ -388,24 +388,27 @@ int main(void)
 }
 ```
 
-Once the input test works and the buzzer type is identified, add an optional
-startup sound **before** setting `sampled`. For an active buzzer, use
-`beep_set(1u); mdelay(100); beep_set(0u);`. For a verified passive load, use
-`beep_tone(2000u, 100u);` and check its return value. A note inside the polling
-loop pauses button sampling; moving sampling into an ISR is the next design
-step if that pause is unacceptable.
+A startup-sound variant keeps sound **before** the initial `sampled` value.
+For an identified active buzzer, the envelope is
+`beep_set(1u); mdelay(100); beep_set(0u);`. For a verified passive load,
+`beep_tone(2000u, 100u)` requests a tone and can report failure. A tone inside
+the polling loop pauses button sampling. Interrupt sampling with a foreground
+event queue separates those responsibilities when that pause is unacceptable.
 
-Expected behavior to verify on hardware: a qualified press toggles LED0 and
+The application's intended behavior is that a qualified press toggles LED0 and
 prints press; holding it does not repeat the event; a qualified release
 prints release. A build alone does not establish those observations.
 
-## 18B.5  Lab
+(b-5-lab)=
+## 18B.5  Key Notes
 
-1. **Build, then check the routes.** Inspect the map and header dependencies. After the Chapter 8 safety prerequisites, record released/pressed raw levels, then verify one event per qualified change and no repeats while held.
-2. **Observe bounce without predicting its count.** Temporarily count raw transitions at a faster sampling rate and print the total later, not on every sample. Compare with a captured waveform if available. A 10 ms scan may miss bounce entirely; zero observed extra edges does not prove the switch has none.
-3. **Double-tap detection.** Define whether 300 ms is measured press-to-press or release-to-press. Use unsigned elapsed-time comparisons, and process the qualified events. If the response includes a blocking sound, account for the sampling gap or move sampling to EPIT with a foreground event queue.
-4. **Sound appropriate to the part.** For an active buzzer, vary the on/off envelope. For a verified passive load, try 262, 294, 330, 349, and 392 Hz for 200 ms each. Record whether the part reproduces those pitches; its acoustic response may favor a narrow frequency range.
-5. **Optional interrupt/idle version.** Preserve the Chapter 15 IRQ entry and stacks; keep Chapter 16's 1 ms tick and call key_tick once every tenth tick, after clearing the EPIT status. Queue events, then handle UART and sound in foreground. A wfi loop needs a race-aware event check and a working wake source. Any whole-board current measurement also includes regulators, peripherals, and LEDs; it is not a direct measurement of CPU-only savings. Do not change meter wiring on a powered board.
+- A pad level and an application event are different interfaces. PSR reports the input now. The history filter reports one qualified press or release rather than repeating while a level is held.
+- Eight matching samples at a real 10 ms cadence qualify the transition. Sparse sampling can miss bounce and short taps, while immediate catch-up calls create no new observations. Hysteresis does not remove mechanical chatter.
+- Board connector numbers and circuit polarity govern the driver. MINI KEY0 uses UART1_CTS/GPIO1_IO18, while BEEP is an active-low PNP-switched load on GPIO5_IO01. A shared alias or SoC controller name does not establish the route.
+- The fitted buzzer type determines whether an on/off envelope or a driven waveform is appropriate. Timer resolution, GPIO overhead and interrupt latency limit software-tone accuracy. The reference BEEP pad has no PWM route to select.
+- Blocking sound delays foreground sampling. An interrupt-based alternative needs a bounded event queue, producer/consumer rules and overflow handling, with UART and sound outside the ISR. GPIO read-modify-write also needs one writer or protected updates.
+- Gesture timing, such as a double tap, needs defined endpoints between qualified events and wrap-safe elapsed comparisons. Missed samples cannot be reconstructed from the number of elapsed timer ticks.
+- An idle design needs a race-aware event check and a working wake source. Whole-board current includes regulators, peripherals and LEDs, not just the CPU. Do not change meter wiring on a powered board.
 
 ## 18B.6  Pitfalls
 

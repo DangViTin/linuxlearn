@@ -485,23 +485,16 @@ When something stops, find the last established dependency. A console that
 works before relocation and goes quiet afterward suggests a different set of
 questions from a ROM load that never reaches UART setup.
 
-## 21.9  Lab
 
-1. Follow `_start`, `reset`, and `_main` in the pinned tree. Identify the
-   separate vector and CPU-startup files.
-2. Read `initcall_run_f`, then the body of `board_init_f`. Find why this ARM
-   full-U-Boot path returns while some other architecture paths do not.
-3. Extract your map's image, relocation, and BSS ranges. Explain their overlay
-   and the order in which the two roles are used.
-4. Read the early allocation function and calculate SP using your generated
-   sizes, alignment, and selected early allocation pool.
-5. Add and compile `book_hello` using all four edits in Section 21.5. Inspect
-   its symbol/linker-list entry. Run it only on an appropriate qualified image.
-6. Use RAM-only `book_lab` and `book_steps` variables on a working board. Remove
-   them afterward. No saved reset loop or storage write is needed for this lab.
-7. Check whether `CONFIG_CMD_DM` is enabled. If it is, use `dm tree` and
-   distinguish bound devices from activated ones. If it is not, that command's
-   absence does not mean DM itself is absent.
+(21-9-lab)=
+## 21.9  Key Notes
+
+- The ARM full-U-Boot path divides work between C planning and assembly handoff. `board_init_f` records reservations in GD, then `crt0.S` changes stack/GD and relocates execution.
+- Early stack and global data do not imply a complete C runtime. Generated sizes, alignment and the early allocation pool determine the actual OCRAM footprint.
+- Relocation copies a defined image range and interprets relocation records. BSS reuses the relocation-table storage only after those records have served their purpose.
+- Command registration joins a callback, argument/status contract, Kconfig selection and linked object. `U_BOOT_CMD` contributes to linker lists rather than a manually maintained central array.
+- RAM environment, compiled defaults and imported persistent settings are distinct states. Rebuilding defaults neither replaces saved settings nor authorizes a storage write.
+- Driver-model binding identifies an implementation, while probing acquires and initializes its dependencies. U-Boot's control FDT remains separate from the OS tree prepared for Linux.
 
 ## 21.10  Pitfalls
 

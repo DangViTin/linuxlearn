@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 37: A character driver, by hand
 
-> **What:** a character device driver, the kind that backs `/dev/ttyS0`, `/dev/i2c-1`, `/dev/hidraw0`, and most other "stream of bytes you read and write" device files in `/dev/`. We'll build one from scratch: allocate a device number, register a `cdev`, hook up `open`/`read`/`write`/`release`, and copy data safely between user-space and kernel.
+> **What:** a character device driver, the kind that backs `/dev/ttyS0`, `/dev/i2c-1`, `/dev/hidraw0`, and most other "stream of bytes you read and write" device files in `/dev/`. A small buffer-backed example shows device-number allocation, `cdev` registration, `open`/`read`/`write`/`release`, and the user/kernel data boundary.
 >
 > **Why:** character drivers are how the vast majority of embedded peripheral drivers expose themselves to user-space. UARTs, GPIO chips, I²C/SPI controllers, sensors, fingerprint readers, sound cards' control interfaces, almost all are character devices under the hood. The pattern is identical every time. What changes is the body of `open` / `read` / `write`. Master the pattern in this chapter. Everything in Part VI is variations on it.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
@@ -116,7 +116,7 @@ To remove: `cdev_del(&mycdev)`.
 
 ## 37.4  The full structure of a chardev driver
 
-Here's the canonical layout. Save as `hello_chrdev.c`:
+Here is the layout of the buffer-backed example, `hello_chrdev.c`:
 
 ```c
 #include <linux/init.h>
@@ -399,19 +399,17 @@ Chapter 38 fixes this entirely: with `class_create` + `device_create`, the kerne
 
 For now, `mknod` is fine. Just know it's a stopgap.
 
-## 37.8  Lab
+<a id="lab"></a>
 
-1. **Build and load `hello_chrdev.ko`.** Confirm the buffer survives writes and reads as expected.
-2. **Concurrency test.** Open two terminal sessions on the target. In each, run `while true. do echo "from-A" > /dev/hello. cat /dev/hello. done` (varying the strings). Watch for any garbled reads. Then remove the mutex from the code and rerun: garbled output now occurs.
-3. **Bad pointer.** Pass a bogus pointer:
-   ```c
-   read(fd, (void *)0xFFFFFFFF, 100);
-   ```
-   Confirm that `copy_to_user` returns `-EFAULT` and the kernel doesn't crash.
-4. **Static buffer size.** Try writing 300 bytes (more than `HELLO_BUFSIZE`). Confirm it truncates to 256 and `write` returns 256.
-5. **Open with `O_RDONLY`.** Now try to `write`. What happens?
-   - The VFS layer rejects it before reaching your driver. You can verify by `strace cat /dev/hello`: no `write()` syscall on a read-only fd would reach you anyway, but understanding *where* the rejection happens is useful.
-6. **Inspect with `lsof`.** `lsof /dev/hello` lists all processes holding it open. Stop one such process. Observe the open count drop.
+(ch37-lab)=
+## 37.8  Key Notes
+
+- The device number selects a `cdev`, and the VFS dispatches operations through its `file_operations`. The pathname alone does not define device behavior.
+- `private_data` connects an open file to driver state. Shared device state and per-open state have different lifetimes and synchronization needs.
+- User pointers remain untrusted across the syscall boundary. User-copy helpers report incomplete transfers without making those pointers ordinary kernel memory.
+- Byte counts, offsets, short transfers, EOF, and negative errors form the user-space contract. A bounded buffer must not report bytes it did not accept.
+- A mutex can serialize buffer access in syscall context. It does not make a separate write followed by a read one indivisible transaction.
+- Module ownership keeps callback code resident while it is referenced. Device-state lifetime still needs a separate plan for unbinding or removal.
 
 ## 37.9  Pitfalls
 

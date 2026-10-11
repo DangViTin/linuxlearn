@@ -474,7 +474,7 @@ DT:
 };
 ```
 
-Build, load, exercise:
+Example build and access:
 
 ```
 [root@pa-mini:~]# insmod myeeprom.ko
@@ -601,14 +601,13 @@ echo 1 > /sys/class/gpio/.../wp_value
 
 After factory: WP held high, field firmware can read but not write. Reboot → kernel's nvmem cells pull the MAC into the FEC → networking comes up with the right address.
 
-## 65.9  Lab
+<span id="lab"></span>
+## 65.9  Key Notes
 
-1. **Probe with i2c-tools first.** `i2cdetect -y 1`, expect 0x50. `i2cdump -y 1 0x50 b`, expect all 0xFF on virgin chip.
-2. **Build and load `myeeprom.ko`.** Write 12 bytes ("Hello world!"), read back. Verify it survives reboot.
-3. **Provoke the page-boundary bug.** Modify `me_fops_write` to skip the split, write 12 bytes in one `me_write_page` call (relax the validation `if`). Observe data corruption: bytes 8–11 overwrite bytes 0–3 of page 0, not bytes 0–3 of page 1. Restore the split.
-4. **ACK-poll timing.** Add `ktime` measurement around the ACK-poll loop. With a 5 ms internal cycle, expect ~5 ms per write.
-5. **Switch to mainline `at24`.** Unload `myeeprom`. Bind the same chip with `compatible = "atmel,24c02"`. Verify `/sys/bus/i2c/devices/1-0050/eeprom` appears. Same chip, more features available.
-6. **nvmem MAC.** Configure DT as in §65.7. Boot. `ip link show eth0`. Verify the MAC matches the bytes you wrote at offset 0. This is the production pattern.
+- EEPROM is useful for small persistent records such as identity and calibration. Its byte-oriented interface still has page-program, completion and endurance constraints.
+- Address width, page size and bus addressing belong to the selected chip. Similar part names do not establish identical transaction framing.
+- Nvmem separates storage access from the consumers of named data cells. Factory programming and Device Tree must agree on record offsets, lengths and encoding.
+- Write protection, interrupted updates and record validation are design choices. A readback of one value is not a complete identity or durability policy.
 
 ## 65.10  Pitfalls
 

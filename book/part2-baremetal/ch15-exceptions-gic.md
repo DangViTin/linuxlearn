@@ -285,7 +285,7 @@ void gic_init(void)
     num_lines = ((REG(GICD + 0x004) & 31u) + 1u) * 32u;
     if (num_lines > MAX_IRQ) num_lines = MAX_IRQ;
     for (uint32_t i = 0; i < num_lines; i++) handlers[i] = 0;
-    /* Disable PPIs; SGIs are not used by this lab. */
+    /* Disable PPIs; SGIs are not used by this example. */
     REG(GICD + 0x180) = 0xFFFF0000u;
     REG(GICD + 0x280) = 0xFFFF0000u;
     REG(GICD + 0x080) = 0;              /* Secure Group 0 */
@@ -433,28 +433,32 @@ This is the hardware/privileged entry path. Linux adds its own entry,
 IRQ-domain mapping and dispatch machinery. User space does not run the
 GIC ISR; it can receive data later through a driver and system call.
 
-## 15.9  Lab
 
-1. Build/inspect vectors and the IRQ stack map before loading. Check eight
-   four-byte slots, nearby literal pool, entry address, and stack alignment.
-2. With the approved handoff policy and terminal local echo off, type one
-   byte and then a short burst.
-   Record received-byte count separately from **IRQ count**: one IRQ may
-   drain several bytes. Expose a getter rather than accessing a private
-   `rx_count` from another file.
-3. Compare a main loop with WFI and one that spins. Both should receive
-   bytes; do not claim a power saving without a measurement.
-4. Optional TX queue: enqueue bounded data in foreground, service TX-ready
-   in the ISR, disable TX-ready interrupts when the queue empties. Specify
-   queue-full behavior and critical sections; printf is not automatically
-   immediate or reentrant.
-5. Study an abort using a debugger and a known memory-map/permission
-   setup. Do not write to address 1 to "guarantee" a fault: alignment,
-   MMU settings, and the target address determine behavior. Do not call C
-   from ABT without a valid stack/context wrapper.
-6. An intentional `svc #0` reaches the current fail-stop SVC handler.
-   It will not return. A returning SVC service needs its own wrapper;
-   IRQ's LR adjustment must not be copied into it.
+(159-lab)=
+## 15.9  Key Notes
+
+- Cortex-A7 banks IRQ SP/LR and saves CPSR, but software owns shared-register
+  preservation, stack alignment and exception return. A C handler alone is
+  not an exception-entry interface.
+- The vector table is executable instructions, not Cortex-M-style handler
+  pointers. VBAR, SCTLR vector/entry controls and the current security state
+  together select the actual path.
+- UART, GIC distributor, CPU interface and CPSR masks each gate delivery.
+  This example owns the GIC exclusively under a Secure Group-0, non-nested
+  policy. It is not an initializer for an inherited interrupt owner.
+- A level-sensitive source must be deasserted before EOI. Draining the UART
+  FIFO removes its receive condition, while EOIR consumes the full IAR token.
+  One IRQ can service several bytes, so byte counts and IRQ counts differ.
+- Polling TX inside the ISR delays other IRQs while nesting is disabled.
+  A queued alternative needs bounded capacity, queue-full policy, critical
+  sections and TX-ready disabling when empty. Neither makes printf reentrant.
+- WFI changes the waiting behavior, not the interrupt's ownership. A foreground
+  queue needs a check-and-sleep protocol, and a power-saving claim requires a
+  measurement rather than the presence of WFI alone.
+- IRQ's resume rule is exception-specific. The current SVC and abort handlers
+  fail-stop. A returning service needs its own valid wrapper and stack.
+  Address 1 is not a guaranteed fault trigger, and calling C from ABT without
+  a context wrapper is unsafe.
 
 ## 15.10  Pitfalls
 

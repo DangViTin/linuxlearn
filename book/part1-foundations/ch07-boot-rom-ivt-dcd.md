@@ -240,7 +240,7 @@ The ROM reads `BOOT_CFG1[7:0]`, `BOOT_CFG2[7:0]`, `BOOT_CFG4[7:0]` from the boot
 | `BOOT_CFG1[7:4] = 0011` | Serial ROM through ECSPI | Port/chip-select/addressing fields, RM Table 8-20 |
 | `BOOT_CFG1[7:4] = 0001` | QuadSPI class | Interface and other fields, RM Table 8-22; interface bit 3 value 1 is reserved |
 
-These entries identify device classes. They are not complete board settings: controller selection, storage details, and board wiring supply other bits. Chapter 8 decodes the reference selector, so do not try to assemble a switch pattern from this class table alone or change boot fuses for these labs.
+These entries identify device classes. They are not complete board settings: controller selection, storage details, and board wiring supply other bits. Chapter 8 decodes the reference selector, so do not try to assemble a switch pattern from this class table alone or change boot fuses for these examples.
 
 The Point Atom MINI boot selector exposes four labeled modes: **SD**, **eMMC**, **NAND**, and **USB**. SD, eMMC, and NAND are internal-boot configurations. USB selects Serial Downloader mode. The fitted storage depends on the core-board variant.
 
@@ -336,42 +336,16 @@ Pick the entry field out of the dump: `00 80 90 00` decodes to the `0x00908000` 
 
 Do not use `dumpimage -l` as a promised validator for this custom padded/no-DCD file: tool support depends on header placement and format. Inspect these exact bytes and pointer relationships first; successful structural checks still do not prove execution.
 
-## 7.10  Lab
+<span id="lab"></span>
+<span id="lab-a-find-your-boards-boot-pins"></span>
+<span id="lab-b-decode-the-worked-ivt"></span>
+## 7.10  Key Notes
 
-Try two checks before we connect the board. The schematic check ties boot modes to physical switches; the byte check ties the image fields to their actual encoding.
-
-### Lab A, Find your board's boot pins
-
-Use the MINI v2.2 and matching core schematics named in Chapter 5; other revisions need their own selector decode. Locate:
-
-1. The `BOOT_MODE0` and `BOOT_MODE1` pins. What do their default pull resistors do?
-2. The `BOOT_CFG1[7:0]` pins. Which physical pin (on the SoC ball-out) becomes which BOOT_CFG bit?
-3. The selector patterns for SD, eMMC, NAND, and USB modes.
-4. Whether your core-board variant contains eMMC or raw NAND.
-
-Write the wiring in `~/imx6ull/notes/ch07-boot-pins.md`. Photograph the relevant section of the schematic if helpful.
-
-### Lab B, Decode the worked IVT
-
-Use the 32 bytes in Section 7.9. Without looking at its decoded table, split the bytes into the eight IVT fields and decode each pointer as little-endian.
-
-Verify these three relationships:
-
-1. `boot_data = self + 0x20`.
-2. `entry = self + 0xC00`. The file offsets have the same difference: `0x1000 - 0x400 = 0xC00`.
-3. `dcd = 0` and `csf = 0`.
-
-Chapter 11 repeats the exercise with an `.imx` file built by our own script.
-
-Also decode this **illustrative**, little-endian BootData record, assuming total image length `0x1200`:
-
-```text
-00 70 90 00  00 12 00 00  00 00 00 00
-```
-
-Answer: `start=0x00907000`, `length=0x1200` (4608 bytes), `plugin=0`. Its exclusive end is `0x00908200`, below the ROM-active limit `0x00918000`. This length is an exercise value, not the expected size of every generated image.
-
-Answer check: `self=0x00907400`, `boot_data=0x00907420`, and `entry=0x00908000`. If you change only `entry` to `0x00908100`, it is no longer the first instruction at file `0x1000`; header arithmetic can expose that mismatch before any transfer. For Lab A, `BOOT_MODE[1:0]=01` must be the resulting USB selector state, regardless of whether the printed switch ON direction represents zero or one.
+- The Boot ROM is a loader with a fixed contract. The IVT names the entry point and associated structures, BootData describes the loaded extent, and DCD supplies initialization before application code can run.
+- File offsets, media offsets and physical RAM addresses are different coordinate systems. Pointer differences must agree with the image layout, but a valid-looking header does not prove that the board's DDR settings are correct.
+- The worked OCRAM image has no DCD because its first instructions do not depend on external memory. A DDR-based image needs a documented initialization path, whether that responsibility belongs to ROM-executed DCD or to SPL.
+- Boot-mode pins select a ROM path at the documented reset boundary. Switch markings alone do not reveal the sampled bit values, and a warm reset is not a substitute for the specified cold-start procedure.
+- HAB changes which images the ROM accepts. Image inspection is reversible, but closing security fuses is not an ordinary configuration step.
 
 ## 7.11  Pitfalls
 

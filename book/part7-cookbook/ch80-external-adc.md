@@ -386,15 +386,13 @@ The Vexc *cancels*. Any noise or drift in the excitation voltage also cancels. T
 
 To do this: wire the ADC's REF+ / REF− to the same rail that excites the bridge. In DT, the `vref-supply` points at the excitation regulator. The ADC's `scale` becomes meaningless in absolute volts but the *ratio* is rock-stable.
 
-## 80.10  Lab
+<span id="lab"></span>
+## 80.10  Key Notes
 
-1. **ADS1115 bring-up.** Wire to I²C1. Address 0x48 (ADDR→GND). Feed AIN0 from a potentiometer between 3.3 V and GND.
-2. **Build and load `myads1115.ko`.** Turn the pot. Verify `in_voltage0_raw` sweeps 0 → 32767.
-3. **PGA experiment.** Modify the driver to use ±0.256 V range (PGA = 0x5). Feed a small signal (~100 mV). Verify the higher resolution.
-4. **MCP3008 comparison.** Wire an MCP3008 too. Read the same pot via both. Compare 10-bit vs 16-bit resolution side by side.
-5. **Ratiometric load cell.** If you have a load cell + HX711 or ADS1256: wire the ADC reference to the bridge excitation. Verify that varying the supply voltage by ±5 % doesn't change the reading (ratiometric cancellation).
-6. **Switch to mainline.** Use `compatible = "ti,ads1115"`. Verify `in_voltage_scale_available` shows the PGA ranges. Write one to change range.
-7. **AD7606 simultaneity** (if available). Sample two phase-shifted sine waves. Verify the captured samples preserve the phase relationship (multiplexed ADC would smear it).
+- Resolution, conversion rate, input range and simultaneous sampling are independent selection criteria. A larger nominal bit count does not ensure more useful information.
+- A multiplexed ADC observes channels at different times. Phase-sensitive measurements require an acquisition architecture that accounts for that difference.
+- The analog front end, reference, grounding and settling time are part of the conversion contract. Software scale cannot correct clipping or an unsafe input voltage.
+- Ratiometric measurement cancels a shared excitation/reference variation only when the circuit actually has that relationship. It is not a general substitute for a stable reference.
 
 ## 80.11  Pitfalls
 

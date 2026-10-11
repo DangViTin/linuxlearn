@@ -234,7 +234,7 @@ On the board:
 Linux imx6ull 6.6.0-imx6ull-prod ...
 ```
 
-This small detail saves time when several kernel builds are being tested in the same lab.
+This small detail helps distinguish several kernel variants in the same development environment.
 
 ## 30B.8  Keep bootargs different from config
 
@@ -284,7 +284,17 @@ Before handing a kernel to manufacturing or customers:
 - Recovery boot was tested, not only normal boot.
 - The exact kernel source tag and config fragments are recorded.
 
-This is the practical end of Part IV. You can now build a kernel, boot it from U-Boot, describe hardware with device tree, recover from failed boots, and manage kernel configs like product assets.
+## 30B.11  Key Notes
+
+- Development, production and recovery kernels share hardware needs but serve different operational roles. A diagnostic interface useful in development is not automatically a production requirement.
+- A base fragment captures common support, while role fragments express differences. Kconfig resolution determines the final state, so the resulting `.config` matters as well as the requested fragments.
+- Separate `O=` directories isolate generated state for each variant. They prevent one role's configuration and artifacts from silently replacing another's.
+- Boot-critical drivers must be reachable before the normal rootfs mounts. Modules are viable at that stage only when an earlier environment can provide and load them.
+- Kernel configuration defines capability, bootargs select boot policy, and DT defines hardware resources. These interfaces need coordinated releases without being collapsed into one configuration file.
+- Local version strings and config diffs expose artifact identity and policy changes. They complement source revision records rather than replacing them.
+- A CI build checks a different boundary from normal or recovery boot tests. Manufacturing readiness includes recovery operation, not merely the existence of three successfully built images.
+
+Part IV connects image artifacts, firmware handoff, hardware description, recovery and configuration ownership. Part V examines the user-space environment that depends on those interfaces.
 
 ---
 

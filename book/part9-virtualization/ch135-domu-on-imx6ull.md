@@ -384,66 +384,24 @@ It does not prove:
 
 One Cortex-A7 means one physical execution engine. Xen can schedule domains. It cannot create another core.
 
-## 135.16  Break it on purpose
+<span id="break-it-on-purpose"></span>
+<span id="failure-1-too-much-memory"></span>
+<span id="failure-2-wrong-console"></span>
+<span id="failure-3-missing-initramfs"></span>
+<span id="failure-4-bad-init"></span>
+<span id="lab"></span>
+## 135.16  Failure cases on the physical platform
 
-### Failure 1: too much memory
+A guest allocation that exceeds the available whole-system budget can fail or starve Dom0. A missing initramfs or unusable `/init` breaks the guest's runtime contract. Selecting the physical UART as its console does not grant DomU ownership of that device.
 
-Set:
+A failure in guest user space may be contained while Dom0 remains operational, but that outcome must be observed for the actual setup. It does not establish recovery from a shared-device or control-domain failure.
+## 135.17  Key Notes
 
-```python
-memory = 384
-```
-
-Expected: domain creation fails or Dom0 becomes memory-starved.
-
-### Failure 2: wrong console
-
-Set:
-
-```python
-extra = "console=ttymxc0 rdinit=/init"
-```
-
-Expected: DomU output disappears. DomU does not own the physical i.MX UART.
-
-### Failure 3: missing initramfs
-
-Rename:
-
-```sh
-# mv /boot/domu-initramfs.cpio.gz /boot/domu-initramfs.cpio.gz.missing
-```
-
-Expected: `xl create` or DomU boot fails.
-
-### Failure 4: bad `/init`
-
-Use an initramfs without executable `/init`.
-
-Expected: DomU kernel panics, Dom0 survives.
-
-## 135.17  Lab
-
-Deliverables:
-
-1. Dom0 boot log from Chapter 134.
-2. Dom0 `xl info` output.
-3. `/etc/xen/imx6ull-domu.cfg`.
-4. DomU boot log.
-5. `xl list` showing Dom0 and DomU.
-6. Dom0 and DomU `uname -a` outputs.
-7. Memory pressure notes.
-8. Failure-isolation log.
-9. Failure notes for too much memory, wrong console, missing initramfs, and bad `/init`.
-
-The lab is complete when the serial log proves:
-
-```text
-Dom0 alive
-DomU alive
-DomU dies
-Dom0 still alive
-```
+- Dom0 and DomU have separate kernel and memory views while sharing the i.MX6ULL's one physical CPU. Scheduling capacity and failure containment are different objectives.
+- Guest memory consumes a whole-platform budget alongside Dom0, Xen and supporting allocations. A small nominal guest size is not a complete memory account.
+- Virtual console and managed guest interfaces avoid assuming that a physical UART or peripheral belongs to DomU.
+- Destroying a guest can contain a workload failure, but differs from an orderly shutdown that protects persistent data.
+- Guest survival tests do not establish DMA isolation, real-time guarantees or recovery from a failing control domain.
 
 ## 135.18  Pitfalls
 
@@ -452,7 +410,7 @@ Dom0 still alive
 - **Expecting physical UART in DomU.** Use `hvc0`.
 - **Debugging DomU before `xl info` works.** Toolstack first.
 - **Forgetting this is one physical CPU.** Do not expect parallel throughput.
-- **Treating destroy as production shutdown.** It is fine for first lab, not for a product.
+- **Treating destroy as production shutdown.** It is fine for initial example, not for a product.
 - **Skipping memory accounting.** Small boards punish optimism.
 
 ## 135.19  Going deeper

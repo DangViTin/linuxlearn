@@ -9,7 +9,7 @@ status: draft
 # Chapter 64: QSPI NOR flash
 > **UBI:** Unsorted Block Images, a flash-management layer over raw NAND that handles wear leveling and bad blocks.
 
-> **Naming convention used across Part VII.** Shell prompts shown as `[root@pa-mini:~]#` come from the reference test board, the Point Atom MINI configured with hostname `pa-mini`. Substitute your own hostname. Nothing else about the lab assumes it.
+> **Naming convention used across Part VII.** Shell prompts shown as `[root@pa-mini:~]#` are illustrative target prompts using the hostname `pa-mini`. They are not captured MINI test results. A hostname does not establish that a peripheral is fitted, correctly wired or supported on a particular board revision.
 
 > **What:** how a QSPI NOR flash chip actually works on the wire, how the mainline `spi-nor` driver implements it, and how to write your own minimal driver from scratch for one specific chip. Three chips compared, **Winbond W25Q128** (16 MB), **Macronix MX25L25645G** (32 MB), **Micron MT25QL256ABA** (32 MB), but the from-scratch driver targets the W25Q128 to keep the example concrete.
 >
@@ -625,7 +625,7 @@ DT to test it:
 Note we're using ordinary SPI (`ecspi3`), not QSPI. The raw protocol works at single-IO mode up to ~50 MHz. Using QSPI would require either an MMIO-driver for the i.MX QSPI controller's command-mode registers (more involved) or going through `spi_mem` (which is exactly what we said we were skipping). For this teaching example, ordinary SPI is the right choice.
 > **MMIO:** memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 
-Build, load, exercise:
+Example build and access:
 
 ```
 [root@pa-mini:~]# insmod myflash.ko
@@ -797,14 +797,13 @@ bootcmd=run boot_qspi
 
 For A/B updates, define `boot_qspi_a` and `boot_qspi_b` with different `<flash_offset>` values. A boot counter (`fw_setenv boot_count`) + an A/B flag selects which slot.
 
-## 64.11  Lab
+<span id="lab"></span>
+## 64.11  Key Notes
 
-1. **JEDEC ID from i2c-tools-style poke.** Without your driver loaded, use raw SPI via `/dev/spidev*` to send `0x9F` and read 3 bytes. Confirm the ID matches your chip.
-2. **Build and load `myflash.ko`.** Confirm JEDEC log in dmesg. Read sector 0. Erase + write + verify cycle.
-3. **Compare timings.** Add ktime measurement around a 4-KB read and a 256-B page program. Compare against the mainline driver via `flashcp` on an equivalent area.
-4. **Multi-page write bug demo.** Modify `myflash.c`'s `mf_fops_write` to *skip* the page-boundary split, write `count` bytes in one transfer instead. Try writing 300 bytes starting at offset 200. Observe the wrap-around to offset 0 of the same page. Restore the split.
-5. **Switch to the mainline driver.** Unload `myflash`. Bind the same chip with `winbond,w25q128`. Verify MTD partitions appear. Run `flashcp`.
-6. **Read out the entire chip (mainline).** `nanddump -f all-flash.bin /dev/mtdblock0`. Compare expected size.
+- NOR programming, erase and read are different operations with different alignment and timing rules. Write-enable and bounded busy polling belong to the device state machine, not just to a convenient API.
+- Page-program boundaries and eraseblock boundaries are separate constraints. Splitting a write correctly does not preserve unrelated data in a sector that must be erased.
+- Chip capacity, address mode and supported commands must agree across ROM, U-Boot and Linux. An addressing mode left by one stage can become a dependency of the next.
+- MTD partitions and environment tools share a storage-layout contract. Driver access does not make an arbitrary erase or environment save safe.
 
 ## 64.12  Pitfalls
 

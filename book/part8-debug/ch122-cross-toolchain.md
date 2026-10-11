@@ -9,7 +9,7 @@ status: draft
 # Chapter 122: Build your own cross-toolchain
 > **ELF:** Executable and Linkable Format, the standard Linux object and executable file format.
 
-> **What:** building a complete **cross-compiling toolchain**, binutils + gcc + glibc (or musl/uClibc-ng) + gdb, from upstream sources, using **crosstool-NG** (the canonical tool) and, as a one-time exercise, by hand. We resolve the bootstrap puzzle: "gcc needs libc to compile programs, libc needs gcc to compile itself, gcc needs binutils, …". The output: an `arm-none-linux-gnueabihf-*` toolchain in `/opt/x-tools/`. We compare it size-for-size and behavior-for-behavior against a pre-built Linaro / Bootlin / Yocto SDK toolchain.
+> **What:** building a complete **cross-compiling toolchain**, binutils + gcc + glibc (or musl/uClibc-ng) + gdb, from upstream sources, using **crosstool-NG** (the canonical tool) and, as a one-time example, by hand. We resolve the bootstrap puzzle: "gcc needs libc to compile programs, libc needs gcc to compile itself, gcc needs binutils, …". The output: an `arm-none-linux-gnueabihf-*` toolchain in `/opt/x-tools/`. We compare it size-for-size and behavior-for-behavior against a pre-built Linaro / Bootlin / Yocto SDK toolchain.
 > **Yocto:** a metadata-driven build system for producing custom Linux distributions.
 >
 > **Why:** for most users, the Arm GNU Toolchain installed in Chapter 3 is fine. Build your own when one of these matters:
@@ -334,19 +334,16 @@ In practice they're all similar (all build from the same upstream). Differences:
 - Linaro toolchains often include experimental optimizations.
 - Your own toolchain has your chosen versions + flags.
 
-## 122.10  Lab
 
-1. **Install crosstool-NG.** Follow the build. Verify `ct-ng version`.
-2. **Configure for i.MX6ULL.** menuconfig → select Cortex-A7, hard-float, glibc, gcc 13.x. Save config.
-3. **Build the toolchain.** Run `ct-ng build`. Watch each stage complete. ~1 hour.
-4. **Test the toolchain.** Compile a simple program. Run it on the target (NFS root). Confirm it works.
-> **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
-5. **Compare with apt's gcc.** `arm-none-linux-gnueabihf-gcc -dumpversion` (apt) vs your custom. Differences?
-6. **musl variant.** Reconfigure crosstool-NG with musl libc. Rebuild. Compile `hello world`. Compare static-link sizes.
-7. **Manual stage 1.** Following §122.4, build binutils + kernel headers + gcc stage 1 by hand. Stop after stage 1. Verify it can produce object files.
-8. **Pinning.** Write a script that downloads a specific version of binutils + gcc + glibc, builds, and produces a tarball your team can extract anywhere.
-9. **Cross-debug.** Build your gdb cross (part of crosstool-NG). Use it to debug a target program via gdbserver.
-10. **Yocto SDK comparison.** If you've done a Yocto build (Ch 123A): export an SDK. Compare against your hand-built toolchain.
+(12210-lab)=
+## 122.10  Key Notes
+
+- A toolchain combines code-generation tools, target runtime components, and a debugger. Its target ABI and libraries must agree with the deployed rootfs.
+- Bootstrapping resolves a dependency cycle in stages: binutils and kernel headers precede a limited compiler, then libc and the final compiler runtime.
+- The prefix locates host tools, the target tuple names the output architecture and ABI, and the sysroot supplies target headers and libraries. These paths serve different purposes.
+- Hard-float calling conventions affect binary interfaces, not just available instructions. Startup objects, libraries, and the dynamic loader must share the ABI.
+- Changing libc or enabling multilib changes compatibility and maintenance scope. A smaller sample binary alone does not establish application compatibility.
+- The custom-build sketches explain construction rather than assign a replacement installation. The book's selected Arm prebuilt toolchains remain the reference environment.
 
 ## 122.11  Pitfalls
 

@@ -399,15 +399,13 @@ sampling_frequency_available
 
 Plus buffered capture via trigger (Ch 70) for high-rate logging.
 
-## 73.9  Lab
+<span id="lab"></span>
+## 73.9  Key Notes
 
-1. **Probe.** `i2cdetect -y 1`. Check 0x0D and 0x1E. Whichever responds tells you what chip you have.
-2. **Build and load `myqmc5883.ko`.** Read X/Y/Z while moving the sensor. Verify values change.
-3. **Compute uncalibrated heading.** Use atan2(Y, X) in radians, convert to degrees. Compare to a real compass. Note the error.
-4. **Run the calibration script.** Rotate the sensor for 30 seconds in all directions. Save offset + scale.
-5. **Apply calibration.** Compute heading again. Compare to real compass. Should now be within 5°.
-6. **Move near a steel object.** Watch the heading change abruptly. Calibration done on the bench doesn't help if the in-product environment has different ferromagnetics, recalibrate in-place.
-7. **Switch to mainline driver.** Verify same data flows. Verify sampling_frequency_available works.
+- A magnetometer measures a field vector, not an already-correct compass heading. Scale, axis orientation and calibration belong in the interpretation path.
+- Hard-iron offset and soft-iron distortion are different effects. Calibration must represent the installed assembly and its operating environment.
+- A heading derived from only two axes assumes a level sensor. A tilting product needs a defined coordinate frame and tilt compensation.
+- Chip identity and register layout must be verified independently of breakout-board branding. A responding address is not sufficient evidence of software compatibility.
 
 ## 73.10  Pitfalls
 

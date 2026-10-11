@@ -191,7 +191,7 @@ Before relocation, `board_init_f()` builds enough runtime state to size DDR and 
 
 ## 24A.4  Start from a clean U-Boot tree
 
-Use a separate checkout for this alternative port. Keep Chapter 21's command-lab branch and Chapter 22's normal-MX6 board work in their existing checkout; do not check that edited tree back to the tag to make a version check pass. Run these commands on the Linux build host:
+Use a separate checkout for this alternative port. Keep Chapter 21's command-example branch and Chapter 22's normal-MX6 board work in their existing checkout; do not check that edited tree back to the tag to make a version check pass. Run these commands on the Linux build host:
 
 ```sh
 $ . ~/imx6ull/scripts/env.sh
@@ -1299,7 +1299,7 @@ Each `DATA 4 address value` line tells the Boot ROM to perform one 32-bit write.
 | UART pad writes | Connect UART1 to the pads wired to the board's built-in USB-to-TTL circuit. |
 | USDHC2 pad writes | Select the schematic's NAND-pad route; electrical/reset validation is still required. |
 | DDR IOMUX writes | Set DDR signal voltage, drive strength, and pad behavior. |
-| MMDC calibration writes | Apply the vendor's stored read/write delay settings, not calibration measured by this exercise. |
+| MMDC calibration writes | Apply the vendor's stored read/write delay settings, not calibration measured by this example. |
 | MMDC timing writes | Describe memory geometry, row timing, refresh, and controller behavior. |
 | JEDEC commands | Reset and configure the DDR3L device itself. |
 
@@ -2527,7 +2527,7 @@ These relationships follow the pinned `tools/imximage.c` generator. Check them a
 
 ## 24A.22  Write the image to an SD card
 
-This is a later hardware procedure, not part of the source-build exercise. Confirm the fitted core matches the documented DDR target and complete the image/layout checks before using a dedicated expendable card. Establish a power-off/recovery plan for this untested teaching runtime, and retain Chapter 19's vendor baseline. A write beginning at 1 KiB can still overwrite a GPT entry array or an existing bootloader. Use a reviewed raw/MBR layout with an explicitly reserved boot gap; this offset is not a general guarantee of partition safety.
+This is a later hardware procedure, not part of the source-build example. Confirm the fitted core matches the documented DDR target and complete the image/layout checks before using a dedicated expendable card. Establish a power-off/recovery plan for this untested teaching runtime, and retain Chapter 19's vendor baseline. A write beginning at 1 KiB can still overwrite a GPT entry array or an existing bootloader. Use a reviewed raw/MBR layout with an explicitly reserved boot gap; this offset is not a general guarantee of partition safety.
 
 Identify the whole removable device by size, model, transport, and physical insertion/removal before doing anything destructive:
 
@@ -2633,7 +2633,7 @@ What to record if discovery succeeds:
 
 Do not run `mmc write` during first discovery. Reading identification and partition data proves the controller path without changing storage.
 
-Compare CID manufacturer/product/revision and capacity against the fitted part's record. CSD/EXT_CSD capacity and mode bits distinguish what the card supports from what the host currently advertises. `non-removable` means no mechanical card detect; it does not prove that a chip is connected. A missing partition table is not an identification failure. A valid partition listing exercises only a few sectors, not the whole medium. Initialization still sends volatile card configuration commands even with block writes disabled; do not use partition, boot configuration, RPMB, erase, or reset-function commands here.
+Compare CID manufacturer/product/revision and capacity against the fitted part's record. CSD/EXT_CSD capacity and mode bits distinguish what the card supports from what the host currently advertises. `non-removable` means no mechanical card detect; it does not prove that a chip is connected. A missing partition table is not an identification failure. A valid partition listing examples only a few sectors, not the whole medium. Initialization still sends volatile card configuration commands even with block writes disabled; do not use partition, boot configuration, RPMB, erase, or reset-function commands here.
 
 ## 24A.25  Diagnose silence by the last completed stage
 
@@ -2721,14 +2721,15 @@ The names and register values will change on another chip, but the method remain
 
 The core skill is not copying a vendor directory. It is making every dependency visible, then proving those dependencies in an order that leaves useful evidence when the board stops.
 
-### Review exercises before hardware work
+<span id="review-exercises-before-hardware-work"></span>
+## 24A.28  Key Notes
 
-1. Trace one UART byte from the console uclass to `UTXD`. Explain why the DM callback returns `-EAGAIN`, whereas the early UART has a bounded private polling loop. Check the baud calculation with `UBMR=103` and then with 104.
-2. For a CMD1 R3 response and a CMD9 R2 response, list the CRC/opcode/response-length bits emitted by `usdhc_build_xfertyp()`. For CMD12, explain why waiting for the data inhibit to clear would defeat an abort.
-3. Suppose FIFO-ready and data-CRC-error are both set. Identify the first return value and the recovery writes. Then explain why a single transfer deadline is different from a new deadline per word. These are source reasoning exercises, not fault-injection results.
-4. Reconcile the `.imx` file offsets with its IVT RAM pointers and a card placement at `0x400`. Explain why a matching header readback and a printed 512 MiB line prove neither DDR qualification nor complete storage integrity.
-
-Use the pinned sources and your ledger to answer these questions before collecting board evidence. Keep the build log, image checks, and actual terminal log as separate records; each proves a different boundary.
+- The port joins several contracts: ROM image layout, early ARM runtime, U-Boot relocation, Device Tree discovery and peripheral framework callbacks. A correct interface at one stage does not establish the next.
+- An early UART can use bounded private polling before the driver model exists. The later serial callback must follow its framework's readiness semantics rather than block indefinitely.
+- MMC response type, transfer deadlines and recovery ordering belong to the controller/protocol boundary. Extending a deadline after every word is not the same policy as bounding the whole transfer.
+- The vendor DCD supplies named DDR initialization values for a documented core-board design. Source provenance and successful compilation are not measured calibration or physical memory qualification.
+- File placement, media placement and loaded RAM pointers must agree in the ROM image. Header readback and a printed memory size cannot prove full storage integrity or DDR stability.
+- This teaching route intentionally omits platform responsibilities. A product port still needs power, reset, security, errata and failure recovery ownership beyond the three small drivers.
 
 ### Primary sources for this chapter
 

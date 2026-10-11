@@ -29,7 +29,7 @@ That's it. Any program that does these five things is a legitimate PID 1. The ch
 
 ## 33.2  BusyBox init
 
-We've been using this since Chapter 29. It is **~1500 lines of C**, statically linked into the BusyBox binary as one of its applets, and does exactly the five things in §33.1, no more, no less. Configuration is one file: `/etc/inittab` (Chapter 31 §31.5).
+The examples since Chapter 29 use BusyBox init. It is **~1500 lines of C**, included in the BusyBox binary as one of its applets. Its configuration is `/etc/inittab` (Chapter 31 §31.5).
 
 Features it has:
 
@@ -205,13 +205,17 @@ For a developer board you almost always want a shell. For a shipping single-purp
 
 For the rest of this book, and for most readers' real products, **BusyBox init** is the default. We use it in every chapter from here through Part VI. When we need to talk about a feature only systemd has (Chapter 51A's watchdog daemon, Chapter 35C's container manager), we'll note it explicitly. When we get to Chapter 35A (Ubuntu-base), we'll meet systemd in its natural habitat.
 
-## 33.8  Lab
 
-1. **Read your BusyBox `inittab`.** Identify which lines run at boot, which respawn, which run only on shutdown.
-2. **Add a respawning service.** Edit `/etc/inittab` to add `::respawn:/usr/bin/my-counter`. Write `my-counter` as a tiny script that prints the date every 10 seconds. Save, reboot, watch.
-3. **Trigger a manual shutdown.** From the console: `halt`. Read what BusyBox init does in response (it runs the `shutdown` lines from inittab). Compare with `reboot`.
-4. **Read a systemd unit.** If you have a Debian/Ubuntu host nearby, `cat /lib/systemd/system/ssh.service`. Note the syntax differences vs BusyBox.
-5. **Estimate the boot-time difference.** Boot your BusyBox rootfs and note the time from `kernel_init` to the login prompt. The `dmesg` timestamps are your clock. Now do the same on the Ubuntu-base rootfs (Ch 35A). Typical figures: ~2 s BusyBox vs ~8 s Ubuntu-base. Most of the gap is systemd.
+(33-8-lab)=
+## 33.8  Key Notes
+
+- PID 1 has system-lifetime responsibilities, including child reaping and shutdown coordination. Running an application directly as init transfers those responsibilities to the application rather than removing them.
+- BusyBox init describes actions in `inittab`. Startup ordering, service readiness and richer restart policy must be supplied by the surrounding scripts or service design.
+- sysvinit organizes services through scripts and runlevels. Its `inittab` semantics are not interchangeable with BusyBox's despite the shared filename.
+- systemd expresses service ordering, activation and dependencies as units, with resource limits and sandboxing through additional kernel interfaces. Those capabilities bring dependencies and policy to maintain.
+- A process restart policy addresses termination, not whether a still-running service is useful. Readiness and health require their own application-to-supervisor contract.
+- Footprint and startup cost depend on the complete service set and configuration. The chapter's comparison does not establish a measured boot-time budget for a MINI product.
+- Replacing init with a shell is a diagnostic change to boot policy, not an equivalent production service lifecycle.
 
 ## 33.9  Pitfalls
 

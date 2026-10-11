@@ -517,78 +517,26 @@ Interpretation:
 - Dom0 console is `hvc0`, not the physical UART.
 - Xen controls the machine boundary.
 
-## 131.22  Exercise: address translation worksheet
+<span id="exercise-address-translation-worksheet"></span>
+## 131.22  Translation ownership
 
-Fill this table:
+| Access | Stage 1 result | Stage 2 result | Stage 1 owner | Stage 2 owner |
+|--------|----------------|----------------|---------------|---------------|
+| Native Linux user load | Physical address | No second stage | Linux | None |
+| Dom0 user load | Guest physical address | Machine physical address | Dom0 Linux | Xen |
+| DomU user load | Guest physical address | Machine physical address | DomU Linux | Xen |
+| Bare-metal inmate load | Depends on inmate setup | Assigned physical mapping | Inmate or no stage 1 | Jailhouse |
 
-| Access | Stage 1 result | Stage 2 result | Who controls stage 1 | Who controls stage 2 |
-|--------|----------------|----------------|----------------------|----------------------|
-| native Linux user load | PA | none | Linux | none |
-| Dom0 user load | guest PA | real PA | Dom0 Linux | Xen |
-| DomU user load | guest PA | real PA | DomU Linux | Xen |
-| bare-metal inmate load | depends | depends | inmate or none | Jailhouse |
+The guest's idea of a physical address is not necessarily a machine address. A second-stage fault reports a CPU access that violates the hypervisor's mapping. It does not prove that a bus-mastering device has the same restriction.
 
-Then answer:
+<span id="lab-log-reading"></span>
+## 131.23  Key Notes
 
-- Which row can fault at stage 2?
-- Which row can be killed without rebooting the host?
-- Which row still has DMA risk?
-
-## 131.23  Lab: log reading
-
-Use three logs:
-
-1. Chapter 129 plain QEMU Linux.
-2. Chapter 132 Xen + Dom0 in QEMU.
-3. Chapter 134 Xen + Dom0 on i.MX6ULL.
-
-Create:
-
-```text
-notes/hyp-stage2-log-reading.md
-```
-
-Template:
-
-```md
-# HYP/stage-2 log reading
-
-## Log 1: plain QEMU Linux
-
-First software that prints:
-Kernel command line:
-CPU count:
-Interrupt controller:
-Timer:
-Console:
-Evidence that Linux is bare metal:
-
-## Log 2: Xen + Dom0 in QEMU
-
-First software that prints:
-Xen command line:
-Dom0 command line:
-CPU count:
-Interrupt controller:
-Timer:
-Console:
-Evidence of Xen:
-Evidence of Dom0:
-
-## Log 3: Xen + Dom0 on i.MX6ULL
-
-First software that prints:
-Xen command line:
-Dom0 command line:
-CPU count:
-Interrupt controller:
-Timer:
-Console:
-Evidence of real board:
-Evidence of Dom0:
-```
-
-The lab is complete when you can point to the exact line where Linux stops being bare-metal Linux and becomes Dom0 Linux.
+- Stage 1 belongs to the guest operating system when it uses translation. Stage 2 gives the hypervisor a separate CPU memory boundary.
+- HYP mode controls virtualization in Normal World. It is not the Secure World boundary managed through Monitor mode.
+- Virtual interrupts and timers are part of a usable guest platform. Memory mapping alone is not enough to run another kernel correctly.
+- Dom0 is privileged within Xen's architecture, but remains a domain. Jailhouse instead changes ownership of an already-running Linux system's resources.
+- Startup logs can distinguish firmware, hypervisor and guest stages. They establish observed progress, not DMA isolation, timing guarantees or electrical qualification.
 
 ## 131.24  Pitfalls
 

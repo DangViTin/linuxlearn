@@ -451,74 +451,26 @@ Dom0 command line:
 /init output:
 ```
 
-This annotation becomes input for Chapter 131's log-reading exercise.
+This annotation becomes input for Chapter 131's log-reading example.
 
-## 132.13  Break it on purpose
+<span id="break-it-on-purpose"></span>
+<span id="failure-1-no-virtualization-support"></span>
+<span id="failure-2-wrong-module-size"></span>
+<span id="failure-3-wrong-dom0-console"></span>
+<span id="failure-4-address-mismatch"></span>
+<span id="lab"></span>
+## 132.13  Failure cases in Xen startup
 
-### Failure 1: no virtualization support
+Xen depends on exposed virtualization hardware and a consistent description of its modules. A machine without the necessary extensions can fail before Dom0 starts. A wrong module address points Xen at the wrong bytes, while a wrong module extent can leave Dom0 without a usable initramfs.
 
-Remove:
+Console mismatch is different: Xen can print while Dom0 output is missing. The two stages have separate console ownership, so the last visible message does not by itself identify a failed guest.
+## 132.14  Key Notes
 
-```text
-virtualization=on
-```
-
-Expected symptom: Xen cannot run correctly because QEMU did not expose the virtualization extensions.
-
-Lesson: HYP mode is hardware support, not a Xen preference.
-
-### Failure 2: wrong module size
-
-Set Dom0 ramdisk size to a tiny value in the DTS:
-
-```dts
-reg = <0x48000000 0x100>;
-```
-
-Rebuild DTB and boot.
-
-Expected symptom: Dom0 kernel starts but cannot unpack or run the initramfs.
-
-Lesson: Xen trusts the DTB module metadata.
-
-### Failure 3: wrong Dom0 console
-
-Change:
-
-```text
-console=ttyAMA0
-```
-
-Expected symptom: Xen prints, Dom0 may boot, but expected Dom0 console output is missing.
-
-Lesson: Dom0's first console is Xen's `hvc0`, not necessarily the physical UART.
-
-### Failure 4: address mismatch
-
-Load Dom0 kernel at `0x45000000` but leave DTB module node at `0x44000000`.
-
-Expected symptom: Xen reads the wrong memory as the Dom0 kernel.
-
-Lesson: loader addresses and DTB `reg` values are one contract.
-
-## 132.14  Lab
-
-Deliverables:
-
-1. `boot/xen`
-2. `boot/zImage-dom0`
-3. `boot/dom0-initramfs.cpio.gz`
-4. `boot/qemu-virt-arm-xen.dtb`
-5. `boot/qemu-virt-arm-xen.dts`
-6. `logs/xen-qemu-dom0.log`
-7. `logs/xen-qemu-dom0.annotated.log`
-8. Failure notes for missing virtualization, wrong module size, wrong console, and address mismatch
-
-The lab is complete when the log proves:
-
-```text
-QEMU -> Xen -> Dom0 Linux -> /init -> shell
-```
+- Xen takes control before Dom0 Linux. Dom0 is a privileged domain with platform responsibilities, not native Linux outside the hypervisor.
+- Module addresses and lengths in the Xen-aware DTB must agree with the actual loaded artifacts. Separate Xen and Dom0 command lines control separate stages.
+- Virtualization exposure, interrupt delivery and timers are part of the machine contract. A guest cannot create hardware capabilities that the virtual machine did not expose.
+- Xen's console and Dom0's console have different owners. Their logs provide different evidence of how far startup progressed.
+- A Dom0 shell establishes a minimal boot path, not DomU lifecycle support, safe device passthrough or real-board qualification.
 
 ## 132.15  Pitfalls
 

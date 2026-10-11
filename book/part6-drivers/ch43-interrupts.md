@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 43: Interrupts
 
-> **What:** **`request_irq`**, the **top-half / bottom-half split**, and the four standard bottom halves, softirqs, tasklets, work queues, and threaded IRQs. By the end you'll have a driver that owns a hardware IRQ, acknowledges it in nanoseconds in the top half, and processes the event without blocking the rest of the kernel.
+> **What:** **`request_irq`**, the **top-half / bottom-half split**, and the four standard bottom halves, softirqs, tasklets, work queues, and threaded IRQs. The examples distinguish interrupt acknowledgement from deferred processing and show how the execution context constrains each callback.
 > **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 >
 > **Why:** interrupts are how hardware tells the kernel something happened: data arrived, DMA finished, a button was pressed, a timer expired. Get the IRQ-handler design wrong and you hit one of two failures: *missed interrupts* (handler too slow or wrong polarity) or *IRQ storms* (handler does not acknowledge, hardware re-asserts continuously, system hangs). The rules below give you the right design every time.
@@ -354,18 +354,21 @@ $ cat /sys/kernel/debug/tracing/trace
 
 You'll see timestamps for every entry/exit of your handler, in microseconds. Chapter 119 covers ftrace properly.
 
-## 43.8  Lab
+<a id="lab"></a>
+
+(ch43-lab)=
+## 43.8  Key Notes
 
 > **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
 > After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
 
 
-1. **Write a GPIO-button driver.** Use the user button on the Point Atom MINI. Threaded IRQ, prints to dmesg on press.
-2. **Measure IRQ latency.** Use ftrace to time from a button press (capture in the GPIO bank IRQ) to your threaded handler running. Compare against running the same work in a tasklet.
-3. **Add bouncing handling.** Add a 20 ms debounce: ignore further IRQs that fire within 20 ms of the previous (use `jiffies` and `time_after`). Test by pressing and holding. Observe a single event in dmesg.
-4. **Force an IRQ storm.** Set the trigger type to LEVEL but don't acknowledge the hardware. Observe `/proc/interrupts` count exploding. Recover with `rmmod`. *(Note: do this on a non-critical system. If you don't recover quickly, the kernel may detect the storm and disable the IRQ.)*
-5. **Convert from threaded to workqueue.** Rewrite #1 using `schedule_work` from a non-threaded `request_irq`. Compare code complexity. Observe equivalent behavior.
-6. **Shared-IRQ experiment.** On a real shared IRQ (or fake one), register two handlers and verify the kernel calls both. Confirm `IRQ_NONE` is the right return when *your* device didn't fire.
+- IRQ domains translate controller-specific interrupt descriptions into the virtual IRQ used by a driver. A DT hardware number is not a portable `request_irq` argument.
+- The hard handler identifies and services the source with bounded, non-sleeping work. Bus transactions that can block belong in a threaded handler or other sleeping context.
+- Threaded IRQs keep deferred service associated with the interrupt, while workqueues suit independently scheduled or coalesced work. Coalescing requires a plan for retaining every event that matters.
+- Trigger polarity and device acknowledgement are separate contracts. A level source left asserted can storm, so intentional misconfiguration is not a safe recovery demonstration.
+- Shared handlers claim only events indicated by their own hardware status. The `dev_id` cookie also connects registration, instance state, and release.
+- Teardown must prevent new events and drain handlers and deferred work before freeing state. Managed IRQ registration does not automatically cancel separately queued work.
 
 ## 43.9  Pitfalls
 

@@ -384,16 +384,13 @@ The mainline `dht11.c` driver (`drivers/iio/humidity/dht11.c`) takes approach (2
 
 DS2401 is interesting for embedded products: it's a unique serial number you can solder onto a board and read over a single GPIO. Anti-counterfeiting, asset tracking. ~$0.30.
 
-## 77.8  Lab
+<span id="lab"></span>
+## 77.8  Key Notes
 
-1. **Wire a DS18B20** to GPIO4_IO14 with a 4.7 kΩ pull-up to 3.3 V. Configure `w1-gpio` in DT.
-2. **Verify enumeration.** After boot, `ls /sys/bus/w1/devices/`. The 64-bit ROM ID is part of the directory name.
-3. **Read temperature.** Heat the chip with a finger. Verify reading rises by a few degrees.
-4. **Multi-chip.** Add a second DS18B20 in parallel. Verify both enumerate as separate `28-*` entries.
-5. **Long-cable test.** Use a 5-meter CAT5 cable. Verify reads still succeed (1-Wire is unusually robust to long cables).
-6. **Write the custom slave driver.** Use the skeleton from §77.4. Even without a custom chip, you can test the registration via a fake family-code mismatch report.
-7. **Try DHT22.** Wire one up. Read with the mainline `dht11` driver (which also handles DHT22). Note the retry rate, count successes vs failures over 100 reads. Compare to a properly-wired SHT3x: 100/100 success.
-8. **Read DS2401 ROM ID** as a board serial number. Add to your factory-test script: log each board's unique 48-bit ID.
+- Maxim 1-Wire and the DHT22's single-signal protocol are not the same interface. Similar wiring does not imply compatible timing or drivers.
+- The 1-Wire master owns electrical timing and discovery, while slave drivers interpret device-specific commands and data. A hardware master can move timing responsibility away from scheduled software.
+- Cable capacitance, topology and pull-up behavior constrain the bus. Successful communication on a short lead does not establish an arbitrary cable length.
+- Parasitic powering creates an additional conversion-current requirement. CRC validation and device identity remain necessary even after enumeration succeeds.
 
 ## 77.9  Pitfalls
 

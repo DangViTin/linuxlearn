@@ -12,11 +12,11 @@ A store to OCRAM needs no memory-device initialization. The same store to
 `0x80000000` depends on an external chip, its power and clock, controller
 timings, and the board's routing. A correct address is only the beginning.
 
-We will trace those dependencies, prepare a board-specific initialization
-record, and write a small destructive test. The supplied core schematic
+This chapter traces those dependencies through a board-specific initialization
+record and a small destructive-test example. The supplied core schematic
 shows a **single x16 Nanya NT5CC256M16EP-EK on CS0**, nominally 512 MiB.
-Use that device as the worksheet's starting point, then check the marking
-on your fitted board.
+That device is the record's starting point, not confirmation of the part
+fitted to an uninspected board.
 
 > **Execution boundary:** this chapter does **not** contain a qualified
 > DDR initialization table. Obtain the exact part data sheet, board-matched
@@ -102,15 +102,15 @@ cycles. This is arithmetic, not a Nanya timing recommendation. A speed-bin
 label such as DDR3-1600 describes operation at 1600 MT/s (800 MHz CK);
 its latency numbers cannot be copied unchanged into a 396 MHz setup.
 
-Build a worksheet with columns for data-sheet page, minimum ns, minimum
-cycles, chosen cycles, MMDC field, and encoded value. Add a separate column
-for the matching DRAM mode-register field. That catches a controller/DRAM
-latency mismatch before the first access.
+A timing record connects the data-sheet page, minimum ns, minimum cycles,
+chosen cycles, MMDC field and encoded value. A separate entry for the
+matching DRAM mode-register field exposes a controller/DRAM latency mismatch
+before the first access.
 
 The supplied schematic names NT5CC256M16EP-EK. Obtain its manufacturer data
 sheet and confirm density, row/column geometry, speed suffix, temperature
 range, and low-frequency limits. A replacement device needs a fresh
-worksheet, even when the pinout matches.
+timing record, even when the pinout matches.
 
 ## 14.3  Two chips, one bus, channels, ranks, banks
 
@@ -226,14 +226,14 @@ bin. Compute DRAM MR values separately from MMDC timing encodings.
 Then encode the MR address and bank selection into MDSCR as documented.
 A bare MR value is not an entire MDSCR command.
 
-Record each MR's source, chosen cycles, and encoding in the worksheet.
+Each MR's source, chosen cycles and encoding belong to that same timing record.
 
 (a-complete-ddr3-init-for-the-point-atom-mini)=
 ## 14.7  Preparing the board-specific initialization
 
-Bring the worksheet, pad configuration, and calibration record together
-in this **design checklist**. Each line should lead to a documented step
-in the board's initialization:
+The timing record, pad configuration and calibration results together define
+the board's initialization contract. The following outline names the phases
+that a board-owned implementation must supply:
 
 ```text
 Verified board-specific initialization:
@@ -249,7 +249,7 @@ Verified board-specific initialization:
 ```
 
 Start from the matching board BSP and NXP RPA, then check the fitted part
-and silicon errata. Keep the generated initialization, worksheet, tool
+and silicon errata. Keep the generated initialization, timing record, tool
 version, and calibration log together: they describe one configuration.
 
 The test below **is compilable**. It requires already initialized DDR,
@@ -378,23 +378,24 @@ refer to the old link addresses. A zero-initialized static flag usually
 belongs to BSS, which is not stored in the raw payload. Printing `&main`
 also prints a link-time address, not a measurement of the current PC.
 
-Use a simpler learning design: an OCRAM loader plus a **separately linked
-DRAM payload**. Each image has its own link addresses and startup. The
-loader's job is to place the second image exactly where it was linked.
+A simpler design uses an OCRAM loader plus a **separately linked DRAM
+payload**. Each image has its own link addresses and startup. Their ownership
+boundary is explicit:
 
-1. Link the payload at `0x80100000`, with its first ARM instruction
-   branching to its own startup. Use `ENTRY(_vectors)` and put vectors
-   first, as in Chapter 10.
-2. Its startup masks interrupts, initializes its own SVC/IRQ stacks,
-   initializes data/BSS, installs its own VBAR with the Chapter 15 policy,
-   and enters a new payload main. It must **not reinitialize DDR**.
-3. Embed the payload's raw file in the OCRAM loader's read-only section.
-   Define start/end symbols around it and account for those bytes in the
-   ROM-active load bound. A larger two-image bundle may not fit.
-4. Test an unrelated scratch range. Copy exactly the payload file length
-   into its linked destination. Exclude both loader and payload regions
-   from every subsequent destructive test.
-5. Synchronize the new instruction bytes and branch to the payload entry.
+- The example payload is linked at `0x80100000`, with vectors first and
+  `ENTRY(_vectors)` as in Chapter 10. Its first ARM instruction branches to
+  its own startup.
+- Payload startup masks interrupts, initializes its own SVC/IRQ stacks and
+  data/BSS, installs VBAR with the Chapter 15 policy and enters its own main.
+  It must **not reinitialize DDR**.
+- The loader holds the raw payload in its read-only section, bounded by
+  start/end symbols. Those bytes count toward the ROM-active OCRAM load
+  bound, which may exclude a larger two-image bundle.
+- The loader tests an unrelated scratch range and copies exactly the payload
+  file length into its linked destination. Both loader and payload regions
+  remain excluded from subsequent destructive tests.
+- The handoff synchronizes the new instruction bytes before branching to
+  the payload entry.
 
 Embedding **assembly fragment** in a loader source file:
 
@@ -453,8 +454,8 @@ Do not add a casual cache-disable instruction and discard dirty data.
 
 Use the payload map/disassembly and, when available, a debugger's current
 PC to check execution in DRAM. Its stack, globals, and VBAR need separate
-checks. Later IRQ/timer exercises can still run in OCRAM; moving them is
-not a prerequisite.
+checks. The later IRQ/timer examples can stay in OCRAM. Their mechanisms
+do not depend on relocating this payload or completing DDR qualification.
 
 ## 14.11  Sanity tests beyond the basic memtest
 
@@ -463,23 +464,25 @@ disable other masters that might use it.
 
 ### Walking ones / zeros
 
-At a reserved word, write each `1u << bit` and its complement, then compare.
-This checks data-bit behavior at that location, not every cell or address
-line. Add all-zero/all-one and alternating patterns at multiple locations.
+A walking-bit test writes each `1u << bit` and its complement to a reserved
+word, then compares the readback. It checks data-bit behavior at that
+location, not every cell or address line. All-zero/all-one and alternating
+patterns at multiple locations extend the pattern coverage.
 
 ### Address-as-data
 
-Write distinct address-derived patterns across a reserved span before
-reading any back. Add a dedicated power-of-two address-alias test across
-the verified capacity: a 4 MiB sweep cannot find every high address bit
-or a wrongly configured 256/512 MiB boundary.
+An address-as-data test writes distinct address-derived patterns across a
+reserved span before reading any back. A dedicated power-of-two address-alias
+test addresses a different coverage gap: a 4 MiB sweep cannot find every
+high address bit or a wrongly configured 256/512 MiB boundary.
 
 ### Long memtest
 
-Sweep the available verified capacity with multiple patterns and retention
-intervals. Reserve loader, stacks, vectors, logs, payload, and tool working
-areas. A tester running in DRAM cannot overwrite "all 512 MiB" safely.
-Record range, duration, conditions, and first failing address/value.
+A wider test uses multiple patterns and retention intervals within the
+available verified capacity, excluding loader, stacks, vectors, logs, payload
+and tool working areas. A tester running in DRAM cannot overwrite "all
+512 MiB" safely. Its result is meaningful only with the range, duration,
+conditions and first failing address/value.
 
 Linux `memtester` later tests memory allocated to a user process; it is not
 a bare-metal program or a proof that every physical byte was tested.
@@ -495,7 +498,7 @@ A validated DCD carries a fixed board configuration. An SPL can instead
 execute richer initialization code. Choose the boot design first, then
 express the board's initialization in the form that design supports.
 Chapter 11's `python3 mkimx.py` tool is deliberately OCRAM-only and unsigned;
-it does not build a DDR image or accept a DCD. The two-image exercise above
+it does not build a DDR image or accept a DCD. The two-image design above
 still wraps an OCRAM loader. For a ROM-loaded DDR image, follow the actual
 Chapter 19 image/build route with a qualified DCD-capable configuration.
 
@@ -516,23 +519,32 @@ Before a hardware session, read the matching package guide, check board
 power/USB/reset prerequisites from Chapter 8, and verify the selected SoC.
 Archive inputs and results. This chapter records no tool run or board test.
 
-## 14.14  Lab
 
-1. Locate the fitted part and matching schematic/BSP. Fill the timing and
-   geometry worksheet. Stop if the exact part data sheet is unavailable.
-2. Check the MMDC clock path with Chapter 13. Audit pads, timing encodings,
-   MRS values, refresh, completion waits, and applicable errata.
-3. With approved hardware prerequisites, use the matching RPA/stress tool
-   workflow. Preserve actual logs and calibration conditions.
-4. Build an OCRAM test only after initialization is qualified. Declare the
-   scratch range; compare two patterns and record failures precisely.
-5. Check high-address aliasing and wider ranges without overwriting the
-   tester or another live owner.
-6. Optional: build the separately linked payload and inspect both maps
-   before transferring control. Check PC, SP, globals, and VBAR separately.
-7. Temperature/voltage qualification belongs to a controlled setup within
-   ratings. Do not use a hairdryer, hot-air station, or DDR overclock as a
-   beginner stress experiment.
+(1414-lab)=
+## 14.14  Key Notes
+
+- DDR availability depends on a matched clock, geometry, electrical setup,
+  timing/command sequence, refresh and calibration. A valid address or a
+  copied delay table establishes none of that configuration by itself.
+- MMDC fields and DRAM mode registers encode the same latency choices
+  differently. Minimum nanoseconds, minimum CK cycles and field encodings
+  must agree for the fitted part at the selected operating point.
+- Configuration request/acknowledge separates setup from normal AXI traffic.
+  Failure handling must stay in OCRAM, because uncertain DDR cannot safely
+  hold diagnostics, stacks or the recovery path.
+- Destructive tests require exclusive scratch ownership and a known cache
+  state. A successful low-address sweep does not establish full capacity,
+  high-address non-aliasing or voltage/temperature margin.
+- Calibration positions the active byte lanes within the data window. Its
+  results belong to a particular board, DRAM part, clock and set of conditions,
+  not to every board sharing the SoC.
+- A separately linked DRAM payload keeps loading distinct from relocation.
+  It owns its startup, stack, globals and vectors, while the OCRAM loader owns
+  placement and instruction synchronization. IRQ/timer examples need not move.
+- This chapter supplies no qualified DDR initialization table or board result.
+  Temperature/voltage qualification requires controlled equipment within
+  ratings. Do not use a hairdryer, hot-air station or DDR overclock as a stress
+  experiment.
 
 ## 14.15  Pitfalls
 

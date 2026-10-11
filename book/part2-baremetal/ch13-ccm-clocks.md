@@ -17,8 +17,8 @@ DCD, or loader may have changed the reset configuration.
 
 ## 13.1  What we want to set up
 
-Keep this example plan beside the register dump. Trace each row through
-the selected parent and divider, then compare it with your handoff state.
+This example plan names the parent and divider behind each domain.
+It is a worked clock tree, not an instruction to apply these frequencies.
 
 | Domain | Example frequency | Conditions needed |
 |--------|-------------------|-------------------|
@@ -286,7 +286,8 @@ startup sequence changes them. This module has no `clocks_init()` entry.
 
 ## 13.5  Verifying with `printf`
 
-After the Chapter 12 UART works, add this **main-body fragment**:
+This **main-body fragment** reports the audit through the Chapter 12 UART
+interface. Its use assumes that console's clock and initialization contract:
 
 ```c
 printf("ARM=%u AHB=%u IPG=%u UART=%u MMDC=%u Hz\r\n",
@@ -298,7 +299,7 @@ For section 13.1's example tree, the calculated values would be 396000000,
 132000000, 66000000, 80000000, and 396000000. These are **representative
 calculations**, not captured board output or a promised ROM state.
 
-Work through IPG by hand. SYS DIV_SELECT=1, PFD2 FRAC=24,
+For the IPG calculation, SYS DIV_SELECT=1, PFD2 FRAC=24,
 PRE_PERIPH_CLK_SEL=1, PERIPH_CLK_SEL=0, AHB_PODF=2, IPG_PODF=1 give:
 `24 * 22 * 18 / 24 / 3 / 2 = 66 MHz`. The final mux matters too.
 
@@ -368,19 +369,27 @@ clock change requires the documented quiesce/self-refresh transition and
 errata handling, with code, data, stacks, and other masters kept away from
 DDR as required. It is not an extra write in this audit module.
 
-## 13.8  Lab
 
-1. Build the audit into the OCRAM project without changing the approved
-   clocks. Record the boot route and register values.
-2. Decode ARM, AHB, IPG, UART, and MMDC on paper before comparing results.
-   Explain each zero returned by this limited decoder.
-3. In a host calculation, change SYS DIV_SELECT from 1 to 0. What does
-   PFD2 FRAC=24 produce? **Check:** 360 MHz, not 396 MHz.
-4. Inspect a board-matched BSP transition: voltage check, temporary parent,
-   affected consumers, busy waits, failure handling. Do not execute it until
-   those prerequisites are satisfied.
-5. Compare PMU cycles and a known timer interval as in Chapter 16. Record
-   assumptions instead of declaring a blink rate a frequency measurement.
+(138-lab)=
+## 13.8  Key Notes
+
+- A frequency belongs to a complete selected path: reference, PLL or bypass,
+  PFD where used, muxes and dividers. CCGR gates control availability, not rate.
+- The audit getters inspect a stable tree. Board startup owns transitions,
+  voltage sequencing and consumer coordination. A zero from this decoder can
+  mean an unsupported path rather than a stopped clock.
+- Shared parents create shared risks. Changing PLL2_PFD2 can affect buses and
+  MMDC even when the ARM core has moved to another source.
+- SYS DIV_SELECT=0 with a 24 MHz reference gives 480 MHz. With PFD2 FRAC=24,
+  that becomes 360 MHz rather than the 396 MHz of the 528 MHz parent case.
+- PLL lock is not operating-point approval. Safe transitions also depend on
+  speed grade, rail voltage, temperature, consumer state and the correct
+  handshake's bounded failure path.
+- MMDC timings describe a chosen DDR CK. Changing a live DDR clock requires
+  the documented quiesce/self-refresh protocol, not an isolated divider write.
+- Register decoding calculates nominal frequency and PMU CCNT counts cycles.
+  Neither establishes elapsed time or electrical margin without an appropriate
+  independent reference or measurement.
 
 ## 13.9  Pitfalls
 

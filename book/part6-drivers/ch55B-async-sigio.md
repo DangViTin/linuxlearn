@@ -117,11 +117,14 @@ Three steps. First, install the signal handler. Second, `F_SETOWN` tells the ker
 
 For modern code, `poll()` / `epoll` are preferred for everything. SIGIO is worth knowing about, but rarely the right tool today.
 
-## 55B.4  Lab
+<span id="b-4-lab"></span>
+## 55B.4  Key Notes
 
-1. **Add SIGIO** to the button driver from Ch 45. Confirm a user-space process receives SIGIO when the button is pressed.
-2. **Compare against poll().** Write two equivalent programs, one with SIGIO, one with `poll()`. Profile CPU and latency.
-3. **F_SETSIG for SI_FD.** Use a realtime signal (`SIGRTMIN+1`) with `F_SETSIG`. Receive `siginfo->si_fd` to know which fd fired.
+- SIGIO is a notification that device state may need attention, not the data itself. The application's queue or read interface remains the source of events.
+- Signal ownership, enabling asynchronous delivery and device release form one registration lifecycle. Stale registrations can outlive the intended recipient.
+- Ordinary signals can merge. A recipient must drain available work rather than assume one signal corresponds to one hardware event.
+- Signal-handler context restricts what the application can safely do. Complex processing belongs outside the handler.
+- `poll()` and `epoll()` also provide event-driven waiting without continuous busy polling. The choice is an application interface decision, not a requirement to use signals for efficiency.
 
 ## 55B.5  Pitfalls
 

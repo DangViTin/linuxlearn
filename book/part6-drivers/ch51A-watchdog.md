@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 51A: Watchdog
 
-> **What:** the **watchdog subsystem**, `/dev/watchdog`, the `watchdog_device` framework, and the user-space pattern (`systemd-watchdog` or a hand-written keepalive daemon) that reset the hardware timer periodically. If the timer ever expires, the SoC's watchdog peripheral resets the system. By the end you have a system that recovers automatically from any kernel hang or stuck application.
+> **What:** the **watchdog subsystem**, `/dev/watchdog`, the `watchdog_device` framework, and the user-space keepalive policy. Timer expiry requests a hardware reset, while the feeder's health criteria determine which failures can lead to that reset.
 >
 > **Why:** Most shipping products need this. A kernel oops in some other subsystem. A deadlock in your driver. A user-space process stuck in an infinite loop. Without a watchdog, the device becomes a brick that needs a manual power-cycle. With one, the device reboots within seconds, logs the event, and is back in service.
 >
@@ -186,16 +186,18 @@ return devm_watchdog_register_device(&pdev->dev, wdd);
 The core handles `/dev/watchdog`, ioctls, and sysfs. You just implement the four ops.
 > **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
-## 51A.7  Lab
+<a id="lab"></a>
 
-1. **Enable the i.MX2 watchdog in your DT.** Verify `/dev/watchdog` exists. `cat /sys/class/watchdog/watchdog0/status`.
-2. **Write a minimal keepalive daemon.** Open `/dev/watchdog`, set 10 s timeout, `WDIOC_KEEPALIVE` every 5 s. Then `kill -9` the daemon. Verify the system resets 10 s later.
-3. **Set up ramoops.** Reserve memory, enable the `ramoops` driver. After a forced watchdog reset, find the saved dmesg in `/sys/fs/pstore/`.
-4. **Application-aware feeder.** Write a feeder that watches a "heartbeat file" updated by your app every 2 s. If the file is stale by > 30 s, stop feeding the watchdog (and let the system reset).
-5. **systemd integration.** Convert the feeder to a systemd unit with `WatchdogSec=`. Use `sd_notify(0, "WATCHDOG=1")` from your code.
-6. **External watchdog IC.** Optional, wire up a TPS3823 with a GPIO output as the reset trigger. Feed it from your driver. Compare against the on-chip watchdog.
-> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+<span id="a-7-lab"></span>
+(ch51a-lab)=
+## 51A.7  Key Notes
+
+- A hardware watchdog provides a reset path that is less dependent on kernel scheduling than a software timer. Its actual clock, power, and reset dependencies bound its independence.
+- The feeder owns the definition of progress. Feeding because one daemon still runs can conceal failure of the application it is meant to supervise.
+- Application supervision and hardware keepalive are separate layers. Service restart policy and whole-system reset policy need distinct owners and time budgets.
+- Timeout selection includes scheduling delays, storage stalls, boot handoff, and suspend behavior. A timeout that catches hangs can also interrupt legitimate slow operation.
+- `nowayout`, magic-close support, and driver capabilities determine whether an armed watchdog can stop. Closing a descriptor is not a universally safe disarm operation.
+- Reset-reason information and persistent logs help explain recovery, but require supported hardware and memory preservation. Watchdog reset can interrupt storage writes and does not establish successful recovery of the MINI or its attached devices.
 
 ## 51A.8  Pitfalls
 

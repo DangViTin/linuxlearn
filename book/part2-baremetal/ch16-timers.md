@@ -12,7 +12,7 @@ An LED delay loop changes when the compiler changes. A timer lets us ask
 for an interval without guessing how many instructions the loop takes.
 We will use GPT1 to read elapsed time and EPIT1 to request periodic service.
 
-The examples use a verified **IPG clock**, not an assumed 696 MHz CPU.
+The examples require a verified **IPG clock**, not an assumed 696 MHz CPU.
 They run in the Chapter 10/15 privileged, MMU-off, integer-only environment
 and remain in normal run mode. DDR and a higher ARM frequency are not
 prerequisites.
@@ -336,28 +336,35 @@ but both may share the same oscillator, so it is not independent proof of
 absolute Hz. A mismatch is a question to investigate, not proof that the
 clock initializer is wrong.
 
-Do not promise a memtest throughput or assume 200 NOP instructions take
-exactly 200 cycles. Pipeline behavior, loop instructions, memory, cache,
-and interrupt service all matter. A 1 MHz GPT also cannot resolve a
-287 ns interval directly.
+Instruction count alone does not determine memtest throughput or elapsed
+time. Pipeline behavior, loop instructions, memory, cache and interrupt
+service all matter. A 1 MHz GPT cannot directly resolve a sub-microsecond
+interval.
 
-## 16.6  Lab
 
-1. Run heartbeats with the approved clock/handoff state. Log elapsed GPT
-   intervals and delivered EPIT ticks separately. One hour corresponds
-   nominally to 3,600,000 ticks, not 3600.
-2. Compare a longer interval against a suitable external reference.
-   Separate reference uncertainty, crystal tolerance, and missed IRQs.
-   A hand stopwatch does not characterize a 0.01% oscillator.
-3. Measure batches of `udelay(1)`, `udelay(10)`, and `udelay(1000)`.
-   Report overhead and minimum-delay behavior; no 1% promise is made.
-4. Keep printf out of the 1 ms ISR. Increment counters there and print
-   snapshots in foreground. This wrapper does not support nested IRQs.
-5. Test unsigned rollover arithmetic on the host with start=0xFFFFFFF0
-   and now=0x00000020. **Check:** elapsed=48. This tests arithmetic, not
-   a physical timer.
-6. Profile a sufficiently long operation with PMU and GPT. Compare the
-   ratio with the read-only clock audit and record counter settings.
+(166-lab)=
+## 16.6  Key Notes
+
+- GPT's free-running count represents elapsed ticks. EPIT requests periodic
+  service. Their clocksource/clockevent roles separate time measurement from
+  scheduling, without prescribing Linux's eventual timer selection.
+- Both initializers depend on a known, stable IPG rate and the selected source
+  encoding. A later clock change invalidates their units until reconfiguration.
+- EPIT's repeating reload period includes zero. With 66 MHz IPG, LR=65999
+  gives 66000 source ticks per period. Its initial phase need not match the
+  interval between steady consecutive events.
+- OCIF is a flag, not an event queue. Matches can coalesce while IRQs are
+  masked, so `tick_ms()` counts serviced interrupts rather than guaranteed
+  elapsed milliseconds. Short ISR work preserves other sources' service time.
+- Unsigned subtraction crosses rollover for intervals shorter than one full
+  period. From `0xFFFFFFF0` to `0x00000020` the difference is 48 ticks. That
+  arithmetic says nothing about whether a physical timer kept running.
+- A guard tick and polling overhead favor minimum-delay behavior, not exact
+  duration. Low-power clock continuity and a stopped-counter failure path are
+  separate design requirements not supplied by these run-mode delay loops.
+- PMU cycles and GPT ticks describe different units. Their ratio can check a
+  clock-tree calculation, but a shared oscillator prevents it from being an
+  independent absolute-frequency measurement.
 
 ## 16.7  Pitfalls
 

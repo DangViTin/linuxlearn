@@ -165,15 +165,13 @@ rsn_pairwise=CCMP
 
 This turns your i.MX6ULL into a WiFi hotspot, useful for "configure-the-device-from-your-phone" setup flows. RT5370 and MT7601 support this in-tree. RTL8188EUS needs the out-of-tree driver for AP mode.
 
-## 92.7  Lab
+<span id="lab"></span>
+## 92.7  Key Notes
 
-1. **RT5370 plug-and-play.** Insert an RT5370 dongle. Verify `wlan0` appears with zero config (firmware from linux-firmware). Connect.
-2. **Compare an RTL8188EUS.** Insert one. With the in-tree `r8188eu`, verify station mode works. Note any AP-mode limitation.
-3. **Out-of-tree build (RTL8188EUS).** Build the aircrack-ng `rtl8188eus` driver against your kernel. Load it. Test AP mode.
-4. **Kernel-upgrade pain demo.** Note the out-of-tree driver's kernel-version assumptions. (Conceptually: a kernel bump may break it.)
-5. **Bandwidth contention.** Run iperf3 over USB WiFi while streaming a UVC camera on the *same* USB controller. Measure degradation. Move to the second controller. Measure improvement.
-6. **AP mode.** With RT5370, run hostapd + dnsmasq. Connect a phone to your i.MX6ULL hotspot.
-7. **Power.** Measure idle current with the USB dongle vs an SDIO module. USB dongles (especially RTL out-of-tree) often run hotter / draw more.
+- USB removes much board-specific bus wiring but does not remove firmware, driver or radio-policy dependencies.
+- The actual USB identity and supported chip revision matter more than a dongle's retail name. Station, access-point and monitor capabilities must be established for the selected stack.
+- Out-of-tree driver support creates an ongoing compatibility responsibility. A module that builds today does not establish support for the next kernel.
+- USB power and shared-controller bandwidth can limit networking before radio conditions do. Throughput depends on the whole system and traffic pattern.
 
 ## 92.8  Pitfalls
 

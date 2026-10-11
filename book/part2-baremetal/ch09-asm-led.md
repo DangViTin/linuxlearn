@@ -4,7 +4,7 @@ The host can already see the board in USB downloader mode. Now we want one obser
 
 An LED seems like a modest reward for all that preparation. It is also a useful first witness. To blink, the program must reach its entry point, access a GPIO controller and route that controller to the right pad. We can inspect each of those steps without first building a C runtime or initializing DDR.
 
-Keep the Chapter 8 power and connector checks in place. This lab assumes an open development device and a fresh ROM downloader boot, not a jump from U-Boot or another running program. We do not change security fuses.
+Keep the Chapter 8 power and connector checks in place for any board operation. This example assumes an open development device and a fresh ROM downloader boot, not a jump from U-Boot or another running program. We do not change security fuses. The listings explain that execution path without requiring a board run to continue reading.
 
 ## 9.1  What we are about to build
 
@@ -167,7 +167,7 @@ A few notes on what's there and what isn't:
 - **`1:` is a local label.** `1b` means "branch to the nearest `1` label going backward." This is a GAS convention for local loops. It avoids us inventing new names.
 - **`.syntax unified`** says "use the modern ARM/Thumb-unified mnemonics", which lets us write `orr r1, r1, ...` even in ARM mode without surprises.
 
-The delay count is deliberately large. A short loop that looked slow on an MCU may make this LED appear steady. CPU clock, instruction-cache state and branch timing all affect the interval, so do not label it as milliseconds. Start with this count, then compare a smaller count in the lab. Chapter 16 supplies a measured timebase.
+The delay count is deliberately large. A short loop that looked slow on an MCU may make this LED appear steady. CPU clock, instruction-cache state and branch timing all affect the interval, so do not label it as milliseconds. Reducing the count changes the interval without establishing a calibrated frequency. Chapter 16 supplies a measured timebase.
 
 ## 9.4  Building the image
 
@@ -382,16 +382,18 @@ Your code:
 LED blinks. The ROM executed first. From the handoff into `_start`, the instructions controlling this LED are ours.
 ```
 
-No software layer sits between your code and the chip. The next chapters add layers on top of what you built here.
+No software layer sits between this program and the chip. The next chapters add layers on top of this direct register-access model.
 
-## 9.8  Lab
 
-If the LED blinks, pause before changing the code: which write gave the pin a level, and which write made that level visible outside the chip? Then try:
+(98-lab)=
+## 9.8  Key Notes
 
-1. **Change the blink rate** by editing the delay constant. Measure the resulting frequency with a scope or with a phone's slow-motion camera. This busy loop is not a precise timer because its speed depends on the CPU clock and instruction timing.
-2. **Trace a different pin on paper first.** Check its schematic net, voltage domain, loads and boot role. Only use a confirmed spare output with a suitable probe or resistor-limited LED. Never drive a supply, a connected output or a boot strap simply because it appears on a header. Look up its registers in the RM.
-3. **Add a second LED** that blinks at half the rate. Now you have a counter.
-4. **Measure image size growth.** Run `wc -c led.bin` before and after. Observe the marginal cost.
+- The ROM owns loading and the initial handoff. The assembly payload owns the GPIO configuration after entry, with no C runtime, scheduler or DDR dependency.
+- The clock gate, mux selection and output latch/direction serve different purposes. A writable GPIO register does not establish that its signal reaches the intended pad.
+- Preloading the active-low LED's off level before enabling output avoids exposing a stale latch value. Active-low polarity does not imply an open-drain driver.
+- The ELF entry, IVT entry and loaded code location must agree. USB command success establishes a transfer result, not execution of the intended instructions.
+- A busy-loop delay depends on clock and instruction timing. Its count is not a duration, and rapid toggling can look like a steady LED.
+- A header pin is not automatically a spare output. Its voltage domain, connected loads and boot role constrain use. Never drive a supply, connected output or boot strap as though it were an LED connection.
 
 ## 9.9  Pitfalls
 
@@ -399,7 +401,7 @@ If the LED blinks, pause before changing the code: which write gave the pin a le
 - **Wrong IOMUX ALT.** Symptom: writes to GPIO_DR succeed but the pin doesn't move. Some pads default to "GPIO" in their reset ALT. Many do not. Always set ALT explicitly.
 - **Entry address does not match code location.** Symptom: `uuu` reports success, but the board does nothing. The host cannot tell whether valid instructions exist at `IVT.entry`. Check the file-to-RAM map in Section 9.5.
 - **Delay is too short.** The LED may look continuously on even though the pin is toggling quickly.
-- **Resetting after a successful upload.** This image is in RAM. A new downloader boot waits for another upload. Keep SDP selected while doing these labs. Switch to SD only after preparing and verifying a bootable card in Chapter 11.
+- **Resetting after a successful upload.** This image is in RAM. A new downloader boot waits for another upload. The SDP path leaves persistent storage unchanged. Switching to SD requires a separately prepared and verified bootable card as described in Chapter 11.
 - **Mistaking active-low for open-drain.** Active-low describes which level lights the LED. Open-drain describes the output driver. They are different properties. Our pad setting uses a push-pull output.
 - **Optimization eating your loop.** GCC with `-O2` may unroll or completely eliminate a delay loop with no side-effects. We avoided this here by leaving the loop in raw asm. If you port to C, mark the counter `volatile`.
 
@@ -412,4 +414,4 @@ If the LED blinks, pause before changing the code: which write gave the pin a le
 - The GNU Assembler manual, "ARM Dependent Features", `.syntax unified`, `.cpu`, `.global`, literal pools.
 - Your **Point Atom MINI schematic**, the only authoritative source for which LED is on which pin on *your* board.
 
-The LED gives us an execution checkpoint. Next we keep that checkpoint and change the language: Chapter 10 supplies the stack and memory initialization that C expects before `main()` can run.
+The LED is a simple execution witness in this design. Chapter 10 keeps the same output path and changes the language, supplying the stack and memory initialization that C expects before `main()` can run.

@@ -10,7 +10,7 @@ status: draft
 
 > **What:** **LIN (Local Interconnect Network)**, a single-wire, master/slave serial bus used in cars for low-cost peripherals where CAN is overkill (door modules, seat motors, mirror controls, HVAC fans, rain sensors, parking sensors). Three transceivers: **NXP TJA1020** (legacy 12 V), **TJA1027** (3.3/5 V LIN 2.x), **Microchip MCP2003B** (similar). On Linux there is no native LIN subsystem, so we drive it from a UART with custom break + parity handling, build a master node and a slave responder in C, and demonstrate talking to a real automotive LIN node (HVAC blower controller from a junkyard).
 >
-> **Why:** if you're integrating with automotive systems, retrofit modules, OBD diagnostic tools, custom dashboards, EV conversion kits, you'll meet LIN. Cars use 100+ LIN slaves. CAN buses delegate "is the user pressing the seat-heat button" to a LIN sub-bus underneath. LIN is also spreading into industrial actuator buses (HVAC valves, building blinds). At about $0.40 per node and one wire, it is the cheapest option for simple peripherals. Linux has no native LIN subsystem. You write the framing yourself. This is also a useful UART exercise.
+> **Why:** if you're integrating with automotive systems, retrofit modules, OBD diagnostic tools, custom dashboards, EV conversion kits, you'll meet LIN. Cars use 100+ LIN slaves. CAN buses delegate "is the user pressing the seat-heat button" to a LIN sub-bus underneath. LIN is also spreading into industrial actuator buses (HVAC valves, building blinds). At about $0.40 per node and one wire, it is the cheapest option for simple peripherals. Linux has no native LIN subsystem. You write the framing yourself. This is also a useful UART example.
 >
 > **Focus:** A LIN frame is: a UART start, a 'break' pulse, an 0x55 sync byte, a 6-bit Protected Identifier (PID) byte, one to eight data bytes, and a checksum byte. A single master schedules every frame. Slaves never transmit on their own. The break signal (≥13 dominant bits = ~1.4 ms low at 9600 LIN-baud) is *not* a normal UART feature, you either generate it with `tcsendbreak()` or by toggling baud rate momentarily. The protocol is simple. The trap is getting the timing right on a non-deterministic Linux UART.
 
@@ -271,17 +271,13 @@ Send: ID 0x20, data `[speed_0..255, 0x00, 0x00, ..., 0x00]` (8 bytes total for V
 
 At this point you have driven an automotive comfort actuator from Linux. The same pattern works for door-lock modules, mirror-fold motors, sunroof tilt, all LIN slaves.
 
-## 109.9  Lab
+<span id="lab"></span>
+## 109.9  Key Notes
 
-1. **Scope the break.** Wire TJA1027 + a scope on the LIN line. Trigger `send_break()`. Verify the low pulse is 1.4 ms (13.5 bits at 9600). Tune until correct.
-2. **Send a header.** Confirm sync byte is 0x55 (10 bit-times after the break). PID byte for ID 0x10 should be 0x50.
-3. **Loopback test.** Connect two transceivers on the same LIN bus. Master sends a frame. Slave (second board running the recv loop) prints what it received.
-4. **Checksum classic vs enhanced.** Compare both implementations against a known correct frame from a LIN bus log.
-5. **Multi-slave schedule.** Run a 100 ms scheduler polling 3 slave IDs in sequence. Verify each slave only responds to its own ID.
-6. **Wake/sleep.** Implement the sleep command. Confirm slaves stop responding. Issue wake pulse (drive bus low 1 ms). Verify slaves come back.
-7. **Real-car interface.** Wire to an actual automotive LIN slave (junkyard module). Reverse-engineer the protocol by sending common IDs and watching for responses. Many slaves respond to ID 0x3D (slave-info request) with their NAD (Network Address) + supplier ID.
-8. **Logging.** Capture all bus traffic to a file with timestamps. Build a simple LIN-trace viewer in Python.
-9. **Compare with LIN-USB analyser.** Hook up a commercial analyser (PEAK PLIN-USB, Microchip MCP2003-EVB-LIN). Confirm your master generates identical frames.
+- LIN uses one schedule owner to issue headers and coordinate responses. Adding another sender without that role agreement creates collisions.
+- Break, synchronization, protected identifier and checksum have distinct jobs. A UART byte stream alone does not establish a compliant LIN transaction.
+- Timing-sensitive work must have a suitable hardware or software owner. A Linux example does not prove that slave response deadlines are met under load.
+- Transceiver supplies, wake behavior and application signals are device-specific. Automotive integration requires documented interfaces and a safe isolated test environment, not speculative commands on a vehicle.
 
 ## 109.10  Pitfalls
 

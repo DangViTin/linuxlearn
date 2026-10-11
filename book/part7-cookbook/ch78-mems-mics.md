@@ -241,16 +241,13 @@ DT: change `simple-audio-card,routing` to declare two channels. The kernel doesn
 
 The captured file plays back in stereo on the host.
 
-## 78.8  Lab
+<span id="lab"></span>
+## 78.8  Key Notes
 
-1. **Wire INMP441 to SAI2** on the i.MX6ULL: BCLK, LRCLK (=WS), SD, VDD, GND, LR-strap.
-2. **Add DT.** Both `&sai2` and `simple-audio-card` as in §78.4.
-3. **Verify enumeration.** `arecord -l` should show the mic. `cat /proc/asound/cards`.
-4. **Record.** `arecord -D plughw:0,0 -f S32_LE -r 48000 -c 1 -d 5 voice.wav`. Speak. Copy file to host. Play back. Speech should be clear though quiet.
-5. **Check volume.** Run `arecord ... | aplay` (loopback on the same i.MX, with speakers via Ch 53). Hear yourself.
-6. **Stereo.** Add a second INMP441, strap LR opposite. Record 2-channel. Check L and R are different (cover one mic while recording. That channel goes quiet).
-7. **Sample-rate variation.** Try 16 kHz, 32 kHz, 48 kHz. Verify the chip + SAI cooperate.
-8. **FFT in user-space.** Pipe `arecord` into a small program that does FFT over 8192-sample windows. Plot spectrum live with gnuplot. Watch frequencies appear as you whistle.
+- An I2S microphone supplies digital samples through a clocked audio interface. ASoC joins that interface to the CPU DAI and DMA path without inventing a register-controlled codec.
+- Sample width, slot width and channel selection are separate parts of the stream format. A 32-bit container does not mean the microphone has 32 meaningful audio bits.
+- The clock source and microphone channel straps must agree. Two physical microphones are required for genuinely different left and right signals.
+- Buffering protects against scheduling variation, while acoustic placement, enclosure and noise determine the useful captured signal.
 
 ## 78.9  Pitfalls
 

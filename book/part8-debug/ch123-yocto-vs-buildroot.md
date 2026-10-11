@@ -285,18 +285,16 @@ For CI:
 - **Yocto**: keep an sstate-cache mounted across builds (NFS, S3). First build is slow, subsequent are fast.
 > **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
 
-## 123.11  Lab
 
-1. **Buildroot bring-up.** Clone Buildroot. `make qemu_arm_versatile_defconfig`. `make`. Run the resulting image in QEMU. Time the build.
-2. **Buildroot custom package.** Add a "hello world" package. Verify it appears in the rootfs.
-3. **Buildroot defconfig for your board.** Customize for i.MX6ULL Point Atom. Save defconfig. Commit. Teammate reproduces.
-4. **Yocto bring-up.** Clone poky kirkstone branch. Source `oe-init-build-env`. Set `MACHINE = "qemuarm"`. `bitbake core-image-minimal`. Time the build (initial vs second).
-5. **Yocto custom recipe.** Write a `.bb` for the same "hello world." Verify it's in the rootfs.
-6. **Side-by-side comparison.** Build the same rootfs from both. Compare: size, package list, build time, disk usage during build.
-7. **Yocto layer.** Create your own layer (`bitbake-layers create-layer ../meta-mine`). Add a board machine config. Verify it works.
-8. **SDK from each.** Generate SDK. Cross-compile a 50-line C program with each. Compare results.
-9. **Update one package.** Increment a package version in both. Buildroot: edit `foo.mk`, rebuild. Yocto: write a new `foo_1.1.bb`, rebuild.
-10. **Verdict.** Write a 200-word "we should choose X" for your team's situation. Defend.
+(12311-lab)=
+## 123.11  Key Notes
+
+- Buildroot organizes an image around configuration and package definitions. Yocto composes recipes, layers, machines, distribution policy, and image contents.
+- The useful comparison is the product's variation and maintenance model, not hello-world recipe length. Simple packages can be compact in either system.
+- Build and runtime dependencies must both reach the final image. Successful compilation does not establish that deployed libraries and services are present.
+- An SDK exports a toolchain and target sysroot for applications. Its compatibility belongs to the rootfs it represents, not merely its architecture name.
+- Input pinning, host assumptions, and artifact comparison underpin reproducibility. Caches reduce work but do not by themselves prove byte-identical output.
+- Layer reuse and variant composition offer flexibility at the cost of more metadata interactions. CI storage, licensing records, and source retention are part of the decision.
 
 ## 123.12  Pitfalls
 

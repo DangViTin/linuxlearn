@@ -182,16 +182,13 @@ For the i.MX6ULL to be a *node* (not just a provisioner), e.g., a mesh sensor th
 
 The structure is similar to the GATT server of Ch 95 but applies to mesh models. It is more involved, and the bluez-mesh D-Bus API is less mature than the GATT one. For most products, the i.MX6ULL is the *provisioner/gateway* (using `mesh-cfgclient`), and the cheap nodes (nRF52 with Zephyr/nRF SDK mesh firmware) are the *servers*.
 
-## 97.7  Lab
+<span id="lab"></span>
+## 97.7  Key Notes
 
-1. **Start bluetooth-meshd.** Verify it runs with your HCI controller (Ch 95).
-2. **Create a network.** `mesh-cfgclient` → `create`. Note the NetKey + token.
-3. **Provision a node.** Use an nRF52 dev kit flashed with a mesh "light" sample (Nordic SDK or Zephyr). Discover + provision it.
-4. **Bind + subscribe.** Give it AppKey 0. Bind to the OnOff model. Subscribe to a group.
-5. **Control it.** Send OnOff to the group. The light responds.
-6. **Multi-node.** Provision 3+ nodes into the same group. One command controls all.
-7. **Relay test.** Place a node out of direct range of the i.MX6ULL but within range of another node. Verify the message relays (the far node still responds). This is the mesh magic.
-8. **MQTT gateway.** Bridge a mesh group to MQTT. Control the lights from an MQTT client (mosquitto_pub).
+- Mesh models define application behavior, elements contain models, and publication and subscription connect them through addresses. Network membership alone does not configure useful application behavior.
+- Provisioning, network keys, application keys and model binding are distinct authority steps.
+- Relaying improves reach at the cost of radio traffic. More relays are not automatically better, so density, retry and message-rate assumptions matter.
+- Sequence state and keys have persistent lifetimes. Reset and recovery policy must preserve or deliberately re-establish replay-protection and identity state.
 
 ## 97.8  Pitfalls
 

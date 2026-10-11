@@ -364,16 +364,13 @@ DT:
 
 After load: `/sys/bus/iio/devices/iio:device0/in_angl_raw` plus `_scale` for converting to radians.
 
-## 74.8  Lab
+<span id="lab"></span>
+## 74.8  Key Notes
 
-1. **Magnet check.** Use a real diametric magnet (e.g., 6×2.5 mm disc). Verify orientation: the magnet's N-S axis should be in the *plane* of the chip's surface.
-2. **Build and load `myas5048a.ko`.** Verify magnitude > 4000 (good magnet). Read angle while rotating.
-3. **360° sweep.** Rotate slowly. Log raw values. Verify monotonic 0 → 16383 → 0 wraparound.
-4. **Resolution test.** With chip stationary, read 100 samples. Standard deviation should be < 5 LSB (0.1°).
-5. **Distance sweep.** Move the magnet from 0.5 mm to 5 mm. Magnitude rises then falls. Angle stays valid throughout the recommended range.
-6. **Mainline switch.** Use `compatible = "ams,as5048a"`. Same data, plus rich diagnostic attributes.
-7. **A1324 with ADC.** Wire A1324 output to i.MX6ULL ADC1 channel. Verify IIO ADC reading changes when bringing a magnet near.
-8. **Servo controller demo.** Hook the AS5048's angle to a PID loop driving a motor. Verify the system closes to a setpoint within 1°.
+- Rotary magnetic sensing depends on magnet type, alignment and field strength as well as electronics. Mechanical geometry is part of the measurement design.
+- Absolute angle wraps at one revolution. Position, velocity and accumulated turns require different state and interpretation above that value.
+- The AS5048A's command and response span successive frames. The driver must preserve that relationship rather than associate a reply with the wrong request.
+- Parity and diagnostic status help identify invalid data, but do not establish a qualified motor-control or safety system.
 
 ## 74.9  Pitfalls
 

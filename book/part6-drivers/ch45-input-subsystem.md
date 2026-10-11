@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 45: Input subsystem
 
-> **What:** the **input subsystem**, the kernel framework that turns "a GPIO went low" or "an I²C read returned a touch coordinate" into a standardised event stream consumed by `evdev`, X11, Wayland, framebuffer toolkits, and command-line tools. We'll build a `gpio-keys` derivative, the canonical "GPIO as keyboard key" driver, and walk every byte from the IRQ handler to `evtest` reading `/dev/input/eventN`.
+> **What:** the **input subsystem**, the kernel framework that turns "a GPIO went low" or "an I²C read returned a touch coordinate" into a standardised event stream consumed by `evdev`, X11, Wayland, framebuffer toolkits, and command-line tools. A small button-driver case connects the IRQ handler to `evtest` reading `/dev/input/eventN` and contrasts it with the maintained `gpio-keys` driver.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
@@ -44,7 +44,7 @@ The driver's only job is to call `input_report_*()` and `input_sync()`. The core
 
 ## 45.2  Event types and codes
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Security boundary:** Do not burn fuses, enroll production keys, or sign release images when exploring example code.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -74,7 +74,7 @@ A coherent group of events ends with `EV_SYN`/`SYN_REPORT`. The input core deliv
 
 ## 45.3  The mainline `gpio-keys` driver
 
-Before we write our own, let's notice that **the kernel already has `gpio-keys`**, the in-tree driver that exposes any number of DT-described GPIOs as keyboard keys. For real production use, just use it. The DT looks like this:
+**The kernel already has `gpio-keys`**, the in-tree driver that exposes DT-described GPIOs as keyboard keys. It is the normal implementation choice when its capabilities match the product. The DT looks like this:
 
 ```dts
 gpio_keys {
@@ -99,7 +99,7 @@ gpio_keys {
 
 Set `CONFIG_KEYBOARD_GPIO=y` in the kernel config, boot. Pressing the GPIO19 button now generates real `KEY_ENTER` events on `/dev/input/eventN`.
 
-For learning purposes, though, we'll write our own version so we know what the framework is doing.
+The smaller version below isolates the framework's registration and reporting interfaces without requiring a separate implementation from the reader.
 
 ## 45.4  Writing our own button driver
 
@@ -238,7 +238,7 @@ Done. Button is a real keyboard key.
 
 The `input` core provides **autorepeat** for free: register `EV_REP` capability and the core will generate repeat events (value=2) while a key is held. `gpio-keys` does this automatically. Our minimal driver doesn't bother.
 
-**Debounce** is software (or hardware). `gpio-keys` uses a timer (`debounce-interval` ms), on the falling edge, schedule a delayed work. Only report the event if the GPIO is still low after the delay. Implementing this in our driver is an exercise. The pattern: cancel the previous delayed work, schedule a new one for the debounce interval, only `input_report_key` from the work handler.
+**Debounce** filters electrical transitions into a stable logical state. A delayed-work design postpones sampling until the debounce interval has elapsed, then reports the stable press or release state. Further transitions restart the settling interval. The minimal driver above omits this policy, while `gpio-keys` provides debounce handling.
 
 **Key mapping.** The `KEY_*` codes are *logical*, `KEY_ENTER` is the same value regardless of whether the user's keymap is US QWERTY or Dvorak. The user-space keymap translates `KEY_*` to characters. For embedded devices with only a few buttons, you pick meaningful `KEY_*` codes:
 
@@ -308,14 +308,17 @@ $ sudo evtest /dev/input/event2     # interactive
 $ sudo cat /dev/input/event2 | hexdump -C
 ```
 
-## 45.9  Lab
+<a id="lab"></a>
 
-1. **Build and load the button-input driver.** Verify `evtest` shows `KEY_ENTER` events.
-2. **Add a second button** with `KEY_VOLUMEUP`. Update DT to use two `button-gpios`, modify driver to allocate one `input_dev` with both keys (or two devices, the kernel allows both).
-3. **Add debounce.** Schedule a `delayed_work` from the IRQ handler with a 30 ms delay. Only report the event from the work-handler.
-4. **Compare to `gpio-keys`.** Drop your driver, configure DT with `compatible = "gpio-keys"` and `linux,code = <KEY_ENTER>;`. Confirm identical behavior. Look at `drivers/input/keyboard/gpio_keys.c`, note how much more it handles (autorepeat, wakeup, runtime PM).
-5. **Touchscreen simulator.** Adapt your driver to emit `ABS_X` / `ABS_Y` / `BTN_TOUCH` events with random values once per second. Verify `evtest` shows touch events. This is the foundation for a real touchscreen driver (Ch 55G).
-6. **Power-button integration.** Reconfigure your button to emit `KEY_POWER`. With systemd, a long press should trigger a graceful shutdown.
+(ch45-lab)=
+## 45.9  Key Notes
+
+- An input driver translates device-specific observations into declared type/code/value events. Evdev and higher-level user-space consumers own delivery and interpretation.
+- Capabilities describe the device's event vocabulary before registration. `input_sync()` marks the end of a coherent update, such as a key transition or coordinate sample.
+- Press and release are both state changes. Debounce and autorepeat are distinct policies, and a simple edge handler does not supply both automatically.
+- `gpio-keys` is an implementation choice, while the custom button case exposes the same architectural boundary with fewer features. Neither DT examples nor event listings qualify MINI wiring.
+- Logical key codes describe roles, not characters or mandatory system actions. Power-button shutdown policy belongs to the user-space system configuration.
+- IRQs, polling, and delayed work must stop reporting before the input device's state is released. Framework registration does not remove the need for coordinated teardown.
 
 ## 45.10  Pitfalls
 

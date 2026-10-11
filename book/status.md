@@ -4,7 +4,7 @@ title: Status
 
 # Status
 
-The full first draft is present in this repository. Part IX is drafted as an advanced virtualization track, with QEMU and hardware lab validation still pending.
+The full manuscript is present in this repository. Its reading model is architecture-first: chapter-specific Key Notes replace assigned labs, and code illustrates mechanisms and interfaces. Removing assignments does not turn an implementation example into a qualified system.
 
 ```{list-table}
 :header-rows: 1
@@ -39,9 +39,9 @@ The full first draft is present in this repository. Part IX is drafted as an adv
   - Drafted
 * - Part IX — Applied virtualization and mixed-criticality systems
   - 127–139
-  - Drafted, lab validation pending
+  - Drafted, virtualization and mixed-core design studies
 ```
 
-The current phase is technical review and copy edit, plus lab validation for Part IX. Treat command sequences, register tables, production/security flows, and all Part IX virtualization labs as draft material until they have a tested-environment note in the chapter itself.
+Parts I-III have received technical/editorial review and source/build checks recorded in the project reports. Physical MINI qualification remains unperformed. Later parts still need their own detailed technical review. Commands, register tables and production/security flows remain version- and board-dependent examples, not deployment instructions validated by this editorial change.
 
 Start with [Chapter 1](part1-foundations/ch01-preface.md) for the reading order; the [full table of contents](toc.md) gives the full scope.

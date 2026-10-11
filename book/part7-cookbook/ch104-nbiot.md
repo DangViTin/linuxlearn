@@ -169,18 +169,13 @@ Real-world constraints reduce this to **8–12 years**:
 
 Ten years on one D-cell with no maintenance is achievable. The engineering is enforcing PSM duty cycle on every wake.
 
-## 104.6  Lab
+<span id="lab"></span>
+## 104.6  Key Notes
 
-1. **BC95-G bring-up.** Wire UART + PWRKEY. Confirm `Neul` boot URC. Run AT bring-up checklist.
-2. **Force a specific band.** `AT+NBAND=?` to list supported. Pick one your carrier uses. `AT+NBAND=8`. Reboot.
-3. **Send a UDP packet.** `AT+NSOCR` + `AT+NSOST`. Capture on a server with `nc -ul 5683`.
-4. **PSM enable + verify.** Set T3324=4 s. Watch the modem's PWR_IND pin, should drop within 5 s of idle. Measure VBAT current. Should drop to <10 µA.
-5. **Measure full uplink cycle energy.** Insert a 1 Ω shunt + scope on VBAT. Capture the full TX cycle. Integrate area to get charge.
-6. **10-year sensor.** Implement: wake STM32 → read BME280 → wake BC95 → send UDP → re-enter PSM. Project battery life from measured energy + 1 cycle/hour.
-7. **Cat-M1 with MQTT.** On a SIM7080G, configure MQTT URL, publish a sensor value, sleep. Compare cycle energy with NB-IoT (Cat-M1 is ~1.5–2× per cycle but faster latency).
-8. **eDRX vs PSM.** Configure eDRX (`AT+CEDRXS=1,5,"0010"`) instead of PSM. Verify downlink latency improves (≤30 s) at cost of higher idle current.
-9. **OTA firmware update over Cat-M1.** Most LTE-M modules support FOTA via AT commands. Time a 1 MB firmware update, should take ~10–30 min over Cat-M1 vs hours on NB-IoT.
-10. **Carrier coverage map.** Take the device to a basement / underground / rural location where Cat-1 (Ch 102) failed. NB-IoT should still register at –135 dBm RSRP.
+- NB-IoT and LTE-M offer different coverage, latency and mobility tradeoffs. The selected module and operator must support the intended service.
+- PSM and eDRX change availability as well as power consumption. Requested sleep parameters are not necessarily the parameters granted by the network.
+- A battery-life model must include complete wake, registration, transfer, retry and sleep behavior. Modem sleep current alone is not a system energy budget, especially with an always-on Linux host.
+- Application sessions may expire while the modem sleeps. Reconnection and delayed downlink behavior need an explicit protocol policy rather than an assumption of continuous reachability.
 
 ## 104.7  Pitfalls
 

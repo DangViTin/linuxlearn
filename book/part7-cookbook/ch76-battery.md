@@ -433,16 +433,13 @@ else:
 
 In product UI, do *time-averaged* SoC display, instantaneous readings vary by ±1 % when the load is unsteady. EMA with τ = 30 s smooths the indicator.
 
-## 76.9  Lab
+<span id="lab"></span>
+## 76.9  Key Notes
 
-1. **Wire a MAX17048** to your i.MX6ULL I²C bus, with a Li-ion cell on its VCELL input.
-2. **i2cdetect.** Verify 0x36 appears.
-3. **Build and load `mymax17048.ko`.** Read capacity and voltage. Disconnect / reconnect the cell. Capacity should jump after a 30-second model-recompute period.
-4. **Cell discharge test.** Connect a load (resistor). Log capacity + voltage every 10 s for an hour. Plot. You should see voltage drop and capacity decline together, but not in a strictly linear relationship.
-5. **upower integration.** Install UPower. Verify `upower -i /org/freedesktop/UPower/devices/battery_battery` reports your readings.
-6. **TP4056 charging.** Wire a TP4056 to charge the cell from USB. Wire CHRG to a GPIO. Use `gpio-charger` in DT. Verify `online` reports correctly.
-7. **Switch to mainline MAX17048 driver.** `compatible = "maxim,max17048";`. Verify same data. Gain access to extra properties (alerts, capacity-level).
-8. **Capacity-level logic.** Write a user-space daemon that reads capacity every 30 s. Logs to syslog when crossing thresholds (low 20 %, critical 5 %). Triggers `poweroff` at critical-3 %.
+- Fuel estimation, charging, cell protection and power-path management are separate responsibilities. A Linux battery percentage is not a charging-safety mechanism.
+- A gauge's model must match the cell and operating conditions. Voltage under load is not a direct, universal mapping to remaining capacity.
+- The charger and system load share an electrical topology that determines behavior when external power changes. Driver properties cannot repair an unsuitable power path.
+- Low-battery shutdown needs margin, hysteresis and a persistence policy. An estimated percentage alone does not guarantee enough energy to finish a filesystem write.
 
 ## 76.10  Pitfalls
 

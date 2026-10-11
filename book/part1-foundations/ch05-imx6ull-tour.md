@@ -70,7 +70,7 @@ Here is a simplified view of how the major blocks connect. Some buses are omitte
                    (256/512 MB on MINI)
 ```
 
-Follow a line from the CPU to OCRAM, then follow another toward the peripherals. The **bus matrix** carries those accesses from a master, such as the CPU or a DMA engine, to the selected target. A UART register write travels out of the core to the controller's block. We rarely configure the matrix in the first labs, but it makes the next table more concrete: the physical address selects where that access goes.
+Follow a line from the CPU to OCRAM, then follow another toward the peripherals. The **bus matrix** carries those accesses from a master, such as the CPU or a DMA engine, to the selected target. A UART register write travels out of the core to the controller's block. The early examples do not configure the matrix, but it makes the next table more concrete: the physical address selects where that access goes.
 
 ## 5.3  System memory map
 
@@ -89,7 +89,7 @@ Where does a CPU load or store go? The physical address selects a region in the 
 | **QSPI** | `0x60000000` | 256 MB | Memory-mapped QuadSPI flash |
 | **MMDC0 (DRAM)** | `0x80000000` | up to 2 GB | External DDR3 |
 
-For the early labs, three parts of the map are especially useful. First, **DRAM begins at `0x80000000`**. A U-Boot setting such as `loadaddr=0x80800000` therefore places an image 8 MiB above that base, leaving working space around it. Remember that this is external memory and needs initialization before use.
+For the early boot designs, three parts of the map are especially useful. First, **DRAM begins at `0x80000000`**. A U-Boot setting such as `loadaddr=0x80800000` therefore places an image 8 MiB above that base, leaving working space around it. Remember that this is external memory and needs initialization before use.
 
 This creates a boot problem worth noticing. A board may have hundreds of megabytes of DDR, yet our first program cannot assume it is usable. Something must configure its controller first. **OCRAM begins at `0x00900000`** and gives us on-chip SRAM before DDR is ready. Our first bare-metal images run there. A small U-Boot **SPL**, or Secondary Program Loader, can also begin there, initialize DDR, and load a larger stage.
 
@@ -264,15 +264,16 @@ The peripherals you will touch in this book, with reference-manual chapter numbe
 | GPC | 27 | Power controller |
 | SRC | 51 | System reset controller |
 
-Use this as a lookup table when one of these names appears in a lab. The chapter links explain its use in the book; the RM column takes you to the register definitions.
+Use this as a lookup table when one of these names appears in a design. The chapter links explain its use in the book; the RM column takes you to the register definitions.
 
-## 5.9a  Board revisions and available labs
+(a-board-revisions-and-available-labs)=
+## 5.9a  Board revisions and available interfaces
 
-A block in the chip diagram is not a promise that the matching connector or device is on your desk. Check three things separately: whether the SoC supports the function, whether the needed part is fitted on the core board, and how the baseboard connects it. The table is a reference for those decisions, not a list of extra hardware to buy before the first LED lab.
+A block in the chip diagram is not a promise that the matching connector or device is on your desk. Check three things separately: whether the SoC supports the function, whether the needed part is fitted on the core board, and how the baseboard connects it. The table is a reference for those decisions, not a list of extra hardware to buy before reading the LED example.
 
-Our reference documents are the MINI v2.2 schematic and the core schematic with internal project title `CL6Y2CB_V1.9`, distributed under a CORE v2.0 filename. Compare the internal titles with your PCB silkscreen. The table below shows what to check before using each lab:
+Our reference documents are the MINI v2.2 schematic and the core schematic with internal project title `CL6Y2CB_V1.9`, distributed under a CORE v2.0 filename. Compare the internal titles with your PCB silkscreen. The table below identifies the hardware assumptions behind each example:
 
-| Hardware in the reference setup | What to check | Relevant lab |
+| Hardware in the reference setup | What to check | Related chapter |
 |---|---|---|
 | User LED, GPIO1_IO03 | Pad and active level | [Assembly LED](../part2-baremetal/ch09-asm-led.md) |
 | KEY0 / BEEP | MINI V2.2 KEY0: UART1_CTS / GPIO1_IO18, ALT5, active-low; BEEP: SNVS_TAMPER1/GPIO5_IO01. Verify actual circuit/revision. | [Button and beep](../part2-baremetal/ch18B-button-beep.md) |
@@ -284,7 +285,7 @@ Our reference documents are the MINI v2.2 schematic and the core schematic with 
 | RTC supply | SNVS/battery wiring | [Bare-metal RTC](../part2-baremetal/ch18C-baremetal-rtc.md), [external RTC](../part7-cookbook/ch117-external-rtc.md) |
 | JTAG connector | Population and adapter wiring | [JTAG debugging](../part8-debug/ch118-jtag-openocd-gdb.md) |
 
-ALPHA baseboards and NAND cores are revision-dependent alternatives, not verified equivalents of this schematic set. Before doing their labs, obtain their matching schematic/BOM and identify the fitted components. Audio, CAN, light sensors, IMUs, Wi-Fi, and modems may require add-ons: see [audio codecs](../part7-cookbook/ch89-audio-codecs.md), [CAN](../part6-drivers/ch55C-can-flexcan.md), [light sensors](../part7-cookbook/ch68-light-color.md), [SPI IMUs](../part7-cookbook/ch71-spi-imus.md), [SDIO Wi-Fi](../part7-cookbook/ch91-sdio-wifi.md), and [USB modems](../part7-cookbook/ch102-usb-lte.md). RS485 and GPS are covered in [RS485/Modbus](../part7-cookbook/ch108-rs485-modbus.md) and [GPS/PPS](../part7-cookbook/ch107-gps-pps.md).
+ALPHA baseboards and NAND cores are revision-dependent alternatives, not verified equivalents of this schematic set. Applying a design to them requires matching schematic/BOM information and identified fitted components. Audio, CAN, light sensors, IMUs, Wi-Fi, and modems may require add-ons: see [audio codecs](../part7-cookbook/ch89-audio-codecs.md), [CAN](../part6-drivers/ch55C-can-flexcan.md), [light sensors](../part7-cookbook/ch68-light-color.md), [SPI IMUs](../part7-cookbook/ch71-spi-imus.md), [SDIO Wi-Fi](../part7-cookbook/ch91-sdio-wifi.md), and [USB modems](../part7-cookbook/ch102-usb-lte.md). RS485 and GPS are covered in [RS485/Modbus](../part7-cookbook/ch108-rs485-modbus.md) and [GPS/PPS](../part7-cookbook/ch107-gps-pps.md).
 
 Follow connector **pin numbers through both schematics**, not the core's accessory aliases alone. CORE sheet 8 labels J2 pin 49 `GPIO_1 / KEY0` and pin 48 `UART1_CTS / KEY2`. MINI V2.2 sheet 1 connects B49 to `GBC_KEY / AP_INT` and B48 to its onboard **KEY0**. Sheet 2 shows that button and its R12 pull-up. The MINI button therefore uses GPIO1_IO18; GPIO1_IO01 is a different module signal. The same core can meet baseboards with different button names.
 
@@ -300,18 +301,10 @@ We have used several parts of revision 1 (11/2017) of IMX6ULLRM. Its 4,127 pages
 4. **For each peripheral, first read:** the overview and block diagram, the initialization sequence, and the descriptions of the registers your code accesses. Read other sections when a specific question requires them.
 5. **Keep Chapter 32 (IOMUXC) open in another window.** You will reference it constantly.
 
-## 5.11  Lab
+(worked-uart1-lookup-and-answer-check)=
+### Worked case: UART1 from controller to bridge
 
-Take UART1 all the way from the chip to the serial bridge. Try the lookups below before reading the worked answer. Record how you found each item, not just its value; that is the part of the exercise you can reuse for an unfamiliar peripheral.
-
-1. Open the reference manual. Locate, by chapter and page:
-   - The **register base address** of UART1.
-   - The **CCGR register, two-bit field, and bit range** that gate UART1's clock.
-   - The **GIC SPI ID** for UART1's interrupt.
-   - The **IOMUXC MUX_CTL register name** for the pin that carries UART1 TXD on the Point Atom MINI (consult the board schematic).
-2. Repeat the lookup for **GPIO1_IO03**, the reference LED pad, and the **board-routed I2C1** SCL/SDA nets. Choose pads from the supplied schematic, not whichever valid alternate route appears first in the mux table. This is a paper lookup, not an instruction to connect an I2C device or write pad settings now.
-
-### Worked UART1 lookup and answer check
+The UART1 case brings the manual and schematic together. It follows an address, a clock gate, an interrupt number, and an output route. The LED and I2C cases then show why another valid SoC mux option need not be the route populated on the MINI. These are explanatory lookups, not instructions to connect devices or write registers.
 
 Start with **where**: RM Chapter 2 places UART1 at `0x02020000`, within AIPS-1. We can now locate the controller's registers. That answers an address question, but has not yet told us how to clock the block or reach its pins.
 
@@ -323,12 +316,13 @@ Finally, follow **the board connection**: CORE sheet 6's `UART1_TX_DATA`, ball K
 
 RM 32.6.17, page 1578, gives `IOMUXC_SW_MUX_CTL_PAD_UART1_TX_DATA` at `0x020E0084`; ALT0 selects UART1 TX. This output route does not need RX's SELECT_INPUT setting. The register name, mux choice, and schematic trace now answer different parts of the same question; this is still not a complete initialization sequence.
 
-### LED and I2C answer checks
+(led-and-i2c-answer-checks)=
+### Worked cases: LED and I2C routing
 
 | Lookup | Checked result for this reference route |
 |---|---|
 | GPIO1 controller | Base `0x0209C000`; CCGR1.CG13 at `0x020C406C`, bits 27:26. The lower 16 GPIO inputs use GIC SPI index 66, architectural ID 98; no interrupt is needed for an LED output. |
-| LED pad | GPIO1_IO03, mux `0x020E0068`, ALT5; pad-control register `0x020E02F4`. Check the active level and routed net in the board schematic before the LED lab. |
+| LED pad | GPIO1_IO03, mux `0x020E0068`, ALT5; pad-control register `0x020E02F4`. The active level and routed net must match the board schematic before using the LED example. |
 | I2C1 controller | Base `0x021A0000`; CCGR2.CG3 at `0x020C4070`, bits 7:6; GIC SPI index 36, architectural ID 68. |
 | Board-routed I2C1 SCL | UART4_TX_DATA, ball G17; mux `0x020E00B4`, ALT2; SELECT_INPUT `0x020E05A4`, daisy 1. |
 | Board-routed I2C1 SDA | UART4_RX_DATA, ball G16; mux `0x020E00B8`, ALT2; SELECT_INPUT `0x020E05A8`, daisy 2. |
@@ -337,12 +331,25 @@ The I2C mux choices are in RM 32.6.29/30, and its input selectors in 32.6.328/32
 
 The pinned upstream [device tree](https://github.com/torvalds/linux/blob/v6.6/arch/arm/boot/dts/nxp/imx/imx6ul.dtsi), [clock implementation](https://github.com/torvalds/linux/blob/v6.6/drivers/clk/imx/clk-imx6ul.c), and [pin-function definitions](https://github.com/torvalds/linux/blob/v6.6/arch/arm/boot/dts/nxp/imx/imx6ul-pinfunc.h) provide independent cross-checks of the controller/field encodings. They do not prove what is fitted or wired on your particular board.
 
+<a id="lab"></a>
+
+(ch05-key-notes)=
+## 5.11  Key Notes
+
+- A usable peripheral path combines a controller address, a live clock, the selected pad function, electrical settings, and board routing. Correctness at one point does not establish the rest of that path.
+- The SoC memory map describes addressable regions, not initialized memory or spare space. DDR requires controller setup, and reserved ranges are not available for arbitrary code.
+- OCRAM's physical capacity and the ROM-active loading budget differ. Image headers, payload, and concurrent stack allocations must respect the free window while the ROM still owns its reservations.
+- Clock configuration follows sources, PLL/PFD outputs, root dividers, and two-bit gates. A PLL rate is not automatically a CPU or peripheral rate, and a valid encoding does not approve an operating point for the fitted speed grade.
+- MUX_CTL, PAD_CTL, and SELECT_INPUT have distinct jobs. The MINI's routed UART4 pads serve I2C1, while selecting an alternative I2C route on GPIO1_IO03 would conflict with its LED use.
+- Carrier aliases do not establish SoC identities. Connector pin traces across both schematics explain why MINI KEY0 uses GPIO1_IO18 even though a core connector labels a different signal KEY0.
+- Supply-domain names and fuse shadow reads do not authorize rail switching or permanent provisioning. Power sequencing, retained-state supply, and recovery after fuse changes remain board-specific design constraints.
+
 ## 5.12  Pitfalls
 
 - **Ignoring document and silicon revisions.** This book cites RM rev. 1, 11/2017. Check errata for your silicon mask; they can document behavior or workarounds without changing a field definition. Compare newer manuals explicitly rather than silently mixing section numbers.
 - **Believing the i.MX6ULL has a Cortex-M4.** It does not. The bigger i.MX6 SoloX / 7Solo have one. The 6ULL is single-A7 only.
 - **Using an overview as a complete wiring map.** The datasheet summarizes the device; RM Chapter 1 gives the fuller block view. The board schematic supplies its actual connections.
-- **Treating UL/ULL or speed grades as interchangeable.** `G` and `Y` name different families. Decode the complete ULL marking and its feature/speed grade before choosing a clock or peripheral lab.
+- **Treating UL/ULL or speed grades as interchangeable.** `G` and `Y` name different families. Decode the complete ULL marking and its feature/speed grade before applying a clock or peripheral configuration.
 
 ## 5.13  Going deeper
 

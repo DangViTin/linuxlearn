@@ -205,22 +205,17 @@ This runs on hall-IRQ → at 1000 RPM × 14 poles = 234 IRQ/s. Linux can handle 
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 > **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
 
-## 112.7  Lab
+<span id="lab"></span>
+## 112.7  Key Notes
 
-1. **Stepper basic.** Wire DRV8825 + a NEMA17. Vref to 0.4 V (~0.8 A). PWM 1 kHz on STEP. Confirm motor turns at 0.625 rev/s.
-2. **Microstepping.** Set M0/M1/M2 = 1/16. Spin at same step rate → 1/8 the angular velocity but smoother.
-3. **Acceleration profile.** Linear ramp from 100 Hz to 5 kHz over 1 second. Test for missed steps (motor stalls under acceleration).
-4. **TMC2209 silent mode.** Wire UART. Write IHOLD_IRUN to set 800 mA RUN, 400 mA HOLD. Compare noise vs DRV8825, TMC should be near-silent.
-5. **stallGuard homing.** Send a slow move. Monitor TMC2209's DIAG pin. When motor hits an end-stop, DIAG asserts → use as a sensor-less home switch.
-6. **DC motor open loop.** Wire BTS7960 + a 12 V motor. PWM duty 50 %. Motor spins. Reverse direction by swapping which PWM is active.
-7. **DC motor closed-loop velocity.** Add encoder (Ch 111). PID loop targets 1000 RPM regardless of load. Tune Kp/Ki.
-8. **BLDC trapezoidal.** Wire DRV8302 + 6 MOSFETs + a sensored BLDC. Implement 6-step commutation in user-space. Spin at low RPM.
-9. **BLDC FOC offload (stretch).** Buy an ODrive or BL-MGN board. Linux sends UART commands. The dedicated MCU does FOC. Compare torque smoothness.
-10. **Safety stop.** Add an emergency-stop GPIO that asserts all driver ENABLE pins low → motor freewheels. Wire to a physical button.
+- Stepper pulse generation, brushed-motor PWM and BLDC commutation have different timing contracts. Linux can supervise a system without owning every fast control loop.
+- Current limiting, dead time, supply transients and thermal limits are electrical responsibilities that software commands do not replace.
+- Open-loop step counts do not guarantee physical motion. Feedback and fault reporting are needed when missed motion has consequences.
+- A stop command and a safety function are not the same design. Fault containment and emergency stopping need an independently justified hardware and system policy.
 
 ## 112.8  Pitfalls
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Examples and production:** Do not burn fuses, enroll production keys, or sign release images while using these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 

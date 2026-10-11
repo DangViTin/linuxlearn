@@ -49,7 +49,7 @@ git checkout -b my-patch
 
 ## 120A.3  Make the change
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Examples and production:** Do not burn fuses, enroll production keys, or sign release images while using these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -394,17 +394,18 @@ git send-email --to "Rob Herring <robh@kernel.org>" \
 
 DT bindings are one of the easiest categories to get merged, they're additive (don't break anything) and self-contained, which makes them a good first-patch target.
 
-## 120A.13  Lab
+<a id="lab"></a>
 
-1. **Find a typo.** Read a Documentation/ file (e.g., `Documentation/devicetree/bindings/`). Find a real typo or grammatical fix. Format-patch + checkpatch + send. Even 1-letter fixes get accepted (and add your name to git log).
-2. **YAML binding.** Pick a chip from Part VII that doesn't have a binding yet (check `Documentation/devicetree/bindings/`). Write + validate one. Submit.
-3. **b4 explorer.** Use `b4 am` to download a recent merged series from Lore. Rebuild it locally. Understand each patch.
-4. **Lore search.** Search for a function name you're considering changing. Read 5+ years of discussion. Report what you learn.
-5. **Send a bug report (not yet a patch).** If you found a real bug while reading Part VI/VII drivers, send a clear bug report to the maintainer + linux-* list. Maintainers love good bug reports.
-6. **Set up git send-email.** Configure Gmail App Password. Test-send a patch to yourself first to verify formatting.
-7. **Read the responses.** Wait a week. Read every reply on the list (subscribe via lore RSS). Even if no one responds to your patch, watch how others handle review.
-8. **v2 cycle.** Take a maintainer's feedback. Produce v2 with a clear changelog. Carry forward Reviewed-by tags.
-9. **Watch a merge.** Find an `Applied to` reply from a maintainer. Check `git log` in the maintainer's tree for your patch's commit hash. Trace it from there to Linus's mainline.
+<span id="a-13-lab"></span>
+(120a13-lab)=
+## 120A.13  Key Notes
+
+- A patch carries both a code change and its rationale. One logical change per patch makes the affected interface and regression risk visible.
+- The target tree and subsystem maintainers define integration ownership. `MAINTAINERS`, prior discussions, and touched paths supply that context.
+- `checkpatch` examines style, while binding checks examine schema contracts. Neither demonstrates device behavior or substitutes for accurately described test evidence.
+- `Signed-off-by` records origin certification. Review, acknowledgement, and test trailers record different contributions and cannot be invented or treated as interchangeable.
+- A series needs an explicit dependency order. Its cover letter explains the whole change, while individual commits remain understandable on their own.
+- Revision changelogs and inline replies preserve interface decisions. A proposed binding is a review candidate, not a promise of acceptance or driver support.
 
 ## 120A.14  Pitfalls
 

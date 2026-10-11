@@ -207,15 +207,18 @@ Three scenarios:
 
 The pattern across all three: **the product's field life and the security level required together determine the kernel track.**
 
-## 30A.9  Lab
+<a id="lab"></a>
 
-1. **Read the LTS announcement** for the current LTS at `lwn.net` or `kernel.org`. Note the maintainer, support window, and any caveats.
-2. **Audit your codebase against an LTS.** Pick a recent commit in mainline that adds a feature you care about (e.g., a new DT binding). Run `git log --oneline v6.6.. -- Documentation/devicetree/bindings/...` to see whether it has been backported to LTS 6.6. Most large features are not.
-3. **Pretend you inherited a 4.14 BSP** with a custom GPIO driver. Look at the mainline-equivalent driver (`drivers/gpio/gpio-mxc.c`) and identify which kernel-API changes have happened since 4.14 that would require rewriting (DT bindings, devm_, the gpio chip api, ...). Make a one-page "migration burden" estimate.
-> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-4. **Set up a CI matrix.** Imagine you need to build the same `defconfig` against three kernels: mainline tip, LTS 6.6, LTS 6.1. Sketch a GitHub Actions / GitLab CI job matrix. Estimate build-time and disk usage.
-5. **Subscribe to two mailing lists.** `linux-kernel-announce@vger.kernel.org` (release announcements only) and `linux-stable@vger.kernel.org` (stable-tree releases). Build the habit of seeing what's happening before it affects you.
+(30a-9-lab)=
+## 30A.9  Key Notes
+
+- A release tag fixes source identity, while a maintained branch supplies an ongoing stream of changes. A teaching baseline and a supported shipping baseline serve different purposes.
+- Stable and longterm maintenance primarily carry fixes, not every new feature. Needed hardware support must be assessed in the selected tree rather than inferred from mainline development.
+- The product team owns qualification and delivery of updates even when upstream provides backports. A support window does not automatically deliver fixes to deployed devices.
+- A vendor BSP can meet a hardware dependency while adding downstream maintenance obligations. Custom drivers, bindings and toolchain constraints contribute to the cost of moving that dependency later.
+- Field life can outlast a kernel's maintenance window. Migration or extended support is therefore a lifecycle resource decision, not only a version-number choice.
+- The worked shipping cases illustrate different constraints, not fixed recommendations for every product. Dated support tables and MINI hardware claims need current evidence before a release decision.
+- Build coverage across source tracks can reveal configuration or API drift, but cannot establish runtime compatibility, security-update safety or board support by itself.
 
 ## 30A.10  Pitfalls
 

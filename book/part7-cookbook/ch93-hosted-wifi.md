@@ -232,15 +232,13 @@ If you want AT-mode to look like a network interface, the kernel's PPP driver (`
 | Bluetooth | yes (hci0 too) | ESP-dependent |
 | Best for | real products | quick prototypes, MCU-style |
 
-## 93.7  Lab
+<span id="lab"></span>
+## 93.7  Key Notes
 
-1. **Flash esp-hosted firmware** to an ESP32 (Espressif's tool). Wire SPI + handshake/data-ready GPIOs.
-2. **Build + load the esp32_spi driver.** Verify `espsta0` appears + the BT `hci0`.
-3. **Connect.** wpa_supplicant on `espsta0`, DHCP, ping. Measure throughput with iperf3 (~10–20 Mbps).
-4. **Bluetooth too.** `hciconfig hci0 up`. Scan for BLE devices, the same ESP provides BT.
-5. **AT-command comparison.** Flash AT firmware to a second ESP. Talk to it over UART: join AP, open a TCP socket, fetch a web page. Compare effort vs esp-hosted.
-6. **Throughput vs SPI clock.** Vary the esp-hosted SPI clock (5/10/20 MHz). Measure throughput scaling.
-7. **Co-existence role.** Use the ESP32 *also* for a real-time GPIO task (it has its own CPU). Demonstrate WiFi + a real-time job on the co-processor while Linux does the heavy lifting.
+- Hosted networking and AT-command networking put the IP-stack boundary in different places. That choice determines whether Linux sees a normal network interface or an application-specific socket service.
+- The co-processor firmware and Linux transport driver form a versioned pair. Updating only one side can break the shared protocol.
+- Handshake signals, framing and flow control govern transport reliability. Increasing bus frequency alone does not establish stable throughput.
+- Adding a co-processor adds a reset, health and update lifecycle. Real-time work on that processor also competes with its own radio and firmware responsibilities.
 
 ## 93.8  Pitfalls
 

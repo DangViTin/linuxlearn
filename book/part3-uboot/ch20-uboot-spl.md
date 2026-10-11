@@ -108,7 +108,7 @@ expanded configuration after changing a feature.
 ## 20.4  Where SPL lives in the source
 
 Our MINI baseline has no SPL to inspect. For this comparison and the modern
-internals exercises that follow, create a **separate upstream v2026.04 study
+internals examples that follow, create a **separate upstream v2026.04 study
 tree**. Keep the vendor tree and its MINI image from Chapter 19 unchanged:
 
 ```sh
@@ -124,7 +124,7 @@ changes instead of cloning over it. This fixed release gives Chapters 20-24J
 one set of modern APIs to discuss. Their C patches belong here, **not** in the
 2016 vendor tree. Chapter 22 maps the MINI's hardware into this newer framework.
 
-We also need a full-U-Boot reference for Chapter 21's map and command exercise:
+We also need a full-U-Boot reference for Chapter 21's map and command example:
 
 ```sh
 $ . ~/imx6ull/scripts/env.sh
@@ -308,25 +308,20 @@ performs `cleanup_before_linux()` before every possible handoff. Read the
 selected `jump_to_image_no_args` implementation and any board override.
 
 Some configurations provide additional handoff records through facilities such
-as a blob list. Those are separate interfaces. For our reading exercise, trace
+as a blob list. Those are separate interfaces. For our reading example, trace
 the normal full-U-Boot entry into `crt0.S`; it establishes its own runtime
 instead of treating the preceding program's stack as its permanent stack.
 
-## 20.10  Lab
 
-1. Confirm that the EVK build has no SPL and the separate PICO study build does.
-   Record the two output-directory names so the artifacts cannot be confused.
-2. Read the complete PICO `board_init_f`. Mark which memory is usable at each
-   call, and find the moment its DDR-resident BSS becomes usable.
-3. Inspect the SPL ELF with the Arm `size` and `readelf -S` tools. Compare its
-   linked sections with the configuration limits and map file.
-4. Inspect the packaged `SPL` header. Compare its memory pointers and file
-   layout with the EVK image and the Chapter 11 builder.
-5. Trace one raw-MMC loader setting from Kconfig to `.config` to its use in
-   `common/spl/spl_mmc.c`. State its units and expected payload format.
-6. In a separate experimental output directory, change one understood SPL
-   feature through `menuconfig`, rebuild, and compare the map and sizes. Keep
-   this host-side. Do not flash a PICO image or deliberately corrupt DDR timings.
+(20-10-lab)=
+## 20.10  Key Notes
+
+- DCD and SPL solve the same early-memory dependency with different owners: ROM interprets a table, while SPL executes board-specific initialization code.
+- The PICO SPL and EVK full-U-Boot sources are comparison cases, not MINI firmware. Their payload formats and raw-MMC offsets do not replace Chapter 19's layout.
+- A loadable-image size limit excludes other runtime consumers. OCRAM code, stack and early allocation, plus any later DDR-resident BSS, have separate lifetimes and budgets.
+- The PICO path clears its DDR-resident BSS only after DDR initialization. A compiled C variable is not usable before its backing memory exists.
+- `board_init_f` and `board_init_r` names do not impose universal return or relocation behavior. The selected board and stage determine the actual handoff.
+- `spl_image_info` records placement and entry information. The next stage also depends on CPU, cache and memory state, not merely a function-pointer jump.
 
 ## 20.11  Pitfalls
 

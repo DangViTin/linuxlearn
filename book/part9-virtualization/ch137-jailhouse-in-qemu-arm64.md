@@ -31,9 +31,9 @@ some devices: Linux root cell
 some devices: inmate cell
 ```
 
-On a one-core chip, there is no spare CPU to hand to the inmate. You can still study concepts, but the lab becomes awkward and less useful.
+On a one-core chip, there is no spare CPU to hand to the inmate while Linux retains a core. The ownership model remains useful to study, but this multicore example is not a deployment recipe for the i.MX6ULL.
 
-QEMU ARM64 can give us a fake machine with many CPUs. The official Jailhouse QEMU ARM64 configuration uses a virtual ARM machine with 1 GiB of RAM and multiple virtual CPUs. That is a much better first lab.
+QEMU ARM64 can give us a fake machine with many CPUs. The official Jailhouse QEMU ARM64 configuration uses a virtual ARM machine with 1 GiB of RAM and multiple virtual CPUs. That is a much better initial example.
 
 This is the honest path:
 
@@ -118,7 +118,7 @@ First make the known-good demo work. Then change one thing at a time.
 
 ## 137.5  Workspace
 
-Use a separate workspace because this lab will create images, logs, configs, and notes:
+Use a separate workspace because this example will create images, logs, configs, and notes:
 
 ```sh
 $ mkdir -p ~/imx6ull/jailhouse-lab/{src,build,logs,notes}
@@ -255,7 +255,7 @@ Write down the exact target name you used:
 Jailhouse image target:
 ```
 
-That line belongs in your lab notes.
+That line belongs in your configuration notes.
 
 ## 137.9  The manual QEMU shape
 
@@ -646,106 +646,26 @@ Then fill in real addresses from the configs.
 
 This is the moment where Jailhouse stops being a command sequence and becomes an ownership table.
 
-## 137.20  Failure lab A: remove the memory limit
+<span id="failure-lab-a-remove-the-memory-limit"></span>
+## 137.20  Failure case: overlapping memory ownership
 
-This is a thinking lab. Do it only in QEMU, not on a real board.
+The reference setup reserves memory outside Linux's usable range for Jailhouse and its cells. If Linux's memory limit and cell configuration disagree, Linux can use pages another owner expects to control. Enabling may fail, or the inconsistent setup may become unstable.
 
-Make a copy of the QEMU launch command or script. Remove:
+The important boundary is exclusive ownership of physical memory, not the particular text of one launch argument.
 
-```text
-mem=768M
-```
+<span id="failure-lab-b-wrong-cpu-count"></span>
+## 137.21  Failure case: a mismatched CPU layout
 
-Boot again and try to enable Jailhouse.
+A root-cell configuration describes a particular CPU topology and ownership mask. A virtual machine exposing fewer or different CPUs cannot satisfy that description. Enable or later cell creation can fail.
 
-Expected result:
+A configuration file is hardware-specific policy. Its format being valid does not establish that its resources exist on the running machine.
 
-```text
-enable fails
-or the guest becomes unstable
-or Jailhouse reports a memory conflict
-```
+<span id="failure-lab-c-wrong-inmate-binary"></span>
+## 137.22  Failure case: an incompatible executable
 
-Reason:
+An inmate image is linked for its assigned memory and entry conditions. A Linux user-space executable instead expects a loader, ABI and process environment. Loading its bytes into cell memory does not supply those services.
 
-```text
-Linux may use memory that the cell config expects to reserve.
-```
-
-Put `mem=768M` back.
-
-Lesson:
-
-```text
-reserved memory is not optional
-```
-
-## 137.21  Failure lab B: wrong CPU count
-
-Make a copy of the QEMU launch command and reduce:
-
-```text
--smp 16
-```
-
-to:
-
-```text
--smp 4
-```
-
-Boot and try the same root-cell config.
-
-Expected result:
-
-```text
-enable fails
-or later cell creation fails
-```
-
-Reason:
-
-```text
-the config describes a different CPU layout than the machine provides
-```
-
-Lesson:
-
-```text
-cell configs must match the hardware
-```
-
-## 137.22  Failure lab C: wrong inmate binary
-
-Create the inmate cell, but load the wrong binary or a random file:
-
-```sh
-# jailhouse cell create /path/to/qemu-arm64-inmate-demo.cell
-# jailhouse cell load inmate-demo /bin/ls
-# jailhouse cell start inmate-demo
-```
-
-Expected result:
-
-```text
-load fails
-or start fails
-or the inmate crashes immediately
-```
-
-Reason:
-
-```text
-an inmate binary is not a Linux program
-```
-
-It is code linked for the inmate entry address and runtime environment.
-
-Lesson:
-
-```text
-cell load is not execve
-```
+Cell loading is not `execve()`. An image may be rejected or fail at runtime depending on what the loader checks and what the binary assumes.
 
 ## 137.23  Annotate the root-cell config
 
@@ -841,42 +761,15 @@ For the weak shape, Xen, Linux processes, containers, PREEMPT_RT, or a separate 
 
 The professional skill is not "use a hypervisor". The professional skill is choosing the smallest boundary that solves the product problem.
 
-## 137.26  Lab deliverables
+<span id="lab-deliverables"></span>
+## 137.26  Key Notes
 
-Create:
-
-```text
-~/imx6ull/jailhouse-lab/logs/host-uname.txt
-~/imx6ull/jailhouse-lab/logs/qemu-version.txt
-~/imx6ull/jailhouse-lab/logs/jailhouse-commit.txt
-~/imx6ull/jailhouse-lab/logs/jailhouse-images-commit.txt
-~/imx6ull/jailhouse-lab/logs/qemu-arm64-boot.txt
-~/imx6ull/jailhouse-lab/notes/qemu-arm64-annotated.c
-~/imx6ull/jailhouse-lab/notes/qemu-arm64-inmate-annotated.c
-```
-
-Also write this short report:
-
-```text
-QEMU command:
-Linux cmdline:
-root-cell config path:
-inmate config path:
-inmate binary path:
-Jailhouse enable result:
-cell list after create:
-cell list after start:
-cell list after cleanup:
-one failure tested:
-what failed:
-why it failed:
-```
-
-The chapter is complete when you can explain this sentence without hand waving:
-
-```text
-Jailhouse did not boot a VM. It changed the hardware ownership table while Linux was running.
-```
+- Jailhouse partitions resources after Linux has booted. It does not provide Xen's general domain-management model.
+- Root-cell and inmate descriptions must match actual CPUs, physical memory, MMIO and interrupts. Reservation and ownership must agree with Linux.
+- Resources removed from the root cell must no longer be used there. Two drivers cannot independently own the same controller because their processes have different names.
+- An inmate needs an executable and runtime contract consistent with its cell. A Linux application binary is not interchangeable with it.
+- The multicore QEMU ARM64 study does not make Jailhouse's spare-core partitioning available on the single-core i.MX6ULL.
+- Successful cell startup demonstrates a particular ownership transition, not comprehensive platform or safety isolation.
 
 ## 137.27  Troubleshooting
 
@@ -939,7 +832,7 @@ Stop or destroy non-root cells first:
 
 ## 137.28  What comes next
 
-You have now used the official style of Jailhouse lab:
+The reference example illustrates this ownership transition:
 
 ```text
 Linux root cell

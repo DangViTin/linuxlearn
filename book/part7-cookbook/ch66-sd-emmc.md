@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 66: SD card and eMMC deep dive
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Examples and production:** Do not burn fuses, enroll production keys, or sign release images while using these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -376,20 +376,13 @@ Programming the RPMB key is one-shot, once written, that's it forever. **Don't e
 
 HS200 eMMC: 100–150 MB/s sequential, ~2500 IOPS random 4k write. Compare to a budget SD card: 30 MB/s sequential, ~200 IOPS random.
 
-## 66.11  Lab
+<span id="lab"></span>
+## 66.11  Key Notes
 
-> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
-> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
-
-
-1. **Trace a read with ftrace.** `echo function > /sys/kernel/debug/tracing/current_tracer. echo 'mmc_*' > set_ftrace_filter. cat /dev/mmcblk1p1 > /dev/null. cat trace`. See `mmc_blk_request_fn`, `mmc_wait_for_req`, `sdhci_request` fire in order, exactly the layered call chain described in §66.6.
-2. **Inspect EXT_CSD.** Run `mmc extcsd read /dev/mmcblk1`. Identify the eMMC's life-time estimation.
-3. **Benchmark.** dd + fio at sequential and random. Compare against an SD card.
-4. **Boot partition write.** `dd` U-Boot to `mmcblk1boot0`. Activate it. Boot.
-5. **Force HS mode change.** In DT, remove `mmc-hs200-1_8v`. Reboot. Benchmark, confirm slower.
-6. **Wear monitoring script.** Daily cron: read EXT_CSD, log to /var/log/wear.log. After running for weeks, plot.
-7. **Pull-the-plug test.** With dd writing a large file, yank power. Reboot. Observe whether `fsck` finds errors. Compare eMMC vs SD card resilience (eMMC much better).
-8. **Read the host driver.** Skim `drivers/mmc/host/sdhci-esdhc-imx.c`. Find `sdhci_esdhc_ops`. Find the i.MX-specific quirks (HS400 absence on i.MX6ULL, the tuning callback). With the layer model in §66.6 you should be able to navigate it.
+- The MMC core manages card protocols, the host driver manages the controller, and the block layer exposes storage requests. A failure can occur at any of these boundaries.
+- Signaling voltage, bus width, controller capability and board wiring limit usable speed modes. A mode supported by a card is not automatically supported by the MINI.
+- User areas, boot partitions and RPMB have different access and protection rules. They are not interchangeable locations for an image.
+- Managed flash hides internal erase and wear behavior. Health indicators and throughput measurements inform a design but do not guarantee lifetime or power-loss safety.
 
 ## 66.12  Pitfalls
 

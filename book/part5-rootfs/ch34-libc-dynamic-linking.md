@@ -279,14 +279,17 @@ For embedded with **N small binaries**, dynamic linking is almost always smaller
 
 The decision is per-binary, not per-system. Mix as needed.
 
-## 34.8  Lab
 
-1. **Inspect a binary's dependencies.** `arm-none-linux-gnueabihf-readelf -d /bin/my-binary` from the host (or from the target after copying). Note each NEEDED entry. Verify each exists in `/lib/` or `/usr/lib/`.
-2. **`ldd` on the target.** Run `ldd /usr/bin/...` on something dynamic and read each line. Identify the dynamic linker. Verify it matches the INTERP from `readelf`.
-3. **Break a dynamic binary on purpose.** Move `/lib/libm.so.6` somewhere. Try to run a math-dependent binary. Observe the "cannot open shared object file" error. Restore.
-4. **Trace library loading.** `LD_DEBUG=libs LD_DEBUG_OUTPUT=/tmp/ldlog my-binary. cat /tmp/ldlog`. Identify every library load.
-5. **Build the same program against musl.** If you have a musl-targeting cross toolchain, build `hello.c` against musl and against glibc. Compare sizes statically: `arm-linux-musleabihf-gcc -static -o hello-musl hello.c` versus `arm-none-linux-gnueabihf-gcc -static -o hello-glibc hello.c`.
-6. **Set up `$ORIGIN` rpath.** Build a binary with `-Wl,-rpath,'$ORIGIN/../lib'`, place it under `/opt/myapp/bin/`, place a custom `.so` under `/opt/myapp/lib/`, verify the binary finds it without `LD_LIBRARY_PATH`.
+(34-8-lab)=
+## 34.8  Key Notes
+
+- A dynamically linked ELF declares an interpreter path and needed libraries. The target must provide a compatible loader and dependency set before application startup can succeed.
+- An executable can exist while execution reports a missing file because its interpreter is absent. A found library can still fail through missing symbols or incompatible symbol versions.
+- GOT entries and PLT stubs support relocation and indirect calls to shared code. Lazy binding moves some function resolution to first use rather than eliminating it.
+- Library search paths are part of deployment policy. `LD_LIBRARY_PATH` is per-environment state, a binary's runpath is embedded metadata, and the loader cache is system-wide state.
+- `$ORIGIN` is interpreted by the loader relative to the ELF object, not as a shell variable for a wrapper script. Quoting preserves it while linking.
+- Static linking simplifies some deployment dependencies but duplicates linked code across binaries and changes update granularity. Dynamic linking shares libraries while requiring coordinated ABI compatibility.
+- libc choices affect runtime behavior as well as size. Naming the same C API does not make glibc, musl and uClibc-ng binaries interchangeable.
 
 ## 34.9  Pitfalls
 
@@ -307,5 +310,5 @@ The decision is per-binary, not per-system. Mix as needed.
 - **musl's website**, `musl.libc.org`, design rationale, comparison tables.
 - **`The ELF Specification`** (System V ABI, ARM supplement) for the gritty details of dynamic sections.
 
-> Next chapter: **Chapter 35: Buildroot, after you can do it by hand.** With BusyBox + libc + init understood, we adopt the tool that automates all of it.
+> Next chapter: **Chapter 35: Buildroot, after you can do it by hand.** Buildroot automates the rootfs composition whose BusyBox, libc and init interfaces we have examined.
 > **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.

@@ -214,17 +214,14 @@ card 0: wm8960audio [wm8960-audio], device 0: HiFi wm8960-hifi-0 []
 
 For higher-level audio (Bluetooth, network), you'd stack PulseAudio or PipeWire on top. For embedded one-app systems, raw ALSA is fine.
 
-## 53.6  Lab
+<span id="lab"></span>
+## 53.6  Key Notes
 
-1. **Get audio working on a board with WM8960.** Enable in DT, boot, `aplay test.wav`, hear sound.
-2. **Capture.** `arecord -d 5 rec.wav`. Play back. Confirm round-trip works.
-3. **Adjust mixer settings.** `alsamixer`, try Headphone volume, capture-channel selection.
-4. **Diagnose an xrun.** Use `aplay -v test.wav`. Reduce period size with `--period-size=128`. Observe xruns appearing as load increases.
-5. **Listen at different rates.** `aplay -f S24_LE -r 44100 ...`, verify codec accepts non-48k rates.
-6. **Read the WM8960 driver.** `sound/soc/codecs/wm8960.c`, find the regmap config, the DAPM (Dynamic Audio Power Management) routing, the bias-level callbacks.
-> **MCU bridge:** Think of regmap like a typed wrapper around your read_reg() and write_reg() helpers, with caching, locking, and bus differences handled centrally.
-> **regmap:** a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
-> **MMIO:** memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
+- ASoC separates the CPU audio interface, codec and board-specific connection. The machine description joins reusable drivers rather than replacing their responsibilities.
+- Sample format, channel count, frame clocks and master-clock relationships form an end-to-end contract. A successful control-bus probe does not establish a valid audio stream.
+- DMA periods and buffers trade response latency against tolerance for scheduling delays. An xrun means the producer or consumer did not meet that buffering contract.
+- DAPM represents powered audio routes. Digital samples can move while the analog path remains muted or unpowered.
+- Codec presence and wiring are board-specific. An ALPHA audio example is not evidence that the same codec or signal path is fitted to the MINI.
 
 ## 53.7  Pitfalls
 

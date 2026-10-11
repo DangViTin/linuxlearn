@@ -9,10 +9,10 @@ status: draft
 # Chapter 35B: Read-only rootfs + overlayfs
 > **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 
-> **What:** mount the root filesystem **read-only** on a shipped product, then use **`overlayfs`** to give the parts of `/` that must be writable (e.g., `/var/log/`, `/etc/`, `/tmp/`) a per-boot tmpfs or persistent overlay. The result: power can drop at any instant without corrupting the rootfs.
+> **What:** separate an immutable base system from writable runtime state. A **read-only root filesystem** and **overlayfs** can place changes in a per-boot tmpfs or a persistent upper layer. This reduces writes to the base image, but is not a blanket power-loss guarantee for the storage device or writable data.
 > **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 >
-> **Why:** every shipping industrial product mounts its rootfs read-only. The reason is simple: a user yanks the power, the filesystem doesn't catch the close-and-flush, the next boot's `fsck` finds inconsistencies, sometimes corrects them, sometimes returns "dropped to /bin/sh for emergency repair." A read-only rootfs cannot be corrupted by power loss because no one is writing to it. The trade is that any data the system *does* need to write must go somewhere else, a tmpfs (lost on reboot), a separate data partition (persistent), or an overlay (write-through to tmpfs / data partition).
+> **Why:** an unexpected power cut can interrupt a write or leave application state inconsistent. Keeping the base system immutable limits what ordinary runtime writes can change and gives recovery a stable starting point. Writable state still needs a home: tmpfs for disposable data, a separate data partition for persistent records, or an overlay for changes presented inside the root tree. Its durability and recovery behavior remain design decisions.
 >
 > **Focus:** the **three-tier model**, `lowerdir` (immutable rootfs), `upperdir` (where changes accumulate), `workdir` (overlay's scratch space). Once you understand those three, every overlayfs setup follows the same shape.
 
@@ -27,9 +27,9 @@ A standard development rootfs is mounted `rw` (read-write). The kernel buffers w
 
 `fsck` runs on next boot and tries to fix what it can. Sometimes it succeeds. Sometimes a critical config file ends up with garbage in it and your system boots into a degraded state. Sometimes `fsck` decides the filesystem is unrecoverable and aborts to a recovery shell.
 
-Every team that has shipped a product has at least one corrupted-rootfs story from a power glitch in the field.
+The risk belongs to both the filesystem and the application: a filesystem can remain mountable while a partially updated configuration is unusable.
 
-The fix: **don't write to the rootfs at runtime**. If nothing is writing, nothing can be half-written. Power-loss safety becomes a property of the filesystem layout, not of the application or filesystem driver.
+One strategy is **not to write to the base rootfs at runtime**. That removes a class of interrupted updates to the base image. It does not remove the need for durable application transactions, storage qualification and a recoverable update process.
 
 ## 35B.2  Two patterns
 
@@ -289,13 +289,14 @@ Next boot, the overlay has nothing, so user-space sees the pristine rootfs. No a
 
 A common production button-combination is "hold the recovery button at boot for 5 seconds → wipe overlay → reboot." The user gets a factory-fresh system in 30 seconds.
 
-## 35B.7  Lab
+<span id="b-7-lab"></span>
+## 35B.7  Key Notes
 
-1. **Convert your Chapter 31/35 rootfs to RO + tmpfs (Pattern A).** Test that writes to `/tmp/` work but writes to `/etc/` fail. Power-cycle 10 times. Verify no `fsck` errors.
-2. **Set up Pattern B.** Partition an SD card with `rootfs` + `overlay` partitions. Build the initramfs. Boot. Verify `/etc/test` persists across reboots.
-3. **Power-cycle stress test.** Write a script that creates a counter file in the overlay, increments it once per second, and `sync`s. Run it. Power-cycle 100 times at random intervals. After 100 cycles, the counter should be roughly accurate (within ~2 per cycle of slack for sync timing) and the rootfs should never have needed `fsck`.
-4. **Factory reset.** Trigger from inside a running shell by clearing only the known overlay upper directories, then `sync && reboot`. Verify pristine state on next boot.
-5. **Quantify the cost.** What's the boot-time overhead of the overlay setup? (Time the initramfs's overlay mounts.) What's the RAM cost?
+- An immutable rootfs separates the shipped system from changing data. Read-only mounting reduces exposure to interrupted writes to that filesystem, but does not make the storage device or the entire product immune to power loss.
+- Tmpfs gives disposable writable state at the cost of RAM. A persistent data partition or overlay retains changes, so its consistency, capacity and wear remain part of the design.
+- Overlayfs combines a lower filesystem with an upper layer and work directory. The work and upper directories must share a filesystem, and the apparent merged tree can hide which layer owns a change.
+- Factory reset is a data-lifecycle decision: disposable settings may be cleared while device identity, credentials and records may need to survive.
+- Power-loss resilience requires evidence for the actual hardware, filesystem and application write pattern. A fixed number of restarts is not a universal durability guarantee.
 
 ## 35B.8  Pitfalls
 
@@ -315,4 +316,4 @@ A common production button-combination is "hold the recovery button at boot for 
 - **`squashfs`**: another RO filesystem, slower but more compact than erofs. Common on initramfs images.
 - **`A/B partition schemes`**: pair this chapter with Ch 63 (Field updates). Two RO rootfs partitions, switch atomically on update.
 
-> Next chapter: **Chapter 35H: Rootfs security basics.** A read-only rootfs helps reliability. Before containers or release images, we remove the lab shortcuts that should not ship.
+> Next chapter: **Chapter 35H: Rootfs security basics.** A read-only rootfs helps reliability. Before containers or release images, we remove the development shortcuts that should not ship.

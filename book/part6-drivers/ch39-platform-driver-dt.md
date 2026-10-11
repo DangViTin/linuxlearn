@@ -67,11 +67,14 @@ When the kernel finds a DT node whose `compatible` matches your driver, the bus 
 
 ## 39.3  A minimal example: a "demo" platform driver
 
-Let's write the world's simplest platform driver, one that just logs when it probes a device, reads `reg` from the DT, and ioremaps the registers.
+The following platform-driver case shows matching, resource lookup, and managed register mapping. The DT address is illustrative, not a MINI hardware resource or a prerequisite for later chapters.
 
-### Step 1, add a DT node
+<a id="step-1-add-a-dt-node"></a>
 
-In a DTS overlay (or directly in your board's DTS), add:
+(ch39-step-1-add-a-dt-node)=
+### Device description
+
+The example device description is:
 
 ```dts
 &{/} {
@@ -83,9 +86,9 @@ In a DTS overlay (or directly in your board's DTS), add:
 };
 ```
 
-The address `0x1000` is fake, there's no real hardware here. For a real driver you'd use the actual peripheral's base. For demo purposes we'll ioremap unused-but-readable memory.
+The address `0x1000` is a placeholder. It does not identify safe unused memory on a physical board. A real resource must describe identified hardware and must not overlap another owner's address range.
 
-Rebuild the DTB and reboot. After boot:
+For this description, the corresponding DT view would contain:
 
 ```
 [root@pa-mini:~]# ls /sys/firmware/devicetree/base/demo@1000/
@@ -96,7 +99,10 @@ linuxlearn,demo
 
 The DT node exists, but no driver has claimed it, `dmesg` shows nothing yet because no `platform_driver` matches.
 
-### Step 2, the driver
+<a id="step-2-the-driver"></a>
+
+(ch39-step-2-the-driver)=
+### Driver implementation
 
 `demo.c`:
 
@@ -368,19 +374,17 @@ The kernel notes the deferred device and retries it after every other probe atte
 > **MCU bridge:** Think of DMA like the MCU DMA controller you used for UART or SPI, but with cache coherency, scatter-gather descriptors, and kernel ownership rules added.
 > **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
 
-## 39.8  Lab
+<a id="lab"></a>
 
-1. **Write a demo platform driver** matching `compatible = "linuxlearn,demo"`. Add a DT node for it via overlay or by editing your board DTS. Verify `probe` runs at load and `remove` runs at unload.
-2. **Try `EPROBE_DEFER`.** Add an unrequited dependency:
-   ```c
-   if (some_condition_initially_false)
-       return -EPROBE_DEFER;
-   ```
-   Watch the kernel re-probe periodically. Set the condition true (via `module_param` from a sysfs file) and watch probe succeed.
-3. **Read custom DT properties.** Add `linuxlearn,speed-hz = <50000>;` to your DT node and read it with `of_property_read_u32`. Print the value in probe.
-4. **Manual bind/unbind.** From a shell, unbind your device. Observe `remove` log. Rebind. Observe `probe`. No `insmod`/`rmmod` involved.
-5. **Multiple instances.** Add a second DT node, `demo@2000`, also with `compatible = "linuxlearn,demo"`. Verify `probe` is called twice, once per node. Each gets its own `platform_device`.
-6. **Inspect modalias and depmod.** Run `depmod -a` on the build host, then check `/lib/modules/.../modules.alias` for an entry pointing your DT compatible to `demo.ko`. Verify `modprobe demo` does the right thing on the target.
+(ch39-lab)=
+## 39.8  Key Notes
+
+- Device Tree describes a hardware instance, the driver supplies behavior, and the platform bus matches the two. One driver can bind to several devices with separate private state.
+- `probe()` establishes an instance's resources and interfaces. Module registration is a different lifetime from a successful device binding.
+- `compatible`, resource ranges, interrupts, clocks, and GPIO properties are binding contracts. A matching string does not establish that the described hardware exists or is safe to access.
+- `-EPROBE_DEFER` represents a supplier dependency that is not ready. It is not a general-purpose timer for retrying an arbitrary condition.
+- Managed allocations simplify release on probe failure and unbind. They do not replace stopping DMA, draining work, or preventing callbacks from using released state.
+- Unbind removes an instance without necessarily unloading the driver code. Open interfaces and asynchronous activity must respect that distinction.
 
 ## 39.9  Pitfalls
 

@@ -272,18 +272,21 @@ static const struct iio_chan_spec mcp3008_channels[] = {
 
 `indexed = 1` causes the sysfs files to be named `in_voltage0_raw`, `in_voltage1_raw`, etc. `info_mask_shared_by_type` means the scale is shared (one `in_voltage_scale` for all channels), common for ADCs where every channel has the same reference voltage.
 
-## 49.8  Lab
+<a id="lab"></a>
 
-1. **Write a fake sensor driver.** Pick three made-up channels (temp / hum / pressure). Have `read_raw` return random values. Verify sysfs files appear and read sensibly.
-2. **Add the scale and offset attributes.** Make `in_temp_scale = 0.1`, verify user-space sees `0.100000`.
-3. **Try a real chip.** Wire a BME280 (or any I²C sensor with mainline IIO driver). Enable the driver in kconfig. Verify `/sys/bus/iio/devices/iio:device0/` populates correctly.
-4. **Buffered capture.** Use an IMU (MPU6050 or LSM6DSO) with mainline IIO driver. Configure scan elements, hrtimer-trigger, capture 1024 samples to a file. Plot with gnuplot.
-5. **Inspect with iio-utils.** Install `libiio-utils`. `iio_info -a` shows every IIO device on the system. `iio_readdev` streams samples.
-6. **Compare cooked vs raw.** Some drivers provide `in_temp_input` (pre-cooked) alongside `in_temp_raw`. Diff the two on the same physical reading.
+(ch49-lab)=
+## 49.8  Key Notes
+
+- Channels describe measurable quantities and their attributes. The sensor driver supplies acquisition and conversion semantics, while IIO supplies a common user-space interface.
+- Raw values, offset, scale, and the `IIO_VAL_*` representation form a unit-conversion contract. Plausible numbers do not establish correct units or calibration.
+- Direct reads suit occasional observations. Triggered buffers separate acquisition cadence from user-space scheduling and reduce per-sample interface overhead.
+- Buffered records are a binary contract defined by enabled channels, scan order, storage width, signedness, endianness, and alignment. They are not simply a concatenation of displayed sysfs values.
+- A trigger requests acquisition but does not guarantee the sensor has a new sample or that several axes were captured simultaneously. The hardware sampling model constrains coherence.
+- Buffer enable/disable, direct access, interrupts, and removal must coordinate device state. Slow consumers and finite queues require an explicit overflow or loss policy.
 
 ## 49.9  Pitfalls
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Security boundary:** Do not burn fuses, enroll production keys, or sign release images when exploring example code.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 

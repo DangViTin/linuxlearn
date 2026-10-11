@@ -217,7 +217,7 @@ Animations (rainbow shift, breathing) become 5-line `for` loops over HSV.
 
 ## 113.8  Power budgeting, the elephant in the room
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Examples and production:** Do not burn fuses, enroll production keys, or sign release images while using these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -238,17 +238,13 @@ For long strips:
 
 For mood lighting, cap brightness at 64/255 (~25 %), visually plenty, current draw 1/4. Software-enforced.
 
-## 113.9  Lab
+<span id="lab"></span>
+## 113.9  Key Notes
 
-1. **WS2812 + SPI + DMA.** Build the encoder. Wire SPI MOSI → 74AHCT125 → strip DIN. Make the first LED red, second green, third blue. Verify with phone camera (visible).
-2. **Strip of 100.** Light all 100 with a rainbow gradient. Measure CPU usage during 30 fps animation, should be < 5 %.
-3. **Frame rate test.** How fast can you push? Time `send_strip()`. For 100 LEDs it's ~4 ms → 250 fps theoretical, 30 fps practical (limited by reset gap + your animation logic).
-4. **Power injection.** Strip of 200. Inject 5 V at the middle. Confirm the end-of-strip white is no longer yellow.
-5. **APA102 comparison.** Same lab but with APA102. Note: no buffer needed, no timing concerns. SPI clock can be 10 MHz+ → 1000+ fps possible. Measure.
-6. **PREEMPT_RT bit-bang.** Build with PREEMPT_RT kernel. Bit-bang 30 LEDs. Run under load (compile a kernel in parallel). Verify no glitches. Try 100 LEDs. Observe corruption.
-7. **Audio-reactive.** Sample microphone (Ch 78). FFT. Map low/mid/high bins to red/green/blue intensity. Drive the strip at 60 fps.
-8. **Status indicator.** A 24-LED ring on top of an i.MX6ULL device acting as: blue = booting, green = healthy, yellow = warning, red = error. Tie to systemd state.
-9. **Fade-to-color helper.** Implement smooth color transitions (HSV interpolation) for state changes.
+- Pulse-width-coded LEDs need a continuous waveform with the selected part's timing. Encoding into a hardware-driven stream moves that responsibility away from scheduled bit toggles.
+- Frame length, transfer continuity and reset intervals constrain the update path. DMA support alone does not prove that a driver preserves the waveform across its buffers.
+- Color order, brightness mapping and visible output are different layers. A correct electrical frame can still display the wrong color or brightness.
+- Power distribution, level compatibility and fault protection must scale with the strip. A fixed brightness limit is not a substitute for a qualified supply and wiring design.
 
 ## 113.10  Pitfalls
 

@@ -310,9 +310,9 @@ int main(void) {
 }
 ```
 
-The driver above is intentionally compressed. The full lab version includes:
+The listing above is a protocol sketch, not a complete ranging implementation. A complete implementation also needs:
 
-- A complete responder counterpart (`twr_resp.c`) that builds the response with embedded RX/TX timestamps.
+- A responder counterpart that builds the response with embedded RX/TX timestamps.
 - Antenna-delay calibration (the chip-to-antenna trace + matching network adds ~16 ns of delay that must be subtracted from every ToF measurement. Calibrated once per board).
 - Proper IRQ-driven polling using libgpiod's `gpiod_line_event_wait`.
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
@@ -383,16 +383,13 @@ DW3000 supports the **FiRa Consortium**'s "MAC and PHY for UWB" interop spec, wh
 
 Apple's UWB chip (U1 / U2) is a black-box DW3000 derivative. Reverse-engineering work (e.g., `nfc-tools/proxmark3`-adjacent UWB research) has documented enough for hobbyist interop with caveats.
 
-## 101.9  Lab
+<span id="lab"></span>
+## 101.9  Key Notes
 
-1. **DW3000 identify.** Wire DWM3000 to ECSPI. Read DEV_ID → must be `0xDECA0302`. If wrong: SPI mode (mode 0), wiring, or fake module from Aliexpress.
-2. **DS-TWR initiator + responder.** Flash one i.MX6ULL board as initiator, one as responder. Run the lab code. Place 1 m apart. Expect a reading of ~1.0–1.1 m (the +10 cm is uncalibrated antenna delay).
-3. **Antenna-delay calibration.** Place at known 1.000 m. Measured 1.10 m? Subtract 0.10 m's worth of DWT ticks from `tof_dtu`. Persist this calibration in a config file per board.
-4. **Distance vs. range.** Walk the responder out to 5 m, 10 m, 20 m. Note when packets stop arriving (typically ~30 m line-of-sight at 6.8 Mbps. More at lower data rates).
-5. **Multipath test.** Place the boards 2 m apart in a small room with metal furniture. Note distance noise. Move to open space. Noise drops dramatically.
-6. **3-anchor 2-D position.** Place 3 responder anchors in a triangle. The initiator's app does 3 TWR cycles and computes trilateration. Print (x, y) every second. Walk around. Verify position tracks within ±20 cm.
-7. **Kalman smoothing.** Add a 2-D constant-velocity Kalman filter. Visualize raw vs. filtered trajectory in matplotlib.
-8. **Throughput-vs-rate test.** Try 110 kbps, 850 kbps, 6.8 Mbps data rates. Higher rate = shorter air time = more TWR cycles/second but slightly worse range. Measure cycles/sec at each.
+- UWB ranging depends on radio-captured transmit and receive times, not Linux's time to service an interrupt. Host scheduling still limits how quickly exchanges can be prepared.
+- SS-TWR, DS-TWR and TDoA make different synchronization and message-exchange assumptions. Several TWR distance measurements used for trilateration are not automatically a TDoA system.
+- Antenna delay, multipath and anchor geometry affect position accuracy. A filter can smooth output without removing systematic ranging error.
+- Packet compatibility, application protocols and secure ranging are separate capabilities. A radio family name alone does not establish interoperability or a qualified accuracy.
 
 ## 101.10  Pitfalls
 

@@ -12,7 +12,7 @@ status: draft
 >
 > **Why:** Bluetooth is how embedded products talk to phones, BLE for "configure-my-device-from-an-app" provisioning, GATT for sensor data, classic BT for audio. Ch 94 brought up the combo-module BT half. This chapter goes deep on the protocol and on *building a GATT service*, the part you actually write. Understanding HCI makes the rest of the stack feel less magical. Building a GATT peripheral is the practical skill.
 >
-> **Focus:** the controller (chip firmware) runs the BT link layer. You build the GATT application on top. The chip's firmware is the "controller" (radio, link layer, encryption). BlueZ is the "host" (L2CAP, GATT, SMP). Your code is the "application" layer. It is a GATT server that exposes characteristics. You do not touch HCI directly. You define services, and BlueZ handles the rest. The from-scratch deliverable is a GATT peripheral, written against BlueZ's D-Bus API.
+> **Focus:** the controller firmware owns the radio and link layer. BlueZ provides host protocols and exposes interfaces to the application. A GATT server defines services, characteristics, access policy and notification behavior through BlueZ's D-Bus API. This separation keeps application policy distinct from radio control.
 >
 > **Tooling.** This chapter uses `bluez` (`bluetoothctl`, `btmon`, `btmgmt`, `hciattach`), Python `dbus` for the GATT-server example.
 > - **Ubuntu-base (target):** `apt install bluez bluez-tools python3-dbus`
@@ -176,7 +176,7 @@ Bluetooth: hci0: BCM: chip ...   (or CSR/RTL)
 
 ## 95.6  Building a BLE GATT peripheral (the from-scratch part)
 
-The meaningful "build it yourself" deliverable: a **GATT server** that advertises a custom service and exposes characteristics a phone app can read/write/subscribe. You build this in user-space via BlueZ's D-Bus API.
+The application boundary is a **GATT server** that advertises a service and exposes characteristics a phone app can read, write or subscribe to. The user-space example below uses BlueZ's D-Bus API to illustrate that boundary.
 
 GATT structure:
 - A **service** (a UUID) groups related data.
@@ -275,16 +275,13 @@ Before GATT, a BLE peripheral **advertises**: it broadcasts small packets ("I ex
 
 BlueZ exposes a `LEAdvertisingManager1` D-Bus interface that controls advertising. You register an advertisement object with the name, service UUIDs, and any manufacturer-specific data. The example-gatt-server includes this.
 
-## 95.8  Lab
+<span id="lab"></span>
+## 95.8  Key Notes
 
-1. **Bring up a controller.** nRF52 with Zephyr HCI (UART), or a USB dongle (`btusb`). Verify `hciconfig` shows `hci0 UP RUNNING`.
-2. **Scan + pair.** `bluetoothctl` → scan for your phone → pair.
-3. **btmon trace.** Run `btmon` during a scan. Watch the HCI LE Advertising Report events decode.
-4. **GATT server.** Adapt BlueZ's `test/example-gatt-server` (or the Python above) to expose a temperature characteristic. Run it.
-5. **Connect from a phone.** Install nRF Connect. Scan. Connect to your i.MX6ULL. Read the temperature. Subscribe to notifications. Watch them push every 2 s.
-6. **Real sensor.** Wire `update_temp()` to a BME280 (Ch 67). Now it's a real BLE thermometer.
-7. **Provisioning use case.** Add a writable "WiFi credentials" characteristic. A phone app writes SSID+password. The i.MX6ULL then joins WiFi (Ch 91). This is the canonical "configure my headless device from a phone" flow.
-8. **Range + RSSI.** Move the phone away. Observe RSSI drop in `bluetoothctl`. Note BLE's ~10–30 m practical range.
+- HCI separates the radio controller from the Bluetooth host stack. BlueZ exposes application services above that boundary rather than requiring applications to implement link-layer behavior.
+- A GATT service defines data and operations, while advertising lets peers discover it. Characteristic permissions and notification semantics form an application protocol.
+- UART framing, flow control and firmware must support the controller's transport. The existence of `hci0` does not establish complete feature support.
+- Pairing and access policy need explicit design, especially for provisioning secrets or controlling hardware. A discoverable service should not imply unrestricted authority.
 
 ## 95.9  Pitfalls
 

@@ -76,7 +76,7 @@ We refer back to this table from many places. When a later chapter says "this ru
 
 ## 41.3  Atomic operations
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Security boundary:** Do not burn fuses, enroll production keys, or sign release images when exploring example code.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -400,13 +400,17 @@ Things to notice:
 
 This pattern, copy outside, lock around the structure mutation only, is fundamental. Locks should protect the **minimum** of code that needs protection.
 
-## 41.11  Lab
+<a id="lab"></a>
 
-1. **Build and run the ring buffer above.** Test single-threaded, then with parallel producers.
-2. **Add a stress test.** Have a kthread (`kthread_run`) consume in a tight loop while `write(2)` is hammered from user space. Verify no crashes, no corrupt data, no deadlocks.
-3. **Provoke a deadlock.** Take lock A then lock B in one path. Take B then A in another. Build with `CONFIG_PROVE_LOCKING=y`. Watch lockdep's dmesg report when both paths actually run.
-4. **Convert `packets` to per-CPU.** Compare overhead vs an `atomic64_t`. (Spoiler: per-CPU is faster on multi-core but the test is harder to write on a single-core i.MX6ULL.)
-5. **RCU experiment.** Implement a simple read-mostly config lookup with RCU. Use `ftrace` (Chapter 119) to measure the read-side overhead. Confirm it's zero in `CONFIG_PREEMPT_NONE`.
+(ch41-lab)=
+## 41.11  Key Notes
+
+- Concurrency depends on access paths, not only CPU count. Syscalls, interrupts, timers, and deferred work can interleave on a single-core system.
+- The protected invariant determines the lock's scope. An atomic counter does not make a buffer, its length, and its ownership consistent as a group.
+- Sleeping operations belong outside atomic critical sections. The ring-buffer example separates user copying from mutation of shared queue state for this reason.
+- IRQ-safe locking prevents a local interrupt from attempting a lock held by the interrupted path. All paths sharing the state must follow a compatible locking discipline.
+- A consistent acquisition order prevents lock-order cycles. Lockdep can expose exercised dependency problems but does not prove every possible execution safe.
+- RCU separates publication from reclamation, while per-CPU state reduces shared writes. Both trade simpler contention paths for additional update, lifetime, or aggregation rules.
 
 ## 41.12  Pitfalls
 

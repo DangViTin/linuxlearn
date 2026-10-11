@@ -9,10 +9,10 @@ status: draft
 # Chapter 31: A root filesystem, by hand
 > **udev:** the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
 
-> **What:** build a working root filesystem from scratch: BusyBox compiled statically, the FHS directory tree, libraries copied from the cross-toolchain, `/etc/inittab` + `/etc/init.d/rcS` + `/etc/fstab`, and an NFS-export that the kernel mounts via `root=/dev/nfs`.
+> **What:** the composition of a small root filesystem: BusyBox, the FHS directory tree, runtime libraries, `/etc/inittab`, `/etc/init.d/rcS`, `/etc/fstab` and an NFS-backed root.
 > **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
 >
-> **Why:** Chapter 29's BusyBox initramfs was a toy. One cpio file, no persistence, no real /etc. It becomes a real rootfs once three things are in place. First, `/etc/` holds config. Second, the shared libraries dynamically-linked tools need are present. Third, NFS exports it so you can iterate user space without reflashing.
+> **Why:** Chapter 29 isolated early user space in an initramfs. This case adds startup configuration, shared-library dependencies and a host-backed development root. These pieces reveal responsibilities that an automated image builder later assembles.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 >
@@ -67,7 +67,7 @@ NFS server on host exports ~/imx6ull/rootfs/.
 Kernel boots with bootargs: root=/dev/nfs nfsroot=192.168.7.1:...
 ```
 
-By the end of this chapter, an `ls` on the target lists files the host owns. Edits made on the host are visible to the target after the next read.
+In this arrangement, the target sees a host-exported filesystem as its root. Understanding that relationship does not require setting up an NFS server or building the example.
 
 ## 31.3  Build BusyBox statically
 
@@ -304,7 +304,7 @@ After login, you see `[root@pa-mini:~]#` instead of just `#`. Small but pays bac
 
 ## 31.10  Copy libraries (for dynamic binaries)
 
-The static BusyBox we built in §31.3 doesn't need libraries. But if you copy any *other* dynamically-linked binary into the rootfs, your own application, `ssh`, `ping`, anything from the toolchain, it needs the shared libraries to be present at the runtime path the dynamic linker expects.
+The static BusyBox example in §31.3 avoids ordinary shared-library dependencies. A dynamically linked application, `ssh` or another tool needs the shared libraries present at the runtime paths the loader expects.
 
 The libraries live inside your cross-toolchain installation:
 
@@ -378,7 +378,7 @@ Please press Enter to activate this console.
 [root@pa-mini:~]#
 ```
 
-You have a Unix shell on the i.MX6ULL, with `/` provided by the host over NFS.
+The example's shell uses `/` provided by the host over NFS, rather than a local root partition.
 
 ## 31.12  The development loop
 
@@ -445,14 +445,17 @@ Mem:           448M         12M        434M          0
 
 All five check out: kernel running, CPU detected, devices enumerated, mounts active, memory roughly what we expect (512 MiB total minus kernel reservation).
 
-## 31.14  Lab
 
-1. **Build the BusyBox rootfs.** Get to a shell over NFS.
-2. **Write your own `/etc/profile`** with a colored prompt. (`PS1='\033[01;32m[\u@\h:\w]\$\033[00m '` for green.)
-3. **Add a second user.** Edit `/etc/passwd`, `/etc/shadow`, `/etc/group` to add a user `dev` with uid 1000. Log in as that user on a second console (or by `su - dev`).
-4. **Persist `/var/log/`.** Currently nothing writes to it. Modify `rcS` to redirect `dmesg > /var/log/dmesg.txt` so each boot logs to a host-visible file. (Since `/var` is on NFS, this works.)
-5. **Add `ntpd` from BusyBox.** Edit `/etc/init.d/rcS` to start `/usr/sbin/ntpd -p pool.ntp.org` in the background. Verify time syncs after boot.
-6. **Compare with a dynamic BusyBox.** Rebuild BusyBox without "Build static binary". Confirm DNS lookups (`nslookup`, `ping example.com`) work, they wouldn't with the static build.
+(31-14-lab)=
+## 31.14  Key Notes
+
+- A rootfs supplies executables, libraries and configuration. Directories such as `/proc`, `/sys` and `/dev` are mount points whose runtime contents are not produced by copying ordinary files.
+- BusyBox selects applets through invocation names, so its binary, enabled applets and installed links jointly define the available commands and init behavior.
+- `inittab` selects startup and respawn actions, `rcS` performs per-boot setup, and `fstab` describes mounts. Their responsibilities are related but not interchangeable.
+- Account files and file modes define access policy. An empty root password and an unrestricted development shell are not production authentication designs.
+- Dynamic executables depend on a matching target loader and libraries, not the host's library tree. Copying a binary alone does not establish a usable runtime.
+- NFS makes the host-exported tree part of the target's runtime dependency. Export permissions, Linux networking and persistent host configuration remain independent concerns.
+- Storage location determines persistence: RAM-backed `/tmp` and `/run` disappear at reboot, while data on an NFS export belongs to the host-backed tree. Paths alone do not guarantee durable logging.
 
 ## 31.15  Pitfalls
 
@@ -472,4 +475,4 @@ All five check out: kernel running, CPU detected, devices enumerated, mounts act
 - **`man 8 mount`**, **`man 5 fstab`**, **`man 5 inittab`**, the canonical references.
 - **The `nss-musl` and `nss-static`** trick, if you really need static binaries AND DNS, musl static + a simple resolver works where glibc static doesn't.
 
-> Next chapter: **Chapter 32: /proc, /sys, devtmpfs.** With the rootfs running, we look at the three virtual filesystems that are how user-space sees the kernel.
+> Next chapter: **Chapter 32: /proc, /sys, devtmpfs.** These virtual filesystems expose kernel state and device interfaces within the user-space filesystem view.

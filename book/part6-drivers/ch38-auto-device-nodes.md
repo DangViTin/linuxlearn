@@ -58,7 +58,7 @@ This is different from how you might imagine it. The kernel does not maintain `/
 
 ## 38.2  Adding to the chardev driver
 
-Take the Ch 37 driver and add a class, a device, and matching cleanup, about a dozen lines.
+The Chapter 37 example gains a class, a device, and matching cleanup. These additions connect character-device dispatch to the device model.
 
 ```c
 #include <linux/device.h>
@@ -343,14 +343,17 @@ For things like streaming data, stick to the chardev `read`/`write`. Sysfs is fo
 
 For multiple attributes, group them and use `device_create_file` per attribute, *or* `sysfs_create_group(&dev->kobj, &attr_group)` for atomic group creation/deletion.
 
-## 38.7  Lab
+<a id="lab"></a>
 
-1. **Add `class_create` + `device_create`** to the Ch 37 driver. Verify `/dev/hello` appears at load and disappears at unload.
-2. **Switch to multi-device.** Modify your driver to create 4 instances (`/dev/hello0` … `/dev/hello3`). Each instance has its own buffer.
-3. **Make it user-accessible.** Write a udev rule that gives your devices mode 0660 in group `plugdev`. Verify a non-root user can `cat /dev/hello0`.
-4. **Add a sysfs attribute.** Create `state_show`/`state_store` to expose a runtime knob, say, an integer that throttles your write speed.
-5. **Inspect the uevent.** Open two terminals on the target. In one, run `udevadm monitor` (or `mdev -d` if using mdev). In the other, `insmod` and `rmmod`. Watch the events fire.
-6. **Use the `devnode` callback** to set 0660 mode in the driver itself. Verify `/dev/hello` comes up with the right mode even without a udev rule.
+(ch38-lab)=
+## 38.7  Key Notes
+
+- `cdev` registration provides operation dispatch, while class/device registration describes the instance in sysfs. Publishing a node before its backing interface is ready creates an access race.
+- With devtmpfs, the kernel can create basic device nodes. Udev or mdev supplies user-space naming and access policy, rather than implementing the driver.
+- Dynamic major/minor numbers identify an instance, not a permanent product name. Stable names and permissions belong to an explicit device-management policy.
+- A shared class can contain multiple devices, but each instance needs its own state and complete failure unwind. Partial registration is a lifetime problem, not merely a naming error.
+- Sysfs attributes suit small status and configuration values. Streaming data belongs in an interface with an explicit transfer and readiness contract.
+- Removal withdraws published interfaces before releasing their backing state. Hot-plug events do not by themselves synchronize every application that may already hold a device open.
 
 ## 38.8  Pitfalls
 

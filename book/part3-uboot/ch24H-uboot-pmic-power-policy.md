@@ -15,7 +15,7 @@ observe that rail, and when the observation is possible.
 
 On the supplied **MINI V2.2 + core V2.0 design, power comes from discrete
 regulators, not an I2C PMIC**. There is no fitted fuel gauge or external I2C
-rail monitor in these schematics. The useful stock-board exercise is to
+rail monitor in these schematics. The useful stock-board example is to
 trace that real power tree and its reset/enable paths, then establish the
 stable supply arrangement for Chapter 19's vendor baseline. A PMIC or
 monitor is an optional hardware extension, not something to discover by
@@ -180,7 +180,7 @@ measurement. Neither property grants permission to change a core/DDR rail.
 
 There is no stock MINI PMIC read to perform. Use this section only after
 installing the documented optional monitor/PMIC; otherwise continue with
-the stock circuit audit and the host policy exercise.
+the stock circuit audit and the host policy example.
 
 Begin with `i2c bus` and inspect the controller's actual alias/sequence. The
 schematic's "I2C1" need not be U-Boot bus 1. Select only the identified bus.
@@ -313,7 +313,7 @@ environment, including these temporary failure commands. Persistent candidate
 metadata remains unchanged. Do not call `saveenv` in this path. An allocation
 failure invokes `hang()` instead of continuing with old boot commands.
 
-On a stock MINI supervised lab build, reset `update_allowed` to `0` in the
+On a stock MINI supervised example build, reset `update_allowed` to `0` in the
 existing board hook on **every entry**, checking the `env_set()` result, but
 do not call the unimplemented snapshot adapter. Normal boot remains under
 its established policy. For a spare-medium service session, the operator
@@ -377,26 +377,16 @@ Specify these rules in the board design record. "Fail closed" here describes
 software refusing an operation; it is not proof that stopping software makes
 the electrical state safe.
 
-## 24H.11  Lab
+(h-11-lab)=
+## 24H.11  Key Notes
 
-1. On the supplied MINI/core schematics, trace U6/U4, core U8/U6/U11,
-   `PMIC_ON_REQ`, power-good, reset, and CR1220/SNVS. Explain why USB_TTL
-   enumeration cannot qualify DDR or storage power.
-2. For the stock board, record the approved supply arrangement and hardware
-   guarantees. Add no PMIC node, perform no unknown-address reads, and keep
-   the working vendor boot path free of the refusal stub.
-3. Only for an added supported monitor, review each read's side effects.
-   Perform approved status reads; keep raw bytes with datasheet references.
-4. Use a **host fixture** to replace the adapter: communication error,
-   critical failure, boot-safe/update-unsafe, and fully approved snapshots.
-5. For each fixture, check both normal and alternate commands and
-   `update_allowed`. A GPIO recovery request must not undo a power veto.
-6. Test a failed environment update in the fixture. The policy must not
-   continue into old commands. Do not lower rails, alter regulator setpoints,
-   or cut board power to manufacture this test.
-7. In the stock supervised lab, check fresh RAM-only write authorization
-   and refusal without it. For an unattended monitored product, implement
-   and qualify the real adapter and earlier guards before deployment.
+- The documented MINI/core uses discrete regulators with no fitted I2C PMIC or rail monitor. `PMIC_ON_REQ` is a sequencing net, and the CR1220 backs SNVS rather than powering updates.
+- A measurement adapter owns protocol, side effects, coherence, units and sample validity. Policy consumes a validated snapshot, not raw bytes or a transport error disguised as voltage.
+- Protection must precede the operation it guards. A DDR-resident late hook cannot protect ROM/DCD accesses or undo earlier environment/storage reads.
+- Boot-safe and update-safe are different decisions. Fresh `update_allowed` permission belongs at the write/service boundary and cannot be trusted merely because it was saved earlier.
+- Critical power vetoes outrank key recovery and cover both automatic commands. Suppressing a whole-environment attempt save prevents temporary failure commands from becoming persistent.
+- The unimplemented adapter belongs only to the monitor-extension design. Its `-ENOSYS` is not a stock-board fault, and a software stop is not proof of an electrically safe powered state.
+- Rail limits and hold-up requirements come from the actual design. Lowering supplies, changing regulator setpoints or cutting power is not required to understand these policy cases.
 
 ## 24H.12  Pitfalls
 

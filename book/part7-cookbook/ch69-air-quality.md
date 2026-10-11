@@ -437,7 +437,7 @@ DT, attach to UART2:
 };
 ```
 
-Build, load, exercise:
+Example build and access:
 
 ```
 [root@pa-mini:~]# insmod mypms5003.ko
@@ -481,16 +481,13 @@ For an indoor-air-quality monitor product:
 
 User-space reads all of them via IIO + serdev, feeds an MQTT topic, plots in Grafana. Bonus: feed the BME280's T+H to the CCS811's ENV_DATA register for compensation.
 
-## 69.7  Lab
+<span id="lab"></span>
+## 69.7  Key Notes
 
-1. **SCD30 NDIR with i2c-tools.** `i2cdetect -y 1` (should show 0x61). Manually issue `0x0300` and read 18 bytes. Verify CRCs. Decode the first 4 bytes as float, your CO₂ reading.
-2. **CCS811 bring-up.** Wire up with the /WAKE pin to a GPIO. Verify probe in dmesg. Read eCO₂ before and after a window-open / hot-meal scenario. Watch it climb when cooking.
-> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-3. **PMS5003 from scratch.** Build `mypms5003.ko`. Verify frame parsing. Expose `in_massconcentration_pm2p5_input`.
-4. **PMS5003 with a smoke source.** Light a match near the sensor (carefully). Watch PM2.5 spike 100× then settle over 30 s.
-5. **Cross-correlate.** Run all three sensors for an hour. Log to CSV. After cooking, see CO₂ rise (people present), TVOC rise (cooking emissions), PM2.5 rise (smoke). Three signals from three physics.
-6. **Mainline SCD30**: Switch from manual i2c-tools to the mainline driver via `compatible = "sensirion,scd30"`. Verify same numbers.
+- NDIR CO2, metal-oxide gas response and optical particle sensing measure different quantities. An inferred eCO2 value must not be presented as a direct CO2 measurement.
+- Framing, CRCs, readiness and wake control are part of obtaining valid samples. A plausible number alone does not establish that the transaction succeeded.
+- Baseline algorithms and calibration depend on the intended environment. Their assumptions can fail in enclosed spaces or changing gas mixtures.
+- Units, validity and sensor status should remain visible to the application. A combined air-quality display should not hide warmup, saturation or airflow failures.
 
 ## 69.8  Pitfalls
 

@@ -10,13 +10,13 @@ status: draft
 
 > **What:** boot Xen on the real i.MX6ULL board, then let Xen boot a small Dom0 Linux.
 >
-> **Why:** QEMU proved the shape. The real board proves the uncomfortable details: U-Boot handoff mode, real Device Tree, real serial console, real RAM limits, and real "nothing prints" failures.
+> **Why:** QEMU helps explain the boot structure. Applying it to a physical board adds separate questions about U-Boot handoff mode, Device Tree, console ownership and RAM limits. The example below describes the intended contract, not a captured or qualified MINI boot.
 >
 > **Focus:** Xen is now the first privileged software after U-Boot. Linux is no longer bare metal.
 
 ## 134.1  What success looks like
 
-This chapter is complete when the serial log shows this sequence:
+The intended boot sequence makes the successive owners visible:
 
 ```
 U-Boot prompt
@@ -31,13 +31,13 @@ Dom0 Linux boots
 Dom0 reaches a shell
 ```
 
-Do not start with DomU. Do not start with networking. Do not start with passthrough. The first milestone is only:
+DomU, networking and passthrough depend on an earlier handoff working correctly. The smaller boot contract is:
 
 ```
 U-Boot -> Xen -> Dom0 shell
 ```
 
-If that works, Chapter 135 starts a DomU.
+Chapter 135 adds the DomU lifecycle to this model. Reading either chapter does not require executing this sequence.
 
 ## 134.2  Reality check for i.MX6ULL
 
@@ -150,7 +150,7 @@ $ ls -lh boot/
 
 ## 134.7  Build Xen
 
-Use a current supported Xen release. At the time this chapter was drafted, the Xen 4.21 series is current, and Xen 4.20 is also a supported series. If your package manager or release tarball has a newer supported stable release, use it and record the exact version in your lab notes.
+Use a current supported Xen release. At the time this chapter was drafted, the Xen 4.21 series is current, and Xen 4.20 is also a supported series. If your package manager or release tarball has a newer supported stable release, use it and record the exact version in your configuration notes.
 
 ```sh
 $ cd ~/imx6ull/xen-lab/src
@@ -495,30 +495,14 @@ That is expected. Native Linux owns the physical UART. Dom0 under Xen normally s
 
 Xen requires HYP mode on ARM. Check U-Boot configuration and handoff path. This is not a Linux config problem. It is a firmware/CPU-mode problem.
 
-## 134.15  Lab
+<span id="lab"></span>
+## 134.15  Key Notes
 
-Deliverables:
-
-1. `boot-xen.cmd`
-2. `boot-xen.scr`
-3. `xen`
-4. `zImage-dom0`
-5. `dom0-initramfs.cpio.gz`
-6. `imx6ull-mini-xen.dtb`
-7. `logs/xen-dom0-first-boot.log`
-8. A short note with:
-   - Xen version,
-   - Linux commit or release,
-   - U-Boot version,
-   - board revision,
-   - exact DTB used,
-   - whether Dom0 reached shell.
-
-The lab is complete only when the serial log proves:
-
-```text
-U-Boot -> Xen -> Dom0 Linux -> shell
-```
+- The physical boot path adds U-Boot and MINI-specific hardware dependencies before Xen can start. QEMU success cannot supply evidence for those dependencies.
+- Xen, Dom0 and bootloader artifacts must agree on addresses, DTB contents, entry conditions and source versions.
+- The i.MX6ULL has one Cortex-A7 core and a finite RAM budget. Virtual CPUs share that core rather than create physical parallelism.
+- A successful Xen/Dom0 boot would establish a boot milestone, not safe peripheral assignment or deterministic guest timing.
+- The supplied examples remain a design study unless supported by actual logs from the identified board revision and configuration.
 
 ## 134.16  Pitfalls
 

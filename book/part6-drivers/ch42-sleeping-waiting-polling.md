@@ -76,7 +76,7 @@ For driver code, match the variant to your wait: if you `wait_event_interruptibl
 
 ## 42.3  A blocking read example
 
-Extend the misc-device driver from Chapter 40 with a kernel-thread "producer" and a blocking `read` that waits for data.
+A kernel-thread "producer" illustrates how the Chapter 40 misc-device interface can support a blocking `read` that waits for data.
 
 ```c
 #include <linux/wait.h>
@@ -317,14 +317,17 @@ Times where `TASK_UNINTERRUPTIBLE` is appropriate:
 
 For chardev `read`/`write`, always use interruptible.
 
-## 42.7  Lab
+<a id="lab"></a>
 
-1. **Build and run the producer/waiting-read example.** Confirm blocking `read` waits 2 seconds for each event.
-2. **Test `O_NONBLOCK`.** Open with `O_NONBLOCK | O_RDONLY`. Verify `read` returns `-EAGAIN` immediately when no data.
-3. **Implement and test `.poll`.** Write the `test_poll.c` from §42.4. Verify `select` correctly times out and wakes on events.
-4. **Test signal handling.** Run `cat /dev/waiting` in a foreground process. While blocked, hit `Ctrl-C`. Confirm the process exits (returns `-ERESTARTSYS`, which `cat` translates to "interrupted").
-5. **Replace `wait_event_interruptible` with `wait_event` (the uninterruptible variant).** Confirm Ctrl-C *doesn't* kill the reader. Use Ctrl-Z, then `kill -9 %1`. The process is unkillable. (This is the bug pattern. Restore interruptible afterwards.)
-6. **Add a writeable path.** Implement `.poll`'s `EPOLLOUT` for a fictional state ("buffer empty enough to accept more writes"). Test with `select` watching for writability.
+(ch42-lab)=
+## 42.7  Key Notes
+
+- A wait queue records interest in a condition. The producer owns state changes and wakeups, while the reader remains responsible for checking whether its condition is satisfied.
+- `wait_event_*` handles the sleep/wake registration protocol. Shared data still needs synchronization, and a wakeup does not grant exclusive ownership to one reader.
+- Blocking reads, nonblocking reads, and `.poll` must describe the same readiness state. `-EAGAIN` means no transfer is currently possible, not EOF.
+- `.poll` registers interest before reporting current readiness. Readiness is an observation, not a reservation of data against another consumer.
+- Signal interruption and timeouts bound waits that would otherwise trap an application behind a failed producer. The syscall's restart policy is part of its observable behavior.
+- Removal needs a terminal condition and a wakeup path for blocked callers. Stopping the producer alone can leave readers asleep on state that will never change.
 
 ## 42.8  Pitfalls
 

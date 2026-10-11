@@ -518,16 +518,13 @@ nrf24@0 {
 | Need range *and* multi-node + auto-ACK | LoRa P2P (Ch 98), neither nRF24 nor CC1101 gives both |
 | 802.15.4 / ZigBee / Thread | not these, Ch 100 |
 
-## 99.9  Lab
+<span id="lab"></span>
+## 99.9  Key Notes
 
-1. **nRF24 identify.** Wire 2 boards, each with nRF24 module. Read `CONFIG` (default `0x08`), verify SPI works.
-2. **PTX ↔ PRX.** Build `nrf24_min.c`. One board as `r`, one without. Confirm ACKs at 1 m. `OBSERVE_TX` should show 0 retries.
-3. **Range walk.** Move boards apart. Note where ACK rate drops below 90 %. Plot retry counts (`OBSERVE_TX[3:0]`) vs distance.
-4. **Multi-pipe hub.** 1 hub (PRX) + 3 satellites (each PTX with a different `TX_ADDR`). Hub listens on pipes 1, 2, 3. Each satellite sends every 2 s. Hub prints `pipe=N msg=...`. Add ACK payloads so the hub replies inside each ACK.
-5. **WiFi co-existence test.** Run hub on channel 76 (2476 MHz). Then run `iperf3` on the same i.MX6ULL via WiFi. Watch retry counts. Move to channel 100 (2500 MHz, above WiFi band). Compare.
-6. **CC1101 with SmartRF Studio.** Download SmartRF Studio (free, Windows/Linux). Generate a register table for 868 MHz / 4-FSK / 38.4 kbps. Flash that table to a CC1101 module. Confirm a packet exchange between two boards.
-7. **CC1101 build-your-own-ACK.** CC1101 has no auto-ACK. Add a 2-byte sequence + 1-byte ACK frame in user space. Measure round-trip vs nRF24's hardware ACK at similar conditions.
-8. **Bridge test.** Two networks: nRF24 satellites + an i.MX6ULL hub bridging them to MQTT. Sensor data via nRF24 → JSON → mosquitto → Grafana.
+- These radios implement different state machines and packet services. The nRF24L01+ is a 2.4 GHz device, while CC1101 represents the sub-GHz path.
+- Hardware auto-acknowledgment and retries reduce host work but do not provide application-level exactly-once delivery or security.
+- FIFO ownership, standby transitions and completion status govern reliable transactions. A register write is meaningful only in the appropriate device state.
+- Link budget, channel contention and energy per delivered message matter more than nominal data rate alone.
 
 ## 99.10  Pitfalls
 

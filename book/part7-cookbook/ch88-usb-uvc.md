@@ -169,16 +169,13 @@ These map to UVC's standardized control requests. `uvcvideo` translates V4L2 con
 
 The inverse: making the i.MX6ULL *appear* as a webcam to a host PC (Ch 55's USB gadget). The `uvc` gadget function streams frames the i.MX6ULL generates (e.g., from a CSI camera) to a host as a standard webcam. Useful for "camera-over-USB" products. The ConfigFS `uvc` function (Ch 55.3) does this.
 
-## 88.8  Lab
+<span id="lab"></span>
+## 88.8  Key Notes
 
-1. **Plug in a UVC webcam.** Verify `lsusb`, `dmesg`, `/dev/video0`.
-2. **List capabilities.** `v4l2-ctl --list-formats-ext`. Note which resolutions support which formats and frame rates. Map them to the bandwidth table.
-3. **Capture YUYV VGA.** Save 30 frames. Convert one to PNG. Verify the image.
-4. **Capture MJPEG 720p.** Save frames. They're already JPEG, open directly.
-5. **Bandwidth limit test.** Try YUYV 720p30. Observe it fail or fall back (bandwidth exceeded). Switch to MJPEG 720p30. Observe success.
-6. **Controls.** Adjust brightness, exposure, focus. Observe changes in captured frames.
-7. **Contention.** Add a USB WiFi dongle on the same bus. Stream the camera + run iperf3. Observe degradation. Move the camera to the second USB controller. Observe improvement.
-8. **Network stream.** GStreamer: camera MJPEG → RTP → UDP to a desktop running VLC. No decode on the i.MX6ULL (forward the JPEG directly).
+- UVC describes a class-based control and streaming interface. Reusing a class driver reduces integration work but does not remove device quirks or mode constraints.
+- Raw and compressed formats shift the bottleneck between USB bandwidth, storage and CPU processing. Receiving compressed frames is not the same cost as decoding them.
+- Devices sharing a USB controller also share scheduling, bandwidth and power constraints. A camera's advertised mode is not a system throughput result.
+- Frame loss and disconnects need explicit handling. A valid `/dev/videoN` node does not establish uninterrupted capture.
 
 ## 88.9  Pitfalls
 

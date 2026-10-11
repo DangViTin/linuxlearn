@@ -260,14 +260,14 @@ You want:
 - `/data` mounted from `LABEL=data`,
 - boot files loaded from the FAT partition.
 
-## 35D.8  Lab
+<span id="d-8-lab"></span>
+## 35D.8  Key Notes
 
-1. Partition an SD card with boot, rootfs, and data partitions.
-2. Boot using `root=LABEL=rootfs`.
-3. Mount `/data` from `LABEL=data`.
-4. Create `/data/persistent.txt`, reboot, and verify it survives.
-5. Change U-Boot `bootcmd` to use `&&`.
-6. Break the DTB filename on purpose and confirm U-Boot stops before `bootz`.
+- Boot files, the root filesystem and application data have different owners and update lifetimes. Separate partitions make those boundaries visible but do not by themselves provide rollback.
+- Partition identity and device enumeration are separate concerns. A label or PARTUUID can describe the intended root, while the selected init and kernel still need support for resolving that form.
+- The ROM boot region is outside the filesystem-level view. Image packaging must keep bootloader placement, partition tables and later filesystem writes from overlapping.
+- Root mounting depends on storage discovery and filesystem availability. A correct filename in U-Boot does not prove that the kernel can mount the selected root.
+- Service startup must follow the availability of persistent data. Otherwise an application can accidentally write into the underlying root directory instead of the intended data partition.
 
 ## 35D.9  Pitfalls
 

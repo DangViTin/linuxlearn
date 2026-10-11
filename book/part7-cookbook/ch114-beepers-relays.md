@@ -164,7 +164,7 @@ Linux side: just GPIO toggle, same as mechanical relay. The SSR's internal opto 
 
 ## 114.5  AC safety, non-negotiable rules
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Examples and production:** Do not burn fuses, enroll production keys, or sign release images while using these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -225,16 +225,13 @@ c.loop_forever()
 
 About 40 lines. Install as a systemd unit. Open Home Assistant on a phone, tap "Living Room Lamp", and the relay clicks the lamp on via MQTT.
 
-## 114.7  Lab
+<span id="lab"></span>
+## 114.7  Key Notes
 
-1. **Passive buzzer melody.** PWM the buzzer to play "Twinkle Twinkle Little Star" (12 notes, each ~250 ms).
-2. **Active buzzer alarm.** GPIO-toggled active buzzer. Pulse on/off pattern for a fire-alarm cadence (250 ms on, 250 ms off, repeat).
-3. **MOSFET dimmer.** N-FET driving a 12 V LED strip. PWM at 1 kHz with adjustable duty. Set up a sysfs knob to vary brightness.
-4. **Mechanical relay safe-switch.** Driver: BJT + flyback. Scope the BJT collector with no diode → see the spike. Add diode → spike gone.
-5. **SSR + AC load.** Use a 5 V SSR module to switch a desk lamp (with proper isolation + fuse + enclosure). GPIO toggles every 2 s. Lamp blinks.
-6. **MQTT relay board.** Build the 4-channel example. Toggle from Home Assistant dashboard.
-7. **Inrush measurement.** Switch an incandescent bulb (or motor) with a non-zero-cross SSR. Capture the inrush on a current probe. Switch with a zero-cross SSR. Compare.
-8. **Relay endurance.** Cycle a relay at 1 Hz with rated AC load. Count failures over 100,000 cycles (will take 28 hours). Make notes about contact wear.
+- Buzzer, relay, MOSFET and SSR interfaces differ in load behavior and protection requirements. A GPIO can request a state without safely supplying the load.
+- Reset and startup levels should leave actuators in a defined safe state. Software initialization occurs after a period in which pins may have another function or be high impedance.
+- Inductive energy, inrush, dissipation and leakage constrain switching-device selection. An off command does not necessarily provide electrical isolation.
+- Mains switching requires a qualified electrical design and enclosure. The examples are not instructions to build or experiment with exposed mains circuitry.
 
 ## 114.8  Pitfalls
 

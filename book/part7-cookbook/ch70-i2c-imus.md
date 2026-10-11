@@ -53,7 +53,7 @@ For drones, AR/VR, robotic-arm control: 9-axis is mandatory. For tap-detection, 
 
 ## 70.3  Protocol, MPU6050 register map
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Examples and production:** Do not burn fuses, enroll production keys, or sign release images while using these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -713,15 +713,13 @@ For yaw, add magnetometer. The algorithm extends to "Madgwick AHRS."
 
 Fusion belongs in user-space, not in the driver. The driver delivers clean samples. The application turns them into orientation.
 
-## 70.11  Lab
+<span id="lab"></span>
+## 70.11  Key Notes
 
-1. **WHO_AM_I poke.** With i2c-tools: `i2cget -y 1 0x68 0x75`. Should return 0x68 (or 0x71 for MPU9250).
-2. **Build and load `mympu6050.ko`.** Read accel and gyro via sysfs. Hold the chip flat → +1 g on Z. Tilt 90° → +1 g on Y or X.
-3. **Triggered buffered capture.** Configure hrtimer trigger. Capture 5000 samples. Parse offline. Plot accel-Z while you tap the table, you'll see vibration peaks.
-4. **Madgwick filter.** Compile a user-space Madgwick implementation. Feed it samples from `/dev/iio:device0`. Plot the resulting roll/pitch in real-time.
-5. **Mainline driver.** Switch to `compatible = "invensense,mpu6050"`. Verify same channels appear.
-6. **Self-test.** Write 0xE0 to GYRO_CONFIG (enable self-test). Verify gyro outputs increase by datasheet's expected amount. Check pass criteria.
-7. **MPU9250 mag bypass.** If you have an MPU9250, enable bypass mode. Access AK8963 directly at 0x0C via i2c-tools.
+- An IIO trigger and buffer decouple capture from user-space reads. Channel layout, scale and timestamps form the sample interface consumed by later processing.
+- The configured output rate is not necessarily the rate of distinct samples delivered to the application. Bus time, FIFO behavior and buffer consumption constrain that path.
+- Accelerometer, gyroscope and magnetometer data have different biases and coordinate frames. Sensor fusion needs those definitions in addition to a filter implementation.
+- A magnetometer behind an IMU's auxiliary bus has a different ownership path from a directly attached I2C device. Bypass and internal-master modes cannot be treated as unrelated accesses.
 
 ## 70.12  Pitfalls
 

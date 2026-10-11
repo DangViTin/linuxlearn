@@ -18,7 +18,8 @@ The goal:
 - secrets are not baked into public images,
 - writable data is separated from immutable system files.
 
-## 35H.1  Remove the lab shortcuts
+<span id="h-1-remove-the-lab-shortcuts"></span>
+## 35H.1  Development settings are not release policy
 
 During bring-up, we often do this:
 
@@ -208,15 +209,14 @@ Use `noexec` only if your product never runs programs from `/data`.
 - Read-only rootfs tested.
 - Factory reset does not erase device identity unless intended.
 
-## 35H.10  Lab
+<span id="h-10-lab"></span>
+## 35H.10  Key Notes
 
-1. Create a non-root user `dev`.
-2. Add an SSH key for `dev`.
-3. Disable root SSH login.
-4. Create a `myapp` service user.
-5. Run your service as `myapp`.
-6. Confirm it can access only the files it needs.
-7. Run `ss -lntup` and write down every listening service.
+- Security begins with authority: which account owns a service, which files it can change, and which interfaces it exposes. Running everything as root erases useful boundaries.
+- Device identity and credentials have a different lifecycle from ordinary configuration. Provisioning, backup, update and factory reset must agree on what survives.
+- An image shared across a fleet should not contain a shared private credential. Public build artifacts and secret provisioning belong to different trust domains.
+- Removing unnecessary services reduces exposure, but an immutable rootfs does not replace authentication, authorization or an update process.
+- Development convenience settings are not release policy. The relevant question is whether each privilege and listening service has a product purpose and an accountable owner.
 
 ## 35H.11  Pitfalls
 

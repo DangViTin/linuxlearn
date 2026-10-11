@@ -16,7 +16,7 @@ would be only a small part of the work.
 U-Boot already provides that larger framework. This time, we want its prompt
 on **our Point Atom i.MX6ULL MINI**, not a successful build for somebody else's
 evaluation board. We will begin with the board vendor's source, keep its DDR
-and storage setup visible, and build a deliberately quiet first-lab image.
+and storage setup visible, and build a deliberately quiet initial image.
 It will wait for us instead of trying to start an old Linux installation.
 
 The hardware baseline is the supplied **MINI V2.2 baseboard with the 512 MiB
@@ -109,9 +109,10 @@ Device Configuration Data table in the image, to prepare DDR. It then loads
 full U-Boot into that memory. A missing SPL output will not be a build error.
 
 (build-for-the-evk)=
-## 19.3  Make a quiet first-lab image
+<span id="make-a-quiet-first-lab-image"></span>
+## 19.3  A quiet initial image
 
-The factory defaults are intended to boot a complete system. Our first lab
+The factory defaults are intended to boot a complete system. Our initial example
 needs less: a console prompt, no automatic boot, and no persistent environment
 changes. We can express that with a small, visible edit.
 
@@ -141,7 +142,7 @@ In that same header, find the `#define CONFIG_VIDEO` line immediately before
 ```
 
 Leave the enclosed definitions and closing conditionals in place. For this
-first console lab, no display support is compiled. This matters even without
+initial console example, no display support is compiled. This matters even without
 a screen attached: the old display helper drives GPIO5_IO09 as LCD reset,
 but the supplied core puts that pad in the shared reset network. Chapter 24I
 examines the mismatch before any display migration. An inherited helper is
@@ -167,10 +168,10 @@ Open `configs/mx6ull_alientek_emmc_defconfig` and add this line at the end:
 # CONFIG_CMD_NET is not set
 ```
 
-For this UART/storage lab we leave networking and USB host commands out. The header enables
+For this UART/storage example we leave networking and USB host commands out. The header enables
 the FEC/PHY code under `CONFIG_CMD_NET`; disabling it avoids running the old
 PHY-specific hook before we have reconciled V2.2's different PHY. Later
-network exercises need that support deliberately migrated and tested.
+network examples need that support deliberately migrated and tested.
 ROM USB recovery is independent of these U-Boot commands and remains available.
 
 There is also a real C lifetime bug in this old source that GCC 13 diagnoses.
@@ -254,10 +255,10 @@ these commands with the NAND core or an arbitrary memory replacement.
 | SD-card byte `0x400`, or 1 KiB | Required location of that IVT on this boot medium |
 | Raw range at `0xC0000`, size `0x2000` | Vendor MMC environment layout, if persistent storage is later re-enabled |
 
-Our RAM-only lab build does not use that environment region. Still leave the
+Our RAM-only example build does not use that environment region. Still leave the
 space reserved: check that the image length plus its 1 KiB placement ends
 before `0xC0000`, and keep filesystem partitions outside these raw ranges.
-A dedicated DOS/MBR lab layout differs from GPT, whose primary entries overlap
+A dedicated DOS/MBR example layout differs from GPT, whose primary entries overlap
 this boot placement. Do not combine this write with an arbitrary existing
 partition table.
 
@@ -294,7 +295,7 @@ point. Matching media bytes establish a correct copy, not tested DDR margins.
 
 With board power off, insert the spare card and set the **MINI's documented
 SD boot switches** as established in Chapter 8. Do not use an EVK switch
-diagram. Remove an optional SDIO Wi-Fi module for this lab: MINI shares its
+diagram. Remove an optional SDIO Wi-Fi module for this example: MINI shares its
 USDHC1 signals between that connector and the TF-card socket.
 
 Connect the MINI's USB-TTL console, not its USB-OTG port. Open the confirmed
@@ -302,7 +303,7 @@ serial device at 115200 baud, 8 data bits, no parity, and one stop bit before
 powering the board. The CH340C can enumerate while the core is off, so a host
 serial device alone does not prove that U-Boot is running.
 
-Our lab edit disables the autoboot countdown. If startup reaches the command
+Our example edit disables the autoboot countdown. If startup reaches the command
 interpreter, it should wait at `=>`. The source's board banner says
 `MX6ULL ALIENTEK EMMC`. The factory guide shows a different banner from a
 different snapshot. Do not require its timestamp, display name, or complete
@@ -336,10 +337,10 @@ Begin with inspection:
 
 `version` identifies the running program, not the directory on the host.
 `printenv` shows the current RAM environment. Some variables may be absent.
-Our first-lab backend does not load saved MMC settings.
+Our initial environment backend does not load saved MMC settings.
 The old header can still contain environment strings referring to commands
 we disabled. A printed `netboot` or display variable does not enable that
-feature. Do not run the inherited `bootcmd` in this inspection exercise.
+feature. Do not run the inherited `bootcmd` in this inspection example.
 
 In `bdinfo`, record the DRAM start and size, relocation address, and relocation
 offset. For the intended core, the declared memory size is 512 MiB starting
@@ -357,12 +358,12 @@ USDHC2 to device 1 (the core's eMMC). Confirm that with your actual output:
 
 Selecting and identifying a device does not write its contents. These indices
 are not host `/dev/sdX` names and do not guarantee Linux `/dev/mmcblkN` ordering.
-Do not run `mmc write`, `mmc erase`, or `saveenv` in this first exercise.
+Do not run `mmc write`, `mmc erase`, or `saveenv` in this first example.
 
 MINI has **one RJ45 connector on ENET2**. Older baseboards use LAN8720, while
 the supplied V2.2 schematic uses SR8201F at PHY address 1. This public tutorial
 snapshot selects the SMSC PHY driver, so its build alone does not establish
-correct SR8201F initialization. Our first-lab edit disables that network
+correct SR8201F initialization. Our initial configuration disables that network
 path. Leave Ethernet for the revision-aware checks
 in Chapters 22 and 24. A `FEC1` log label is a software index, not a second
 RJ45 socket that the MINI must have.
@@ -400,21 +401,16 @@ baseline behavior, but it does not make all-ones clock writes a good default
 for Part II's smaller experiments. Nor does a vendor table replace testing
 after changing a DDR part, routing, frequency, or power design.
 
-## 19.8  Lab
 
-1. Identify the MINI baseboard revision and core memory/storage variant.
-   Keep the factory image and a recovery route.
-2. Clone the pinned vendor snapshot. Open the board files and explain why
-   this tree uses `mx6ull_alientek_emmc_defconfig`, not the factory archive's name.
-3. Make the visible RAM-environment/autoboot edit, disable video, and fix the FAT object lifetime.
-   Inspect `git diff` before building.
-4. Build in `uboot-mini-vendor` with the Chapter 3 compiler. Inspect the ELF,
-   configuration, map, and `u-boot.imx`. Explain why no SPL is expected.
-5. Match one DCD write to the reference manual. Distinguish IVT file byte zero
-   from SD-card byte `0x400`.
-6. On the matching MINI core, use the checked spare-card procedure and record
-   the actual boot log, version, `bdinfo`, and both MMC identities. If hardware
-   is unavailable, record the host result and leave this checkpoint untested.
+(19-8-lab)=
+## 19.8  Key Notes
+
+- The pinned vendor target describes the documented 512 MiB eMMC core. Shared ALPHA/MINI software does not make every carrier connection or PHY revision interchangeable.
+- ROM executes the image's DCD before full U-Boot enters DDR. This target has no SPL, and `dram_init()` cannot rescue an initializer that prevented execution.
+- The quiet configuration separates console/storage inspection from automatic boot and persistent policy. RAM environment changes do not modify saved MMC settings.
+- Disabling inherited video, network and USB-host groups prevents unrelated hooks from running before their MINI-specific assumptions are reviewed.
+- `u-boot.imx` begins with its IVT at file byte zero. Its placement at SD byte `0x400` is a distinct media-layout decision, with boot and environment ranges kept outside partitions.
+- Compilation, image inspection, media readback and a UART prompt establish different boundaries. None alone qualifies DDR margins, every storage sector or Ethernet behavior.
 
 ## 19.9  Pitfalls
 
@@ -430,7 +426,7 @@ after changing a DDR part, routing, frequency, or power design.
   Do not combine it with a helper that adds another image header or pad.
 - **Assuming the PHY never changed.** V2.2's SR8201F needs a revision-aware
   driver check, even though ENET2 and PHY address 1 remain familiar.
-- **Saving settings to silence a warning.** Our first-lab image is deliberately
+- **Saving settings to silence a warning.** Our initial image is deliberately
   nonpersistent. Investigate the selected image and backend instead.
 
 ## 19.10  Going deeper

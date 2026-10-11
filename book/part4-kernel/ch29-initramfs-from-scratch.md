@@ -8,9 +8,9 @@ status: draft
 
 # Chapter 29: Initramfs from scratch
 
-> **What:** the absolute minimum user space that a Linux kernel can hand off to, a single statically-linked binary in a cpio archive, ~30 KB, that prints "hello" and reboots. Then a BusyBox-based initramfs with a real shell. Both reachable in under an hour.
+> **What:** two small early user-space designs: a statically linked program in a cpio archive that prints "hello" and reboots, and a BusyBox-based initramfs with a shell.
 >
-> **Why:** the standard rootfs path (`root=/dev/mmcblk0p2`) hides a lot. Building an initramfs by hand surfaces the actual kernel-to-userspace handoff: what kernel_init's `kernel_execve` does, what `/init` must look like, how cpio archives become a populated filesystem at boot. Once you have done it once, Buildroot and Ubuntu-base in Part V build on the same idea, just with more pieces.
+> **Why:** the standard rootfs path (`root=/dev/mmcblk0p2`) hides a lot. An initramfs exposes the kernel-to-user-space handoff, the requirements on `/init`, and how a cpio archive becomes a populated filesystem. Buildroot and Ubuntu-base in Part V expand the runtime environment with more pieces.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
@@ -31,7 +31,7 @@ Two ways to get the cpio archive into kernel memory:
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 
-Option 1 is simpler for tiny images. Option 2 is more flexible, you can change the rootfs without rebuilding the kernel, and is the standard choice for anything bigger. We'll do both.
+Option 1 is simpler for tiny images. Option 2 allows changes to the rootfs without rebuilding the kernel. The examples compare both packaging choices.
 
 ## 29.2  The smallest possible initramfs
 
@@ -233,7 +233,7 @@ model name : ARMv7 Processor rev 5 (v7l)
 ...
 ```
 
-You have a real Unix shell on the i.MX6ULL. From here you can `cd`, `ls`, `mount`, `vi`, `ifconfig`, every common Unix command, supplied by BusyBox.
+In this example, BusyBox supplies a shell and the enabled applets. Their availability depends on its configuration, not on the presence of a full desktop distribution.
 
 ## 29.5  Embedded vs separate
 
@@ -252,7 +252,7 @@ The `zImage` grows by the initramfs size. No separate bootloader step. Convenien
 
 ### Separate file loaded by bootloader
 
-What we did above. The kernel is one file (`zImage`), the initramfs is another (`initramfs.cpio.gz`). The bootloader loads both. The advantage is *changing the rootfs doesn't require rebuilding the kernel*. Used by basically every serious embedded system.
+In the separate-file example above, the kernel is one file (`zImage`) and the initramfs is another (`initramfs.cpio.gz`). The bootloader loads both. The advantage is *changing the rootfs doesn't require rebuilding the kernel*.
 
 Choose based on how often the rootfs changes vs the kernel. For early development, embedded is faster (one artefact). For production, separate is more flexible.
 
@@ -268,14 +268,17 @@ Once you have user space running, what runs as PID 1? Three common choices for e
 
 For embedded, **BusyBox init** is the default. We use it in this book through Chapter 31 and switch to discussing systemd in Chapter 33.
 
-## 29.7  Lab
 
-1. **Build and run the one-binary initramfs** from §29.2 and §29.3. Time how long the kernel takes from `bootz` to printing `hello`.
-2. **Replace the C program** with one that reads `/proc/cpuinfo` and prints it. Confirms that you can run arbitrary code as PID 1.
-3. **Build and run the BusyBox initramfs** from §29.4. Get to a shell. Run `ls /proc`, `cat /proc/meminfo`, `dmesg | tail`.
-4. **Embed the initramfs.** Add `CONFIG_INITRAMFS_SOURCE` to your kernel's `.config`, rebuild, boot with `bootz <kernel> - <dtb>` (no separate initrd address). Verify the kernel boots to the same shell.
-5. **Mount sysfs.** From the BusyBox shell, `ls /sys/class/gpio/`. Confirm devtmpfs and sysfs are populated. Echo a value to `/sys/class/leds/<your-led>/brightness` and observe the LED change.
-> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+(29-7-lab)=
+## 29.7  Key Notes
+
+- An initramfs supplies files before the normal storage-backed root is available. The kernel unpacks a cpio archive, then early user space owns the next boot or recovery decision.
+- `/init` must be executable for the target architecture, with its interpreter and libraries present when needed. Static linking removes shared-library dependencies, not the requirements for a console or filesystem mounts.
+- A separately loaded raw archive needs its address and byte count in the bootloader handoff. The saved size must describe the initramfs transfer, not another image loaded afterward.
+- Embedding the archive ties its contents to the kernel artifact. Loading it separately permits independent replacement but adds another image to the bootloader's release and memory-layout contract.
+- BusyBox combines selected applets in one binary. Its shell and utilities still need startup policy, mount points and device-node availability.
+- procfs exposes kernel and process information, sysfs exposes device-model attributes, and devtmpfs supplies device nodes. Their mounts are distinct from the files stored in the cpio archive.
+- PID 1 is a system-lifetime process. The rebooting example is a demonstration of that boundary, not a service manager or a qualified recovery system.
 
 ## 29.8  Pitfalls
 
@@ -296,4 +299,4 @@ For embedded, **BusyBox init** is the default. We use it in this book through Ch
 - **`init/initramfs.c`**: the kernel's cpio extractor. Short and readable.
 - **`klibc`**: an even smaller libc-replacement than musl, designed specifically for in-kernel-cpio-initramfs static binaries.
 
-> Next chapter: **Chapter 29A: Initramfs as a recovery system.** Now that a minimal initramfs boots, we turn it into a practical recovery environment for broken root filesystems and field updates.
+> Next chapter: **Chapter 29A: Initramfs as a recovery system.** The same early user-space mechanism can host diagnostics and a controlled recovery path independently of the main rootfs.

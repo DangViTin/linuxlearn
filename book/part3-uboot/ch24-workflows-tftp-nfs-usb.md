@@ -16,9 +16,9 @@ Chapter 19's first vendor MINI build deliberately disables networking and video:
 
 Network examples here use Chapter 22's separate **upstream v2026.04 migration**, commit `88dc2788777babfd6322fa655df549a019aa1e69`, with ENET2/address-1 wiring and the source-checked RTL8201F ID-match candidate. They remain optional until actual PHY ID, reset, 50 MHz reference and transfers are validated on this carrier. Keep local storage from Chapter 23 while those tests remain undone.
 
-Target commands also require Chapter 23's approved RAM plan and matched kernel/DT/rootfs. Modern examples name the **kernel** `imx6ull-pa-mini.dtb`; a vendor-kernel set instead may contain `imx6ull-alientek-emmc.dtb` at another output path. Choose the matched pair explicitly, never rename an EVK or U-Boot control DTB. Without artifacts and board validation, follow host/policy exercises and return after Parts IV-V.
+Target commands also require Chapter 23's approved RAM plan and matched kernel/DT/rootfs. Modern examples name the **kernel** `imx6ull-pa-mini.dtb`; a vendor-kernel set instead may contain `imx6ull-alientek-emmc.dtb` at another output path. Choose the matched pair explicitly, never rename an EVK or U-Boot control DTB. Without artifacts and board validation, follow host/policy examples and return after Parts IV-V.
 
-> **Execution boundary:** The host checks assume the isolated lab services from Chapter 3 are already configured. Stop if that setup is missing rather than changing unrelated host exports or firewall rules. Target examples are optional until the board and artifacts are qualified. Keep environment edits temporary, preserve a known-good recovery path, and do not write media or change fuses for these exercises.
+> **Execution boundary:** The host checks assume the isolated lab services from Chapter 3 are already configured. Stop if that setup is missing rather than changing unrelated host exports or firewall rules. Target examples are optional until the board and artifacts are qualified. Keep environment edits temporary, preserve a known-good recovery path, and do not write media or change fuses for these examples.
 
 ## 24.1  Three transports, three jobs
 
@@ -219,13 +219,13 @@ Use this review checklist, not a runnable placeholder script:
 
 Fastboot commands need a bootloader built and configured for that USB gadget path. Neither Chapter 19's baseline nor Chapter 22's modern minimum is a ready-made manufacturing image. The modern minimum excludes USB; the vendor host stack is not proof of a configured Fastboot gadget. Check NXP's [U-Boot requirements](https://github.com/nxp-imx/mfgtools/wiki/uboot-config-requirement) and the actual v2026.04 config rather than assuming `uuu` adds missing firmware features.
 
-A script containing `FB: flash`, `mmc write`, erases, or persistent environment saves changes storage even if its first operation only downloaded into RAM. Inspect every stage and any built-in recipe. Do not copy arbitrary block counts, wipe the first megabyte to simulate a fault, or burn fuses as part of a recovery exercise.
+A script containing `FB: flash`, `mmc write`, erases, or persistent environment saves changes storage even if its first operation only downloaded into RAM. Inspect every stage and any built-in recipe. Do not copy arbitrary block counts, wipe the first megabyte to simulate a fault, or burn fuses as part of a recovery example.
 
 ### When to use it
 
 Prepare recovery before changing the persistent bootloader. USB serial download is useful when the board's qualified recovery path has been established; it is not a cure for an incorrect DDR sequence or a power fault. During ordinary kernel/userspace iteration, keep using the known-good bootloader and change only the intended artifacts.
 
-A non-destructive reader exercise is to document how to select ROM download mode and identify the device without sending an image. Record the actual SoC/USB identifiers and host permissions. No USB transfer or recovery success is claimed in this chapter.
+A non-destructive reader example is to document how to select ROM download mode and identify the device without sending an image. Record the actual SoC/USB identifiers and host permissions. No USB transfer or recovery success is claimed in this chapter.
 
 ## 24.5  The canonical development loop
 
@@ -260,7 +260,7 @@ $ make O="$HOME/imx6ull/build/kernel" ARCH=arm \
 
 Review that output's ownership/dependencies before deploying it. `INSTALL_MOD_PATH` is a host destination, not a target path. Compare the running target's `uname -r` and module ABI/vermagic with the intended build after the controlled reboot.
 
-For a configuration-file exercise, create a noncritical marker in the dedicated exported rootfs using your editor, then read it from the target. Do not choose credentials, init scripts or a currently executing binary for the first experiment. Record when the new content is observed; caching and a program's own reload policy matter. No fixed transfer or edit-to-boot timing is promised.
+For a configuration-file example, create a noncritical marker in the dedicated exported rootfs using your editor, then read it from the target. Do not choose credentials, init scripts or a currently executing binary for the first experiment. Record when the new content is observed; caching and a program's own reload policy matter. No fixed transfer or edit-to-boot timing is promised.
 
 ## 24.6  Some useful U-Boot env helpers
 
@@ -294,20 +294,22 @@ For a later session-level autoboot choice:
 => setenv bootcmd 'run devel_boot'
 ```
 
-Keep that assignment unsaved during bring-up. It does not alter Chapter 22's disabled-autoboot delay on its own. Persistent autoboot is a separate product decision requiring a qualified environment backend, failure/recovery policy and deliberate delay settings. Chapter 22's `ENV_IS_NOWHERE` migration cannot persist it; Chapter 19's lab patches also use RAM environment, unlike the unmodified vendor header.
+Keep that assignment unsaved during bring-up. It does not alter Chapter 22's disabled-autoboot delay on its own. Persistent autoboot is a separate product decision requiring a qualified environment backend, failure/recovery policy and deliberate delay settings. Chapter 22's `ENV_IS_NOWHERE` migration cannot persist it; Chapter 19's example patches also use RAM environment, unlike the unmodified vendor header.
 
 For a modern one-shot local-root comparison, retain Chapter 23's `sdargs`/`sdboot` and use `run sdboot`. For the vendor baseline, use its separate `emmcargs`/`emmcboot`, restoring the matched vendor-kernel DTB filename and verified root mapping. That helper obtains a real root partition UUID and gates all loads. Do not silently replace the NFS arguments with guessed `/dev/mmcblk0p2` numbering or retain NFS arguments while testing a local root.
 
-**Prediction check:** if the DTB transfer fails but yesterday's DTB remains in RAM, will `devel_boot` start Linux? No. `netload` returns failure, so the only branch taken prints the error and stays in U-Boot. The old bytes are irrelevant to the decision.
+**Failed-DTB case:** If the DTB transfer fails while an earlier DTB remains in RAM, `netload` returns failure. `devel_boot` prints the error and stays in U-Boot. The old bytes are irrelevant to the decision.
 
-## 24.7  Lab
 
-1. **Inventory prerequisites without changing services.** Record the host interface/address, TFTP root, active export, kernel built-in Ethernet/IP/NFS options, qualified bootloader and board evidence, including the actual carrier PHY revision and separately checked kernel driver. Mark missing items before booting.
-2. **Stage one artifact pair.** Use a new directory, record sizes/hashes and confirm server readability. Do not use an outside-root symlink or label untested artifacts as known-good.
-3. **Exercise transfer failure on qualified hardware.** Request a nonexistent kernel, then a nonexistent DTB. The gated helper must not call `bootz` in either case. Restore the known filenames without saving the broken settings.
-4. **Verify actual NFS-root.** Inspect `/proc/cmdline`, `/proc/mounts` and `/proc/net/pnp`. Read a harmless host-created marker from the target and record the observation, without assuming immediate cache coherence.
-5. **Iterate with identity.** Set a distinct local kernel release through the build configuration, rebuild/stage the matched set, reboot through the reviewed helper, and compare `uname -r`. Do not append arbitrary text to C source or overwrite live modules.
-6. **Review recovery without destruction.** Audit a real board-owner `uuu` recipe stage by stage, identify any persistent writes and list the required bootloader features. Do not wipe a card, send USB payloads or change fuses to complete this paper exercise.
+(24-7-lab)=
+## 24.7  Key Notes
+
+- TFTP loads boot payloads into RAM, NFS backs Linux's root filesystem, and ROM USB download enters an earlier recovery stage. They solve different failures and have different prerequisites.
+- Linux owns Ethernet and IP configuration after handoff. Direct NFS-root needs the driver/provider, IP and NFS path before root is reachable, either built in or supplied by a deliberate initramfs design.
+- An immutable staged kernel/DTB set avoids mixed revisions during transfer. Hash records identify artifacts but do not authenticate TFTP or qualify the board they target.
+- Host exports, service bindings and firewall rules are persistent host policy. A narrow isolated export limits authority, especially when client-root writes justify `no_root_squash`.
+- Kernel replacement requires a new load and restart. NFS file changes have caching and process-lifetime consequences, and modules must match the running kernel.
+- `uuu` may cross from ROM download into writable bootloader protocols. A RAM download at the first stage does not make later flash, erase or environment-save commands harmless.
 
 ## 24.8  Pitfalls
 
@@ -328,6 +330,6 @@ NXP's [UUU examples](https://github.com/nxp-imx/mfgtools/wiki/Example) and [U-Bo
 
 ---
 
-The core path now has a concrete test for each boundary: a versioned bootloader build, a hardware-qualified port, checked artifact loads, a kernel handoff and an observed root mount. The source/build exercises alone do not establish all five. Keep their remaining evidence requirements visible as you move into Linux and rootfs development.
+The core path now has a concrete test for each boundary: a versioned bootloader build, a hardware-qualified port, checked artifact loads, a kernel handoff and an observed root mount. The source/build examples alone do not establish all five. Keep their remaining evidence requirements visible as you move into Linux and rootfs development.
 
 > Next chapter: **Chapter 24A: Building i.MX6ULL U-Boot from nothing.** That optional deep dive changes the level of platform work. It is not a requirement to replace the working, qualified bootloader during ordinary kernel iteration.

@@ -12,9 +12,9 @@ An EEPROM byte can select a display DTB. It can also select the wrong one after 
 
 We will define a small binary identity record, validate it, and publish a DTB/FIT choice only after validation succeeds. This continues the **U-Boot v2026.04** baseline, commit `88dc2788777babfd6322fa655df549a019aa1e69`, and the `mx6ull_pa_mini` port. Chapter 24E packages those choices in one FIT.
 
-The supplied MINI V2.2 and CORE schematics contain **no factory identity EEPROM**. Our 64-byte record is a proposed lab format for an **optional external EEPROM** on the documented I2C1 route, not a vendor record to discover on an unmodified board. The display connector and available panel models are documented MINI hardware options. No lab step programs EEPROM or fuses.
+The supplied MINI V2.2 and CORE schematics contain **no factory identity EEPROM**. Our 64-byte record is a proposed example format for an **optional external EEPROM** on the documented I2C1 route, not a vendor record to discover on an unmodified board. The display connector and available panel models are documented MINI hardware options. No example here programs EEPROM or fuses.
 
-This is a v2026.04 host-study/modern-migration exercise. Chapter 19's vendor board names and old I2C API are not interchangeable with this port's names and driver-model helpers. A stock MINI can use an explicitly selected, matching OS DTB without pretending that it has this EEPROM.
+This is a v2026.04 host-study/modern-migration example. Chapter 19's vendor board names and old I2C API are not interchangeable with this port's names and driver-model helpers. A stock MINI can use an explicitly selected, matching OS DTB without pretending that it has this EEPROM.
 
 ## 24D.1  The real problem
 
@@ -30,7 +30,7 @@ These are filenames for OS trees to develop and test, not supplied or bench-qual
 
 MINI sheet 2 documents RGB888, I2C2 touch signals, backlight `BLT_PWM` on GPIO1_IO08 and a hardware `RESET` shared with the SoC. Do not copy the vendor file's inherited software LCD reset on GPIO5_IO09 onto this board. Its three SGM3157 switches isolate LCD_DATA7/15/23, which also serve ROM boot straps and panel ID signals. The proposed EEPROM avoids implementing that separate panel-ID switching sequence; its LCD byte is an assembly declaration, **not an automatic measurement of the fitted screen**.
 
-The guide pp238-239 documents NAND cores with 256 MiB DDR and eMMC cores with 512 MiB DDR; the supplied CORE schematic shows the storage alternatives and the 512 MiB DDR part. Choose the early image/DCD for the actual core before these late exercises. Do not combine those assemblies into the display table or treat baseboard V2.2 as a RAM size.
+The guide pp238-239 documents NAND cores with 256 MiB DDR and eMMC cores with 512 MiB DDR; the supplied CORE schematic shows the storage alternatives and the 512 MiB DDR part. Choose the early image/DCD for the actual core before these late examples. Do not combine those assemblies into the display table or treat baseboard V2.2 as a RAM size.
 
 A late EEPROM read cannot choose DDR timing that the Boot ROM already needed. The pinned EVK path initializes DDR using the image's DCD, before `board_late_init`. Families with different DDR may need distinct early images or an independently engineered early-selection mechanism. Do not claim this late hook enables arbitrary RAM variants in one binary.
 
@@ -58,7 +58,7 @@ A format is a byte-level contract, not a C structure written to EEPROM. This pro
 | `0x08` | 1 | Format version 1. |
 | `0x09` | 1 | Reserved, zero. |
 | `0x0a` | 2 | Record length 64, little-endian. |
-| `0x0c` | 1 | Lab hardware-profile revision 1 only; not the MINI PCB silkscreen revision. |
+| `0x0c` | 1 | Example hardware-profile revision 1 only; not the MINI PCB silkscreen revision. |
 | `0x0d` | 1 | LCD option 0, 1 or 2. |
 | `0x0e` | 1 | Ethernet option 1: the single onboard MINI ENET2 RJ45. |
 | `0x0f` | 1 | Reserved, zero. |
@@ -129,7 +129,7 @@ For a later read-only test **with the proposed EEPROM add-on fitted** and the do
 
 The hexadecimal length `40` reads all 64 bytes, including CRC. `.1` matches only the proposed one-byte-offset part. Probe only the documented address; do not scan an unknown bus. An ACK at `0x50` does not prove a particular EEPROM or record exists.
 
-Record the actual dump, then compare it with the format table. Erased `ff` bytes, all-zero bytes, a missing terminator or bad CRC should fail. There is no fabricated factory dump to copy and no `i2c mw` exercise.
+Record the actual dump, then compare it with the format table. Erased `ff` bytes, all-zero bytes, a missing terminator or bad CRC should fail. There is no fabricated factory dump to copy and no `i2c mw` example.
 
 ## 24D.7  Board code to read identity
 
@@ -287,9 +287,9 @@ The MAC validator rejects zero and multicast/broadcast, not duplicates or addres
 
 The helper assumes the sole interface is Ethernet sequence 0 and therefore sets `ethaddr`, as in 24C. A port using sequence 1 must deliberately map its address to `eth1addr`; a multi-port board needs a record with separately allocated addresses and its own validated mapping, not reuse of this one-port record.
 
-Existing `serial#`/`ethaddr` must match, or selection stops. This catches stale or conflicting saved identity without requiring `CONFIG_ENV_OVERWRITE`. Clearing/reconciling those protected variables is a deliberate service operation, not a default lab step.
+Existing `serial#`/`ethaddr` must match, or selection stops. This catches stale or conflicting saved identity without requiring `CONFIG_ENV_OVERWRITE`. Clearing/reconciling those protected variables is a deliberate service operation, not a default example step.
 
-In the **EEPROM-equipped exercise only**, insert this fragment into the **single** `board_late_init()` from 24B, immediately after successfully installing its blocked `bootcmd` and before any enabled temperature/key dispatch. Do not install this mandatory reader on a stock MINI with no EEPROM:
+In the **EEPROM-equipped example only**, insert this fragment into the **single** `board_late_init()` from 24B, immediately after successfully installing its blocked `bootcmd` and before any enabled temperature/key dispatch. Do not install this mandatory reader on a stock MINI with no EEPROM:
 
 ```c
     ret = pa_mini_identify();
@@ -303,7 +303,7 @@ The order is now: close boot gate, identify, check temperature **if that add-on 
 
 ## 24D.8  Boot with separate DTB files
 
-Keep 24C's load-gated path; it already uses `${fdtfile}`. A stock MINI uses a deliberately chosen DTB matching its known core/baseboard/panel, without adding `identity_ready`. For the **EEPROM-identified exercise**, replace its `normal_boot` definition with this complete environment entry:
+Keep 24C's load-gated path; it already uses `${fdtfile}`. A stock MINI uses a deliberately chosen DTB matching its known core/baseboard/panel, without adding `identity_ready`. For the **EEPROM-identified example**, replace its `normal_boot` definition with this complete environment entry:
 
 ```c
 "normal_boot=if test \"${identity_ready}\" = \"1\"; then run fallback_boot; " \
@@ -355,16 +355,15 @@ This table applies to a build that **requires the add-on record**. On a stock MI
 
 A known recovery image may be an alternative, but only if it is electrically compatible with **every** board that can reach it. Calling an image "safe" does not establish that property. The prompt itself permits bypass by an operator; production trust requires more than this mutable environment policy.
 
-## 24D.12  Lab
+(d-12-lab)=
+## 24D.12  Key Notes
 
-1. Generate the proposed records as **host files**, including a valid CRC and unique local lab MACs. No EEPROM write is required.
-2. Test all three LCD values plus wrong revision/Ethernet combinations.
-3. Test short/long buffers, length/endian errors, missing NUL, embedded invalid serial bytes, nonzero reserved bytes and CRC corruption.
-4. Test all-zero, broadcast and multicast MACs, matching saved identity, conflicts and failed environment assignments.
-5. Confirm no failure publishes readiness or opens `bootcmd`. Keep a sentinel output structure to detect partial decoder writes.
-6. Only with verified EEPROM hardware, compare a read-only dump and the decoder. Do not corrupt live identity to exercise failure paths.
-
-Factory provisioning and persistence require their own reviewed process on deliberate spare devices/media. They are not exercises in this chapter.
+- The 64-byte record is a proposed optional-EEPROM interface, not a stock MINI factory format. Fixed hardware can select its matching OS tree explicitly without invented identity data.
+- Byte offsets, length, endianness, reserved bytes, bounded serial and CRC coverage form one contract. A C structure layout or plausible magic prefix is not sufficient validation.
+- The decoder publishes its output only on complete success. Environment publication can be partial, so `identity_ready` is cleared first and set last while dispatch remains closed on error.
+- CRC detects corruption but not forgery. MAC syntax validation also does not establish ownership or uniqueness, which belong to provisioning and allocation policy.
+- Late identity can select an allow-listed display DTB or FIT configuration for a fixed early platform. It cannot choose DDR timing that ROM already used.
+- Unknown or conflicting identity has no automatically safe nearest variant. Factory programming, persistent settings and any universal recovery image need independently reviewed contracts.
 
 ## 24D.13  Pitfalls
 

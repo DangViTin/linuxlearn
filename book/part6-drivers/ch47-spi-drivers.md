@@ -286,14 +286,17 @@ static int mcp3008_read_channel(struct mcp3008_priv *p, int channel, u16 *out)
 
 Wrap with IIO (Ch 49) and you have an 8-channel ADC exposed via `/sys/bus/iio/devices/iio:device0/in_voltage*_raw`. The mainline `drivers/iio/adc/mcp320x.c` does this for the entire MCP320x family.
 
-## 47.8  Lab
+<a id="lab"></a>
 
-1. **Configure ecspi3** in DT (or whichever you have). Add a generic spidev node, verify `/dev/spidev2.0` appears.
-2. **Loopback test.** Short MOSI to MISO. Write a small user-space program that opens `/dev/spidev2.0`, sends 4 bytes, reads them back. Confirm what came out comes back in.
-3. **Build the fastadc / MCP3008 skeleton.** Wire up an MCP3008 (or use a real spidev device). Verify `dev_info` reports the test sample.
-4. **Try full-duplex.** Send `0xA5` while reading. Print what comes back simultaneously. SPI's full-duplex nature is unique among common buses, appreciate it.
-5. **Speed sweep.** Vary `spi-max-frequency` from 100 kHz to 25 MHz in DT. Observe where signal integrity breaks (your scope or analyzer is your friend). Linux honors `spi-max-frequency` literally. The controller picks the highest divisor below it.
-6. **Multiple chip-selects.** Configure two devices on the same bus (CS0 and CS1) and access both. Verify each gets its own SPI mode/speed.
+(ch47-lab)=
+## 47.8  Key Notes
+
+- The SPI controller owns bus scheduling and signaling, while each `spi_device` carries chip-select and configuration constraints. The chip driver owns command framing and interpretation.
+- A `spi_message` groups transfers into one bus operation. Chip-select continuity, delays, and mode must match the peripheral protocol rather than merely the desired byte count.
+- Full-duplex clocks transmit and receive together. Command bytes, dummy clocks, and meaningful receive bytes occupy different positions in the same exchange.
+- Synchronous submission waits for completion in a sleeping context. Asynchronous submission extends the lifetime of the message, transfers, buffers, and callback state until completion.
+- A maximum clock is a limit, not proof of a reliable electrical interface. Controller divisors, chip timing, wiring, and loading constrain usable speed.
+- Spidev exposes raw transactions without chip semantics. A subsystem driver can instead supply a stable sensor or storage contract and centralize ownership, power management, and error handling.
 
 ## 47.9  Pitfalls
 

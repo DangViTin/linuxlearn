@@ -324,21 +324,14 @@ Options:
 
 Do not write logs continuously to SPI NOR. NOR has erase-cycle limits, and log traffic can wear a small partition quickly.
 
-## 35I.11  Lab
+<span id="i-11-lab"></span>
+## 35I.11  Key Notes
 
-1. Add fixed partitions for your SPI NOR in the board DTS.
-2. Enable MTD, SPI NOR, and SquashFS in the kernel.
-3. Build `rootfs.squashfs` with Buildroot.
-4. From U-Boot, `sf probe`.
-5. Flash `zImage`, DTB, and `rootfs.squashfs` to their offsets.
-6. Boot with `root=/dev/mtdblockN rootfstype=squashfs ro`.
-7. Confirm:
-
-```sh
-[root@pa-mini:~]# cat /proc/mtd
-[root@pa-mini:~]# findmnt /
-[root@pa-mini:~]# mount | head -1
-```
+- SPI NOR offers eraseblock-based storage through MTD, not an eMMC-style block device. Filesystem and update choices must account for erase geometry and limited capacity.
+- ROM bootability, U-Boot access and Linux access are separate capabilities. A working SPI driver does not prove that the fitted flash and wiring are a valid ROM boot source.
+- Bootloader, environment, kernel, DTB and rootfs regions share one address space. Their offsets, sizes and erase boundaries must remain consistent across packaging and update tools.
+- A small immutable rootfs can live in NOR while bulk or mutable data lives elsewhere. That split changes boot dependencies and recovery behavior.
+- Environment saves and application writes consume erase cycles. Repeated metadata updates need a wear and power-failure strategy, not merely an available write command.
 
 ## 35I.12  Pitfalls
 

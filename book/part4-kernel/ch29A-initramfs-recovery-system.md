@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 29A: Initramfs as a recovery system
 
-Chapter 29 built a tiny initramfs so the kernel had something to run as PID 1.
+Chapter 29 described a tiny initramfs as the kernel's early PID 1 environment.
 
 In real products, initramfs is often more useful than that. It becomes a small recovery system that can boot even when the real root filesystem is broken. This chapter builds that idea in a direct way.
 
@@ -51,7 +51,7 @@ Because it lives in RAM, it can still boot when the SD card, eMMC partition, or 
 
 ## 29A.2  Start from the BusyBox rootfs
 
-Use the BusyBox initramfs from Chapter 29 as the base.
+The recovery case uses the BusyBox layout from Chapter 29 as its base. The paths below illustrate that layout rather than requiring an earlier build.
 
 ```sh
 $ cd ~/imx6ull/code/ch29
@@ -249,7 +249,7 @@ Use this only when the real root filesystem is healthy enough to boot. If the po
 
 ## 29A.7  Network recovery
 
-For factory or lab boards, recovery often needs Ethernet.
+For factory or development boards, recovery often needs Ethernet.
 
 If BusyBox was built with `ip`, `udhcpc`, `wget`, and `tftp`, you can do:
 
@@ -340,34 +340,18 @@ fi
 
 Recovery is most useful when U-Boot can choose it before Linux is involved.
 
-## 29A.10  Lab
+<a id="lab"></a>
 
-1. Boot the recovery initramfs by TFTP.
-2. Select the shell option.
-3. Run:
+(29a-10-lab)=
+## 29A.10  Key Notes
 
-```sh
-# cat /proc/cmdline
-# dmesg | tail
-# mount
-```
-
-4. Select the read-only rootfs mount option.
-5. Confirm:
-
-```sh
-# mount | grep /mnt/root
-# ls /mnt/root
-```
-
-6. Select the log collection option.
-7. Confirm:
-
-```sh
-# ls /tmp/recovery-logs
-```
-
-At this point you have a recovery system that boots independently from the main root filesystem.
+- Recovery independence depends on the whole boot path: firmware must still load a working kernel, board DTB and archive. Running from RAM avoids reliance on the main rootfs, not every storage or hardware dependency.
+- The recovery `/init` owns diagnostics and the decision to remain in recovery or hand off to normal init. `exec switch_root` changes that ownership rather than starting a second normal system beside the first.
+- Read-only inspection and log collection are different operations from repair or image replacement. The factory-reset placeholder deliberately performs no erase.
+- Network recovery requires both kernel device support and selected BusyBox applets. U-Boot network access alone does not establish a usable Linux network path.
+- A downloaded checksum detects damaged bytes, not an untrusted sender. Target identity, mount state, image compatibility and update authorization remain separate write boundaries.
+- Factory identity and calibration belong outside partitions erased by reset or rootfs replacement. Protecting the bootloader preserves the path that makes recovery possible.
+- Logs collected in `/tmp` live in RAM and are lost at reboot unless exported. A recovery menu appearing is not evidence of safe updates or power-loss recovery.
 
 ## 29A.11  Common mistakes
 

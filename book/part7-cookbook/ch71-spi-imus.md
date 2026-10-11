@@ -544,16 +544,13 @@ Mainline drivers expose richer attributes than our from-scratch:
 - `events/in_accel_thresh_rising_value`: tap/threshold events.
 - FIFO-watermark configurable via `buffer/watermark`.
 
-## 71.9  Lab
+<span id="lab"></span>
+## 71.9  Key Notes
 
-1. **DEVID poke.** Use `spi_test` or any user-space SPI tool to read register 0x00. Verify 0xE5.
-2. **Build and load `myadxl345.ko`.** Read accel via sysfs. Verify ~+1 g on Z when flat.
-3. **Configure watermark IRQ.** Set up triggered buffer. Capture 1000 samples at 100 Hz. Watch `cat /proc/interrupts`, IRQ should fire ~6 times per second, not 100.
-4. **Compare against per-sample-IRQ.** Modify the driver to assert IRQ on every sample (mode 0). Measure CPU usage: `top` while streaming. Watermark mode should be much lower.
-5. **Increase ODR.** Change `BW_RATE` to 0x0D (800 Hz). Verify samples land at 800 Hz with timestamps. The watermark IRQ now fires 50×/sec.
-6. **Switch to mainline.** Substitute `compatible = "adi,adxl345"`. Verify same data, plus extra runtime configurability.
-7. **Tap detection.** Configure ADXL345's tap interrupt (different from watermark). Verify a tap on the table triggers an event in user-space.
-8. **LSM6DSO MLC** (if available). Use ST's online tool to compile a "walking detector" from sample data. Flash to chip. Verify the chip emits walking-detected events with zero CPU.
+- A FIFO watermark batches samples to reduce interrupt and bus overhead. Larger batches also increase delivery latency and the amount of data at risk during a stall.
+- SPI framing includes mode, chip-select continuity and device-specific command bits. A common bus does not imply a common register protocol.
+- An interrupt timestamp describes when service was requested, not automatically when every FIFO sample was measured. Sample timing needs an explicit reconstruction model.
+- Overflow handling is part of the data interface. A pipeline that silently loses samples can produce convincing but incorrect motion or vibration results.
 
 ## 71.10  Pitfalls
 

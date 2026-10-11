@@ -226,7 +226,7 @@ put zero data after that
 place stack at the top of inmate RAM
 ```
 
-For a real inmate, you may reserve a fixed stack size and detect overflow. For the first lab, this is enough.
+For a real inmate, you may reserve a fixed stack size and detect overflow. For the initial example, this is enough.
 
 ## 138.8  A C file that does not need libc
 
@@ -465,7 +465,7 @@ for (;;) {
 
 The root cell can inspect that memory only if the root cell also has a mapping for it through a driver or test tool.
 
-Do not build a product protocol by opening `/dev/mem` and hoping. This is a lab trick, not an architecture.
+Direct `/dev/mem` access bypasses the ownership and lifecycle interfaces a product protocol needs. A readable address is not evidence of a safe shared-memory design.
 
 ## 138.13  Shared memory rules
 
@@ -527,93 +527,28 @@ reload without disabling Jailhouse: yes or no
 requires full QEMU restart: yes or no
 ```
 
-Production systems need a clean stop and recovery story. Labs can be rough, but the notes should be honest.
+Production systems need a defined stop and recovery path. An illustrative startup sequence does not establish that interrupts, buffers and device state are safe to reuse after stopping the inmate.
 
-## 138.15  Failure lab A: wrong link address
+<span id="failure-lab-a-wrong-link-address"></span>
+## 138.15  Failure case: inconsistent addresses
 
-Change the linker origin to a wrong address:
+The linker, cell memory map and loader must describe the same runtime location. When the binary assumes a different origin, its references or entry conditions can target unassigned memory and fail.
 
-```ld
-ORIGIN = 0x70000000
-```
+A raw binary does not carry a relocation solution merely because its bytes were accepted by the loader.
 
-Build again and load the binary.
+<span id="failure-lab-b-touch-a-device-you-do-not-own"></span>
+## 138.16  Failure case: unassigned MMIO
 
-Expected result:
+An inmate can only rely on devices whose assigned MMIO and supporting resources match its configuration. An incorrect UART base may cause an access fault, no output or a wait that never completes.
 
-```text
-no output
-cell crash
-or invalid memory access reported by Jailhouse
-```
+Silence is ambiguous: it does not distinguish a missing device, a protection violation and a wrong console path by itself.
 
-Reason:
+<span id="failure-lab-c-remove-the-stack"></span>
+## 138.17  Failure case: invalid runtime state
 
-```text
-the binary executes as if RAM starts somewhere else
-```
+A C call needs a valid stack in writable assigned memory. If the stack pointer lies outside that region, the first spill or call can fail before any useful diagnostic output.
 
-Put the correct address back.
-
-Lesson:
-
-```text
-cell config and linker script are one contract
-```
-
-## 138.16  Failure lab B: touch a device you do not own
-
-Change the UART base to a nonsense MMIO address:
-
-```c
-#define UART_BASE 0x0a000000UL
-```
-
-Build and run.
-
-Expected result:
-
-```text
-no output
-data abort
-Jailhouse access violation
-or an inmate that waits forever
-```
-
-Reason:
-
-```text
-the inmate can only touch assigned memory and MMIO regions
-```
-
-Lesson:
-
-```text
-MMIO belongs in the cell config before code uses it
-```
-
-## 138.17  Failure lab C: remove the stack
-
-Move `_stack_top` outside the inmate RAM region.
-
-Expected result:
-
-```text
-crash on first C call
-or silent failure
-```
-
-Reason:
-
-```text
-the first function call stores state through the stack pointer
-```
-
-Lesson:
-
-```text
-bare-metal code needs a real runtime contract, even when it is tiny
-```
+Small bare-metal code still has runtime dependencies. Removing libc does not remove stack, alignment or initialized-state requirements.
 
 ## 138.18  Move to Zephyr
 
@@ -742,59 +677,21 @@ STM32MP1 M4 firmware:
 
 This distinction prevents a lot of confusion.
 
-## 138.23  Lab A deliverables: bare-metal inmate
+<span id="lab-a-deliverables-bare-metal-inmate"></span>
+## 138.23  Key Notes
 
-Create:
+- Cell configuration, link address, entry point and stack form one runtime contract. They must agree before a C function can execute.
+- A private console and shared-memory heartbeat are different evidence paths. Neither should assume ownership of hardware still used by root Linux.
+- Shared memory needs a protocol for ownership, ordering, validity and peer restart. A visible counter alone does not specify reliable communication.
+- Loading, stopping and reloading a cell must account for stale state and supporting resources, not merely replace instruction bytes.
+- Moving to Zephyr adds board definitions, drivers and scheduling assumptions. A normal QEMU Zephyr build does not establish compatibility as a Jailhouse inmate.
 
-```text
-~/imx6ull/jailhouse-lab/inmates/baremetal/start.S
-~/imx6ull/jailhouse-lab/inmates/baremetal/main.c
-~/imx6ull/jailhouse-lab/inmates/baremetal/inmate.ld
-~/imx6ull/jailhouse-lab/inmates/baremetal/Makefile
-~/imx6ull/jailhouse-lab/inmates/baremetal/inmate.map
-~/imx6ull/jailhouse-lab/inmates/baremetal/inmate.bin
-```
+<span id="lab-b-deliverables-zephyr-inmate-planning"></span>
+## 138.24  The Zephyr adaptation boundary
 
-Write this note:
+Zephyr's configured RAM base and size, console device, CPU assumptions and shared-memory description must match the cell's assigned resources. Its startup and interrupt model also have to work under that entry contract.
 
-```text
-cell RAM start:
-cell RAM size:
-link address:
-stack top:
-console path:
-inmate output:
-reload loop:
-one failure tested:
-```
-
-The lab is complete when:
-
-```text
-Linux root cell is alive
-bare-metal inmate starts
-bare-metal inmate produces visible evidence
-Linux root cell is still alive
-```
-
-## 138.24  Lab B deliverables: Zephyr inmate planning
-
-Before making Zephyr run as an inmate, create a mapping table:
-
-```text
-Jailhouse inmate RAM start:
-Zephyr CONFIG_SRAM_BASE_ADDRESS:
-Jailhouse inmate RAM size:
-Zephyr CONFIG_SRAM_SIZE:
-Jailhouse console MMIO:
-Zephyr console device:
-Jailhouse inmate CPU:
-Zephyr CPU assumption:
-Jailhouse shared memory:
-Zephyr shared memory node:
-```
-
-If any line is unknown, do not debug Zephyr yet. The contract is incomplete.
+A resource table used by a remoteproc integration is not automatically a Jailhouse cell description. Those mechanisms have different loaders and ownership rules, so copying metadata between them does not establish an adaptation.
 
 ## 138.25  Product lesson
 

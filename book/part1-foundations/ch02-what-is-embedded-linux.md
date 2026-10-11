@@ -198,7 +198,7 @@ Now return to the i.MX6ULL IOMUXC register block at physical address `0x020E0000
 
 We can now explain the opening puzzle. The physical GPIO address from the manual is not automatically a usable pointer in the application. The normal route is to request an operation through a driver interface. The driver reaches the hardware using the appropriate mappings and register accesses. The address was correct; our assumption about who could use it was not.
 
-You will spend Chapter 17 building, by hand, a minimal first-level page table on bare metal. After that, MMU behavior becomes much easier to reason about.
+Chapter 17 follows a minimal first-level page table on bare metal, making the translation and permission decisions visible without Linux's larger memory-management machinery.
 
 ## 2.5  Processes, threads, and where they live
 
@@ -217,7 +217,7 @@ What about ISRs? A Linux **hard interrupt handler** runs in kernel interrupt con
 
 ## 2.6  Names you will meet in the next chapters
 
-We now have a place for the remaining names: some describe the handles applications use, some describe the kernel's internal objects, and some describe the files we build. You can return to this section when a name appears in a later lab.
+We now have a place for the remaining names: some describe the handles applications use, some describe the kernel's internal objects, and some describe the files we build. You can return to this section when a name appears in a later example.
 
 ### File descriptor (fd)
 
@@ -316,27 +316,19 @@ We have not configured a GPIO yet, but we can explain why the opening register-w
 
 At the end of the route, someone still writes the GPIO register. Linux has changed who may request it and how the device is shared, not the electrical job of turning on the LED. Keep that distinction. We will return to this same hardware operation when we write bare-metal code and, much later, a Linux driver.
 
-## 2.10  Lab
+<a id="lab"></a>
 
-Before setting up the host, try these questions in your own words. You do not need a running board for them. Use the answer checks afterward to find anything worth rereading:
+(answer-checks)=
+(ch02-key-notes)=
+## 2.10  Key Notes
 
-1. Why is casting the manual's physical GPIO address not sufficient in an ordinary Linux application?
-2. What does U-Boot do that the Boot ROM does not?
-3. Which principal file-I/O operations let `cat /etc/hostname` copy a file to stdout? Ignore loader and process-startup calls.
-4. Sketch a minimal Linux system whose PID 1 prints "hello" on the UART and stays alive or deliberately reboots. Why must it not just return from `main()`?
-5. How does a user-space NULL-pointer fault differ from a kernel-module fault? Why can the module fault not be promised harmless? Do not deliberately crash your host to investigate.
-6. Does `sudo` put the application's instructions into kernel mode? Where do they run after a syscall returns?
-7. Can two unrelated processes both use pointer value `0x00010000` or fd 3 and mean different things?
-
-### Answer checks
-
-1. A physical register address is not automatically mapped into the process. The kernel must authorize a driver interface or mapping.
-2. U-Boot provides board initialization and loading facilities beyond the ROM's device/image contract: for example, loading Linux and passing its device tree and command line.
-3. Open the input, read bytes, write bytes to stdout, then close the input. Exact syscall names and startup calls depend on the binary and libc.
-4. Supply hardware, a suitable bootloader/kernel, and a root filesystem/initramfs containing PID 1. The kernel must support the board's UART, select the right console, and give PID 1 usable stdout. A static `/init` avoids needing a dynamic loader and shared libc in the minimal filesystem. PID 1 must remain alive or request a deliberate shutdown/reboot; an ordinary exit causes a panic. The board-specific setup comes later; silence alone does not prove PID 1 failed to run.
-5. A user fault is normally contained to that process. A kernel fault may produce an *oops* (a kernel fault report), terminate the current task, or cause a *panic* that stops the system, depending on context and policy. Corrupted kernel state can affect other work even when execution continues.
-6. No. Root is a user identity. The application resumes in user mode after the kernel returns its result or error.
-7. Yes. Page-table mappings give a virtual pointer its meaning, and the process's descriptor table gives the fd its meaning. Equal numbers do not establish equal objects.
+- Boot is a sequence of ownership transfers: the ROM selects and loads an image, the bootloader prepares Linux's inputs, and the kernel starts user space. Ordinary application requests do not return through the bootloader.
+- Root credentials affect access policy, not CPU execution mode. A syscall enters a privileged kernel handler and returns the application to user mode with a result or error.
+- Virtual pointers and file descriptors derive their meaning from the process's mappings and descriptor table. Equal numbers in unrelated processes need not identify the same bytes or open object.
+- Drivers own supported hardware operations and resource arbitration. A physical register address alone supplies neither an application mapping nor permission, and separate requests do not automatically form an atomic device protocol.
+- A minimal root filesystem must supply PID 1 and its runtime dependencies. Static linking can remove the shared-loader requirement, but it does not supply UART support, a console, or permission for PID 1 to exit normally.
+- Process isolation normally contains an invalid user-space access. Kernel modules run inside the kernel, where a fault can corrupt shared state or stop the system. Deliberately crashing the host is not a safe way to explore that difference.
+- Stored images, virtual address ranges, and working RAM are different budgets. Their costs depend on the selected kernel, libraries, processes, and workload rather than one universal Linux size.
 
 ## 2.11  Pitfalls
 
@@ -363,4 +355,4 @@ An application does not need to ask whether a file is on ext4, FAT, or tmpfs bef
 - Start with `man 2 intro`, `man 2 open`, `man 2 read`, `man 2 mmap`, and `man 7 pthreads`. See [mmap(2)](https://man7.org/linux/man-pages/man2/mmap.2.html) and [pthreads(7)](https://man7.org/linux/man-pages/man7/pthreads.7.html) for the mapping and shared-resource distinctions above.
 - The Linux source tree's `Documentation/admin-guide/` and `Documentation/process/`.
 
-For the first labs, we build the board's programs on the host with a cross-compiler. Linux can also run a native compiler on a sufficiently equipped target, but that is not our initial route. Open a host terminal: when you type a compiler name, which compiler does it actually find? Chapter 3 makes that choice visible.
+The early examples use a host cross-compiler to produce the board's programs. Linux can also run a native compiler on a sufficiently equipped target, but that is not our initial route. A compiler name in a host terminal is only a starting point: which compiler file does the shell actually find? Chapter 3 makes that choice visible.

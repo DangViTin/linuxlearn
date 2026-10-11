@@ -533,7 +533,7 @@ DT:
 };
 ```
 
-Build, load, exercise:
+Example build and access:
 
 ```
 [root@pa-mini:~]# insmod mybme280.ko
@@ -707,15 +707,13 @@ while True:
 
 Pipe to MQTT, Grafana, SQLite, whatever the product needs.
 
-## 67.10  Lab
+<span id="lab"></span>
+## 67.10  Key Notes
 
-1. **Inspect with i2c-tools.** `i2cdetect -y 1` to find the BME280 (0x76 or 0x77). `i2cdump -y 1 0x76` to see the register map. Verify the byte at 0xD0 is 0x60.
-2. **Build and load `mybme280.ko`.** Read all three IIO inputs. Verify physically, touch the sensor. Temp should rise.
-3. **Compare against a reference.** Use a known-good thermometer or another working sensor. Expected accuracy: ±1 °C at room temp.
-4. **Implement an SHT3x version.** Strip the calibration code and compensation math. Substitute the SHT3x command set + linear formulas + CRC validation. ~200 lines.
-5. **Switch to the mainline `bme280`.** Unload yours, change DT to `compatible = "bosch,bme280"`, reboot. Verify same readings (within sensor noise). Note the extra `oversampling_ratio` files appearing.
-6. **Mainline `read_raw` source dive.** Read `bme280_compensate_temp` in `drivers/iio/pressure/bmp280-core.c`. Verify it's the same formula you copied from the datasheet.
-7. **Power consumption.** With mainline driver, measure idle current. Compare against periodic-mode + sleep with `oversampling_ratio = 0` (chip skips a measurement type entirely).
+- Raw sensor counts become useful measurements only through the correct scale or compensation path. BME280 calibration coefficients belong to the individual chip.
+- Conversion completion, register read order and byte encoding are part of the measurement contract. A responding I2C address does not prove that a sample is fresh or valid.
+- Oversampling and measurement cadence trade noise, response time and energy. Continuous sampling can also affect the temperature being observed.
+- The driver should expose consistent units and validity, while application policy decides logging, trends and alarms. A demonstration reading is not a calibrated system-accuracy claim.
 
 ## 67.11  Pitfalls
 

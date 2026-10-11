@@ -549,9 +549,10 @@ Leave `CONFIG_RTL8201F_PHY_S700_RMII_TIMINGS` disabled: it chooses another platf
 
 This board hook removes the inherited unconditional PHY write **`0x1f = 0x8190`**. On SR8201F that address is a page selector, not a universal board register. It returns the selected driver's config status instead of discarding it. Do not transplant the guide's LAN8720A global-reset workaround into modern generic PHY code.
 
-The old vendor header enables **`CONFIG_PHY_SMSC` only**. That supports its older intended LAN8720A path, not a known-working SR8201F network claim. Generic fallback is not qualification. Chapter 19's first lab build explicitly disables video and networking, so its inherited display and PHY hooks are not executed. It also disables USB commands to avoid the old USB/network dependency. Any later re-enablement needs carrier-specific review; this modern candidate replaces the inherited PHY write rather than copying it.
+The old vendor header enables **`CONFIG_PHY_SMSC` only**. That supports its older intended LAN8720A path, not a known-working SR8201F network claim. Generic fallback is not qualification. Chapter 19's initial example build explicitly disables video and networking, so its inherited display and PHY hooks are not executed. It also disables USB commands to avoid the old USB/network dependency. Any later re-enablement needs carrier-specific review; this modern candidate replaces the inherited PHY write rather than copying it.
 
-## 22.8  Step 6, Build and flash
+<span id="step-6-build-and-flash"></span>
+## 22.8  Step 6, Build and inspect the candidate
 
 First build the modern migration in a fresh output directory, without cleaning either source workspace:
 
@@ -623,14 +624,16 @@ F: arch/arm/dts/imx6ull-pa-mini-u-boot.dtsi
 
 This routes review, not certification. Keep hardware revisions, DCD provenance and actual tests beside the port.
 
-## 22.11  Lab
 
-1. **Separate workspaces.** Record vendor commit/config and modern ancestry. Explain why old `board/freescale` and modern `board/nxp` paths can both be correct.
-2. **Trace the core.** Find DDR part/rail, eight-bit eMMC pads and reset on the supplied sheets. Compare ordered DCD writes; distinguish provenance from qualification.
-3. **Build the modern candidate.** Apply Sections 22.3-22.7, inspect config/DT/image, and keep it on the host until the hardware gates are satisfied.
-4. **Audit the PHY revision.** Explain LAN8720A versus SR8201F, address versus ID, and crystal versus RMII reference. Identify the old header's missing Realtek selection and inherited PHY write.
-5. **Review optional hardware.** List exclusions and SD/Wi-Fi sharing. Locate `KEY0`, `WIFI_REG_ON` and `GBC_KEY/AP_INT` independently; do not enable all connector functions by default.
-6. **Review the diff and test plan.** Use `git diff --check` and inspect new files. Confirm no EVK board include or persistent environment backend remains; list unperformed board tests before any write.
+(22-11-lab)=
+## 22.11  Key Notes
+
+- A board port connects build selection, control DT, image configuration and board hooks. A matching SoC target alone does not describe the MINI carrier or populated core.
+- Ordered vendor DCD writes provide traceable DDR initialization input. The modern DT's memory size describes a bank but cannot initialize it or establish electrical margins.
+- DT properties work only through their consumers. In this release, eMMC reset needs the explicit board hook because the USDHC driver does not invoke `mmc-pwrseq-emmc`.
+- The single MINI RJ45 uses ENET2. PHY address, PHY ID, 25 MHz crystal and 50 MHz RMII reference describe different interfaces and cannot substitute for one another.
+- Optional connectors can share pads and controllers. TF/SDIO sharing and the distinct KEY0, Wi-Fi and accessory nets constrain what may be enabled together.
+- The modern result is a host-built `u-boot-dtb.imx` candidate with RAM-only environment and no SPL. Persistent replacement still requires identified media, a complete range map and a qualified recovery path.
 
 ## 22.12  Pitfalls
 

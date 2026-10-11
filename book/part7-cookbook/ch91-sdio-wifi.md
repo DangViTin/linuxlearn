@@ -260,20 +260,13 @@ Out-of-tree WiFi drivers are a recurring maintenance nightmare:
 
 **For a product, choose a module with an in-tree driver.** Saving $0.50 on an RTL8189 versus an AP6212 is nothing compared to the engineering cost of maintaining an out-of-tree driver for an 8-year product life. (Note: `rtw88` is bringing more Realtek parts in-tree, check current status.)
 
-## 91.9  Lab
+<span id="lab"></span>
+## 91.9  Key Notes
 
-> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
-> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
-
-
-1. **DT bring-up.** Configure uSDHC2 + pwrseq + 32 kHz clock + the wifi node. Boot.
-2. **Stage-1 check.** `dmesg | grep mmc`, look for "new high speed SDIO card." If absent, debug the transport: scope WL_REG_ON (should pulse), scope the 32 kHz clock, verify rails.
-3. **Firmware.** Copy `brcmfmac43430-sdio.bin` + your board's `.txt` to `/lib/firmware/brcm/`. Reboot. Verify "firmware found" + "nvram found."
-4. **wlan0.** `ip link` shows wlan0. Scan, connect (WPA2), DHCP, ping.
-5. **Throughput.** `iperf3` to a wired host. Expect 30–50 Mbps on 2.4 GHz.
-6. **NVRAM experiment.** Swap in a *different* board's NVRAM. Observe degraded range / wrong country code. Restore.
-7. **Power management.** Suspend the system (`echo mem`). Verify WiFi reconnects on resume (with `keep-power-in-suspend`).
-8. **SDIO debugging.** `cat /sys/kernel/debug/mmc1/...` for SDIO bus state. Enable `brcmfmac` debug: `modprobe brcmfmac debug=0x1404`.
+- SDIO discovery is a transport milestone before Wi-Fi firmware, calibration and authentication can work. Each stage provides different diagnostic evidence.
+- Module power sequencing, reference clocks and signaling voltage are board dependencies. Their description must match the fitted module and available controller.
+- The host driver and radio firmware share a protocol and compatibility contract. Board-specific calibration is not interchangeable with an arbitrary firmware file.
+- Kernel networking, authentication and IP configuration remain separate responsibilities even for a full-MAC module. Driver support also has a lifecycle cost across kernel updates.
 
 ## 91.10  Pitfalls
 

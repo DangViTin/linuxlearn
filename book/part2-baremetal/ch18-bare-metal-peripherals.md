@@ -16,7 +16,7 @@ We will trace an I2C single-byte random read, a SPI JEDEC-ID command and an eLCD
 
 ## 18.1  Why this chapter is optional
 
-You can continue to **Part III, U-Boot** after Chapter 17. Part II has exposed the main boot-time mechanisms; it has not turned our lab program into a production bootloader.
+You can continue to **Part III, U-Boot** after Chapter 17. Part II has exposed the main boot-time mechanisms. Its example programs are not a production bootloader.
 
 Read this chapter when you want to trace a request all the way to a peripheral. That helps distinguish a Linux configuration problem from a controller or wiring problem. A bare-metal probe is only appropriate when Linux and any other firmware are no longer competing for the same hardware; it is not a second owner you run beside a live driver.
 
@@ -24,7 +24,7 @@ The supplied **MINI V2.2 base** and **CORE V2.0** schematics show I2C routes, bu
 
 Before connecting an attachment, use the Chapter 8 power/disconnection checks. Confirm its voltage, ground, connector pinout, pull-ups and shared-net conflicts with the exact board documentation. Do not wire or swap modules while powered. A nominally 3.3 V bus is not permission to attach any EEPROM or flash variant.
 
-Chapters **18A** (Project organization), **18B** (Button + beep) and **18C** (Bare-metal RTC) are also supplementary. Choose the practice you need; none is a prerequisite for beginning U-Boot.
+Chapters **18A** (Project organization), **18B** (Button + beep) and **18C** (Bare-metal RTC) are also supplementary design cases. None is a prerequisite for beginning U-Boot.
 
 ## 18.2  I²C, read a byte from EEPROM
 
@@ -58,7 +58,7 @@ The bit rate is derived from **PERCLK_ROOT**, not simply the CPU or IPG frequenc
 | 49.5 MHz | `0x37` | 512 | About 96.7 kHz |
 | 66 MHz | `0x16` | 768 | About 85.9 kHz |
 
-These are calculations, not measured waveforms. Rise times and controller sampling affect the bus. In particular, `0x1E` means **3072**, and `0x15` means **640**. For a future fast-mode experiment, supplied erratum **ERR007805** limits the chosen rate to 384 kHz or less to meet SCL-low time; do not assume that programming 400 kHz meets the specification.
+These are calculations, not measured waveforms. Rise times and controller sampling affect the bus. In particular, `0x1E` means **3072**, and `0x15` means **640**. For a fast-mode design, supplied erratum **ERR007805** limits the chosen rate to 384 kHz or less to meet SCL-low time. Do not assume that programming 400 kHz meets the specification.
 
 A one-byte random read has one continuous transaction:
 
@@ -339,15 +339,15 @@ The [Winbond W25Q32JV Rev. J datasheet](https://www.winbond.com/resource-files/W
 
 ## 18.4  eLCDIF, draw a color bar
 
-An RGB panel adds a second clocked system: it consumes pixels continuously. The supplied MINI has LCD-related nets, but their existence does not identify a connected panel, its timing or its power sequence. Skip this experiment without a matching panel/carrier datasheet and approved wiring/power arrangement.
+An RGB panel adds a second clocked system: it consumes pixels continuously. The supplied MINI has LCD-related nets, but their existence does not identify a connected panel, its timing or its power sequence. This design must not be operated without a matching panel/carrier datasheet and approved wiring/power arrangement.
 
-Work outward from the panel:
+The panel defines the controller's requirements:
 
-1. Confirm supplies, reset, display-enable and backlight control, signal voltage and pad ownership. Keep the backlight/display disabled through setup as required by the panel.
-2. Derive the pixel clock, potentially from PLL5. CCM_CSCDR2 selects the LCDIF pre-source/pre-divider; CCM_CBCMR also contains LCDIF1_PODF. CCGR2.CG14 gates the LCD clocks. These controls are not all in one divider register.
-3. Program the panel's sync polarities, pulse widths, porches, totals and active size. In DOTCLK RGB mode, VDCTRL0-4 describe the scan timing; LCDIF_TIMING instead serves the MPU/VSYNC interfaces.
-4. Choose the **memory pixel format**, byte packing/swizzle and output bus width together. A `uint32_t` per pixel is not packed three-byte RGB888.
-5. Fill a reserved framebuffer, make it visible to DMA, supply its device-visible address, then start the fully configured controller and enable the panel in the documented order.
+- Supplies, reset, display-enable, backlight control, signal voltage and pad ownership constrain startup. The backlight/display must remain disabled through setup as required by the panel.
+- The pixel clock may come from PLL5. CCM_CSCDR2 selects the LCDIF pre-source/pre-divider, CCM_CBCMR contains LCDIF1_PODF, and CCGR2.CG14 gates the LCD clocks. These controls are not all in one divider register.
+- Sync polarities, pulse widths, porches, totals and active size define the scan. In DOTCLK RGB mode, VDCTRL0-4 describe that timing. LCDIF_TIMING instead serves the MPU/VSYNC interfaces.
+- **Memory pixel format**, byte packing/swizzle and output bus width must agree. A `uint32_t` per pixel is not packed three-byte RGB888.
+- The handoff publishes a reserved, DMA-visible framebuffer address before scanout starts. Controller start and panel enable follow the panel's documented power sequence.
 
 This example chooses an 800 by 480 **XRGB8888-style memory layout**: one word `0x00RRGGBB` per pixel, lower three bytes valid, little-endian/no swizzle, WORD_LENGTH=3 (24-bit input), BYTE_PACKING_FORMAT=7 and a 24-bit RGB output bus. Verify channel routing against the actual panel. The X byte is ignored here, not an alpha channel used for blending.
 
@@ -387,7 +387,7 @@ with LCDIF stopped and no scanout owning the framebuffer:
     enable panel/backlight according to the panel's power sequence
 ```
 
-CUR_BUF and NEXT_BUF contain addresses, not CPU pointers in a general virtual-memory system. This optional LCD experiment requires separately qualified DDR and the matching `DDR_MIB` opt-in from Chapter 17; the OCRAM-only MMU lab does not provide space for this framebuffer. A cast works here only with the identity mapping and a verified i.MX6ULL DMA route to that physical RAM.
+CUR_BUF and NEXT_BUF contain addresses, not CPU pointers in a general virtual-memory system. This LCD example requires separately qualified DDR and the matching `DDR_MIB` opt-in from Chapter 17. The OCRAM-only MMU example does not provide space for this framebuffer. A cast works here only with the identity mapping and a verified i.MX6ULL DMA route to that physical RAM.
 
 **Cache visibility and ownership are separate checks.** LCDIF does not snoop the CPU's cache on this path. Clean cached framebuffer writes to PoC and complete that maintenance **before** publishing a new buffer address. Alternatively, reserve appropriately mapped **Normal non-cacheable** RAM; do not use Device memory as the default type for a framebuffer. Do not change a live section's type or create a cached/non-cacheable alias without the required transition.
 
@@ -421,7 +421,8 @@ An ordinary exclusively owned RW configuration field may permit masked read-modi
 
 Linux separates these responsibilities. An I2C adapter driver operates the controller; an EEPROM client driver requests transactions through it. SPI controller and flash drivers have a similar split. Clock, pinctrl, regulator, locking and DMA APIs coordinate shared resources. You will recognize the hardware sequence, but not every subsystem callback writes a controller register, and not every driver has an identical initialization order.
 
-## 18.6  Why the required-path ends here
+(why-the-required-path-ends-here)=
+## 18.6  Why the bare-metal model ends here
 
 Part II gives you a reference model for the boot path: image layout, UART, clocks, DDR, exceptions, timers and translation/cache setup. This optional chapter adds two transaction fragments and a display sketch. Building them is not evidence that a complete production stack has run on your board.
 
@@ -431,24 +432,30 @@ You could continue building bare-metal networking, USB or filesystems, or adopt 
 
 The supplementary choices remain:
 
-- **18A, Project organization:** organize the growing code into board-support and peripheral modules.
-- **18B, Button + beep:** practise GPIO input, debouncing and output timing.
+- **18A, Project organization:** separate register definitions, board choices, driver interfaces and build dependencies.
+- **18B, Button + beep:** distinguish GPIO levels, qualified events and output timing.
 - **18C, Bare-metal RTC:** examine SNVS timekeeping and the documented backup-power arrangement.
 
 Read any combination, or proceed to Chapter 19. Keep the small transactions here available as something you can trace when a higher-level request fails.
 
-## 18.7  Lab
 
-Choose one only after its attachment and setup prerequisites are satisfied. The first two experiments are read-only.
+(187-lab)=
+## 18.7  Key Notes
 
-1. **EEPROM random read.** Record the part, address-pin settings, 7-bit address, word-address width, route and PERCLK/divider calculation. Read one known location. Compare against its known contents if available; do not assume `0xFF` proves correct wiring. A missing device should return an error within the polling policy. Do not deliberately short or disconnect a powered bus to force a timeout.
-2. **SPI identification.** Read JEDEC ID without writing flash. Compare with the full part's datasheet and, with suitable observation equipment, check one continuous `/CS` assertion and 32 clocks. Extending this to a dump requires a documented read opcode, address/dummy phase and continuous select; the first bytes need not contain a U-Boot signature or environment.
-3. **LCD preparation.** Compute timing totals and pixel clock from the actual panel specification. Check the framebuffer size, packing and DRAM reservation first. Bring up static bars only after the omitted panel sequence is implemented and reviewed. For motion, use buffer switching/completion rather than a fixed delay as proof that a buffer is free.
-4. **Combine I2C and LCD.** Treat a successfully read EEPROM byte as a palette choice only after checking `0 <= value < 8`. On error or an out-of-range value, select a known fallback. This uses two peripherals; the SPI flash need not participate.
+- The controller's presence does not establish an attached device. EEPROM address width, flash command set and panel timing belong to the actual populated part and routed board, not a generic i.MX6ULL peripheral name.
+- An I2C random read preserves one transaction across a repeated START. Address `0x50` becomes `0xA0`/`0xA1` on the wire, and TXAK requests the master's final NACK rather than reporting a slave ACK.
+- I2C completion, NACK, arbitration loss and failed STOP have distinct recovery implications. Bounded polling limits waiting but cannot force an external device to release a stuck bus.
+- SPI command and reply share the required chip-select interval. The single 32-bit MSB-first JEDEC burst preserves that boundary, and its low received byte is the last response byte. Controller completion alone does not establish device identity.
+- W0C and W1C flags require different clear writes. Ordinary configuration read-modify-write is not a general rule for status registers or FIFO accesses.
+- LCD scan timing, memory packing and device addressing must agree with the panel and memory map. Cache cleaning makes pixels visible, while frame-boundary switching and confirmed completion determine which buffer the CPU may reuse.
+- Linux controller, client and resource-management layers divide these responsibilities among owners. A bare-metal fragment needs exclusive hardware ownership and is not safe beside a live Linux driver.
 
-Optional EEPROM writing is a separate, persistent-state exercise: use a disposable attached part or an explicitly approved scratch location, preserve its old contents, and obey write-protect, page-boundary, write-cycle and bounded ACK-polling requirements. Do not overwrite byte zero of an unidentified board EEPROM or power-cycle while a write is busy.
-
-Answer checks: I2C TXAK requests the master's final NACK, not a slave ACK. `0x50` becomes address bytes `0xA0` and `0xA1` on the wire. A 32-bit SPI response's low byte is the **last** received byte. Cache cleaning makes pixels visible; it does not say which framebuffer is safe to edit.
+The EEPROM and flash transactions above are reads, not update procedures.
+EEPROM writes require a disposable part or explicitly approved scratch
+location, preservation of old contents, and write-protect, page-boundary,
+write-cycle and bounded ACK-polling handling. Do not overwrite byte zero of
+an unidentified board EEPROM or power-cycle during a write. Do not short or
+disconnect a powered bus to force a timeout.
 
 ## 18.8  Pitfalls
 
@@ -472,8 +479,8 @@ Answer checks: I2C TXAK requests the master's final NACK, not a slave ACK. `0x50
 
 ---
 
-**End of the required path through Part II.**
+**The core bare-metal model is complete.**
 
 You now have mechanisms to inspect, and explicit boundaries where board evidence is still required. Carry that habit into U-Boot: trace what the code owns, what it assumes at entry and what its completion check actually proves.
 
-> **Next, choose:** Chapters **18A-18C** for more bare-metal practice, or **Part III, Chapter 19, U-Boot, from source, first boot.**
+> **Next, choose:** Chapters **18A-18C** for supplementary design cases, or **Part III, Chapter 19, U-Boot, from source, first boot.**

@@ -311,18 +311,13 @@ OBD-II mode/PID list:
 
 About 200 lines of C and a Linux board are enough to build a complete OBD-II dashboard.
 
-## 110.11  Lab
+<span id="lab"></span>
+## 110.11  Key Notes
 
-1. **Two boards, one bus.** Wire two TJA1051 transceivers on a 1 m twisted pair with 120 Ω termination. Both run SocketCAN at 500 kbps. `cangen` from one, `candump` on the other.
-2. **CAN-FD.** If you have TJA1463: enable CAN-FD. Set dbitrate 2 Mbps. `cangen -L 64` for full-size frames. Compare throughput vs classic CAN.
-3. **Filter performance.** On a bus with `cangen -g 0.5 can0` running, install a tight filter. Verify CPU load drops dramatically.
-4. **ISO-TP loopback.** Two boards: one acts as ECU (request_id=0x7E0, response_id=0x7E8). The other sends UDS Read-DID. Verify multi-frame messages assemble correctly.
-5. **BCM cyclic.** Set up a 100 Hz heartbeat via BCM. Watch with `candump -t a` and verify the cycle time stays within ±200 µs.
-6. **MCP2515 third bus.** If your board has spare SPI: wire MCP2515. Bring up `can1`. Verify it works concurrently with FlexCAN's can0.
-7. **OBD-II real car (capstone).** Get an OBD-II cable. Connect to a car (ignition on). Read RPM, coolant temp, speed at 10 Hz. Plot in real-time.
-8. **DTC reading.** Send mode 03. Parse DTC codes. Map to human-readable (e.g., P0420 = "catalyst efficiency"). Even on a healthy car you'll usually get a few "pending" codes.
-9. **Gateway with cangw.** `cangw -A -s can0 -d can1 -e -m SET:CI:7E8:0x12345678`, forward all received frames from can0 to can1 with a different ID. Useful for bridging two networks.
-10. **Bus-off recovery.** Short the CAN_H and CAN_L (carefully, your transceiver should survive). The controller goes bus-off. Configure `restart-ms 100` so it auto-recovers when the short clears.
+- CAN controller capability, transceiver capability and network protocol are separate choices. A CAN-FD-capable transceiver cannot turn the i.MX6ULL's classic FlexCAN controller into a CAN-FD controller.
+- Arbitration priority and bus utilization shape worst-case delivery time. Nominal bitrate is not a deadline guarantee.
+- SocketCAN filters, BCM, ISO-TP and J1939 address different application and transport needs. They do not replace physical termination, timing or fault handling.
+- Diagnostic access and gateways can change a live system's behavior. Examples are protocol illustrations, not authorization or qualification for connecting to a vehicle.
 
 ## 110.12  Pitfalls
 

@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 27: Device Tree: the contract between firmware and kernel
 
-> **What:** the **Device Tree**, its origin, its grammar, the standard properties, how it's compiled (`dtc`) and consumed (`of_*` APIs in the kernel), and how a driver binds to a node via the `compatible` string. By the end you should be able to read `imx6ull-14x14-evk.dts` line by line, write an overlay that adds a new I²C device, and predict which kernel driver will probe it.
+> **What:** the **Device Tree**, its origin, grammar and standard properties, how it is compiled (`dtc`) and consumed (`of_*` APIs), and how drivers bind through `compatible`. The EVK and optional I²C sensor cases illustrate this hardware-description interface.
 > **Device Tree:** a data file that describes board hardware to the Linux kernel instead of hard-coding it in C.
 >
 > **Why:** DT is the biggest mental shift in this chapter. There is no longer a hand-written `board-*.c` with platform device tables. There is a `.dts` file that describes the hardware, and the kernel matches drivers to nodes by string at runtime. Understanding this dynamic-binding model is the prerequisite for every chapter in Part VI.
@@ -472,7 +472,7 @@ Or from a Linux user-space with ConfigFS (in newer kernels):
 
 After overlay application, the kernel re-walks the DT, finds the new `tmp102@48` node, looks for a driver with `compatible = "ti,tmp102"` (the upstream driver is `drivers/hwmon/tmp102.c`), probes it, and `/sys/class/hwmon/hwmon<N>/temp1_input` becomes readable.
 
-You did not recompile the kernel or touch the rootfs. You added a hardware description and the kernel handled the rest.
+In this case, an overlay changes the hardware description without rebuilding the kernel. The matching driver and required controller support still need to be available.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 
@@ -537,14 +537,17 @@ And then *the driver*, written once for every board with this UART, reads those 
 
 This is the Linux model. Once this clicks, Part VI is much easier.
 
-## 27.12  Lab
 
-1. **Read `imx6ull.dtsi` end-to-end.** Skim every node. Identify which ones describe (a) the CPU, (b) the GIC, (c) on-chip RAM, (d) on-SoC peripherals, (e) clock providers, (f) pinctrl banks.
-2. **Read `imx6ull-14x14-evk.dts` end-to-end.** It's much shorter than the `.dtsi`. Identify the lines that (a) set the board's model string, (b) enable specific peripherals via `&uart1 { status = "okay"; }`, (c) describe board-specific pinmux fragments, (d) declare board-specific regulators.
-3. **Dump a compiled DTB back to source.** Run `dtc -I dtb -O dts arch/arm/boot/dts/nxp/imx/imx6ull-14x14-evk.dtb`. Note the differences from the `.dts`, the `dtc` output is post-include, post-preprocessor, fully resolved.
-4. **Find which driver binds.** Pick three DT compatible strings from the EVK DTB and grep mainline for them: `grep -r "fsl,imx6ul-uart" drivers/`. Identify the driver file in each case.
-5. **Write your first overlay.** Add a virtual I²C device, pick something innocuous like a non-existent ID at an unused address (`0x57`). Compile with `dtc -@ -O dtb tmp.dts -o tmp.dtbo`. Apply at U-Boot. Boot and `dmesg | grep tmp` to confirm the kernel *tried* to probe it (and failed because there's no actual device, that's fine. We wanted to confirm the overlay-apply path).
-6. **Find the `chosen.bootargs`** in your booted kernel by running `cat /proc/cmdline` on the target, that's exactly what U-Boot wrote into the DT.
+(27-12-lab)=
+## 27.12  Key Notes
+
+- The SoC `.dtsi` describes controllers and shared resources. The board `.dts` describes connections, supplies and enabled devices, so a shared SoC does not make two boards' DTBs interchangeable.
+- `compatible` identifies a hardware binding and connects a node to driver support. It is not driver code and cannot make an absent device respond.
+- A property's meaning depends on its context. Parent bus cell counts define `reg` encoding, while clock, GPIO and interrupt providers define their own specifier cells.
+- Phandles express resource relationships. Clock names and entries, pinctrl states and regulator supplies must agree with both the binding and the board wiring.
+- DT compilation resolves includes and references into a blob. Kernel device creation and driver probe are later stages with their own dependencies and failures.
+- Overlays modify a base hardware description. They require compatible base nodes and available driver support, and are not a substitute for checking an optional device's actual wiring.
+- `/chosen` carries boot-time information such as command line and console selection. Those values are distinct from the persistent description of hardware resources.
 
 ## 27.13  Pitfalls
 

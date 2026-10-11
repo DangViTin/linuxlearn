@@ -249,18 +249,13 @@ dmesg | grep cdc_ether
 dhclient usb0
 ```
 
-## 103.9  Lab
+<span id="lab"></span>
+## 103.9  Key Notes
 
-1. **Power on, capture boot URCs.** Wire the modem. Pulse PWRKEY. `cat /dev/ttymxc3`. Watch for `RDY`, `+CPIN: READY`, `SMS Ready`.
-2. **AT bring-up checklist.** Reuse `at_client.py` from Ch 102. Confirm `AT+CPIN?`, `AT+CSQ`, `AT+COPS?`.
-3. **PPP up.** Configure `/etc/ppp/peers/cellular` + chat script. `pppd call cellular`. Verify `ppp0` has an IP. `curl ifconfig.io` shows the public address.
-4. **Reconnect test.** Pull the antenna. LCP echo timeouts fire. `persist` makes pppd reconnect. Time the recovery.
-5. **Chat script trace.** Run `pppd call cellular debug logfile /tmp/pppd.log`. Read the log line-by-line. Understand every chat exchange and LCP/IPCP packet.
-6. **GSM 07.10 mux.** Enable CMUX. Bring up PPP on `/dev/gsmtty2` while simultaneously querying `AT+CSQ` on `/dev/gsmtty1`. Verify both work concurrently.
-7. **Supervisor script.** Implement `celld.sh`. Install as init. Reboot. Verify `ppp0` comes up automatically.
-8. **Cat-1bis with USB-ECM.** If you have an ML302 or EC200N, switch it to ECM mode. Bring up `usb0` via DHCP. Compare bring-up complexity vs PPP.
-9. **Throughput measurement.** `iperf3 -c <server>` over PPP at 115200 (~80 kbps), 921600 (~600 kbps), and ECM (~5 Mbps). The UART speed dominates PPP throughput. ECM is limited by Cat-1 cell capacity.
-10. **SMS send/receive.** While PPP is up (via CMUX), `AT+CMGF=1`, `AT+CMGS="+1234..."`, type message, Ctrl-Z. Confirm receipt on the destination phone.
+- PPP divides responsibility between modem transport, user-space negotiation and the kernel network interface. A UART stream becomes a link only after that negotiation succeeds.
+- AT control and PPP data cannot independently own the same byte stream without a defined multiplexing mechanism or separate channel.
+- Serial bandwidth and flow control constrain the data path. A fast cellular radio does not remove a slow UART bottleneck.
+- Reconnect policy needs states, deadlines and backoff. Repeated power cycling or overlapping managers can conceal the original failure and prevent stable recovery.
 
 ## 103.10  Pitfalls
 

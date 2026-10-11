@@ -633,76 +633,26 @@ If Linux and M4 disagree, fail clearly.
 
 Do not let a field update produce a silent protocol mismatch.
 
-## 139.22  Failure lab A: missing firmware
+<span id="failure-lab-a-missing-firmware"></span>
+## 139.22  Failure case: unavailable firmware
 
-Set a wrong firmware name:
+Remoteproc asks the Linux firmware loader for the selected image. A missing or inaccessible file can stop the load/start path before the M4 executes anything.
 
-```sh
-# echo does-not-exist.elf > /sys/class/remoteproc/remoteproc0/firmware
-# echo start > /sys/class/remoteproc/remoteproc0/state
-```
+A firmware path is one dependency of startup, not proof that the image is compatible with the remote processor.
 
-Expected result:
+<span id="failure-lab-b-wrong-board-target"></span>
+## 139.23  Failure case: incompatible target assumptions
 
-```text
-start fails
-dmesg reports firmware load failure
-```
+Firmware built for another target can assume different memory, startup or peripherals. The result may be a load error, crash, silence or missing communication.
 
-Lesson:
+The board target is part of the firmware contract with the loader and hardware. A successful compiler invocation does not establish that contract.
 
-```text
-remoteproc uses the Linux firmware loader
-```
+<span id="failure-lab-c-rpmsg-service-mismatch"></span>
+## 139.24  Failure case: no matching RPMsg endpoint
 
-## 139.23  Failure lab B: wrong board target
+The M4 can be running while its announced RPMsg service has no matching Linux driver or access path. Processor state and communication readiness are separate milestones.
 
-Build firmware for a different Zephyr board and try to start it.
-
-Expected result:
-
-```text
-load failure
-crash
-no output
-or no RPMsg channel
-```
-
-Reason:
-
-```text
-memory layout and devices do not match the board
-```
-
-Lesson:
-
-```text
-board target is part of the firmware ABI
-```
-
-## 139.24  Failure lab C: RPMsg service mismatch
-
-Run firmware that announces a service name Linux does not bind to.
-
-Expected result:
-
-```text
-remoteproc running
-no useful user-space device
-or dmesg shows unbound RPMsg device
-```
-
-Reason:
-
-```text
-RPMsg channel names must match Linux-side drivers or user-space access paths
-```
-
-Lesson:
-
-```text
-M4 running is not the same as Linux communication working
-```
+Service naming, payload format and restart behavior belong to the protocol shared by both sides.
 
 ## 139.25  When Jailhouse is useful on STM32MP1
 
@@ -777,40 +727,15 @@ the hardware ownership problem is simple
 
 This decision is more important than tool preference.
 
-## 139.27  Lab deliverables
+<span id="lab-deliverables"></span>
+## 139.27  Key Notes
 
-Create:
-
-```text
-logs/linux-uname.txt
-logs/device-tree-model.txt
-logs/remoteproc-list.txt
-logs/remoteproc-dmesg.txt
-logs/zephyr-board-list.txt
-logs/zephyr-build.txt
-logs/remoteproc-start-stop.txt
-logs/rpmsg-dmesg.txt
-notes/peripheral-ownership-table.txt
-notes/watchdog-policy.txt
-notes/protocol-versioning.txt
-```
-
-Minimum success:
-
-```text
-Linux exposes remoteproc0
-Linux loads M4 firmware
-Linux starts M4
-Linux stops M4
-Linux starts M4 again
-```
-
-Full success:
-
-```text
-Linux and M4 exchange an RPMsg message
-the protocol and ownership table are documented
-```
+- Remoteproc manages a remote processor's firmware and lifecycle, RPMsg carries messages, and OpenAMP supplies software for those mechanisms. They are related but not interchangeable responsibilities.
+- The STM32MP1 A7/M4 split supplies a physical companion core absent from the i.MX6ULL. It is an architectural comparison, not a MINI configuration.
+- Firmware layout, reserved memory and peripheral ownership must agree between Linux and the M4. Shared hardware still needs explicit arbitration.
+- A running M4 is not evidence of a working RPMsg channel. Naming, buffers and protocol compatibility must also agree.
+- Watchdog and update policy should cover both processors and their shared interface. One healthy side must not hide the other's loss of useful progress.
+- A companion core can improve timing separation without automatically establishing security or safety isolation of the complete platform.
 
 ## 139.28  Troubleshooting
 

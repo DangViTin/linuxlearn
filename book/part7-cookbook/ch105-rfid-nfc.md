@@ -412,21 +412,13 @@ neardctl record-uri https://example.com
 
 `neard`'s big advantage: implements the NFC Forum's connection-handover spec, so a "tap-to-pair-Wi-Fi" works without you writing any of it.
 
-## 105.9  Lab
+<span id="lab"></span>
+## 105.9  Key Notes
 
-> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
-> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
-
-
-1. **MFRC522 identify.** Wire to ECSPI. Build `mfrc522_min.c`. VersionReg must read `0x91` or `0x92`. If 0x00 or 0xFF, SPI wrong.
-2. **Tag detection.** Present a Mifare Classic 1K card. Print its UID. Try a Mifare Ultralight (different ATQA). Confirm.
-3. **Block read with auth.** Extend the driver: `picc_auth(block, key_a, uid)` + `picc_read(block, buf)`. Default key for new cards is `FFFFFFFFFFFF`. Read block 0. First 4 bytes should match the UID.
-4. **Read all 16 sectors.** Loop over sectors 0..15. Read 4 blocks each. Dump.
-5. **Write a sector.** Write a value to a non-trailer block (e.g., 0x14). Re-read. Confirm.
-6. **NFC NDEF.** Use libnfc to write an NDEF URI record onto an NTAG215. Verify with your phone's NFC reader.
-7. **PN532 mainline path.** If you have a PN532, attach via I²C. `modprobe pn533_i2c`. `neardctl tags`. Verify the kernel sees the same tag the user-space driver sees.
-8. **Access control flow.** Build a 50-line door-controller: read UID, check against allow-list, fire a GPIO to a relay if allowed. Log all attempts.
-9. **Antenna range test.** Measure read distance with a stock card. Then add a 5 mm spacer (PCB sleeve) between reader and card. Range should drop ~20 %. Reposition card axially vs perpendicular. Field is directional.
+- Reader transport, tag protocol and application authorization are separate layers. Reading a tag UID identifies a presented value, not proof of an authorized person.
+- Anticollision and tag selection govern communication when several tags are present. Different tag families can require different authentication and data formats.
+- RF coupling depends on antenna design, surrounding material and placement. A functioning SPI register interface does not qualify read range.
+- Keys and access-control policy need a lifecycle independent of demonstration data. UID-only or legacy-card examples are not a complete security design.
 
 ## 105.10  Pitfalls
 

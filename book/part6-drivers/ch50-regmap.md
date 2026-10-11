@@ -320,17 +320,21 @@ F4: 27
 
 For interactive driver debugging during bring-up, this is the tool you reach for.
 
-## 50.7  Lab
+<a id="lab"></a>
+
+(ch50-lab)=
+## 50.7  Key Notes
 
 > **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
 > After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
 
 
-1. **Convert a previous driver to regmap.** Take your AT24 driver from Ch 46, replace the `i2c_transfer` calls with regmap. Compare line count.
-2. **Add a register cache.** Mark which registers are volatile. Build a regmap with `REGCACHE_RBTREE`. Observe (via `cache_only`) what gets cached.
-3. **Use `regmap_update_bits`.** Find a chip with bitfield-packed registers (e.g., MCP23017, IODIRA is direction per pin in 8 bits). Set one bit without reading the rest manually.
-4. **Inspect with debugfs.** `cat /sys/kernel/debug/regmap/<name>/registers`. Flip cache modes and observe behavior.
-5. **regcache_sync after suspend.** In an `.suspend` callback, `regcache_mark_dirty(regmap)`. In `.resume`, `regcache_sync(regmap)`. Confirm the chip's registers are restored after a `echo mem > /sys/power/state` cycle.
+- Regmap separates register semantics from bus encoding. Address width, value width, endianness, and command flags must describe the actual chip protocol.
+- Readable, writable, volatile, and side-effect registers need distinct policies. Caching status or replaying command registers can change device behavior rather than merely improve performance.
+- Regmap locking serializes accesses through that map. A larger multi-register state transition may still require a driver-level lock and a hardware-specific sequence.
+- Read-modify-write helpers are appropriate only for registers whose read and write semantics permit them. Write-one-to-clear and clear-on-read registers need particular care.
+- Power loss can invalidate the relationship between cached configuration and hardware. Resume must restore power and bus access before synchronizing suitable cached state.
+- Direct bus access outside the map can leave its cache stale. Debug views and cache controls are observations of the access layer, not proof of a functioning peripheral.
 
 ## 50.8  Pitfalls
 

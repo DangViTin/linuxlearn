@@ -162,14 +162,14 @@ Then `pppd call a7670`. A `ppp0` interface appears, with internet routed through
 
 PPP is slow (~10 Mbit/s max) and adds latency. Use only for old modems without USB.
 
-## 55F.6  Lab
+<span id="f-6-lab"></span>
+## 55F.6  Key Notes
 
-1. **Plug in an EC25.** Verify `lsusb`, `ttyUSB*`, `wwan0`, `cdc-wdm0` all appear.
-2. **ModemManager connect.** `mmcli --simple-connect`. Verify `ip` is up, ping works.
-3. **AT-command echo.** Open `/dev/ttyUSB2`, send `AT`, get `OK`. Try `AT+CSQ`, `AT+QSPN`.
-4. **SMS send.** `mmcli --modem=0 --messaging-create-sms="text='hello',number='+...'`. `--send`. (SMS cost is around $0.05 per message on most carriers.)
-5. **Failover to WiFi.** Write a script that periodically pings the gateway. Switch routes if cellular fails.
-6. **Power consumption.** Measure idle vs RX vs TX-burst current. Plan your battery accordingly.
+- Cellular integration separates modem control, the data interface and host network configuration. QMI, MBIM, Ethernet-like modes and PPP imply different drivers and management paths.
+- One manager should own modem state. Competing AT sessions or network managers can change a configuration another component expects to retain.
+- Registration, a data session, an IP address and usable routing are separate states. An `OK` reply to an AT command proves none of the later states.
+- Carrier provisioning, antenna design and supply transients are system dependencies. USB enumeration does not qualify the RF or power path.
+- Failover needs a route and retry policy that considers cost, availability and session disruption, not just whether one ping succeeded.
 
 ## 55F.7  Pitfalls
 

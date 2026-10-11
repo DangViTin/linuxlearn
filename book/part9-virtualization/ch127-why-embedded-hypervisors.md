@@ -316,7 +316,7 @@ So Part IX says:
 
 - Xen on i.MX6ULL is a real HYP-mode experiment.
 - Jailhouse on i.MX6ULL is not a good first target.
-- Jailhouse in QEMU ARM64 is a good partitioning lab.
+- Jailhouse in QEMU ARM64 is a good partitioning study.
 - STM32MP1 Linux + M4 RTOS is the realistic Linux+RTOS product pattern.
 
 That distinction matters. It prevents the reader from forcing one board to teach every lesson.
@@ -649,126 +649,37 @@ The chapters are ordered to avoid magic:
 
 The sequence is deliberate. We do not start by throwing Xen at a real board and hoping the serial log is kind.
 
-## 127.18  Lab: architecture decision memo
+<span id="lab-architecture-decision-memo"></span>
+## 127.18  Key Notes
 
-This chapter's lab is a written engineering artifact. That is intentional. Real virtualization decisions are made before code.
+- The choice begins with a failure to contain and the workload that must survive it. A process, container, guest, partition or companion MCU provides a different boundary.
+- CPU count, memory, timing and device dependencies limit feasible designs. A hypervisor does not create extra physical cores or independent power domains.
+- CPU memory protection and device DMA protection are separate mechanisms. Assigning MMIO alone is not a complete isolation argument.
+- Watchdog and reset policy must identify whose health matters and who can recover the system. Independent watchdog petting can hide a failed workload.
+- Separate execution worlds create separate update and compatibility responsibilities. Recovery must account for their shared interfaces and management domain.
+- The smallest adequate boundary is usually easier to maintain than a stronger boundary with unexplained dependencies.
 
-Create:
-
-```text
-~/imx6ull/virt-lab/decision-memo.md
-```
-
-Use this template:
-
-```text
-# Virtualization decision memo
-
-## Product
-
-Name:
-Board:
-CPU cores:
-RAM:
-Storage:
-Network:
-Safety or uptime requirement:
-
-## Workloads
-
-| Workload | Timing | Security | Update rate | Device needs |
-|----------|--------|----------|-------------|--------------|
-|          |        |          |             |              |
-
-## Failures to contain
-
-| Failure | Must keep running | Allowed recovery | Boundary candidate |
-|---------|-------------------|------------------|--------------------|
-|         |                   |                  |                    |
-
-## Device ownership
-
-| Device | Owner | Shared? | DMA? | Notes |
-|--------|-------|---------|------|-------|
-|        |       |         |      |       |
-
-## Watchdog policy
-
-Who reports health:
-Who pets watchdog:
-What happens when UI dies:
-What happens when control dies:
-What happens when Dom0/root Linux dies:
-
-## Update policy
-
-Artifacts:
-Compatibility rules:
-Rollback rules:
-Who verifies signatures:
-
-## Decision
-
-Chosen architecture:
-Why:
-Rejected alternatives:
-Biggest risk:
-First lab to prove it:
-```
-
-## 127.19  Lab cases
-
-Fill the memo for three products.
+<span id="lab-cases"></span>
+## 127.19  Design cases
 
 ### Case A: field gateway
 
-Requirements:
-
-- Ethernet or LTE uplink,
-- Modbus or CAN fieldbus,
-- local web UI,
-- OTA updates,
-- field polling should recover if UI crashes.
-
-Expected likely answer: one Linux with separate services first, possibly containers. Xen only if kernel-level isolation or legacy containment is required.
+A gateway with an uplink, fieldbus, web UI and OTA needs polling to recover when its UI fails. Separate Linux services may contain that process failure. Containers can help package them independently, but still share the kernel. Xen becomes relevant when the required boundary includes a failing kernel or a legacy stack.
 
 ### Case B: industrial HMI with safety monitor
 
-Requirements:
-
-- display and touch,
-- data logging,
-- safety output,
-- watchdog,
-- updateable UI.
-
-Expected likely answer: M-core or external MCU for safety if available. Xen only if the safety workload must run on an A-core and the risk justifies it.
+Display and logging failures should not silently disable a safety function. A companion core or external controller can separate timing and recovery responsibilities, but its peripherals, power and communication links still need analysis. Neither an MCU nor a hypervisor makes the whole product safety-qualified by its presence.
 
 ### Case C: legacy BSP containment
 
-Requirements:
+A legacy camera stack and a newer application stack may justify separate kernels. Xen is a candidate when hardware support, memory and device ownership permit it. Containment can reduce migration coupling, while preserving the maintenance and security obligations of the old stack.
 
-- old camera stack works only on old Linux,
-- new product software wants mainline Linux,
-- both must ship temporarily,
-- RAM budget can tolerate two kernels.
+<span id="lab-review-checklist"></span>
+## 127.20  What makes the decision defensible
 
-Expected likely answer: Xen is plausible.
+An architecture explanation connects each failure to the boundary intended to contain it, the resources that boundary owns, and the recovery that remains available. It also identifies shared dependencies: management software, DMA, clocks, reset, power and persistent state.
 
-## 127.20  Lab review checklist
-
-Your memo is acceptable only if:
-
-- it names specific failures,
-- it says what survives each failure,
-- it assigns watchdog ownership,
-- it assigns device ownership,
-- it identifies DMA-capable devices,
-- it has an update and rollback story,
-- it rejects at least one tempting but wrong architecture,
-- it names the first lab that would prove the decision.
-
-If the memo only says "use Xen because isolation", it is not done.
+A rejected alternative is useful when its tradeoff is explicit. A design is not justified merely by naming Xen, an RTOS or isolation. Measurements and fault evidence are separate from that explanation, and must eventually test the actual requirement.
 
 ## 127.21  Pitfalls
 

@@ -291,18 +291,16 @@ gdbserver :2345 --attach 1234
 
 Now you know: line 127 calls poll() on a socket that's hung. Fix: add a timeout, handle disconnect, reconnect.
 
-## 120.10  Lab
 
-1. **gdbserver hello world.** Build a 10-line C program with `-g`. Run via gdbserver. Attach gdb-multiarch from host. Step through. Print variables.
-2. **Set sysroot properly.** Try to print a `pthread_mutex_t` from gdb without sysroot. Observe missing libpthread symbols. Set sysroot. Observe symbols appear.
-3. **strace.** Run `cat /etc/passwd` under strace. Identify every syscall. Now run `ls`. Compare syscall patterns.
-4. **strace -c.** Run a typical workload. Identify the most-frequent and slowest syscall.
-5. **perf top.** Run `dd if=/dev/zero of=/tmp/x bs=1M count=100` while `perf top` is running. See which kernel functions dominate.
-6. **Flamegraph of your app.** Sample your app. Produce an SVG. Identify the hot path.
-7. **Hardware counter profile.** `perf stat -e cache-misses,instructions,cycles ./myapp`. Compute CPI (cycles per instruction). >2 = memory-bound. <1.5 = compute-bound.
-8. **Crash + core.** Write a program that intentionally dereferences NULL. Capture the core. Analyze with gdb on host. Identify the line.
-9. **Attach to systemd service.** Find a running daemon's PID. Attach gdbserver. Bt. Identify what it's doing.
-10. **End-to-end customer-bug workflow.** Pick a "stuck" daemon (httpd, sshd). Use cat /proc/<pid>/wchan + strace -p + gdb-attach. Produce a one-page bug report.
+(12010-lab)=
+## 120.10  Key Notes
+
+- `gdbserver` controls the target process while host GDB owns symbols and source lookup. The host executable and target libraries must describe the deployed build.
+- The sysroot supplies the target's library context on the host. A wrong sysroot can make a plausible backtrace refer to the wrong implementation.
+- `strace` exposes the process-to-kernel boundary, while `ltrace` exposes supported library calls. A syscall wait and an application deadlock are different diagnoses.
+- Sampling identifies where execution time accumulates without recording every event. Counters and call graphs require workload and unwind context, not universal thresholds.
+- A core dump preserves crash-time process state. Storage limits, permissions, and artifact retention determine whether that state remains usable.
+- In the hung-socket case, an unbounded `poll()` wait is an application failure boundary. Timeouts and reconnect policy belong to the application, not the debugger.
 
 ## 120.11  Pitfalls
 

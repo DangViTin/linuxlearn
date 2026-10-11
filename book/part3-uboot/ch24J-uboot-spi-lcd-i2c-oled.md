@@ -232,7 +232,7 @@ needs 512 pixel bytes; a larger frame needs a reviewed streaming/chunking
 routine that preserves controller address state and watchdog scheduling.
 Do not restart RAM-write at the origin for every chunk and call that a fill.
 Prove color/window mapping before adding text. Without module-specific init,
-this SPI path remains an implementation exercise, not a ready-to-use driver.
+this SPI path remains an implementation example, not a ready-to-use driver.
 
 ## 24J.7  I2C OLED: why it feels different
 
@@ -475,7 +475,7 @@ The document specifies page mode, control bytes, and the VCOMH `0x20` encoding;
 it does not qualify the supply/reset design of an unknown module.
 
 Add the object to the existing board Makefile only for the selected optional
-feature, or for a dedicated lab build:
+feature, or for a dedicated example build:
 
 ```make
 obj-y += oled_ssd1306.o
@@ -544,27 +544,16 @@ its missing layers have been built and tested.
 - **SH1106 or 128x32 treated as this module.** Geometry and commands differ.
 - **A display hook bypassing A/B or safety.** Optional feedback must retain policy.
 
-## 24J.14  Lab
+(j-14-lab)=
+## 24J.14  Key Notes
 
-1. Trace MINI P4 pins 17-20 for ECSPI3, pin 43 for I2C1 SCL and pin 42 for
-   I2C1 SDA. Identify the added module/controller, supply/reset profile
-   and geometry. With no
-   module, finish the schematic/source and host-transaction exercises.
-2. Inspect the v2026.04 driver tree and generated config. Name which code
-   really owns bus transfer, reset/init, rendering, and Linux handoff.
-3. For SPI, build the transport helper in a fixture. Check lengths 0, 1,
-   512, 513, null data, D/C failure, claim failure, and transfer failure.
-   There must be no out-of-bounds read or unreleased claimed bus.
-4. For OLED, capture mock writes: command control `00`, data control `40`,
-   no inserted offset, page mode, eight pages, and 1024 pixel bytes.
-5. Inject an I2C failure at initialization, drawing, and display-on. The
-   command must fail; invalid arguments must send nothing.
-6. Disable the conflicting UART2 or UART4 function in the modern control DT;
-   verify bus sequence, pinmux, power and GPIO ownership. Only on approved
-   matching hardware, inspect a small SPI window or `oled clear`/`oled bar`.
-   Record observations, not template logs.
-7. Add one optional normal-state hook and verify missing-display behavior,
-   recovery/rollback precedence, power veto, and Linux takeover.
+- The stock MINI has neither serial display, and v2026.04 lacks the named panel drivers used in these examples. A compatible string or working bus driver does not supply reset, initialization or rendering.
+- SPI command/data transfers depend on D/C and CS across the entire transaction. The bounded helper owns bus claim/release and length checks, but not panel timing or a whole-screen streaming engine.
+- `dm_spi_xfer` counts bits, while RGB565 wire order is a byte-level contract. Native little-endian pixel arrays do not automatically match high-byte-first panel modes.
+- SSD1306 I2C packets start with command/data control bytes, not register offsets. Zero offset length, page-mode initialization and page/column writes must agree for all 1024 pixel bytes.
+- The supplied OLED command covers only its documented 128 x 64 charge-pump profile. An ACK, similar module shape or SH1106 name does not establish that profile.
+- P4 bus routes share pads with UART functions, and P1/I2C2 shares accessories. Module voltage, pull-ups and separate GPIO ownership remain hardware contracts beyond byte-transaction correctness.
+- Optional indication retains serial diagnostics and boot/recovery/power precedence. Partial pixels after a transfer failure and a decorative bar are not verified status or committed update progress.
 
 ## 24J.15  Going deeper
 

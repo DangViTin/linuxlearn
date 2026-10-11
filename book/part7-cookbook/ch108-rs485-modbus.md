@@ -261,18 +261,13 @@ for (;;) {
 
 Now your i.MX6ULL is slave 5 on the bus. Any master can poll it for sensor data.
 
-## 108.9  Lab
+<span id="lab"></span>
+## 108.9  Key Notes
 
-1. **RS-485 transceiver up.** Wire MAX485. Connect A↔A, B↔B between two boards. Enable kernel RS-485 mode. Send raw bytes. Verify echo on the other end.
-2. **CRC check.** Send a Modbus query by hand (8 bytes). Compute CRC with the standard table. Verify the slave's response.
-3. **libmodbus master.** Compile the master example. Talk to a real device (DDS energy meter, Growatt inverter, MAX31865 RTD module with Modbus-RTU). Read all available registers.
-4. **Multi-slave bus.** Add 3+ devices to the same bus with unique addresses (1, 2, 3). Round-robin poll them. Verify no collisions.
-5. **Termination test.** Remove the 120 Ω termination. Long cable (10+ m). Watch for CRC errors. Add termination back. Verify clean.
-6. **Bias test.** Disconnect master. Without bias resistors, the bus floats and slaves see random noise as start-bits. Add bias. Bus stays idle-high.
-7. **Auto-direction.** Replace MAX485 with MAX13487. Confirm communication works without DE GPIO. Try at 115200, this is auto-direction's main benefit.
-8. **Slave mode.** Implement a Modbus slave on the i.MX6ULL exposing 16 registers. Have a separate master poll it.
-9. **MQTT gateway.** Bridge the inverter data through MQTT (use the worked example). Plumb to Grafana for a 24-hour solar production chart.
-10. **Long-cable test.** Run 100 m of CAT5 between two boards. Baud test at 9600/19200/38400/115200. Note where errors start.
+- RS-485 defines an electrical link, while Modbus RTU defines framing and operations above it. Good electrical signaling does not establish correct register semantics.
+- Direction control belongs with reliable UART timing or suitable hardware. User-space wakeup time is not a safe substitute for a precise turnaround requirement.
+- Termination, biasing, common-mode range and isolation depend on topology and environment. A short bench cable does not qualify a factory installation.
+- Register numbering, function codes, units and multi-register encoding form the device-level contract. A valid CRC cannot detect a correctly framed request to the wrong register.
 
 ## 108.10  Pitfalls
 

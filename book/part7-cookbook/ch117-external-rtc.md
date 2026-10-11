@@ -279,20 +279,13 @@ int main(void) {
 
 The DS3231's built-in thermometer is a useful bonus. It drives the TCXO temperature compensation internally and can also be read as a ±3 °C ambient sensor. Use it for "is the device too hot" alerts.
 
-## 117.9  Lab
+<span id="lab"></span>
+## 117.9  Key Notes
 
-1. **RTC up.** Wire DS3231. Verify in `dmesg` that the kernel finds it (`rtc-ds1307`). `hwclock --show` reads the time.
-2. **Set + persist.** `date -s ...`. `hwclock --systohc`. Pull power. Reboot. `hwclock --show`, time persists.
-3. **Battery hot-swap test.** Remove the CR2032 with power on. Replace. Verify time still correct. Then remove battery + power. Replace battery. Reapply power → time lost. The CR2032 only protects against short *main supply* outages. If both the main supply and the battery are removed at the same time, the RTC loses time.
-4. **From scratch I²C.** Run `ds3231_min.c`. Cross-check with `hwclock --show`.
-5. **Alarm wake.** `rtcwake -m mem -s 60`, system suspends. Wakes 60 s later. Measure power during the suspended interval (should be < 5 mA if other rails are PMIC-managed).
-> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
-> **PMIC:** Power Management IC, a chip that sequences and regulates the board's voltage rails.
-6. **Daily scheduled task.** Use a cron-like scheduler: at boot, set an RTC alarm for the next 06:00. Suspend. Wake at 06:00. Run the task. Sleep again. Total energy per day: ~30 s of active + 86,370 s of suspend → battery life × 100 vs always-on.
-7. **chrony integration.** Configure chrony with NTP + RTC backup. Disconnect network. Reboot. Verify time is correct from RTC.
-8. **Drift measurement.** Power up. Sync to NTP. Wait 7 days. Compare RTC time vs NTP. DS3231 should be within ±5 s. PCF8563 within ±100 s.
-9. **Multi-RTC.** If your board has both SNVS RTC and DS3231, configure DS3231 as primary in `/etc/adjtime`. Verify `hwclock --show` reads from DS3231.
-10. **Temperature monitor.** Read DS3231's internal temp register every 10 s. Log to a CSV. Plot a day's worth, see room temperature variation.
+- The RTC retains time independently of the system clock, while NTP or another reference disciplines system time. Synchronization direction and validity need one clear policy.
+- Battery backup preserves a clock only within the actual supply arrangement. A fitted socket does not establish a healthy backup source or valid time.
+- An alarm needs a supported wake path from the RTC to the SoC. Programming an alarm does not prove that the board can resume from the selected sleep state.
+- RTC numbering, UTC/local-time policy and oscillator status matter when several clocks exist. A successful read should not hide that time may have been lost or never initialized.
 
 ## 117.10  Pitfalls
 
@@ -311,7 +304,7 @@ The DS3231's built-in thermometer is a useful bonus. It drives the TCXO temperat
 
 ## 117.11  Going deeper
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Examples and production:** Do not burn fuses, enroll production keys, or sign release images while using these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -328,8 +321,8 @@ The DS3231's built-in thermometer is a useful bonus. It drives the TCXO temperat
 
 ---
 
-> **End of Part VII, Device Cookbook (Ch 64–117, 54 chapters).** Part VII covers most device classes you will integrate on an i.MX6ULL product, with 2–4 real chips per class, schematics, DT, driver internals, from-scratch implementations, labs, and pitfalls. From the cheapest QSPI flash to a GPS-disciplined time server, most external chips an i.MX6ULL product is likely to integrate are documented here. Use it as a reference: jump to the chapter for the chip in front of you.
+> **End of Part VII, Device Cookbook (Ch 64–117, 54 chapters).** These chapters compare representative devices, bus interfaces, driver responsibilities and integration pitfalls. They are independent references, not a required build sequence. The Key Notes collect the design decisions that still matter when the implementation changes.
 
-> Next: **Part VIII, Debug, production, advanced**, JTAG, kernel debugging, production-grade build infrastructure, secure boot, OTA, mainline patch submission. The chapters that take your Linux skills from "I can make this work" to "I can ship this product."
+> Next: **Part VIII, Debug, production, advanced** examines observability, reproducible builds, secure boot and updates. The question shifts from how one interface works to how a system can be diagnosed, maintained and recovered.
 > **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 > **JTAG:** the hardware debug scan chain used to halt, inspect, and single-step CPUs.

@@ -117,14 +117,14 @@ However, the i.MX6ULL LCDIF tops out at about 80 MHz pixel clock. 1080p60 is 148
 SiI902x also carries audio. With `#sound-dai-cells = <0>;`, the chip exposes an audio DAI. Build an ASoC machine driver (Ch 53) that connects SAI → SiI902x → HDMI. Most products skip this and use HDMI for video only.
 > **ASoC:** ALSA System-on-Chip, the embedded audio layer that connects CPU audio ports, codecs, and board wiring.
 
-## 55H.5  Lab
+<span id="h-5-lab"></span>
+## 55H.5  Key Notes
 
-1. **Add SiI902x to your DT.** Boot. Check `dmesg | grep sil` for "SiI902x bridge ready" or similar.
-2. **Plug an HDMI monitor.** `modetest -M mxsfb -c` lists connected outputs. HDMI-A-1 should be `connected` with valid modes.
-3. **Set 720p.** `modetest -M mxsfb -s <id>:1280x720`. Verify monitor displays.
-4. **`/dev/fb0` painting.** Default fbdev emulation shows it. `cat /dev/urandom > /dev/fb0` paints noise on the HDMI output.
-5. **HPD detection.** Unplug cable. Observe disconnected event in dmesg / `modetest -c`.
-6. **Try 1080p.** Confirm it fails (LCDIF pixel clock limit). Read drm.debug=15 dmesg for the rejection.
+- A DRM bridge transforms one display interface into another between the controller and connector. The i.MX6ULL has no native HDMI, so the external bridge and its wiring are part of the design.
+- I2C control, parallel pixel input, DDC and hot-plug detection serve different roles. A successful bridge probe does not prove that a sink can receive pixels.
+- EDID describes sink modes, but the controller, bridge and board must all support the selected timing. A monitor's mode list is not permission to exceed source limits.
+- HDMI audio is an additional path with its own clocks and routing. Video support alone does not establish audio support.
+- Disconnects and invalid modes are normal states that the display pipeline should represent explicitly.
 
 ## 55H.6  Pitfalls
 

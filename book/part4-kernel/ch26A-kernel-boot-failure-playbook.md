@@ -16,7 +16,7 @@ status: draft
 >
 > **Focus:** classify the failure first: no output, early output then silence, VFS panic, init panic, or driver probe failure.
 
-This chapter assumes you already built the kernel in Chapter 25 and can type the manual boot commands from Chapter 26.
+The cases use the kernel artifacts described in Chapter 25 and the boot command structure from Chapter 26. They explain diagnostic boundaries without requiring a completed board boot.
 
 ## 26A.1  Keep one known-good boot command
 
@@ -48,7 +48,7 @@ If you later break `bootcmd`, you still have a known-good path.
 | Ethernet/NFS root hangs | network driver, IP args, server export | Boot SD root first, then test NFS |
 | Random panics | DDR, bad DT memory node, kernel/module mismatch | Run U-Boot `mtest`; check `Memory:` line |
 
-Do not skip the table. Pick the row that matches the last visible line.
+The last visible line locates a failure boundary, which makes the table useful for choosing a diagnostic path.
 
 ## 26A.3  Case 1: nothing after `Starting kernel ...`
 
@@ -237,14 +237,17 @@ console=ttymxc0,115200 earlycon ignore_loglevel loglevel=8 initcall_debug root=/
 
 Use the smallest one that answers the question.
 
-## 26A.9  Lab
+<a id="lab"></a>
 
-1. Boot with the known-good command and save the serial log.
-2. Break the DTB address and confirm the symptom.
-3. Remove `console=` and recover with `earlycon`.
-4. Set `root=/dev/mmcblk9p9` and read the VFS panic.
-5. Set `init=/does-not-exist` and read the init panic.
-6. Add `initcall_debug` and find the longest initcall in the log.
+(26a-9-lab)=
+## 26A.9  Key Notes
+
+- A boot failure has a stage: image handoff, console availability, root mounting, init execution or device probing. Similar visible symptoms can originate in different stages.
+- Chained loads with `&&` prevent a failed transfer from being followed by a jump into stale RAM. A diagnostic baseline also needs a matching image, DTB and command line.
+- Early output followed by silence can indicate console handoff trouble rather than a stopped kernel. `initcall_debug` adds evidence about initialization progress, not proof that the last printed driver caused the failure.
+- A VFS panic concerns the path to the root device and filesystem support. `rootwait` handles delayed discovery, but cannot supply a missing driver or correct a wrong partition.
+- Init execution depends on the executable path, architecture and, for dynamic binaries, interpreter and libraries. Finding the file in the rootfs is only one of these conditions.
+- An initramfs separates early user-space availability from the normal rootfs path. NFS adds independent dependencies on Linux networking, host exports and firewall policy.
 
 ## 26A.10  Pitfalls
 

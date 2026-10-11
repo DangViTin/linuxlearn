@@ -157,14 +157,14 @@ The kernel's MMC subsystem is the canonical example for SD/eMMC. Read `drivers/m
 
 For comparison, an eMMC HS200 hits ~120 MB/s sequential, ~10k IOPS random. NAND flash via UBI hits ~10 MB/s.
 
-## 55D.5  Lab
+<span id="d-5-lab"></span>
+## 55D.5  Key Notes
 
-1. **Build the ramdisk.** Load, format, mount, write a file, unmount, reload, observe file persistence (RAM-backed only across reload, not reboot).
-2. **Add error injection.** Make every 100th write return `BLK_STS_IOERR`. Observe filesystem behavior (ext4 remounts read-only).
-3. **Measure throughput.** dd + fio at various block sizes. Build a throughput curve.
-4. **Inspect with `iostat -x 1`.** While running fio, watch await, %util, IOPS.
-5. **Add a sysfs attribute.** Expose stats: total reads, total writes, bytes transferred.
-> **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
+- The block layer describes sector-oriented I/O through bios, requests and queues. A block driver must honor offsets, lengths and completion semantics rather than act like an unstructured byte stream.
+- Queue ownership ends only when the request is completed or failed through the expected interface. Incorrect completion accounting can affect both data integrity and scheduling.
+- A RAM disk explains the block contract without implementing storage durability. Its contents depend on the backing allocation's lifetime.
+- Filesystem behavior depends on error and flush semantics beneath it. A successful write call is not automatically evidence of persistence across power loss.
+- Removal and resource cleanup must account for open or mounted users. Device lifetime is part of the interface, not just module initialization.
 
 ## 55D.6  Pitfalls
 

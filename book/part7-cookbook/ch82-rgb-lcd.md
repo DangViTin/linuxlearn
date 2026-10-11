@@ -445,16 +445,13 @@ endmode
 
 For a Qt app: `./app -platform linuxfb`. For backlight: `echo 4 > /sys/class/backlight/backlight/brightness`.
 
-## 82.8  Lab
+<span id="lab"></span>
+## 82.8  Key Notes
 
-1. **Bring up the ATK7016.** Transcribe its datasheet timings into a `panel-dpi` DT node. Boot. Verify `/dev/fb0` exists with the right geometry.
-2. **Paint the screen.** `cat /dev/urandom > /dev/fb0`, noise. `cat /dev/zero > /dev/fb0`, black. Confirm the panel responds.
-3. **Backlight.** Wire `pwm-backlight`. Sweep `/sys/class/backlight/backlight/brightness` 0→255. Verify dimming.
-4. **Deliberately wrong porch.** Change `hfront-porch` by 100. Reboot. Observe the image shift / tear. Restore.
-5. **Custom drm_panel driver.** Build `mypanel.ko` from §82.5 approach 3. Verify it registers and the LCDIF picks up its mode.
-6. **modetest.** Run a DRM-only kernel. Use `modetest` to list connectors and set the mode.
-7. **Qt app.** Run a simple Qt `-platform linuxfb` app. Verify it renders.
-8. **Pixel-clock limit.** Try the ATK10261 (71 MHz pclk). Note if it works or glitches. If it glitches, reduce to a 50 Hz refresh timing (lower pclk) and retest.
+- A parallel RGB panel consumes a continuously timed pixel stream from LCDIF. Active pixels, blanking intervals and polarities must agree with its electrical specification.
+- Pixel clock and memory bandwidth constrain the complete mode. Resolution alone does not determine whether the controller can drive a panel reliably.
+- Panel preparation, pixel enable and backlight enable are different stages. Their ordering avoids displaying unstable data during power transitions.
+- Framebuffer pixel format and physical bus width are different properties. Existing DRM panel support is useful only when it accurately describes the fitted assembly.
 
 ## 82.9  Pitfalls
 

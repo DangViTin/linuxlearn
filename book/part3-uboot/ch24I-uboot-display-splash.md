@@ -23,12 +23,12 @@ path merely because its size matches.
 Start with Chapter 19's MINI vendor baseline and identify the actual panel
 module before enabling a separate display build. Chapter 19's first vendor
 lab deliberately disables video; no panel is required there, and its legacy
-LCD-reset helper must not run during the UART/SD/eMMC starting exercise.
+LCD-reset helper must not run during the UART/SD/eMMC starting example.
 We then prepare the modern boot
 screen using upstream **v2026.04** in the separate `mx6ull_pa_mini` migration.
 The old board display helpers and modern DM video APIs are not interchangeable.
 Without a panel, you can still inspect J1's routes and complete the host
-BMP/memory exercises; with a panel, its timing and power specification
+BMP/memory examples; with a panel, its timing and power specification
 determine the remaining values.
 
 ## 24I.1  What a U-Boot boot screen really is
@@ -58,7 +58,7 @@ Changing Linux Device Tree does not fix U-Boot's own control DT or driver.
 The MINI connection is concrete (baseboard sheet 2, core sheets 5/8;
 guide MINI Section 5.4.4, pp. 267-268):
 
-| MINI route | Meaning for this exercise |
+| MINI route | Meaning for this example |
 |---|---|
 | LCD_DATA16..23 -> R0..7; DATA8..15 -> G0..7; DATA0..7 -> B0..7 | RGB888 wiring; the three highest color bits pass through switches |
 | LCD_PCLK, LCD_HSYNC, LCD_VSYNC, LCD_DE -> J1 | eLCDIF pixel/sync path, not SPI transfers |
@@ -390,24 +390,16 @@ A file residing inside a signed container is not automatically verified by
 integrity is authenticated. Optional visual feedback must not weaken the
 recovery/power decision or delay watchdog service unpredictably.
 
-## 24I.11  Lab
+(i-11-lab)=
+## 24I.11  Key Notes
 
-1. Without hardware, inspect v2026.04's MXS parser and configuration. Explain
-   the difference between source BMP depth, framebuffer depth, and RGB wires.
-2. Calculate file/framebuffer sizes for a chosen geometry, including row
-   padding. Reject an oversized or truncated host asset.
-3. Trace MINI J1 and U1-U3. Identify the optional fitted RGB module and its
-   ID/timing specification; review GPIO1_IO08, shared RESET, power sequence,
-   and operation-phase guards. Do not modify straps or switch bypasses.
-4. Compare the matched vendor display setup, then build the modern MINI port
-   and reserve non-overlapping RAM before loading anything. Do not transplant
-   the old reset helper or select a mode solely from `panel=TFT7016`.
-5. On approved hardware, record actual load/header results and color-bar/panel
-   observations separately. No panel is assumed working by this chapter.
-6. Add the optional wrapper. Missing, empty, or oversized files must fail the
-   splash command while preserving the normal boot policy.
-7. Test held-key recovery and a modeled power fault: neither may fall into
-   the splash/normal path. Check the intentional Linux display handoff.
+- BMP source data, framebuffer pixels and RGB wires are separate formats. The MXS 24/18-bit output paths use 32-bit framebuffer storage, independent of a 24-bit BMP decoder.
+- eLCDIF scanout and backlight power are separate paths. The fitted module's timing, sequencing and BLT_PWM contract determine whether valid RAM pixels become a visible image.
+- MINI J1 includes shared reset and SGM3157 isolation on display/boot-strap lines. An inherited independent LCD-reset helper is not permission to drive the shared reset network.
+- U-Boot's actual parser determines which timing and power properties take effect. A Linux binding or backlight node does not guarantee that the selected bootloader driver consumes it.
+- Trusted BMP validation and separate image/framebuffer reservations precede decoding. `bmp info` header output is not a complete bounded-input validation service.
+- The optional splash wrapper can report failure while preserving normal A/B boot, but must not bypass recovery or power vetoes. A displayed logo neither accepts a candidate nor establishes product readiness.
+- Linux owns its own display initialization after handoff. Seamless image preservation requires an explicit cross-stage contract, not merely a successful `bmp display` call.
 
 ## 24I.12  Pitfalls
 
@@ -436,7 +428,7 @@ recovery/power decision or delay watchdog service unpredictably.
   and [splash code](https://github.com/u-boot/u-boot/blob/v2026.04/common/splash.c),
   for the optional framework rather than this manual path.
 - The fitted panel's official timing/electrical specification and the carrier
-  schematic are prerequisites for a hardware exercise.
+  schematic are prerequisites for a hardware example.
 
 ---
 

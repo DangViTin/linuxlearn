@@ -12,7 +12,7 @@ status: draft
 > After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
 
 
-> **What:** the smallest possible Linux kernel module, a `.ko` file with an entry point, an exit point, and a license tag, and the build system (`Kbuild`) that turns C source into it. By the end you can `insmod hello.ko`, see your `printk` in `dmesg`, and `rmmod` it without rebooting.
+> **What:** the smallest possible Linux kernel module, a `.ko` file with an entry point, an exit point, and a license tag, and the build system (`Kbuild`) that turns C source into it. The example connects module loading, kernel logging, and unloading to their roles in the module lifecycle.
 >
 > **Why:** every driver you'll ever write, character, block, network, platform, I²C, SPI, sound, is a kernel module at its core. The wrapper around the interesting code is the same: module_init / module_exit / MODULE_LICENSE. Master the trivial case once and the only thing left to learn for each subsystem is its own API.
 >
@@ -290,18 +290,17 @@ Four numbers: current console log level, default for unmarked messages, minimum 
 
 Now everything prints to console. Useful for debugging. Noisy in production.
 
-## 36.7  Lab
+<a id="lab"></a>
 
-1. **Build and load `hello.ko`** on the target. Verify in `dmesg` and `/sys/module/hello/`.
-2. **Add a module parameter** named `name` (string) defaulting to `"world"`. Load with `insmod hello.ko name=mainline`. Verify it prints.
-3. **Tweak the parameter at runtime** via `/sys/module/hello/parameters/name`. Note that the value changes but `hello_init` is not re-run.
-4. **Add `pr_debug` calls** and enable dynamic debug for your module:
-   ```sh
-   echo "module hello +p" > /sys/kernel/debug/dynamic_debug/control
-   ```
-   Confirm your debug messages now print, without rebuilding.
-5. **Crash the kernel intentionally** (don't do this on a production system). Add `*(int *)0 = 0;` to `hello_init`. Build, load, observe the `Oops`. Note: this is recoverable on i.MX6ULL, the module fails to load, kernel reports the BUG, but the system continues. (On other archs and with `CONFIG_PANIC_ON_OOPS=y`, the kernel will panic.)
-6. **Decode the Oops trace.** Look at the PC register and the symbol-section addresses in `/sys/module/hello/sections/`. Confirm the crash address falls inside your module.
+(ch36-lab)=
+## 36.7  Key Notes
+
+- A loadable module joins the kernel's address space. Its callbacks have kernel privileges and no process-level fault isolation.
+- Kbuild supplies the running kernel's build contract, including configuration and exported symbols. A relocatable `.ko` is not a user-space executable.
+- Initialization acquires resources and publishes callbacks. Failed initialization must unwind acquired resources before returning an error.
+- `__init` code is temporary. Runtime callbacks cannot depend on code or data reclaimed after initialization.
+- Module parameters expose configuration, not a second initialization path. Runtime changes need a defined effect on active driver state.
+- Unloading requires both reference management and removal of asynchronous users. An Oops is a kernel fault, not a safe recovery mechanism or evidence of board reliability.
 
 ## 36.8  Pitfalls
 
@@ -321,4 +320,4 @@ Now everything prints to console. Useful for debugging. Noisy in production.
 - **`Documentation/process/submitting-patches.rst`**: when your driver is good enough to upstream.
 - **`scripts/checkpatch.pl`**: run it on every change. Catches whitespace, style, and many common bugs.
 
-> Next chapter: **Chapter 37: A character driver, by hand.** With a module that loads, we add the `file_operations` plumbing so user-space can `open`, `read`, `write`, and `close` `/dev/hello`.
+> Next chapter: **Chapter 37: A character driver, by hand.** The module lifecycle provides the setting for `file_operations`, the interface through which user-space can `open`, `read`, `write`, and `close` `/dev/hello`.

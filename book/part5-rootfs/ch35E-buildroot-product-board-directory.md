@@ -255,15 +255,14 @@ Do not commit:
 
 Those are build outputs or caches.
 
-## 35E.8  Lab
+<span id="e-8-lab"></span>
+## 35E.8  Key Notes
 
-1. Create `board/myorg/pa-mini/`.
-2. Add `/etc/motd` through `rootfs-overlay/`.
-3. Add `post-build.sh` that writes `/etc/build-info`.
-4. Add `genimage.cfg` and `post-image.sh`.
-5. Build `sdcard.img`.
-6. Flash the image to SD and boot.
-7. Confirm `/etc/motd`, `/etc/build-info`, and `/data` exist.
+- A product board directory is the reviewable source of image policy. Generated output is a build result, not the place to preserve product configuration.
+- A rootfs overlay supplies static files, post-build processing prepares target contents, and post-image processing packages artifacts. Keeping these phases distinct makes dependencies easier to inspect.
+- The image layout and boot configuration form one contract. A reproducible rootfs is still unusable if the bootloader, partition names or kernel arguments disagree with it.
+- Relative paths, pinned inputs and configuration fragments make a build portable. Absolute host paths and edits under `output/target/` hide dependencies on one workstation.
+- Build identity is useful evidence of provenance, not proof of hardware qualification or release approval.
 
 ## 35E.9  Pitfalls
 

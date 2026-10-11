@@ -184,18 +184,14 @@ When *not* to use:
 - Random small writes, UBIFS is bad at this.
 - Large databases, consider a separate ext4-on-eMMC slot if you have both.
 
-## 54A.8  Lab
+<span id="a-8-lab"></span>
+## 54A.8  Key Notes
 
-> **Storage safety:** Before any command that names /dev/sdX, run lsblk -o NAME,SIZE,MODEL,TRAN,TYPE,MOUNTPOINTS.
-> Verify the removable card by size and model, unmount its partitions, and stop if the path is not the target card. Writing the wrong /dev node can destroy the host disk.
-
-
-1. **Identify NAND partitions.** Boot a kernel with GPMI enabled and partitions in DT. `cat /proc/mtd`.
-2. **Format and use UBI.** `ubiformat`, `ubiattach`, `ubimkvol`. Confirm `ubi0` and volumes appear.
-3. **Make a UBIFS rootfs.** From your existing Buildroot output, `mkfs.ubifs`. Flash to NAND.
-4. **Boot from NAND.** Configure U-Boot to load kernel + dtb from NAND, set `bootargs` for ubi root.
-5. **Wear test.** Write a script that writes a 1 MB file in a loop, deleting and recreating. Run for an hour. Check max erase counter via `ubinfo`. Verify wear levelling spreads writes.
-6. **Recover from bad block.** Use `nandtest` to mark a block bad. Reformat UBI. Observe it being remapped.
+- MTD exposes raw flash geometry and operations, UBI manages logical eraseblocks and wear, and UBIFS provides a filesystem above UBI. These layers solve different problems.
+- Raw NAND needs ECC and bad-block handling that match the controller and chip. A filesystem cannot repair a mismatched low-level storage contract.
+- Image generation, partitioning and boot arguments must agree on geometry and volume identity. A familiar `/dev/` name is not enough to identify a safe erase target.
+- Wear management and power-failure recovery are design requirements, not consequences of a successful mount.
+- Formatting, erase and bad-block manipulation can destroy boot or user data. Those operations belong to a qualified storage plan, not to conceptual exploration.
 
 ## 54A.9  Pitfalls
 

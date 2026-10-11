@@ -192,16 +192,13 @@ Observable effect: run iperf3 over WiFi while streaming BT audio. Without coex, 
 
 A common mistake is to get WiFi working and assume the job is done. Then a field unit fails because the BT side was never wired correctly. Test both, separately and together.
 
-## 94.7  Lab
+<span id="lab"></span>
+## 94.7  Key Notes
 
-1. **WiFi half.** Bring up the AP6212 WiFi per Ch 91. Confirm `wlan0` + connect.
-2. **BT half.** Add the serdev `bluetooth` node under your UART. Copy the BT firmware patch. Boot. Verify `hci0` via `hciconfig`.
-3. **BLE scan.** `bluetoothctl` → `scan on`. Discover nearby BLE devices (your phone, a fitness tracker).
-4. **Classic BT.** Pair with a BT speaker or keyboard. Verify it connects.
-5. **Coexistence test.** Stream A2DP audio to a BT speaker *while* running iperf3 over WiFi. Measure WiFi throughput with and without BT active. Quantify the coex cost.
-6. **Shared LPO clock.** Verify both halves reference the same 32 kHz clock in DT. Remove it from one. Observe that half fail.
-7. **Power management.** Suspend. Verify both WiFi and BT survive resume (with the wake GPIOs configured).
-8. **BD address.** Note the BT controller's BD_ADDR. For production, program a unique one (from your EEPROM, Ch 65), many modules ship with a default/duplicate address.
+- A combo module contains distinct Wi-Fi and Bluetooth paths, often using SDIO and UART respectively. Success of one interface does not prove the other works.
+- Shared clocks, supplies and reset dependencies must have consistent ownership even when different kernel subsystems manage the two radios.
+- Coexistence is a radio-resource problem, not merely two successful probes. Simultaneous traffic can change latency and throughput.
+- Firmware, unique addresses and suspend/wakeup behavior are part of the finished module integration. A default identity or one boot-time connection is insufficient.
 
 ## 94.8  Pitfalls
 

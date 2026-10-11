@@ -270,28 +270,19 @@ crash> log                    # dmesg
 
 Embedded systems often lack the disk space for vmcore (200+ MB). Skip kdump and rely on ftrace + oops decoder.
 
-## 119.7  Lab
+
+(1197-lab)=
+## 119.7  Key Notes
 
 > **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
 > After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
 
-
-1. **dyndbg.** Enable all `pr_debug` in `net/wireless/`. Watch a `wpa_supplicant` connection. See the previously-hidden debug output.
-2. **ftrace function_graph.** Trace `ext4_file_read` for a `cat /etc/passwd`. Identify which function dominates the time.
-3. **trace-cmd capture.** Record `sched/sched_switch + irq/* + block/block_rq*` during a `dd` write. Open in KernelShark. Visualize.
-> **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
-> **IRQ:** interrupt request, the signal path that tells the CPU or interrupt controller that hardware needs service.
-4. **bpftrace one-liner: top syscalls.**
-   ```sh
-   bpftrace -e 'tracepoint:raw_syscalls:sys_enter { @[comm, args->id] = count(); }'
-   ```
-   Run for 30 s. Identify which process is hammering which syscall.
-5. **bpftrace TCP retransmits.** Run the example. Pull the network cable mid-transfer. Watch retransmit counts climb per IP.
-6. **kgdb on early boot.** Boot kernel with `kgdbwait` + `kgdboc=ttymxc0`. Attach GDB. Step through `start_kernel`.
-7. **Force an oops.** Write a kernel module that dereferences NULL in `init`. `insmod` it. Capture the oops. Decode with `decode_stacktrace.sh`.
-8. **vmcore capture.** Set up kdump on the i.MX6ULL (challenging, small RAM). Trigger an oops. Capture vmcore. Analyze with `crash` on host.
-9. **Permanent ftrace.** Configure ftrace to run from boot, recording sched + IRQ events. On next oops, save the ftrace buffer with the oops. (Use `ftrace_dump_on_oops=1` kernel cmdline.)
-10. **dynamic_debug at boot.** Add `dyndbg="file drivers/usb/* +p"` to cmdline. See all USB debug prints during enumeration.
+- Software observability depends on code paths that still execute. Logs and trace buffers cannot replace hardware debug access when the required kernel infrastructure is unavailable.
+- `dynamic_debug` selects existing messages, ftrace records execution and events, and kgdb stops execution. These interfaces answer different questions and impose different disturbance.
+- Filters and bounded buffers determine which trace history survives. Missing or overwritten events limit conclusions about ordering and latency.
+- An oops belongs to the exact kernel and module build that produced it. Archived `vmlinux`, module symbols, and load-address context connect the failure to source.
+- kgdb shares the serial transport with other users. Console ownership and target pauses are part of the debug design.
+- eBPF availability depends on the architecture and kernel configuration. kdump additionally consumes reserved RAM and dump storage, which can be restrictive on a small target.
 
 ## 119.8  Pitfalls
 

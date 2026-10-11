@@ -8,15 +8,15 @@ status: draft
 
 # Chapter 27B: Device Tree for a custom i.MX6ULL board
 
-> **What:** create a Linux Device Tree for the same custom board idea used in the U-Boot port: UART console, SD/eMMC, Ethernet, I2C, SPI, LEDs, keys, regulators, aliases, and `/chosen`.
+> **What:** a custom-board Device Tree case study covering UART console, SD/eMMC, Ethernet, I2C, SPI, LEDs, keys, regulators, aliases and `/chosen`.
 >
 > **Why:** Chapter 27 teaches the grammar. This chapter teaches the job: turn a schematic into a `.dts` file that the kernel can boot.
 >
-> **Result:** you have a board DTS that builds with `make dtbs`, passes useful checks, and boots far enough to prove each peripheral one by one.
+> **Result:** a view of how schematic connections become kernel resource relationships, and why compilation, schema checks and peripheral operation establish different things.
 >
 > **Focus:** do not start by copying the whole EVK and hoping. Start with a small bootable board description, then add one peripheral at a time.
 
-This chapter assumes your U-Boot board port can load a kernel and DTB from Chapter 26.
+The case uses the image-loading interface described in Chapter 26. Its fragments are illustrative, not a qualified description of the fitted MINI board, and a working port is not a reading prerequisite.
 
 ## 27B.1  The board DTS is not the SoC DTS
 
@@ -457,7 +457,7 @@ The expanded DTS is what the kernel effectively sees after includes.
 
 ## 27B.13  Bring-up order
 
-Do not enable everything at once. Use this order:
+The dependency order for a staged board description is:
 
 1. Memory and UART.
 2. SD/eMMC.
@@ -468,17 +468,20 @@ Do not enable everything at once. Use this order:
 7. SPI.
 8. Displays, audio, sensors, and optional devices.
 
-After each step, save a boot log. If step 6 breaks, compare with step 5.
+A log from each known state separates a new peripheral dependency from a regression in an earlier one.
 
-## 27B.14  Lab
+<a id="lab"></a>
 
-1. Create `imx6ull-pa-mini.dts` with only memory and UART.
-2. Add it to `arch/arm/boot/dts/nxp/imx/Makefile`.
-3. Build and boot. Confirm the model string.
-4. Add SD/eMMC. Confirm `mmcblk0`.
-5. Add one LED. Toggle it from sysfs.
-6. Add Ethernet. Confirm `eth0` appears.
-7. Run `dtbs_check` and fix only warnings caused by your new DTS.
+(27b-14-lab)=
+## 27B.14  Key Notes
+
+- A board DTS owns external topology, not the SoC register description or driver implementation. Included SoC nodes provide the base that board-specific references refine.
+- Memory and console form an early observation path. Storage and filesystem support are additional dependencies before a normal rootfs can become usable.
+- Each enabled controller needs more than `status = "okay"`. Pinmux, supplies, bus width, reset signals and attached-device addresses must describe the same physical circuit.
+- Ethernet spans MAC, MDIO, PHY, reset and reference clock. An interface name or model string alone does not establish a usable physical link or correct MINI wiring.
+- LEDs, keys and sensors use existing subsystem bindings where possible. A fake SPI compatible string introduces a description mismatch rather than a production device interface.
+- Build registration selects which board blob is produced, while bootloader selection decides which blob Linux receives. Either can be correct while the other is wrong.
+- The fragments describe architectural patterns, not verified carrier mappings. A fitted board requires schematic-to-pad tracing and runtime evidence beyond compilation and schema checks.
 
 ## 27B.15  Pitfalls
 

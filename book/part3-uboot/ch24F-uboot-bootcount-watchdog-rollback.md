@@ -87,13 +87,14 @@ candidate. Count 4 selects `altbootcmd`. Zero or a missing `bootlimit` disables
 the limit check. Without the alternate command the intended automatic
 rollback cannot happen. See the [bootcount documentation](https://docs.u-boot.org/en/v2026.04/api/bootcount.html).
 
-## 24F.3  Storage layout for the lab
+<span id="f-3-storage-layout-for-the-lab"></span>
+## 24F.3  Example storage layout
 
 The supplied MINI V2.2 baseboard has a **TF/microSD socket on USDHC1**. The
 core-board design offers **eMMC on USDHC2 or NAND**, depending on the fitted
 variant; the two flash drawings do not mean both chips are installed.
 The SDIO Wi-Fi connector shares USDHC1 with the TF socket, so do not use
-both during this lab. These routes are visible on MINI schematic sheets
+both during this example. These routes are visible on MINI schematic sheets
 1-2 and core sheet 4, and explained in the guide's MINI Sections 5.2.3 and
 5.4.16-17.
 
@@ -130,7 +131,7 @@ allocates the new A/B layout for you.
    RAM variable change or compiling `BOOTCOUNT_ENV` does not pass this gate.
 5. Before Linux can confirm an attempt, establish its matching `fw_env.config`
    from that same approved layout and compare read-only results with U-Boot.
-   Keep the modern lab build's autoboot disabled until its boot
+   Keep the modern example build's autoboot disabled until its boot
    command, load ranges and recovery policy have also been reviewed.
 
 Without this evidence, stop at source inspection and host fixtures. This is
@@ -197,7 +198,7 @@ the generated `.config`, including filesystem support selected by commands.
 
 `BOOTCOUNT_ENV` is not an environment-storage driver. This fragment does
 not turn `ENV_IS_NOWHERE` into persistent storage; a RAM-only build can host
-the policy exercise but not retain attempts. Complete Section 24F.3's gate
+the policy example but not retain attempts. Complete Section 24F.3's gate
 before hardware trials, even if the vendor baseline already saves its own
 environment. Its storage map must be reconciled with the modern build and
 the new slots. Do not restore EVK MMC settings as assumed MINI values.
@@ -471,29 +472,16 @@ fail together. Preserve the accepted image and commit candidate metadata
 last. An environment recovered from defaults must lead to a deliberately
 chosen safe path, not an accidental slot choice.
 
-## 24F.12  Lab
+(f-12-lab)=
+## 24F.12  Key Notes
 
-1. Record the MINI base/core revision and fitted flash, then inventory the
-   Chapter 19 baseline through UART1. Identify the spare TF medium without
-   disturbing eMMC/NAND or attaching SDIO Wi-Fi. Trace counts 0 through 4
-   with limit 3 on paper: why is the fourth entry alternate?
-2. Inspect the mandatory Section 24F.3 gate. With `ENV_IS_NOWHERE` or an
-   unqualified medium/layout, use only paper and host-mock tests. Hardware
-   A/B must wait for the independent storage/persistence qualification.
-3. After that gate passes, on the disposable medium perform Section 24F.6,
-   record actual paths/counts and restore the intended A/B commands afterward.
-4. Accept A, prepare B, and arm it only after verification. Disable automatic
-   mark-good for the failure exercise.
-5. Use permitted resets before confirmation and verify A after three B
-   attempts. A missing B kernel or DTB must never reach `bootz`.
-6. Add identity files and a real health check. Wrong root PARTUUID or kernel
-   release must prevent confirmation.
-7. Test an A candidate with B retained as good. Rollback must select B.
-8. Test watchdog reset separately under the approved procedure. Model metadata
-   write failure before considering controlled hardware power-cut qualification.
-
-Keep serial logs/readbacks. Normal boot does not establish rollback; a host
-policy test does not establish power-cut safety.
+- Bootcount measures attempts, not diagnosed kernel failures. With an initial zero and limit three, counts one through three use the candidate and count four selects the alternate command.
+- `ENV_IS_NOWHERE` cannot retain slot/count state across reset. `BOOTCOUNT_ENV` depends on a separate persistent backend and ignores save errors, so compilation does not establish an attempt bound.
+- Candidate metadata is committed after the complete image set is written and verified, with the accepted slot preserved. One environment save groups fields but does not make a torn storage write atomic.
+- Linux acceptance checks the running root PARTUUID, kernel release, slot identity and product readiness. Metadata's intended slot or an elapsed delay is not proof of health.
+- Watchdog reset creates the next selection opportunity. U-Boot, Linux and userspace feeding ownership must agree, and routine feeding can conceal a stuck application.
+- Recovery and power vetoes cover both `bootcmd` and `altbootcmd`. Temporary overrides also interact with whole-environment bootcount saves and must not become persistent policy accidentally.
+- A/B rollback is not rescue or power-cut qualification. Both slots, metadata and the load path can fail, requiring an independently recoverable design.
 
 ## 24F.13  Pitfalls
 

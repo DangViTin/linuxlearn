@@ -420,15 +420,13 @@ Mainline: `drivers/gpu/drm/tiny/repaper.c` (for Pervasive Displays panels) and v
 
 For e-paper, you design the UI around the refresh model: update once per minute (weather, room booking), use partial refresh for a clock-style digit, full refresh periodically to de-ghost.
 
-## 85.7  Lab
+<span id="lab"></span>
+## 85.7  Key Notes
 
-1. **SSD1306 bring-up.** Wire to I²C1 at 0x3C. Build and load `myssd1306.ko`. Verify `/dev/fb0`.
-2. **Draw patterns.** Write 0xFF/0x00 patterns. Verify stripes. Write all 0xFF. Full screen lit.
-3. **The charge-pump test.** Comment out the `0x8D 0x14` command in the init. Reload. Screen stays black, proving the charge pump's necessity. Restore.
-4. **fbcon.** If your kernel has `CONFIG_FRAMEBUFFER_CONSOLE`, the boot console might appear on the OLED. Tiny but readable.
-5. **Cairo / Python PIL.** Use Python PIL to render text into a 128×64 1-bit image. Write to `/dev/fb0`. A real status display.
-6. **SH1106 offset.** If you have an SH1106, run the SSD1306 driver. Observe the 2-pixel shift. Fix with the column offset.
-7. **E-paper (if available).** Bring up an SSD1680 module. Display an image. Measure refresh time (~2 s). Cut power. Verify the image persists. Do 10 partial refreshes. Observe ghosting accumulate. Do a full refresh. Observe it clear.
+- OLED and e-paper have different refresh architectures. OLED updates controller memory for an active display, while e-paper applies a panel-specific waveform to change a retained image.
+- Framebuffer layout is not necessarily row-major pixel storage. Page-addressed monochrome controllers require an explicit packing and addressing model.
+- An e-paper update has a busy interval and depends on waveform and temperature assumptions. Partial refresh trades speed and appearance against accumulating artifacts.
+- Power policy differs too: OLED brightness and static content affect consumption and aging, while e-paper retention does not imply that updates are free.
 
 ## 85.8  Pitfalls
 

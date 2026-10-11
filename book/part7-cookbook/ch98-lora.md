@@ -243,7 +243,7 @@ sx1276_min.c:
 ```c
 /* Minimal user-space SX1276 LoRa driver — PHY only, no LoRaWAN.
  * Pair: two i.MX6ULL boards, each with an SX1276 module on ECSPI1.
- * Lab: board A sends "hello %d"; board B prints received with RSSI/SNR.
+ * Example: board A sends "hello %d"; board B prints received with RSSI/SNR.
  */
 #include <fcntl.h>
 #include <stdint.h>
@@ -319,7 +319,7 @@ static void burst_write(uint8_t addr, const uint8_t *buf, int n) {
 
 static void sx_reset(void) {
     /* assume RESET gpio handled via libgpiod or a sysfs poke — pulse low 1 ms */
-    /* omitted here; the lab repo wires this to gpiod_line_set_value() */
+    /* Platform GPIO reset adapter omitted: this sketch is not standalone. */
 }
 
 static void sx_init(uint32_t freq_hz, uint8_t sf, uint8_t bw_idx) {
@@ -564,18 +564,13 @@ End-to-end, an SX1262 node running OTAA-joined LoRaWAN will:
 
 A private LoRaWAN network on one i.MX6ULL is realistic. The kernel is involved as the SPI driver and nothing else.
 
-## 98.9  Lab
+<span id="lab"></span>
+## 98.9  Key Notes
 
-1. **Hello, SX1276.** Wire a SX1276 module to ECSPI3 + GPIO for RESET/DIO0. Build `sx1276_min.c`. Confirm `REG_VERSION` reads `0x12`. **If it doesn't, your SPI mode/wiring is wrong, fix before continuing.**
-2. **TX one packet.** Run with `t` arg. Another board (or a hand-held LoRa sniffer like the RAK Wireless WisGate) should see the packet on 868.1 MHz / SF7 / BW125.
-3. **RX one packet.** On the second board, run without args. Observe the message and RSSI/SNR. Move the boards apart. Watch RSSI drop ~6 dB per doubling of distance (free-space).
-4. **Spreading-factor sweep.** Set SF7, then SF12. Measure round-trip per-packet time. SF12 should be **~30× longer** than SF7. Confirm with a stopwatch.
-5. **Air-time calculator sanity check.** Use Semtech's air-time calculator (or the formula from §98.2): predict air-time for SF10/BW125/CR4/5/preamble 8/payload 20. Match against your measured `TxDone` timing. Should agree within 5 %.
-6. **Range walk.** With SF7/CR4/5/+17 dBm, walk away from a TX board with an RX board. Note where the packets stop being received (RSSI ≈ –123 dBm at the limit). Open-field outdoor: expect 2–5 km with a half-decent antenna.
-7. **DIO0 IRQ.** Replace the `while(... & IRQ_TX_DONE)` polling with `libgpiod` edge-event wait on the DIO0 pin. TX completion latency should drop from ~1 ms polling jitter to ~tens of µs.
-8. **Two boards ping-pong with sequence numbers + CRC.** Add a 4-byte header (`magic, seq_lo, seq_hi, crc8`). Each side increments its `seq` on RX-success. Lost packets are visible as gaps. This is a real point-to-point protocol.
-9. **Switch to SX1262 (stretch).** Port `sx1276_min.c` to SX1262's command-based interface using Semtech's open driver as reference. Same physical sequence, different SPI shape.
-10. **LoRaWAN gateway (capstone).** Acquire an SX1303 concentrator module (RAK2287 or similar). Bring up `sx1302_hal` + `chirpstack-gateway-bridge` + `chirpstack` on the i.MX6ULL. Provision an OTAA device. Watch the JoinRequest → JoinAccept handshake in ChirpStack's logs. Send 5 uplinks. Receive them on MQTT.
+- LoRa is a modulation and packet-radio mechanism, while LoRaWAN adds network roles, joining, security and regional behavior. A point-to-point radio is not a multichannel gateway.
+- Spreading factor, bandwidth, coding rate and payload length trade airtime against sensitivity and capacity. Longer range is not free throughput.
+- The radio state machine, completion signals and host timeouts must agree. A long packet can be valid even when a generic short timeout expires.
+- Antenna, supply and regional transmission requirements constrain the complete link. Example frequencies and power settings are not universal deployment permissions.
 
 ## 98.10  Pitfalls
 

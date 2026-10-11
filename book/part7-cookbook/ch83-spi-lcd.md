@@ -385,16 +385,13 @@ The trick: **only send what changed**. The `mipi_dbi` helper tracks dirty rectan
 
 For a Qt or LVGL app, the toolkit reports dirty regions to DRM. The helper sends only those. No tearing if you respect the vblank.
 
-## 83.7  Lab
+<span id="lab"></span>
+## 83.7  Key Notes
 
-1. **Wire an ST7789** 240×240 module: MOSI, SCLK, CS, DC, RESET, BLK, VCC, GND.
-2. **Build and load `myst7789.ko`.** Verify `/dev/fb0` appears at 240×240.
-3. **Paint.** `cat /dev/urandom > /dev/fb0` (noise), `cat /dev/zero > /dev/fb0` (black or white depending on INVON).
-4. **Fix colors.** If colors are wrong (red shows blue), toggle the BGR bit in MADCTL (0x36 param) or INVON/INVOFF.
-5. **Rotation.** Change MADCTL to rotate 90°/180°/270°. Verify the image orientation.
-6. **Performance.** Measure full-frame update time: time `cat /dev/zero > /dev/fb0`. Then a partial update (write a small region). Confirm it's much faster.
-7. **panel-mipi-dbi.** Switch to the generic driver with a firmware init blob. Compile the blob with `mipi-dbi-cmd`. Verify same result, no custom C.
-8. **LVGL or Qt.** Run a GUI toolkit on `/dev/fb0`. Verify a real UI renders and updates smoothly.
+- An SPI display controller stores pixels and refreshes its glass independently. The host updates controller memory rather than generating every raster timing edge.
+- Command/data selection, pixel format, window offsets and initialization are part of the module contract. A shared controller name does not establish identical panel setup.
+- Partial updates reduce transferred bytes when only a region changes. The benefit depends on application damage tracking and driver behavior, not just nominal SPI speed.
+- DRM helpers can own common transport and presentation mechanics while a panel description supplies device-specific requirements.
 
 ## 83.8  Pitfalls
 

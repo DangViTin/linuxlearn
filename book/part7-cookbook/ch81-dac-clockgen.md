@@ -371,7 +371,7 @@ The `clk_summary` debugfs file lists every clock in the tree, including the Si53
 
 ### Mainline driver
 
-`drivers/clk/clk-si5351.c` (~1700 lines) implements the full frequency-synthesis math, PLL configuration, and clk-provider registration. Writing this from scratch is a *substantial* effort (the (a,b,c,divider) solver is the hard part). Reimplementing Si5351's PLL math is not a productive exercise, read the existing driver instead. The chapter shows the clk-framework integration conceptually. Reimplementing the Si5351's PLL math is left as an advanced exercise.
+`drivers/clk/clk-si5351.c` implements frequency-synthesis math, PLL configuration, and clock-provider registration. The architectural question is how a requested output frequency becomes a valid combination of PLL and divider settings, and how changing one output affects the others. The maintained driver is the reference for that device-specific logic. The simpler skeleton below illustrates the clock-framework contract, not a replacement for the Si5351 driver.
 
 A from-scratch clk provider *skeleton* (for a fixed-frequency case) looks like:
 
@@ -411,15 +411,13 @@ of_clk_add_hw_provider(client->dev.of_node, of_clk_hw_simple_get, &c->hw);
 
 That registers a clk that consumers can `clk_get`. The hard part, the actual PLL math in `set_rate`, is chip-specific.
 
-## 81.7  Lab
+<span id="lab"></span>
+## 81.7  Key Notes
 
-1. **MCP4725 bring-up.** Wire to I²C1 at 0x60. Build and load `mymcp4725.ko`.
-2. **Voltage sweep.** Write 0, 1024, 2048, 3072, 4095 to `out_voltage0_raw`. Measure output with a multimeter. Verify linear 0 → VDD.
-3. **Sine generation.** Run the shell script in §81.4. Scope the output. Note the staircase quantization at 12-bit.
-4. **Switch to mainline.** `compatible = "microchip,mcp4725"`. Try writing to EEPROM via the mainline driver's persistence (chip powers up at saved value next boot).
-5. **AD5663** (if available). Configure on SPI. Verify two channels with 16-bit resolution. Compare cleaner waveform vs MCP4725.
-6. **Si5351 clock gen.** Configure in DT for 100 MHz on CLK0. Scope the output. Verify `cat /sys/kernel/debug/clk/clk_summary` shows the clock.
-7. **Si5351 consumer.** Wire CLK0 to an external chip (e.g., an ADC's master clock). In the consuming driver, `clk_get` + `clk_set_rate`. Verify the Si5351 retunes.
+- A DAC is an analog-output provider, while a clock generator is a clock provider. They share a control bus but expose different contracts to Linux consumers.
+- Output range, reference stability and load drive determine useful DAC behavior. A numeric write alone does not guarantee the requested voltage at the load.
+- Volatile output updates and persistent power-on settings have different lifetimes and endurance costs. EEPROM programming should not be hidden inside every waveform update.
+- A programmable clock's requested rate must satisfy its divider and PLL constraints. Consumers need the actual achievable rate and a clear ownership policy for changes.
 
 ## 81.8  Pitfalls
 

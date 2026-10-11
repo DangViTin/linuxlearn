@@ -2,7 +2,7 @@
 
 An LED can tell us that a program reached a checkpoint. It is less helpful when we want the value of a register or the name of the next step. We could invent a blink code, but the board already has a better route to the host: UART1 and its USB-to-serial bridge.
 
-First we will send one character. Then a string. Only after that path works will we put a small formatter in front of it. Keeping those jobs separate means that a garbled number does not immediately send us back to the pinmux table.
+The design starts with character transport, then strings, then a small formatter in front of that transport. Keeping those jobs separate means that a garbled number does not immediately send us back to the pinmux table. The examples explain each layer without requiring a completed serial session.
 
 
 ## 12.1  Which UART, and on which pins
@@ -96,7 +96,7 @@ Multiply the ratio by 25,000: the numerator becomes 576. Both numbers fit the 16
 - `UBIR = 575`
 - `UBMR = 24999`
 
-Check it before reading further: `80,000,000 / 16 * 576 / 25,000 = 115,200`. There is no nominal divider error in this choice. The actual clock can still have oscillator error. With other clock/baud combinations, choose integer register values and calculate the resulting error rather than assuming the UART will correct it. Receiver tolerance depends on both ends and the frame format.
+The calculation is `80,000,000 / 16 * 576 / 25,000 = 115,200`. There is no nominal divider error in this choice. The actual clock can still have oscillator error. With other clock/baud combinations, integer register values introduce an error that must be evaluated rather than assuming the UART will correct it. Receiver tolerance depends on both ends and the frame format.
 
 ## 12.3  Register map (the ones we actually use)
 
@@ -270,7 +270,7 @@ Follow the initialization in groups: clock and pads, controller reset, frame set
 - **The `\n` to `\r\n` translation in `uart_puts`** supplies both a new line and a return to column zero without depending on a particular terminal mapping.
 - **`UCR3.RXDMUXSEL = 1`** is a requirement in the register description, not an unexplained erratum workaround. It is separate from the IOMUX daisy value.
 
-This small driver has blocking transmit/reset waits, no timeout and no receive-error reporting. A stopped reference clock can leave it waiting forever. Treat it as a lab console, not a fault-tolerant production interface.
+This small driver has blocking transmit/reset waits, no timeout and no receive-error reporting. A stopped reference clock can leave it waiting forever. It illustrates an early console, not a fault-tolerant production interface.
 
 (a-200-line-printf)=
 ## 12.5  A small `printf`
@@ -414,7 +414,7 @@ Type characters. They will echo back.
 > hello
 ```
 
-Before adding the formatter, you can replace `main()` temporarily with `uart_init(); uart_puts("UART only\n");` followed by an infinite loop. Restore the full listing once those bytes arrive correctly. The representative transcript above shows a working TX path. Check that terminal local echo is off before treating returned characters as evidence of the RX path.
+A transport-only case consists of `uart_init(); uart_puts("UART only\n");` followed by an infinite loop. It bypasses the formatter, separating transport failures from format handling. The transcript above is representative, not a recorded board result. Terminal local echo must be off before returned characters can serve as evidence of the RX path.
 
 ## 12.7  Why polled UART, not interrupt-driven
 
@@ -422,17 +422,22 @@ We are deliberately using polling. Reasons:
 
 - **No interrupt controller yet.** The GIC will be set up properly in Chapter 15.
 - **Polling is sufficient for this small console.** An 8N1 character needs ten bit periods, about 87 microseconds at 115200 baud. The FIFO can accept several bytes sooner, but a long stream is limited by that wire rate. This is not a worst-case bound on our wait loops, especially if the clock stops.
-- **Polling shows the status bits directly.** After you do it once, the interrupt version is the same hardware flow, but the FIFO threshold triggers an ISR.
+- **Polling shows the status bits directly.** The interrupt version follows the same hardware flow, but the FIFO threshold triggers an ISR.
 
-We will write an interrupt-driven echo as a lab in Chapter 15.
+Chapter 15 uses an interrupt-driven echo to explain how the GIC changes event delivery without changing the UART's data path.
 
-## 12.8  Lab
 
-1. **Build, push via SDP, and observe `Hello, world`.** Use USB-OTG for `uuu` and the integrated USB-TTL port for `picocom`. Type several characters and confirm that each one echoes.
-2. **Measure the baud error.** Insert a `for` loop that emits `'U'` (0x55, the canonical alternating-bit-pattern character) 1 million times. Capture on a scope. Measure one bit period. Compute actual baud. Compare to 115200. Should be within 1%.
-3. **Add `%b`** to `mini_printf`, binary representation, for register dumps. Use it to dump `UCR1`, `UCR2`, `USR1`, `USR2` at startup.
-4. **Inspect identity safely.** Read only the documented OCOTP shadow registers for chip identity, after checking their clock/access requirements. Do not write the OCOTP programming registers. Printing an identifier does not require blowing a fuse.
-5. **Stress test.** Send 10 KB of text through the board's USB-TTL serial device and confirm it is echoed. We do not use hardware flow control, so the host script must not send faster than the polled receiver can consume data.
+(128-lab)=
+## 12.8  Key Notes
+
+- UART1 transport and number formatting are separate interfaces. The integrated USB-TTL bridge carries console bytes, while USB-OTG carries ROM downloader commands.
+- RX requires both the pad's ALT selection and the peripheral's input daisy selection. Correct TX output does not establish a working RX route.
+- Baud derives from the UART reference clock, encoded RFDIV and UBIR/UBMR ratio, not the ARM core rate. An exact nominal ratio still leaves oscillator error and receiver tolerance to consider.
+- FIFO space permits another queued byte. It does not mean transmission is complete on the wire, so clock or power transitions need the appropriate completion condition.
+- Polling simplifies the early console but occupies the CPU and can wait indefinitely if the clock stops. Without flow control, incoming data can also exceed the receiver's service capacity.
+- The formatter supports a defined subset of formats and requires matching promoted argument types. Unsupported formats are an interface limitation, not a UART fault.
+
+Chip-identity diagnostics use documented OCOTP shadow-register reads under their clock/access requirements. They do not require programming registers or fuse writes.
 
 ## 12.9  Pitfalls
 

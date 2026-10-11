@@ -8,7 +8,7 @@ status: draft
 
 # Chapter 46: I²C drivers
 
-> **What:** the Linux **I²C subsystem**, `i2c_adapter` (the controller, which we don't write), `i2c_client` (one chip on the bus), `i2c_driver` (the per-chip driver), `i2c_msg` (one transaction). By the end you'll have a driver that probes when a DT node says `compatible = "your,chip"`, talks to it with `i2c_transfer`, and exposes it via chardev or sysfs.
+> **What:** the Linux **I²C subsystem**, `i2c_adapter` (the controller), `i2c_client` (one chip on the bus), `i2c_driver` (the per-chip driver), and `i2c_msg` (a transfer message). The examples connect DT matching and bus transactions to a chip-specific interface exposed through a subsystem or sysfs.
 > **sysfs:** a kernel-generated filesystem under /sys that exposes devices, drivers, and attributes.
 >
 > **Why:** I²C is the most common slow bus in embedded systems: temp sensors, EEPROMs, GPIO expanders, RTCs, audio codecs, touch controllers, PMICs, battery gauges, half of Part VII's cookbook chapters are I²C devices. The Linux I²C model is a *clean* example of the bus/driver/device split first introduced in Ch 39, and every I²C driver looks the same once you know the shape.
@@ -406,14 +406,17 @@ Install the `i2c-tools` package and you get `i2cdetect`, `i2cget`, `i2cset`, `i2
 
 If a kernel driver has already bound to the device, `i2c-tools` will refuse to touch it (you would race the driver). Pass `-y -f` to override, only for known-safe testing.
 
-## 46.8  Lab
+<a id="lab"></a>
 
-1. **Build and load the AT24 driver.** Connect an AT24C02 to I²C1, populate the DT node, verify sysfs `data` attribute reads back what you wrote.
-2. **Try i2cdetect.** Identify the AT24's address, confirm it matches your DT `reg`.
-3. **Switch to SMBus calls.** Rewrite the read path using `i2c_smbus_read_i2c_block_data`. Verify identical behavior. Discuss when each form is appropriate.
-4. **Test write-protect.** Add a `wp-gpios` GPIO. In your write path, deassert WP before writing, assert after. Compare against the in-tree `at24` driver, which has this feature.
-5. **Stress-test page alignment.** Write 256 bytes starting at offset 3. Verify the driver correctly handles the page boundaries at 8, 16, 24, …
-6. **Inspect with strace.** `strace -e read,write,ioctl i2cget -y 1 0x76 0xD0`, see the `I2C_RDWR` ioctl in action. That's how i2c-tools talk to the i2c-dev chardev.
+(ch46-lab)=
+## 46.8  Key Notes
+
+- The adapter owns controller operation, the client identifies one bus address, and the chip driver owns device semantics. A DT client description is not proof of a responding chip.
+- SMBus helpers suit defined SMBus-style operations, while `i2c_transfer` describes message sequences such as a repeated-start register read. The device protocol and adapter capabilities constrain the choice.
+- `i2c_transfer` returns a completed-message count, not a byte count. A nonnegative partial result cannot be treated as completion of the requested sequence.
+- Bus serialization protects an individual transfer group. Multi-transfer operations, such as an EEPROM write and its completion wait, may also need device-level serialization.
+- EEPROM page boundaries, capacity, write-cycle timing, and write protection are separate constraints. A valid bus transaction can still overwrite the wrong data or race a protection change.
+- Direct `i2c-dev` access is a separate control path. Forcing access to a driver-owned address can invalidate the driver's assumptions and is not a substitute for coordinated ownership.
 
 ## 46.9  Pitfalls
 

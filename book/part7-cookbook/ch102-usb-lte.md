@@ -349,18 +349,13 @@ USB modems are autobound, no DT needed beyond ensuring USB-OTG/Host is enabled.
 
 The 5 V supply must source ~2.5 A during TX bursts. Weak USB power = brownout = modem resets mid-connection.
 
-## 102.9  Lab
+<span id="lab"></span>
+## 102.9  Key Notes
 
-1. **lsusb identify.** Plug in modem. `lsusb -v`. Identify the mode from PID. Check `dmesg | grep -E 'option|qmi_wwan|cdc_mbim'` to see which drivers bound.
-2. **AT bring-up checklist.** Run all 7 AT checks above. Fix at the failing step.
-3. **Switch USB mode.** Move from default mode to QMI (if not already). Reboot. Verify new PID.
-4. **ModemManager auto.** Install ModemManager. `mmcli -L`. `nmcli c add ... apn ...`. Bring up. `curl ifconfig.io` to confirm public IP.
-5. **Manual qmicli bring-up.** Stop ModemManager. Use `qmicli` to start the network manually. Verify `wwan0` data flows.
-6. **Compare MBIM vs QMI.** Switch the modem to MBIM mode. Use `mbimcli`. Note same result, different control protocol.
-7. **PPP fallback.** Force PPP mode. Run `pppd`. Note throughput cap of ~1 Mbps.
-8. **GPS data.** While data is up, `cat /dev/ttyUSB1` shows NMEA. Pipe to `gpsd` (Ch 107) to use as a time source.
-9. **Signal degradation.** Watch `mmcli -m 0` while moving the antenna. Note RSSI/RSRP changes.
-10. **Auto-failover.** Pair WiFi (Ch 91) + LTE. Configure metric so WiFi wins when up. Disconnect WiFi and watch LTE take over within 5 s (NetworkManager handles this with right metric config).
+- A cellular modem exposes separate control, data and sometimes positioning interfaces. Their Linux device nodes represent different functions of the same system.
+- USB mode selects the host-driver and management contract. QMI, MBIM and Ethernet-like modes should not be mixed with configuration intended for another mode.
+- One component should own session state. A manual control client and ModemManager can conflict even when each command is individually valid.
+- Connectivity includes carrier registration, session establishment, addressing and routes. Recovery, power transients and failover belong to the product design beyond enumeration.
 
 ## 102.10  Pitfalls
 

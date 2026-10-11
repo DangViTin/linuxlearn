@@ -200,14 +200,14 @@ systemd:
 
 For a product, pair this with a watchdog in Part VIII. The service restarts the app. The watchdog restarts the board if the whole system gets stuck.
 
-## 35F.7  Lab
+<span id="f-7-lab"></span>
+## 35F.7  Key Notes
 
-1. Build `myapp`.
-2. Install it into your Buildroot overlay.
-3. Start it with BusyBox init.
-4. Kill it and observe whether it restarts.
-5. Repeat with a systemd unit on Ubuntu-base.
-6. Move its writable data to `/data/myapp`.
+- A service has a lifecycle contract: dependencies, readiness, shutdown, failure handling and ownership of its files. Installing an executable establishes only one part of that contract.
+- The supervisor and application should have clear responsibilities. Foreground execution makes process ownership visible, while restart policy should not conceal a permanent configuration error.
+- Configuration, persistent data and transient files belong in different locations. A read-only rootfs works only when the application's write behavior agrees with that layout.
+- A running process is not necessarily a healthy service. Health should reflect useful progress, while graceful shutdown protects state and releases resources.
+- Network availability can change after startup. Service ordering helps establish initial conditions, but the application still needs a recovery policy for later disconnections.
 
 ## 35F.8  Pitfalls
 

@@ -325,15 +325,14 @@ podman run -d --name myapp --restart=always registry.example.com/myapp:v1.0
 
 Image swap is atomic at the container level: either the new image is running or the old one is. Much cleaner than "extract a tarball into /opt/myapp/" updates.
 
-## 35C.10  Lab
+<span id="c-10-lab"></span>
+## 35C.10  Key Notes
 
-1. **Install Podman.** Get to `podman --version` on the target.
-2. **Pull and run Alpine.** Confirm it works.
-3. **Build a custom image.** Write a `Dockerfile` for a tiny Python script. `podman build` it. `podman run` it.
-4. **Bind-mount sysfs.** Build the LED blinker container and run it with `--v` mounting `/sys/class/leds/`. Verify LED toggles.
-5. **Measure overhead.** `podman info` reports memory. Do a `free -h` before and after `podman run`. Quantify the cost.
-6. **Pre-bake an image.** `podman save` on the host, copy to the target, `podman load` on first boot. Verify no network calls happen.
-7. **Systemd integration.** Write a Quadlet `.container` file. Enable it. Reboot. Verify the container starts.
+- Containers package applications separately from the base system, but share its kernel. Application rollback and kernel or bootloader rollback are different update boundaries.
+- Namespaces shape what a process can see, cgroups limit resource use, and container storage layers manage filesystem changes. None substitutes for a hardware isolation boundary.
+- Device access is an explicit authority grant. A bind mount or privileged mode can expose host resources, so the application interface should be narrower than the whole host filesystem.
+- Images, writable application data and transient state have different lifetimes. Persistent storage placement matters as much as the runtime's ability to launch a process.
+- Container deployment is worthwhile only when its update and dependency benefits justify the memory, storage and operational complexity on the target.
 
 ## 35C.11  Pitfalls
 

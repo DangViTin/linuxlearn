@@ -285,14 +285,17 @@ This is the foundation of low-power data-logger products: sleep deeply, wake on 
 
 ---
 
-## 48.3  Lab
+<a id="lab"></a>
 
-1. **Backlight via pwm-backlight.** Configure DT to use `pwm-backlight` for your LCD. Verify `/sys/class/backlight/backlight/brightness` controls it.
-2. **Beeper.** Configure `pwm-beeper` on PWM2 (or unused PWM). Send tones via `/sys/class/input/eventN`.
-3. **Direct PWM via sysfs.** Generate a 1 kHz 25% duty signal on PWM3. Scope it.
-4. **Add DS3231 to your board** (or use the internal SNVS RTC if no external). Verify `hwclock` reads sensibly, `date -s` + `hwclock -w` persists across reboots.
-5. **Wake from suspend.** Set a 30-second alarm via `wakealarm`, suspend, watch the system come back up.
-6. **Compare RTC accuracy.** Run `chronyd` for an hour, check `/sys/class/rtc/rtc0/since_epoch` against `date +%s`, drift should be under 100 ms for DS3231, under a second for raw SoC RTC.
+(ch48-lab)=
+## 48.3  Key Notes
+
+- A PWM provider implements hardware timing, while a consumer owns the signal's purpose. Backlight, fan, and beeper frameworks add role-specific policy above raw period and duty cycle.
+- Period, duty cycle, polarity, and enable state are one configuration contract. Hardware resolution and electrical behavior constrain what a requested state can achieve.
+- One owner controls a PWM channel at a time. Safe inactive levels and suspend behavior belong to the consumer's design, not merely to resource allocation.
+- An RTC preserves wall-clock information, while the running system maintains its own clock. Boot-time selection and synchronization policy determine which source is trusted.
+- An external RTC is optional hardware, and backup power determines whether time survives power loss. Register access alone does not establish accuracy or persistence.
+- Wake alarms require both RTC alarm support and a working wake route through power management. An alarm setting does not by itself demonstrate suspend/resume behavior on the MINI.
 
 ## 48.4  Pitfalls
 

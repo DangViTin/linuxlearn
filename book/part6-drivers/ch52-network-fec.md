@@ -200,7 +200,7 @@ The last line's `0x4001b031` is the conf_reg value for the RMII reference clock,
 
 ## 52.7  MAC address sources
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Examples and production:** Do not burn fuses, enroll production keys, or sign release images while using these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -265,14 +265,14 @@ Two separate PHYs, two MDIO buses (one per FEC). Two independent `net_device`s a
 
 We'll go deeper on dual FEC in Part VII Ch 115 (Device Cookbook: Dual FEC + W5500).
 
-## 52.10  Lab
+<span id="lab"></span>
+## 52.10  Key Notes
 
-1. **Verify Ethernet on Point Atom.** Boot a mainline-FEC-enabled kernel, plug Ethernet cable, observe link-up in dmesg, ping the gateway.
-2. **Inspect the PHY.** `mii-diag eth0` or `ethtool eth0` to confirm PHY ID and link mode.
-3. **Read MDIO directly.** `mii-tool -v eth0` shows raw PHY registers (status, control, ID).
-4. **Set a custom MAC.** Via DT `mac-address` property. Reboot. Verify `ip link show eth0`.
-5. **Throughput test.** `iperf3 -s` on the host, `iperf3 -c <host>` on the target. Expect ~94 Mbps (line-rate 100). Below 50 Mbps → debug.
-6. **Recover from cable unplug.** Pull and replug. Watch dmesg for the link-state transition. Confirm `eth0` recovers cleanly.
+- Ethernet divides responsibility between the MAC, PHY and Linux network stack. MDIO manages PHY state, while RMII carries the frame data and clock relationship.
+- Device Tree describes board wiring, supplies, reset and clock direction. It cannot compensate for a physical strap or timing arrangement that contradicts those properties.
+- A network interface appearing, link negotiation succeeding and packets flowing are different milestones. Throughput is a system result, not a fixed property of the driver alone.
+- MAC address provenance is part of device identity. A temporary or duplicated address can work locally while failing fleet-level networking expectations.
+- Link loss is a normal state transition. Driver, PHY management and application reconnect policy must cooperate rather than assume the cable remains present.
 
 ## 52.11  Pitfalls
 

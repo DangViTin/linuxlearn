@@ -124,7 +124,7 @@ Chapter 7 explained that the Boot ROM needs to know where to look for an image. 
 
 | Board mode | What the Boot ROM tries | When we use it |
 |------------|-------------------------|----------------|
-| SD | Reads a boot image from the microSD card | Bare-metal labs and removable development images |
+| SD | Reads a boot image from the microSD card | Bare-metal examples and removable development images |
 | eMMC | Reads a boot image from onboard eMMC | An installed system on an eMMC board |
 | NAND | Reads a boot image from onboard raw NAND flash | An installed system on a NAND board |
 | USB | Requests Serial Downloader mode / Serial Download Protocol (SDP) | Recovery and early bring-up |
@@ -238,13 +238,13 @@ Do **not** run `dd` casually. A wrong device name can erase your host disk. Befo
 2. Insert the card, wait for discovery, and take the second `lsblk` snapshot.
 3. Match the physical card and current media/size/identity clues; reject disks containing the host system, swap, or unrelated data.
 4. Before a later raw write, close users, successfully unmount every mounted card partition, and recheck that all its mount points are empty. Revalidate its identity immediately before writing.
-5. Write only in the actual image-writing lab. Stop on any write error. Successful `sync` is not proof that a failed write completed, nor a substitute for successful unmounting before removal.
+5. Write only a known image using its reviewed layout and a freshly identified medium. Stop on any write error. Successful `sync` is not proof that a failed write completed, nor a substitute for successful unmounting before removal.
 
-Stop after confirming that Ubuntu sees the medium and you can identify its current device. This is not an I/O, sustained-capacity, or write/readback test. The later lab supplies its actual image and verification procedure.
+Host enumeration and device identification are not an I/O, sustained-capacity, or write/readback test. Chapter 11 explains an actual boot image and its placement. Reading that explanation does not require writing a card.
 
 ## 8.8  What `uuu` will do later
 
-We used `uuu` above to list devices. Its next job will be to talk to the Boot ROM over SDP and send the image we built. With the board in USB mode, a later lab will use a command like this once `led.imx` exists:
+`uuu` can list devices or talk to the Boot ROM over SDP to send an image. With the board in USB mode, an image transfer has this shape once a suitable `led.imx` exists:
 
 ```sh
 $ sudo "$IMX6ULL_HOME/build/mfgtools/uuu/uuu" led.imx
@@ -261,7 +261,7 @@ You may encounter MfgTool in older board instructions. It is NXP's older Windows
 
 ## 8.9  JTAG, optional but useful
 
-If the LED does not blink, being able to stop the CPU and inspect its registers can save a great deal of guessing. That is what a JTAG debugger adds: hardware breakpoints, single-stepping, and register inspection. It is optional for Part II; the early labs use observable LED behavior, `uuu`, and, once we configure the UART, serial output.
+If the LED does not blink, being able to stop the CPU and inspect its registers can save a great deal of guessing. That is what a JTAG debugger adds: hardware breakpoints, single-stepping, and register inspection. It is optional for Part II. The early examples use observable LED behavior, `uuu` and serial output to explain different levels of evidence.
 
 Locate the JTAG header now. The important signals are:
 
@@ -291,25 +291,28 @@ The MINI's Ethernet connector is easy to inspect now, even though IP networking 
 
 A link indication is not proof of IP configuration, packet transfers, or running Linux. A dark LED is not yet a board-failure diagnosis: the PHY may need software setup. Actual networking tests come later.
 
-## 8.11  End-of-chapter checklist
+<span id="end-of-chapter-checklist"></span>
+## 8.11  What connection evidence establishes
 
-| Required-now record | Observation / failure reason |
-|---|---|
-| Base/core PCB revision and matching guide | |
-| Supply input, rating/polarity, selector/jumpers, USB power paths | |
-| Unpowered resistance screen, settled values | |
-| Accessible powered 3V3/5V readings | |
-| Serial bridge identity and port opened at 115200 8N1, no flow control | |
-| Requested USB switch pattern and separately observed ROM VID:PID `15a2:0080` | |
-| Photographs of connectors, switch order, and cabling | |
+| Evidence | What it establishes | What remains separate |
+|---|---|---|
+| Base/core revision and matching guide | Which documented connections apply | Whether the fitted board matches those assumptions |
+| Reviewed supply, selectors and USB power paths | A specific intended power arrangement | Electrical behavior under load and safe test limits |
+| Resistance screening and accessible rail readings | Limited observations at stated points | Complete rail, reset and sequencing qualification |
+| Identified serial bridge and opened port | A host serial channel | Target code execution or correctly configured UART output |
+| Observed ROM VID:PID `15a2:0080` in USB mode | A reachable ROM interface | Image acceptance, execution or DDR health |
+| Fresh removable-medium identification | Which host path currently belongs to the card | Capacity, durability and successful image readback |
 
-The required records describe the documented connection checks and a ROM interface the host can reach, not electrical certification of every rail. Record the card checks separately before SD boot; they do not block the first USB-loaded LED image. JTAG/Ethernet are optional. Resolve a failed prerequisite before the lab that depends on it.
+These are different evidence boundaries, not a completion worksheet. A physical transfer still requires its actual board, artifact and connection prerequisites. JTAG and Ethernet are optional to that first USB-loaded example.
 
-## 8.12  Lab
+<span id="lab"></span>
+## 8.12  Key Notes
 
-Complete the required-now table in `~/imx6ull/notes/ch08-bring-up.md`, including actual readings and any reason a step cannot proceed. Attach board/cabling photos, serial identity, and actual ROM enumeration output. Add card identity when preparing SD boot. Mark unperformed checks as unperformed rather than filling a box from an expected-output example.
-
-Keep these notes beside the board during Part II. If a new program gives no response, compare the connections with the setup recorded here. To check the ROM USB identity again, first return to Section 8.6's documented USB-mode cold-start sequence; this is not a test for an arbitrary point after starting our image. Is the ROM interface visible in that known setup? The answer gives you a direction to investigate before changing code that may never have been loaded.
+- Bring-up evidence belongs to a particular board revision, fitted core and power arrangement. A matching product name is not enough to transfer another board's connector, voltage or selector assumptions.
+- USB-TTL provides a serial channel, while USB-OTG can expose the ROM downloader. ROM USB enumeration proves that connection in the selected boot mode, not that our image executes or that DDR is healthy.
+- Power, reset, transport and software are separate failure boundaries. UART silence before a valid program runs is normal and does not identify which boundary failed.
+- An unpowered short check is only screening. Powered rail measurements need documented test points, limits and a safe supply arrangement, including every possible USB power path.
+- Removable storage identity must be established again before a write. A device name recorded earlier is not durable evidence that the same card still owns that host path.
 
 ## 8.13  Pitfalls
 
@@ -330,4 +333,4 @@ Keep these notes beside the board during Part II. If a new program gives no resp
 
 ---
 
-With the required checks recorded, leave the board in the documented setup for the next lab. Chapter 9 builds and transfers our first small ARM assembly program. Its answer comes from the LED: one visible change connecting the compiler, the image header, and the instructions on the board.
+Chapter 9 follows a small assembly program from source to a visible LED change. The interesting connection is between compiler output, the ROM image header, the CPU's entry conditions and a GPIO owner. The board can demonstrate that connection, but the design can be followed without running the example.

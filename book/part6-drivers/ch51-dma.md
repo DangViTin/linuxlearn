@@ -9,7 +9,7 @@ status: draft
 # Chapter 51: DMA
 > **MMIO:** memory-mapped I/O, where software accesses peripheral registers through normal load and store instructions.
 
-> **What:** Linux's **`dmaengine`** framework, the portable way to ask a hardware DMA controller to move bytes between memory and a peripheral (or memory and memory) without involving the CPU between start and completion. By the end you'll have an SPI or UART driver that hands off a 4 KB transfer to the SDMA controller and goes to sleep until the completion callback wakes it.
+> **What:** Linux's **`dmaengine`** framework, the portable way to ask a hardware DMA controller to move bytes between memory and a peripheral (or memory and memory). The examples explain channel acquisition, descriptor submission, buffer ownership, and completion notification.
 > **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
 >
 > **Why:** The CPU is bad at bulk data moves. At 10 Mbps SPI, one IRQ per byte burns a large fraction of the i.MX6ULL CPU. SDMA does the same job at zero CPU cost. Any driver that streams data, SPI, I²S audio, CSI camera, LCDIF, eMMC, uses DMA. Once you know the consumer API, most DMA-using drivers read the same way.
@@ -223,14 +223,17 @@ A common bug: User-space fills a buffer. The driver hands the kernel pointer to 
 
 The kernel handles cache coherency for you, but only if you use the APIs. If you cast a pointer to `dma_addr_t` and skip `dma_map_*`, you get random data corruption. Whether it appears depends on whether the cache line was evicted between operations. **Always use dma_map_* or dma_alloc_coherent, never cast.**
 
-## 51.8  Lab
+<a id="lab"></a>
 
-1. **Inspect existing DMA users.** Read `drivers/spi/spi-imx.c`, find the dma_request_chan, slave_config, prep_slave_single, submit, issue, callback. Note how the driver decides PIO vs DMA based on transfer length.
-2. **Write a memory-to-memory test.** Allocate two 4 KB buffers, prepare a memcpy descriptor, submit, wait, verify content matches. Compare timings against `memcpy()` for sizes 64 B → 64 KB.
-3. **Enable SPI-with-DMA on your platform.** Add `dmas` + `dma-names` to your `&ecspi3` node, watch dmesg for "DMA acquired" or similar. Repeat your SPI loopback from Ch 47 with a 4 KB transfer. Verify it works.
-4. **Measure CPU savings.** Use `top` or `perf` while running a 1 MB SPI loopback in tight loop, with and without DMA. The DMA case should idle the CPU between IRQs.
-5. **Provoke a cache bug.** Skip the dma_map_single call (cast directly). Observe corruption. Add the map call back. Observe correctness.
-6. **Cyclic transfer prototype.** Sketch a fake audio capture: a kernel thread fills a ring buffer. A cyclic DMA copies it to a pretend FIFO. Each callback prints a count. Verify smoothness.
+(ch51-lab)=
+## 51.8  Key Notes
+
+- The DMA provider owns the controller, while a consumer owns transfer intent, buffers, and completion handling. A channel request must match the peripheral's routing and capabilities.
+- DMA mapping establishes a device-visible address and cache-ownership rules. A CPU pointer cast is not a DMA mapping, even when its numeric value appears plausible.
+- Streaming mappings require direction-specific ownership transitions. Coherent allocation simplifies cache visibility but does not remove ordering or lifetime requirements.
+- Preparation, submission, and issuing work are distinct stages. A queued descriptor is not necessarily an active transfer, and every failure stage needs balanced cleanup.
+- Buffers and callback state remain alive until completion or synchronized termination. Timeout and removal paths cannot free memory while the engine can still access it.
+- Cyclic transfers repeatedly hand periods between hardware and software. Period size and queue depth trade notification overhead against latency and overrun margin, rather than guaranteeing unlimited throughput.
 
 ## 51.9  Pitfalls
 

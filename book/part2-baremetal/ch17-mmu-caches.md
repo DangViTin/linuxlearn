@@ -10,9 +10,9 @@ status: draft
 
 A UART status register and a byte in OCRAM are both reached through pointers. Yet only one should be remembered in a cache. If the CPU keeps yesterday's UART status, your familiar polling loop can wait forever. If it keeps a recently used RAM byte, the same mechanism can save a bus transaction.
 
-The Memory Management Unit (MMU) translates virtual addresses to physical addresses and checks access permissions. It also tells the CPU which kind of memory a pointer reaches. We will build an identity map, so the pointer values stay familiar while their permissions and memory attributes change. A cache keeps copies of instructions or data closer to the CPU.
+The Memory Management Unit (MMU) translates virtual addresses to physical addresses and checks access permissions. It also tells the CPU which kind of memory a pointer reaches. The example uses an identity map, so the pointer values stay familiar while their permissions and memory attributes change. A cache keeps copies of instructions or data closer to the CPU.
 
-Start with the program already running in OCRAM. Our table and small benchmark can stay there too, provided the linked image and reserved stacks fit. DDR is an optional extension, not a prerequisite for this lab. The example uses one privileged address space and 1 MiB sections; its startup sequence is limited to the book's fresh-ROM path.
+The design keeps code, table and small benchmark in OCRAM, provided the linked image and reserved stacks fit. DDR is an optional extension, not a requirement for understanding the map. The example uses one privileged address space and 1 MiB sections. Its startup sequence is limited to the book's fresh-ROM path, with IRQ/FIQ masked during the transition rather than inheriting Chapter 16's enabled IRQ state.
 
 ## 17.1  What we are not doing
 
@@ -63,7 +63,7 @@ Two control bits make the following interpretation possible: `SCTLR.TRE=0` disab
 
 The Device encoding `000/0/1` selects Shareable Device even though our descriptor's S bit is zero. Non-shareable Device has a different TEX encoding. Shareable does **not** mean that a peripheral automatically snoops CPU caches.
 
-Try one decode before reading the code: the OCRAM descriptor `0x0090140E` selects physical section `0x00900000`, AP=`001`, TEX=`001`, C=B=1 and XN=0. Its low bits are `10`. A Device descriptor for `0x02000000` is `0x02000416`. The authoritative layouts and attribute encodings are in [Arm DDI 0406C.d](https://documentation-service.arm.com/static/5f8daeb7f86e16515cdb8c4e), Figure B3-4 and Table B3-10.
+For a worked decode, the OCRAM descriptor `0x0090140E` selects physical section `0x00900000`, AP=`001`, TEX=`001`, C=B=1 and XN=0. Its low bits are `10`. A Device descriptor for `0x02000000` is `0x02000416`. The authoritative layouts and attribute encodings are in [Arm DDI 0406C.d](https://documentation-service.arm.com/static/5f8daeb7f86e16515cdb8c4e), Figure B3-4 and Table B3-10.
 
 ## 17.3  Building the L1 table
 
@@ -77,7 +77,7 @@ The invalidate-only routine below discards inherited cache contents under this f
 
 Use Chapter 10's integer-only flags for these fragments: `-mcpu=cortex-a7 -marm -mfloat-abi=soft -mgeneral-regs-only`, also at link time, with `-lgcc`. That avoids introducing VFP/NEON use before its startup policy is established.
 
-Leave `DDR_MIB` at zero for the OCRAM lab. The only other accepted values are 256 and 512. Set one only after board-specific DDR initialization and an owned-range memory test have qualified that **exact installed capacity**, beginning at `0x80000000`. The build-time guard checks the value, not the hardware. Mapping DDR does not initialize it, and a successful test of a small buffer does not establish the full capacity.
+`DDR_MIB=0` is the OCRAM example's default. The only other accepted values are 256 and 512, valid only after board-specific DDR initialization and an owned-range memory test have qualified that **exact installed capacity**, beginning at `0x80000000`. The build-time guard checks the value, not the hardware. Mapping DDR does not initialize it, and a successful test of a small buffer does not establish the full capacity.
 
 `mmu.c`, a single-core initialization fragment for that contract:
 
@@ -190,7 +190,7 @@ int mmu_enable(void)
                       :: "r"(zero) : "memory"); /* BPIALL */
     __asm__ volatile ("dsb sy; isb" ::: "memory");
 
-    /* Direct TEX/AP encoding, little-endian tables, writable lab code. */
+    /* Direct TEX/AP encoding, little-endian tables, writable example code. */
     sctlr &= ~((1u << 28) | (1u << 29) | (1u << 25)
                | (1u << 19) | (1u << 20)); /* TRE, AFE, EE, WXN, UWXN */
     sctlr |= (1u << 0) | (1u << 2) | (1u << 12) | (1u << 11);
@@ -243,7 +243,7 @@ For the populated entries, virtual and physical addresses still match. Loads and
 
 Device memory is not a replacement for all ordering rules. A buffer in Normal RAM and a start register in Device memory are different parts of a transaction. You still need barriers and, where applicable, cache maintenance between preparing that buffer and starting hardware. A barrier can complete a register write; it cannot prove that the operation requested by that write has finished. Check the peripheral's completion condition.
 
-Chapter 18's I2C and SPI fragments can use these Device register windows and small Normal buffers in OCRAM. Its optional LCD experiment needs a much larger framebuffer in separately qualified and mapped DDR. The same Device/Normal distinction matters when the LCD begins reading that buffer without the CPU's help.
+Chapter 18's I2C and SPI fragments can use these Device register windows and small Normal buffers in OCRAM. Its optional LCD example needs a much larger framebuffer in separately qualified and mapped DDR. The same Device/Normal distinction matters when the LCD begins reading that buffer without the CPU's help.
 
 ## 17.6  Cache maintenance, when you must intervene
 
@@ -378,15 +378,17 @@ The expected checksum is **522240**, calculated from sixteen copies of the byte 
 
 The arrays total 8 KiB and are copied repeatedly. Most repetitions can hit cache; they do not stream through 4 MiB of distinct DRAM. Report 4,096,000 copied bytes, access pattern, CPU/timer clocks, compiler flags and cache state. If you use the PMU cycle counter instead, first configure its enable/divide-by-64 controls and account for its wrap. Do not convert counts to MB/s using an assumed CPU clock.
 
-## 17.9  Lab
 
-1. **Decode before enabling.** Compute the two descriptors in §17.2, then inspect the generated entries. Check the linked table's 16 KiB alignment, placement and reserved space. Which descriptor makes a peripheral non-executable?
-2. **Measure your workload in OCRAM.** Keep `DDR_MIB=0`, check the complete linked OCRAM allocation, and run §17.8 before and after enable under the startup contract. Both checksums must be 522240. Record results rather than trying to match a promised speed-up. DDR relocation is an optional later comparison, not a condition for passing this lab.
-3. **Separate MMU from caching.** In a separate cold-start build, make the benchmark's RAM sections Normal non-cacheable (`TEX=001, C=B=0`). Keep live code/stack mappings valid. Compare timings; do not change live descriptors without the maintenance sequence.
-4. **Reason about aliases on paper.** Decode two virtual sections pointing to one physical RAM section with identical attributes. Predict their physical addresses. Cortex-A7 D-cache is PIPT (physically indexed, physically tagged). Both translations refer to the same physical data, but their memory attributes must remain compatible.
-5. **Check range boundaries and ownership.** Work out the lines touched for zero length, an aligned 64-byte range, and a range crossing a line. Explain why an unaligned DMA receive buffer can damage a neighbouring object. A CPU-only clean/read test does not prove DMA coherency; an actual device test requires its completion/ownership protocol.
+(179-lab)=
+## 17.9  Key Notes
 
-Answer checks: XN is bit 4; the Device example sets it. A zero-length clean touches no line, an aligned 64-byte clean touches one, and a boundary-crossing range touches at least two. Invalidating a shared dirty line can discard bytes outside the DMA payload.
+- Identity mapping preserves pointer values but changes access checks and memory behavior. Device/XN register mappings and Normal RAM mappings are policy choices, not consequences of `volatile`.
+- A 16 KiB-aligned table and 1 MiB sections simplify translation at the cost of coarse protection. A mapped section can include holes that are not physical RAM, and writable executable RAM is not a code/data protection policy.
+- Enable is a startup transition with mapped code, stacks, vectors and registers, masked IRQ/FIQ and a defined inherited cache state. Invalidate-only maintenance is unsafe when earlier software may own dirty data.
+- Translation and data caching have separable effects. The repeated 8 KiB byte-copy workload can hit cache and has a calculated checksum of 522240. It is neither a DRAM-bandwidth test nor a promised speed-up.
+- Aliases to the same physical RAM must use compatible attributes. Cortex-A7's physically indexed, physically tagged D-cache does not make conflicting memory types safe.
+- DMA ownership covers complete data-cache lines, including padding. Zero-length cleaning touches no line, an aligned 64-byte clean touches one, and a boundary-crossing range touches at least two. Invalidating a shared dirty line can discard a neighboring object's bytes.
+- Cleaning/invalidation, barriers and device completion solve different problems. DMA needs visibility to PoC and exclusive ownership. New instructions need synchronization to PoU and the instruction stream. A CPU-only readback cannot establish device coherency.
 
 ## 17.10  Pitfalls
 
@@ -396,14 +398,14 @@ Answer checks: XN is bit 4; the Device example sets it. A zero-length clean touc
 - **Wrong descriptor interpretation.** AFE, TRE and TTBCR.EAE change how the fields are interpreted. N=0 selects a full TTBR0 table; TTBR low bits are walk attributes, not a spare part of the base address.
 - **Missing compiler or hardware barriers.** A bare `asm volatile` is not a compiler memory barrier. DSB completes the relevant accesses/maintenance; ISB synchronizes the instruction stream after control changes.
 - **Changing a DMA-owned buffer.** Clean/invalidate operations cannot make simultaneous CPU/device modification safe. Confirm completion before reclaiming ownership.
-- **Broad executable RAM mappings.** Useful for a first controlled lab, not a protection policy. Leave unknown sections faulting and use finer granularity when you need code/data separation.
+- **Broad executable RAM mappings.** Useful for exposing the mechanism, not a protection policy. Leave unknown sections faulting and use finer granularity when you need code/data separation.
 
 ## 17.11  Going deeper
 
 - [Arm DDI 0406C.d](https://documentation-service.arm.com/static/5f8daeb7f86e16515cdb8c4e): B3.5 descriptor formats, B3.7 access control, B3.8 memory attributes and B4 cache/TLB operations.
 - [Cortex-A7 TRM, DDI 0464B](https://documentation-service.arm.com/static/5e8f089d88295d1e18d3b906): cache line sizes, PIPT D-cache/VIPT I-cache and CP15 controls. Pair it with the i.MX6ULL-specific configuration in IMX6ULLRM Chapter 12.
-- Supplied **IMX6ULLRM Rev. 1**, §8.4.4 for ROM cache use; supplied **IMX6ULL errata Rev. 1.2**, ERR008958 and ERR010449. Authentication/cache errata are not an invitation to change fuses in this lab.
+- Supplied **IMX6ULLRM Rev. 1**, §8.4.4 for ROM cache use; supplied **IMX6ULL errata Rev. 1.2**, ERR008958 and ERR010449. Authentication/cache errata are not an invitation to change fuses for this example.
 - [Linux v6.12 `proc-v7-2level.S`](https://github.com/torvalds/linux/blob/v6.12/arch/arm/mm/proc-v7-2level.S) and [`mmu.c`](https://github.com/torvalds/linux/blob/v6.12/arch/arm/mm/mmu.c): compare the policies and platform handling with our static table.
 - [Linux DMA API guide](https://docs.kernel.org/core-api/dma-api-howto.html): ownership, coherent versus streaming mappings, CPU pointers versus device addresses, and barriers even for coherent memory.
 
-> Next: **Chapter 18, Optional bare-metal peripherals.** Follow one I2C transaction, one SPI command and an LCD framebuffer handoff. The supplementary Chapters 18A-18C offer more bare-metal practice; you can also continue to U-Boot in Part III.
+> Next: **Chapter 18, Optional bare-metal peripherals.** Follow one I2C transaction, one SPI command and an LCD framebuffer handoff. The supplementary Chapters 18A-18C examine project boundaries, button timing and retained counters. None is a prerequisite for U-Boot in Part III.

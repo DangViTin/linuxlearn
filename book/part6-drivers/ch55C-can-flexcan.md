@@ -170,14 +170,14 @@ ip link set can0 type can restart-ms 100      # auto-restart 100 ms after bus-of
 
 Or do it manually with `ip link set can0 down. ip link set can0 up;` after sorting the wiring/termination.
 
-## 55C.7  Lab
+<span id="c-7-lab"></span>
+## 55C.7  Key Notes
 
-1. **Bring up FlexCAN1.** DT, bitrate 500 kbit, `ip link set can0 up`.
-2. **Loop two nodes.** Connect can0 on i.MX6ULL to a USB-CAN adapter on a host PC, terminated with 60 Ω each end. Send frames with `cansend` from one side, watch `candump` on the other.
-3. **Throughput test.** `cangen can0 -g 0 -I 0x123 -L 8` floods at maximum rate. `canbusload can0 500000` reports utilization.
-4. **Filter receive.** Set up two sockets with different filters. Verify each receives only matching frames.
-5. **ISO-TP echo.** Write a small ISO-TP server that replies with what it received. Client sends 50-byte payloads.
-6. **Bus-off recovery.** Disconnect transceiver during transmission. Observe bus-off error frame. Verify `restart-ms` auto-recovers.
+- SocketCAN exposes CAN through Linux networking while FlexCAN owns controller behavior. The external transceiver and bus wiring remain essential physical dependencies.
+- Bit timing and termination are shared bus contracts. A local loopback result does not establish correct communication with physical nodes.
+- CAN arbitration, filtering and higher-level protocols solve different problems. ISO-TP adds transport behavior above frames rather than changing the electrical bus.
+- Bus-off indicates a fault boundary requiring a deliberate recovery policy. Automatically restarting without addressing a persistent fault can repeat the failure.
+- Classic CAN on the i.MX6ULL is not CAN FD. Protocol and controller capabilities must match every node on the intended segment.
 
 ## 55C.8  Pitfalls
 

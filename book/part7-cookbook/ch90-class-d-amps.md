@@ -266,15 +266,13 @@ A common product: a Bluetooth speaker on i.MX6ULL.
 
 The i.MX6ULL does the Bluetooth + decode. The TAS5805M does the analog + acoustic tuning. No full codec needed (playback only). This is the standard "amp without a codec" product pattern.
 
-## 90.7  Lab
+<span id="lab"></span>
+## 90.7  Key Notes
 
-1. **MAX98357A bring-up.** Wire I²S + SD_MODE + speaker. Build `mymax98357a.ko`. `aplay test.wav`. Hear sound.
-2. **SD_MODE channel select.** Change the SD_MODE resistor to select L / R / (L+R)/2. Verify the channel routing.
-3. **DAPM power.** Confirm the SD_MODE GPIO goes high on play, low on stop (scope it or read the GPIO). Amp is off when idle → no idle hiss.
-4. **PCM5102A.** Wire one as a headphone DAC. Use `simple-audio-card`. Verify line-out audio.
-5. **TAS5805M bring-up.** Wire I²C + I²S + speaker. Use the mainline driver with a DSP blob. Verify playback.
-6. **EQ tuning.** Use TI PPC3 (on a PC) to design a bass boost. Export the blob. Load it. A/B the sound with/without.
-7. **Bluetooth speaker.** Combine BlueZ A2DP (Ch 95) + TAS5805M. Pair a phone. Play music. Tune the EQ for your enclosure.
+- A digital amplifier can accept I2S without offering a register interface. Linux still needs a component and DAI description to connect the audio path.
+- Hardware straps, enable signals and DSP configuration have different ownership paths. A zero-control-bus design is not necessarily a zero-policy design.
+- Speaker load, supply capacity, thermal behavior and EMI constrain the output stage. Successful audio streaming does not qualify delivered power or acoustic performance.
+- DAPM and configuration sequencing should leave the amplifier in a defined state when idle, starting, stopping or recovering from a reset.
 
 ## 90.8  Pitfalls
 

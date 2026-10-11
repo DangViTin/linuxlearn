@@ -1,8 +1,8 @@
 # Chapter 11: Hand-building a Boot ROM-acceptable image
 
-So far, every blink has needed a host upload. Can the same program start with only an SD card in the board?
+The preceding examples use a host upload. Can the same program start with only an SD card in the board?
 
-The ROM does not need a filesystem for this small image. It looks for a boot structure at a particular media offset, reads the image into RAM and uses the entry field to start execution. We will inspect those bytes before writing them. The useful result is not merely an SD boot: it is knowing why the first instruction lands where the linker put it.
+The ROM does not need a filesystem for this small image. It looks for a boot structure at a particular media offset, reads the image into RAM and uses the entry field to start execution. Following those bytes explains why the first instruction lands where the linker put it. No card write is required to understand the layout.
 
 This remains an unsigned, OCRAM-only image for an open development device. A dedicated spare card is required for the SD route. USB loading can be completed without writing any card.
 
@@ -158,7 +158,7 @@ Run the script with `python3`, so it needs no executable-permission change. It b
 - **The length field in the IVT header is big-endian.** Everything else in the IVT is little-endian. The `struct.pack('>BHB', ...)` line handles this difference. This is the most common "I wrote my own mkimage and the ROM rejects it" bug.
 - **`BootData.start` is `0x00907000`.** File offset `0` corresponds to that address. The IVT at file offset `0x400` therefore corresponds to `0x00907400`.
 - **`BootData.length` includes all bytes through the end of the code.** It is not only the code size. If you forget the `CODE_OFFSET` part, the ROM stops loading before your `.text` begins.
-- **`csf_addr = 0`** says this image provides no Command Sequence File for HAB authentication. It does **not** disable the device's security policy or bypass authentication on a closed device. Our unsigned lab depends on an open development configuration. Do not program fuses to make it run. Chapter 124 covers signed boot.
+- **`csf_addr = 0`** says this image provides no Command Sequence File for HAB authentication. It does **not** disable the device's security policy or bypass authentication on a closed device. This unsigned example depends on an open development configuration. Do not program fuses to make it run. Chapter 124 covers signed boot.
 
 ## 11.3  Building and inspecting
 
@@ -224,7 +224,7 @@ If the LED blinks, record that observation as an SDP execution check for your bo
 > Verify the removable card using insertion/removal, capacity and available identity fields. A USB reader's model or serial may identify the reader, not the card. Unmount its partitions and stop if the path is uncertain. Writing the wrong device can destroy the host disk.
 
 
-Now the part we have not yet done in this book: boot from the SD card itself.
+The SD path changes where the ROM obtains the image, not the payload's C startup contract.
 
 On the i.MX6ULL with `BOOT_CFG` set for SD card, the ROM looks for an IVT at **LBA 2**, which is byte offset `0x400`. Our `.imx` file already contains `0x400` bytes before its IVT. Therefore the file must be written starting at byte 0 of the card.
 
@@ -257,13 +257,16 @@ Before installing the card, follow Chapter 8's power-down procedure and leave th
 
 If it blinks, you have booted an i.MX6ULL from an SD card you produced byte by byte. No U-Boot, no `mkimage`, and no Yocto were involved.
 
-## 11.6  Lab
 
-1. **Build and SDP-boot.** Confirm `mkimx.py` produces the same working blink as Chapter 9's `wrap.py`.
-2. **Build and SD-boot.** Eject the card, insert into the board with the switch set to SD. Confirm the LED blinks without `uuu` involvement.
-3. **Study an entry mismatch without running it.** Copy the generated image to a scratch file, change its entry word by `0x100`, and decode it with `xxd`. Compare that entry against the ELF and file layout. Do not upload the intentionally corrupt image: branching into unintended instructions is not a controlled experiment.
-4. **Spot an endian mistake.** On paper, write the four IVT header bytes with a little-endian length. Which bytes differ from `D1 00 20 40`? The answer is `D1 20 00 40`. You can identify the invalid length before asking the ROM to interpret it.
-5. **Dissect a vendor image.** Pick any `u-boot*.imx` you have on hand. Decode every IVT/BootData field. Identify whether a DCD is present and roughly how large it is.
+(116-lab)=
+## 11.6  Key Notes
+
+- File offsets, media offsets and RAM addresses are different coordinates. In this primary SD layout, writing the already-padded file at media byte zero places the IVT at `0x400`. An extra seek would shift it out of place.
+- SDP omits the leading file padding and loads the IVT at `IVT.self`. The offset difference from IVT to payload must still land the first instruction at the linked entry address.
+- The IVT header length is big-endian while its address words are little-endian. `D1 20 00 40` encodes the wrong length even if the remaining fields look plausible.
+- `BootData.length` covers the complete image, not only `.text`. The builder owns the wrapper layout but cannot infer the input binary's link address.
+- An entry mismatch is a file-consistency defect, not a useful execution experiment. Intentionally corrupt images must not be uploaded to branch into unintended instructions.
+- A valid header, successful USB transaction, card readback and payload execution establish different properties. None substitutes for the others, and this OCRAM-only builder supplies neither DDR setup nor signed-boot authentication.
 
 ## 11.7  Pitfalls
 
@@ -281,4 +284,4 @@ If it blinks, you have booted an i.MX6ULL from an SD card you produced byte by b
 - **NXP `imx-mkimage` source**: `<https://github.com/nxp-imx/imx-mkimage>`. Its newer-SoC image recipes are not the i.MX6ULL image format taught here. Chapter 22 does not require a TF-A stage for this Cortex-A7 board.
 - **`uuu` script reference**: `man uuu.1` or the README in `mfgtools`. Especially the SDP commands list.
 
-The LED now gives the same execution checkpoint through two boot paths. Chapter 12 adds a more expressive one: UART text, so a program can report which step it reached rather than asking us to infer everything from a blink.
+The two boot paths can lead to the same LED payload through different loading mechanisms. Chapter 12 adds UART text, so a program can report which step it reached rather than leaving everything to a blink.

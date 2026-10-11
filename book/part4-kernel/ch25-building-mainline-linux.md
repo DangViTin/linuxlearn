@@ -16,9 +16,9 @@ status: draft
 > **TFTP:** Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 
-> **What:** clone the mainline Linux source, build a `zImage` + device tree blobs + modules for the i.MX6ULL, and inspect the artefacts. Stop just short of booting. That is Chapter 26.
+> **What:** how a mainline Linux source tree, configuration and toolchain produce the kernel image, device tree blobs and modules for i.MX6ULL. Chapter 26 explains the bootloader handoff.
 >
-> **Why:** every later chapter assumes a built kernel tree on disk. The build is mechanical. What matters is the artefacts it produces and the source-tree layout you will use in every later chapter.
+> **Why:** later chapters refer to these source and artifact layouts. Understanding their roles does not require completing a build.
 >
 > **Focus:** the four build artefacts you actually use (`vmlinux`, `zImage`, `*.dtb`, `*.ko`) and the four directories you will visit most (`arch/arm/`, `drivers/`, `include/`, `Documentation/`).
 
@@ -315,13 +315,16 @@ $ make O=~/imx6ull/build/kernel INSTALL_MOD_PATH=~/imx6ull/rootfs modules_instal
 
 `O=...` puts every generated file in a sibling directory. The source tree stays bit-identical to what `git` checked out. Cleanups are `rm -rf ~/imx6ull/build/kernel`.
 
-## 25.8  Lab
 
-1. **Clone, defconfig, build.** Time the build. On a modern 4-core / 8-thread host, expect 5-8 minutes for a fresh build and under 30 seconds for an incremental change.
-2. **Inspect the boot logo string.** Run `grep -n linux_banner init/version.c` to find the banner format. (On v6.6 the banner is in `init/version.c`. `init/version-timestamp.c` exists only conditionally.) Edit it to add `(yourname)`, rebuild *just* `zImage` (`make -j$(nproc) zImage`), and verify the boot message changes when you run it in Chapter 26.
-3. **Build for the EVK and the Colibri.** Both `.dtb`s come out of one build. Verify by re-running `ls arch/arm/boot/dts/nxp/imx/imx6ull-*.dtb` after `make dtbs` and comparing against the list of `imx6ull-*` `.dts` source files in the same directory. *(Pre-v6.5 kernels keep the dts directly under `arch/arm/boot/dts/`, adjust accordingly.)*
-4. **Quantify the compression.** Compare sizes: `ls -l arch/arm/boot/{Image,zImage}` and `vmlinux`. The ratios tell you something about kernel content (lots of string tables, dictionaries, …).
-5. **Make distclean and reconfigure.** `make distclean` wipes `.config` and everything else. Re-run the defconfig and the build. The second build is almost as fast as an incremental build. If you have `ccache` installed, that is why. If not, it is still about the same.
+(25-8-lab)=
+## 25.8  Key Notes
+
+- A kernel build is defined by its source revision, resolved `.config` and toolchain. An output directory separates generated state from source, but does not make different configurations interchangeable.
+- `vmlinux` carries symbols for host-side diagnosis, while `zImage` packages the ARM32 kernel and its decompressor for loading. Their different sizes reflect different roles, not different kernel features.
+- One multiplatform kernel can support several boards through separate DTBs. An EVK or Colibri DTB is a hardware description for that board, not evidence of a matching MINI description.
+- Built-in features are present before rootfs access. Loadable `.ko` files require a matching kernel and a reachable module tree, with indexes used by `modprobe`.
+- `INSTALL_MOD_PATH` selects the target rootfs staging tree. Omitting it crosses into the host's module installation path rather than preparing the target.
+- Successful artifact generation establishes build output, not correct board wiring, DDR behavior or a successful Linux boot.
 
 ## 25.9  Pitfalls
 
@@ -345,4 +348,4 @@ $ make O=~/imx6ull/build/kernel INSTALL_MOD_PATH=~/imx6ull/rootfs modules_instal
 - **kernelnewbies.org**: the friendliest entry point for new kernel hackers.
 - **The kernel mailing list archive** at `lore.kernel.org`, search `[PATCH] imx6ull` to read every recent i.MX6ULL change discussion.
 
-> Next chapter: **Chapter 26: Booting the kernel from U-Boot.** We hand the freshly-built `zImage` to U-Boot and watch the first dozen lines of kernel output appear on the UART.
+> Next chapter: **Chapter 26: Booting the kernel from U-Boot.** The boot case study follows a `zImage` through the firmware handoff and interprets the kernel's early output.

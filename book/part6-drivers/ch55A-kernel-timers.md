@@ -45,7 +45,7 @@ del_timer_sync(&my_timer);
 - **`mod_timer`**: re-schedules a running timer to a new expiry. If the timer is not active, it arms it.
 - **`del_timer_sync`**: deletes and waits for any in-flight callback to finish. Use in `remove`.
 
-Typical pattern, button debounce (Ch 45 lab):
+Typical pattern, button debounce (Ch 45 example):
 
 ```c
 static void debounce_cb(struct timer_list *t)
@@ -161,16 +161,14 @@ cancel_delayed_work_sync(&my_dwork);
 
 `delayed_work` combines a timer + workqueue. Most "do this later" use cases want this rather than raw timers.
 
-## 55A.5  Lab
+<span id="a-5-lab"></span>
+## 55A.5  Key Notes
 
-1. **Add a software heartbeat.** A `timer_list` that prints `dmesg` every 5 seconds. Verify it fires regularly.
-2. **Hrtimer for jitter measurement.** Fire an hrtimer every 1 ms. In the callback, log the actual time delta. With PREEMPT_RT, compare jitter against standard kernel.
-> **PREEMPT_RT:** the Linux real-time patch set that makes more kernel paths preemptible and reduces latency.
-3. **Debounce button.** Use `timer_list` for 20 ms debounce on a GPIO key.
-> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-4. **Periodic GPIO toggle.** Use hrtimer + GPIO output to generate a 1 kHz square wave. Scope it. Observe jitter.
-5. **Combine timer + workqueue.** A timer that schedules work. The work does `msleep(50)`. Verify the system stays responsive.
+- Kernel timers schedule callbacks, not private threads. Their execution context determines which operations are legal, while workqueues provide a place for work that may sleep.
+- Timer resolution and observed callback latency are different quantities. A high-resolution timer does not make GPIO transitions or periodic work perfectly deterministic.
+- Periodic scheduling needs an explicit phase and overrun policy. Re-arming relative to completion and maintaining an intended time sequence have different drift behavior.
+- Cancellation is part of object lifetime. Removal must prevent callbacks or deferred work from accessing released device state.
+- A hardware timer, PWM block or DMA engine can be a better owner of precise signal timing than a software callback.
 
 ## 55A.6  Pitfalls
 

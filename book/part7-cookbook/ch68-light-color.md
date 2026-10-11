@@ -438,15 +438,13 @@ veml7700@10 { compatible = "vishay,veml7700"; reg = <0x10>; };
 tcs34725@29 { compatible = "amstaos,tcs34725"; reg = <0x29>; };
 ```
 
-## 68.10  Lab
+<span id="lab"></span>
+## 68.10  Key Notes
 
-1. **Detect.** `i2cdetect -y 1`. BH1750 at 0x23 if ADDR low.
-2. **From scratch.** Build `mybh1750.ko`. Read in different lighting conditions: room, sunlight through window, covered with hand.
-3. **Compare against a phone app.** Most smartphone light-meter apps are accurate to ±20 %. Cross-check.
-4. **Add gain control.** Modify `mybh1750.c` to expose `_integration_time` as a writable IIO attribute. Verify writing 1 / 0.5 / 2 changes the effective integration time.
-5. **Switch to mainline.** Unload yours, use `rohm,bh1750`. Verify same scale + raw.
-6. **TSL2561 (if available).** Configure the chip. Read both channels. Implement the piecewise formula in user-space. Cross-check against BH1750 under fluorescent light (where TSL2561's IR rejection should give a tighter lux number).
-7. **TCS34725 color match.** With the bonus chip, hold a red object, a green object, a blue object in front. Verify the R/G/B counts respond correspondingly.
+- Light sensors do not all observe the same spectral response. Lux conversion, color channels and infrared rejection are device-specific design choices.
+- Gain and integration time trade sensitivity against saturation and response delay. Reading faster than conversion does not create new measurements.
+- The enclosure and optical window become part of calibration. A bare-board comparison cannot establish the finished product's response.
+- An automatic backlight policy needs filtering and hysteresis above the measurement interface, rather than reacting to every raw count.
 
 ## 68.11  Pitfalls
 

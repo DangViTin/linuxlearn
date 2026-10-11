@@ -196,7 +196,7 @@ A typical `dtbs_check` run on the i.MX tree produces ~100 warnings as of v6.6, m
 
 ## 27A.4  Writing your first binding
 
-Suppose your custom board has a GPIO-driven LED that you want to teach the kernel about cleanly. (The existing `gpio-leds` binding handles this. We'll author a fictional "my-pa-led" binding for pedagogy, then in practice you'd use `gpio-leds` instead.)
+Consider a GPIO-driven LED as a small schema case study. The fictional "my-pa-led" binding below illustrates constraints, while the existing `gpio-leds` binding is the appropriate interface for a normal GPIO LED.
 > **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
 > **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 
@@ -247,7 +247,7 @@ examples:
     };
 ```
 
-Save that and run:
+The corresponding scoped binding check is:
 
 ```sh
 $ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- dt_binding_check \
@@ -268,7 +268,7 @@ Then, to add the matching DT node to a board:
 };
 ```
 
-And `make ARCH=arm dtbs_check` validates that against the schema you just wrote.
+The `make ARCH=arm dtbs_check` target validates the board node against the corresponding schema.
 
 ## 27A.5  Common schema patterns
 
@@ -341,14 +341,17 @@ A binding rarely starts from scratch. Almost every binding `allOf:`-includes one
 
 These parents define standard properties common to the *class* (e.g., `current-speed` for serial, `clock-frequency` for I²C buses). Inheriting from them means your binding picks up that vocabulary automatically and is validated consistently with everyone else's.
 
-## 27A.7  Lab
+<a id="lab"></a>
 
-1. **Run the checks.** From your kernel tree: `make ARCH=arm dt_binding_check` and `make ARCH=arm dtbs_check`. Note how many warnings the v6.6 tree produces. Don't try to fix them. Just observe.
-2. **Read a binding end-to-end.** Pick `Documentation/devicetree/bindings/serial/fsl-imx-uart.yaml`. Identify (a) the schema URL, (b) the parent schema, (c) which properties are required, (d) which are optional, (e) the example DT fragment.
-3. **Find an unschema'd binding.** Look in `Documentation/devicetree/bindings/serial/` for any remaining `.txt` files. These are migration candidates. The `.txt` content is what needs to be turned into a `.yaml`.
-4. **Write your first schema.** Pick a small driver (e.g., one of your own from Chapter 41 onward). Write its YAML. Run `dt_binding_check`. Cycle until clean.
-5. **Break a passing DTS on purpose.** Edit `imx6ull-14x14-evk.dts` to misspell a property (`clock-name` instead of `clock-names`). Run `make dtbs_check`. Observe the precise error message that pinpoints the typo. Restore.
-6. **Read `dtschema`'s source.** It's a small Python package. The dispatch from YAML schemas to JSON-Schema validation is in `dtschema/schemas/`.
+(27a-7-lab)=
+## 27A.7  Key Notes
+
+- A binding is the contract between hardware description and driver interpretation. YAML expresses that contract using JSON Schema constraints rather than replacing it with implementation details.
+- `dt_binding_check` checks the binding and its examples. `dtbs_check` checks compiled board descriptions against applicable bindings, so the two targets address different error sources.
+- Required properties, permitted values and ordered resource names make assumptions explicit. Unknown-property rejection can expose a typo that ordinary DTS compilation accepts.
+- Shared schemas carry class-wide vocabulary. Closing a composed schema with `unevaluatedProperties` accounts for inherited properties rather than treating them all as unknown.
+- A schema example illustrates a node's interface, not a new driver. The fictional LED binding here does not replace the maintained `gpio-leds` implementation.
+- Validation can reject malformed descriptions without detecting every wrong address, pin connection or voltage assumption. Schema success is not physical-board qualification.
 
 ## 27A.8  Pitfalls
 

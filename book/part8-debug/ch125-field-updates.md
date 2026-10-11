@@ -12,7 +12,7 @@ status: draft
 > After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
 
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+> **Examples and production:** Do not burn fuses, enroll production keys, or sign release images while using these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
 
 
@@ -306,18 +306,16 @@ Pattern in production: combine 2–3. "Service started + heartbeat seen + ≥1 u
 
 If conditions not met: watchdog fires. Reboot. U-Boot reverts. You're back on the previous version. Alert sent.
 
-## 125.9  Lab
 
-1. **Set up A/B partitions.** Modify your .wks to create rootfs.A and rootfs.B partitions. Flash. Verify both exist (`lsblk`).
-2. **U-Boot env for slot selection.** Add the `BOOT_ORDER`/`BOOT_A_LEFT` env vars. Write a U-Boot bootcmd that selects based on them.
-3. **Install RAUC.** `IMAGE_INSTALL += "rauc"`. Build. Verify `rauc status` runs on the target.
-4. **Build a bundle.** Bitbake the `myapp-bundle.bb`. Inspect with `rauc info myapp-bundle-1.0.raucb`.
-5. **Local install.** Copy bundle to target via scp. `rauc install`. Reboot. Verify other slot is now active.
-6. **Mark good.** After verifying the new slot is healthy, `rauc status mark-good`. Reboot. Verify still on new slot.
-7. **Force a bad update.** Build a bundle whose `myapp` crashes immediately. Install. Reboot. Watchdog should fire. U-Boot reverts.
-8. **HTTPS pull.** Set up nginx with a self-signed cert. Serve a bundle. Device pulls via `rauc install https://...`.
-9. **Delta update.** Enable casync in your bundle build. Compare bundle sizes before/after. Reach 5–10× smaller delta.
-10. **Mender stretch.** Self-host the Mender server (Docker compose). Register a device. Push a deployment from the UI.
+(1259-lab)=
+## 125.9  Key Notes
+
+- An A/B update preserves the running slot while constructing a candidate in the inactive slot. Completion must precede changing persistent boot selection.
+- The update client verifies and installs artifacts, the bootloader selects a slot and tracks attempts, and application health policy decides when to mark it good.
+- A watchdog supplies a return path when software cannot report failure. Rollback also requires durable attempt state and a usable previous slot, not just two partitions.
+- Persistent data belongs outside replaceable system images. Data-format changes can still make an old slot unusable unless migration policy supports rollback.
+- Authentication, hardware compatibility, anti-rollback policy, and staged delivery address different risks. A correctly signed bundle can contain a broken application.
+- Delta transfer reduces traffic without changing atomicity or recovery. Backend scheduling and fleet monitoring remain separate from the installation primitive.
 
 ## 125.10  Pitfalls
 

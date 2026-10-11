@@ -121,14 +121,14 @@ Try combinations until the touch matches the cursor on screen. For resistive tou
 
 GT911 boots from internal ROM but accepts firmware updates via I²C. Some boards ship a firmware file. The driver auto-loads from `/lib/firmware/goodix_911.fw` if present. Without it, the chip uses its ROM firmware, usually adequate.
 
-## 55G.7  Lab
+<span id="g-7-lab"></span>
+## 55G.7  Key Notes
 
-1. **Bring up GT911 on a known LCD.** Verify probe in dmesg, touch event on evtest.
-2. **Fix orientation.** Trial-and-error the `inverted-*` and `swapped` flags until touch matches LCD.
-3. **Five-finger test.** Watch slot 0–4 fill as you put fingers down.
-4. **Adapt for a different LCD.** Change `touchscreen-size-x/y` for a different panel. Verify proportions are correct.
-5. **Long-press detection.** In user-space, time how long ABS_MT_TRACKING_ID stays non-(-1). After 500 ms, emit a "long-press" event.
-6. **Gestures.** Write a libinput-based program that detects swipes.
+- MT-B reports contacts through slots and tracking IDs. Finger lifetime is different from the number of coordinate samples received.
+- Reset and interrupt wiring affect both startup and address selection on the GT911. Those details belong to the fitted panel assembly, not merely its advertised resolution.
+- Touch coordinates and displayed pixels are separate coordinate systems. Rotation, inversion and axis swapping should follow a defined mapping.
+- The kernel reports contacts, while user-space input policy interprets long presses and gestures. Keeping that boundary clear avoids embedding application behavior in a hardware driver.
+- A working single contact does not establish correct tracking, release behavior or latency under several simultaneous contacts.
 
 ## 55G.8  Pitfalls
 

@@ -8,12 +8,12 @@ status: draft
 
 # Chapter 35: Buildroot, after you can do it by hand
 
-> **What:** Buildroot, a make-driven build system that produces a complete root filesystem (optionally + bootloader + kernel + cross-toolchain) from one `make` command and one `.config` file. By the end you will have built a working rootfs that boots on the i.MX6ULL, then customised it with extra packages, and learned where to look when the build fails.
+> **What:** Buildroot's configuration-driven assembly of a root filesystem, optional boot artifacts, packages and product customizations. The EVK configuration is a build-system case, not a qualified MINI image.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 > **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 >
-> **Why:** Chapter 31 took us 22 pages and a dozen hand-typed commands to get a BusyBox shell. Buildroot does the same in twenty minutes of compile time and one menuconfig session. On top of that it offers 3000+ optional packages (Qt, alsa-utils, openssh, mosquitto, nodejs, ...). Chapter 31 was for understanding. This chapter is for speed.
+> **Why:** Chapter 31 separated the files and runtime responsibilities in a small rootfs. Buildroot turns that composition into maintained configuration and package recipes. A completed hand-built rootfs is not a prerequisite for understanding the model.
 >
 > **Focus:** **the `output/` tree**, every artefact Buildroot produces lives in one place under `output/`, with a predictable layout. Once you know `output/`, debugging a failed build is a directed search instead of a hunt.
 
@@ -362,19 +362,19 @@ That file is ~200 lines and contains only the differences from defaults. Anyone 
 | Rebuild time | Edit + retest in seconds (NFS) | Edit + rerun build (~1 minute for an overlay change) |
 | New package | Hunt down + build + install yourself | One menuconfig click |
 
-The hand-built path taught the structure. Buildroot is what you ship. The rest of the book uses Buildroot.
+The hand-built case explains the structure. Buildroot provides an automated image-oriented approach, with product-specific configuration still owned by the product team.
 
-## 35.10  Lab
 
-1. **Build the imx6ullevk defconfig.** Boot the resulting `rootfs.tar` over NFS. Compare with your Chapter 31 rootfs, what's there that you didn't have? (Hint: `getty`, `udev` instead of `mdev`, `dropbear` ssh, more BusyBox applets enabled.)
-> **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
-> **udev:** the user-space device manager that reacts to kernel device events and creates policy-driven /dev nodes.
-2. **Disable the in-Buildroot kernel and U-Boot builds.** Use your own from earlier chapters.
-3. **Add three packages.** `htop`, `tmux`, `mosquitto`. Verify each works.
-4. **Write an overlay.** Drop a `motd` file at `/etc/motd` so logging in prints a greeting. Drop an `S99hello` script that echoes "hello" at boot.
-5. **Save a defconfig.** Commit your customised defconfig to a git repo. Have someone else clone it, run `make myproduct_defconfig && make`, and verify they get a working rootfs.
-6. **Read `output/build/busybox-*/`.** That's the extracted busybox source. Compare against a fresh tarball. Identify any patches Buildroot applied (look in `package/busybox/`).
-7. **Use the Buildroot manual.** `docs/manual/manual.html`, load it in a browser. The section on writing custom packages is the canonical reference. Bookmark it.
+(35-10-lab)=
+## 35.10  Key Notes
+
+- Buildroot owns the dependency-ordered assembly of selected packages into images. Its configuration describes the intended system rather than a sequence of edits performed on a live target.
+- `output/build` holds package build state, `output/host` holds host tools, `output/staging` provides the target sysroot, and `output/images` holds deployable artifacts. `output/target` is an intermediate tree, not the maintained product source.
+- A rootfs overlay supplies static product files, a post-build script generates or adjusts staged content, and a package recipe owns software build and installation. These mechanisms solve different customization needs.
+- Persistent changes belong in defconfigs, overlays, recipes and patches. Editing generated output hides ownership and can lose the change during regeneration.
+- Integrated kernel and bootloader builds require one clear artifact authority. Mixing separately built images with another build's modules or DTB creates release mismatches.
+- A reference-board defconfig describes that reference board. Its SPL, U-Boot and DTB artifacts are not automatically MINI firmware.
+- Image creation and board operation are separate boundaries. A repeatable configuration still needs source, toolchain and product-file identity, plus runtime qualification before deployment.
 
 ## 35.11  Pitfalls
 

@@ -13,22 +13,22 @@ UART registers, and the interrupt handler. Which parts belong to the new
 feature, and which must remain untouched? A project layout should make that
 decision easier without changing what the board does.
 
-We will move the existing drivers into a small **board support package
-(BSP)** and give their register definitions one home. This is the same
+The example layout puts drivers into a small **board support package
+(BSP)** and gives their register definitions one home. This is the same
 separation you may have used with an MCU HAL: application code calls a driver;
 the driver knows the controller and the board wiring. No Linux service or
 device tree is involved in these bare-metal programs.
 
-This chapter is a refactoring lab, not a new standalone firmware download.
-Start with a build you already understand from Chapters 10-17. Keep its
-startup, linker layout, and boot-image wrapper together while moving the C
-code. The following header is a useful subset, not every register needed by
+This chapter examines a refactor of the Chapters 10-17 design, not a new
+standalone firmware download or a required migration. Startup, linker layout
+and boot-image wrapper form a contract that remains intact when the C code
+moves. The following header is a useful subset, not every register needed by
 those earlier chapters.
 
 
 ## 18A.1  The problem we are solving
 
-Open your Chapter 16 or 17 project in your editor. It may have:
+A project using the Chapter 16 or 17 mechanisms may have:
 
 - `main.c`: `main()` plus inline UART init, GPIO init, CCM writes
 - `startup.S`, `link.ld`, unchanged
@@ -228,10 +228,11 @@ Gate value `11` enables a clock in RUN and WAIT, not STOP.
 
 ## 18A.4  A peripheral driver, refactored
 
-Move Chapter 13's **read-only clock audit** into `bsp/clk/bsp_clk.c`, changing
-its own include from `clocks.h` to `bsp_clk.h` and consolidating its register
-names in `imx6ull.h`. Add this complete, selective gate helper to that file.
-It does not replace the audit or introduce a generic PLL transition routine:
+In this layout, Chapter 13's **read-only clock audit** belongs in
+`bsp/clk/bsp_clk.c`, includes `bsp_clk.h` instead of `clocks.h`, and uses
+register names consolidated in `imx6ull.h`. The following selective gate
+helper shares that module. It does not replace the audit or introduce a
+generic PLL transition routine:
 
 ```c
 #include "bsp_clk.h"
@@ -266,7 +267,7 @@ does not supply them. In particular, the timer initializer needs the actual
 supported IPG rate, not an assumed 66 MHz value. The gate helper does not set
 UART baud rate or GPT prescalers, and enabling a gate is not permission to
 change a live clock root. Retain the approved ROM/board clock configuration
-for these labs; do not call a leftover `clk_init_main()` or `clocks_init()`
+for these examples; do not call a leftover `clk_init_main()` or `clocks_init()`
 that reprograms it without a board-qualified transition.
 
 ## 18A.5  The top-level Makefile
@@ -338,9 +339,9 @@ clean:
 .PHONY: all clean
 ```
 
-Run `make`, then `make` again. The second invocation should not compile or
-link anything. `app.bin` is still only the payload: preserve the matching
-ROM wrapper from your earlier project before any board transfer.
+With unchanged inputs and outputs present, a second `make` invocation should
+not compile or link anything. `app.bin` is still only the payload. Any board
+transfer requires the matching ROM wrapper and its placement/size checks.
 
 What the rules now account for:
 
@@ -354,7 +355,7 @@ The linker and startup remain part of the refactor's contract:
 - For the fresh-ROM OCRAM route, place `.vectors` first at `0x00908000`, use `ENTRY(_vectors)`, and make its first instruction branch to `_start`. Set the wrapper's entry to that same vector address. Install VBAR with the required alignment and synchronization; keep the exception-base selection consistent with it.
 - Keep `.data` and `.bss` ends padded to four bytes for the word-copy/word-clear loops. Reserve the Chapter 10 **4 KiB stack** explicitly and retain its overlap assertions. If IRQ support is included, retain its separately allocated mode stack and 8-byte C-call alignment too.
 - Keep the complete ROM-loaded image, including wrapper overhead, within the chosen limit ending at or below `0x00918000`. Linker assertions for payload RAM alone do not check wrapper bytes; rerun the Chapter 11 image-size checks.
-- Expect a fresh-ROM handoff, not a jump out of an arbitrary running Linux/U-Boot image. Do not assume that all caches are off. Preserve the startup's documented handoff preparation and, when retaining the MMU lab, the peripheral memory attributes and cache/table maintenance. Moving a source file does not repair a handoff protocol.
+- Expect a fresh-ROM handoff, not a jump out of an arbitrary running Linux/U-Boot image. Do not assume that all caches are off. Preserve the startup's documented handoff preparation and, when retaining the MMU example, the peripheral memory attributes and cache/table maintenance. Moving a source file does not repair a handoff protocol.
 
 If that maintenance uses set/way operations across L1 and L2, retain the
 DSB between cache levels required by supplied chip erratum **ERR008958**.
@@ -364,13 +365,13 @@ An organized source tree does not remove silicon-specific sequencing.
 
 You gain more files and more explicit dependencies. In return, a UART change
 has a predictable location, and an application can include `bsp_uart.h`
-without copying its register map. Measure file count and rebuild behavior
-on your own project; there is no fixed line-count or time saving to promise.
+without copying its register map. The tradeoff is clearer ownership at the
+cost of more files. There is no fixed line-count or time saving to promise.
 
-A useful check is an edited public header. Does the affected implementation
-rebuild? If not, the layout looks organized but the build still allows stale
-code. That is why the `.d` files belong in this refactor, not in a later
-cleanup exercise.
+A public-header change illustrates the build contract: every affected
+implementation must rebuild. Without that dependency, an organized layout
+still permits stale code. The `.d` files therefore belong to the refactor
+itself, not to a later cleanup.
 
 ## 18A.7  Sidebar, the NXP SDK alternative
 
@@ -423,12 +424,16 @@ notes and errata, and verify the few offsets your driver uses. Also carry
 over the header's required type definitions, include paths, and license.
 Introducing a header does not initialize clocks, pads, stacks, or the FPU.
 
-## 18A.8  Lab
+(a-8-lab)=
+## 18A.8  Key Notes
 
-1. **Refactor without adding behavior.** Record your compiler, flags, map, and original payload first. Move the code into Section 18A.2's layout. `cmp app.bin original_app.bin` is a useful check, not a mandatory pass condition: object/link order, alignment, and compiler optimization may change bytes. Explain any difference using the map and disassembly; preserve entry, stack bounds, initialization, and driver behavior.
-2. **Add one peripheral.** Move Chapter 18's I²C implementation into `bsp/i2c/`. Check that its directory is discovered, its public header is included by its implementation, and a header edit rebuilds the right objects. Then change a flag in `Makefile` and confirm a rebuild. A linker-script edit should relink without unnecessarily compiling the C files.
-3. **Stress-test header layering.** Try moving `imx6ull.h` into `bsp/include/`. What needs to change in the Makefile? In each `bsp_*.c`?
-4. **Try the struct style.** With a verified SDK package, convert the gate helper to its types, removing conflicting macro definitions from that translation unit. Compare `arm-none-eabi-objdump -d app.elf` for the helper and check `offsetof` against the RM. Equivalent register accesses matter more than identical ELF bytes.
+- SoC offsets, board wiring and driver behavior describe different ownership domains. A shared hardware header prevents duplicate definitions without making every board's routes interchangeable.
+- Public headers define driver interfaces and are included by their own implementations. Include-path visibility makes names available but does not enforce dependency direction or prevent architectural cycles.
+- Moving files does not replace startup, vector placement, stack budgets, image wrapping or cache-handoff requirements. Those contracts survive the refactor unchanged.
+- Source discovery and object naming constrain the build. Two alternative implementations in the discovered tree, or a C and assembly source mapping to the same object name, create ambiguity rather than modularity.
+- Header dependency files and Makefile prerequisites keep outputs tied to inputs. Compiler-path changes, command-line flag overrides and removed sources need separate clean-rebuild handling because these rules do not track them automatically.
+- Raw macros and verified SDK structs can express equivalent register accesses. Correct offsets, access types and semantics matter more than identical ELF bytes, which can change with link order and alignment.
+- The integer-only ABI and explicit libgcc link are system-wide contracts, including ISR callees. A gate helper supplies neither clock-root transitions nor a C runtime.
 
 ## 18A.9  Pitfalls
 
@@ -446,4 +451,4 @@ Introducing a header does not initialize clocks, pads, stacks, or the FPU.
 - **A verified NXP i.MX6ULL SDK package**: inspect its `MCIMX6Y2.h`, supporting headers, release notes, and license before adopting the struct-based map.
 - **GNU make manual, automatic prerequisites**: the header-rebuild mechanism used above. Check GCC's `-MMD` and `-MP` descriptions alongside it.
 
-> Next chapter: **Chapter 18B: Button input and beep.** Use the new layout for a board-specific input and output, beginning with their schematic routes.
+> Next chapter: **Chapter 18B: Button input and beep.** The layout separates a board-specific input/output path from event filtering and timing policy.

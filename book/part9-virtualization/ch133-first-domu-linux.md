@@ -376,59 +376,24 @@ On the host, save the whole QEMU serial run:
 $ qemu-system-arm ... 2>&1 | tee logs/xen-qemu-domu.log
 ```
 
-## 133.15  Break it on purpose
+<span id="break-it-on-purpose"></span>
+<span id="failure-1-missing-domu-kernel"></span>
+<span id="failure-2-too-much-memory"></span>
+<span id="failure-3-wrong-console"></span>
+<span id="failure-4-bad-initramfs"></span>
+<span id="lab"></span>
+## 133.15  Failure cases in guest creation
 
-### Failure 1: missing DomU kernel
+Missing kernel files or an impossible memory allocation can stop domain creation. A malformed initramfs can fail later, after the guest kernel has begun executing. A wrong console can conceal that progress without being the cause of a stopped kernel.
 
-Rename:
+These cases belong to different owners: toolstack artifact access, hypervisor resource allocation and guest runtime setup. Treating them all as a failed `xl` command discards useful diagnostic information.
+## 133.16  Key Notes
 
-```sh
-# mv /boot/domu-zImage /boot/domu-zImage.missing
-# xl create -c /etc/xen/domu-tiny.cfg
-```
-
-Expected: `xl` fails before creating a useful guest.
-
-### Failure 2: too much memory
-
-Set:
-
-```python
-memory = 4096
-```
-
-Expected: domain creation fails because the platform does not have that memory.
-
-### Failure 3: wrong console
-
-Set:
-
-```python
-extra = "console=ttyAMA0 rdinit=/init"
-```
-
-Expected: guest may boot but console output is missing.
-
-### Failure 4: bad initramfs
-
-Point `ramdisk` at a file that is not a cpio archive.
-
-Expected: DomU kernel boots, then panics when it cannot run init.
-
-## 133.16  Lab
-
-Deliverables:
-
-1. Dom0 boot log with `xl info`.
-2. `/etc/xen/domu-tiny.cfg`.
-3. DomU kernel and initramfs paths.
-4. DomU boot log.
-5. `xl list` showing Dom0 and DomU.
-6. Dom0 and DomU `uname -a` output.
-7. Failure-isolation evidence.
-8. Failure notes for missing kernel, too much memory, wrong console, and bad initramfs.
-
-The lab is complete when two Linux kernels have printed `uname -a` in one QEMU run and Dom0 survives a DomU failure.
+- A DomU is another kernel with assigned memory, virtual CPUs and interfaces. It is not an ordinary process in Dom0's PID namespace.
+- Dom0's toolstack and service state own domain management. A minimal proof-of-boot initramfs does not necessarily contain those management facilities.
+- Kernel and rootfs paths in a domain configuration are resolved in Dom0, not on the development host.
+- Guest restart, normal shutdown and forced destruction have different persistence consequences. Lifecycle policy should distinguish them.
+- Containing one guest failure is evidence for that failure path. It does not establish containment of Dom0, shared hardware or every DMA-capable device.
 
 ## 133.17  Pitfalls
 

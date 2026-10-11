@@ -11,11 +11,11 @@ status: draft
 > **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
 > **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
 
-> **What:** transfer the `zImage` + `imx6ull-14x14-evk.dtb` we built in Chapter 25 to the board over TFTP, run `bootz` in U-Boot, and watch the first 30 lines of kernel output appear on the UART. Decode each line.
+> **What:** the U-Boot-to-Linux handoff, illustrated by the `zImage` and EVK DTB example from Chapter 25, and the meaning of early UART output. The EVK example is not a MINI boot qualification.
 > **TFTP:** Trivial File Transfer Protocol, a simple network protocol U-Boot commonly uses to fetch kernels from the host.
 > **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
-> **Why:** From here on, Linux is running. Your job changes from writing the boot code to reading what the kernel prints.
+> **Why:** after the handoff, Linux owns initialization. Its messages expose which interfaces and subsystems have become usable.
 >
 > **Focus:** the **kernel boot log** as a diagnostic instrument. Every line means something specific. Every successful boot prints predictable lines in predictable order. If you can recognise the first 30 lines, you can recognise which of them is missing or wrong on a board that's not booting.
 
@@ -74,7 +74,7 @@ Token by token:
 
 - **`console=ttymxc0,115200`**: once the i.MX UART driver loads, route `printk` to UART1 at 115200 baud. *If this token is wrong, you see no kernel output.* The driver name `ttymxc0` is the i.MX-specific convention. Other SoCs use `ttyS0`, `ttyAMA0`, etc.
 - **`earlycon`**: very early UART printk *before* the full driver loads. Reads the DT's `chosen.stdout-path` to find which UART. Without `earlycon`, the first ~10 boot lines stay in a buffer. You see them only when the regular console driver loads.
-- **`root=/dev/mmcblk0p2`**: what device holds the rootfs. We will return to this in Part V. For the first boot we may not have a usable rootfs yet, in which case the kernel panics. That's fine for *this* chapter, we're verifying kernel boot, not full system boot.
+- **`root=/dev/mmcblk0p2`**: what device holds the rootfs. We will return to this in Part V. A panic at this stage can show that the kernel reached root mounting, but does not establish a complete system boot.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
 - **`rw`**: mount the root read-write.
@@ -90,7 +90,7 @@ ip=192.168.7.2:192.168.7.1:192.168.7.1:255.255.255.0::eth0:off
 rw rootwait
 ```
 
-We'll use this from Chapter 31 onward.
+Chapter 31 uses this form to explain a network-backed rootfs.
 
 ## 26.4  What you should see
 
@@ -143,7 +143,7 @@ Starting kernel ...
 ...
 ```
 
-Read every line. Each tells you something concrete:
+Each line exposes a different part of the boot state:
 
 | Line | What it tells you |
 |------|-------------------|
@@ -211,13 +211,16 @@ The first form reads the UART address from the DT's `chosen.stdout-path` (an i.M
 
 With earlycon active, you'll see ~5 extra lines printed *before* the normal "Booting Linux on physical CPU 0x0", these are emitted by setup_arch() before the regular console driver loads.
 
-## 26.7  Lab
 
-1. **Boot the kernel.** Confirm you see the boot log. If the kernel panics on rootfs (you don't have one yet), that's fine, the goal is "kernel ran and reached the rootfs-mount step."
-2. **Save the boot log.** `picocom`'s capture mode (`-L log.txt`) writes the serial stream to a file. Save your first successful boot. You will diff against it later when something changes.
-3. **Mismatch the DT.** Try `bootz 0x82000000 - 0x83000000` with `imx6ull-9x9-evk.dtb` instead of `imx6ull-14x14-evk.dtb`. Observe what changes in the boot log (probably the model line. Maybe other things if pin assignments differ enough that drivers panic).
-4. **Bad cmdline.** Set `bootargs` to omit `console=`. Boot. Observe silence. Add `earlycon`. Observe partial output. Restore.
-5. **Bad DTB address.** Forget the `-` in `bootz <kernel> - <dtb>` and use `bootz <kernel> <dtb>`. Observe silence (kernel believes `<dtb>` is an initrd. There is no DTB at `r2`).
+(26-7-lab)=
+## 26.7  Key Notes
+
+- U-Boot owns image loading and the CPU handoff state. Linux then owns its memory mappings, interrupt handling and driver initialization.
+- `bootz` has separate kernel, initrd and DTB arguments. The `-` placeholder expresses the absence of an initrd and keeps the DTB in the correct argument position.
+- Kernel, DTB and decompression workspace must occupy compatible memory regions. A valid DTB can still be corrupted by an overlapping image or workspace.
+- `earlycon`, the regular `console=` argument and DT `stdout-path` describe related but distinct console paths. Missing UART output alone does not establish that the CPU stopped.
+- The model, memory and command-line messages identify what Linux was given. They do not prove that the DT accurately describes the populated MINI board.
+- Root mounting and executing init are later boundaries than kernel entry. A VFS panic narrows the failure stage, but is not a successful boot to user space.
 
 ## 26.8  Pitfalls
 

@@ -12,7 +12,7 @@ status: draft
 >
 > **Why:** real boards do not usually jump straight from reset into Linux. Xen also depends on firmware to load images, edit Device Tree, choose addresses, and enter the next stage correctly.
 >
-> **Focus:** U-Boot is the handoff engineer. It loads bytes, edits metadata, chooses bootargs, and jumps. If you cannot make U-Boot boot Linux in QEMU, Xen handoff will feel like luck.
+> **Focus:** U-Boot owns the handoff: loading bytes, preparing metadata, choosing boot arguments and entering the next stage. Xen adds another consumer of that contract. Understanding the addresses and entry conditions explains the transition without treating a command sequence as proof.
 > **U-Boot:** the bootloader used throughout the book. It initializes enough hardware to load and start the next image.
 > **boot script:** a text file wrapped by `mkimage` so U-Boot can execute it with `source`.
 
@@ -384,7 +384,7 @@ $ qemu-system-arm ... 2>&1 | tee logs/qemu-uboot-script.log
 
 ## 130.15  Make autoboot use the script
 
-For QEMU labs, we can type `source` manually. For real boards, we eventually want a repeatable boot command.
+For QEMU examples, we can type `source` manually. For real boards, we eventually want a repeatable boot command.
 
 At U-Boot:
 
@@ -395,65 +395,16 @@ At U-Boot:
 
 Do not save the environment yet. QEMU's environment persistence depends on the build and storage setup. For this chapter, proving `bootcmd` works is enough.
 
-## 130.16  Break it on purpose
+<span id="break-it-on-purpose"></span>
+<span id="failure-1-wrong-initramfs-size"></span>
+<span id="failure-2-overlapping-addresses"></span>
+<span id="failure-3-wrong-console"></span>
+<span id="failure-4-missing-virtio-scan"></span>
+## 130.16  Failure cases in the handoff
 
-### Failure 1: wrong initramfs size
+An incorrect initramfs extent can prevent archive unpacking or initial user-space execution. Overlapping load ranges can corrupt a previously loaded artifact before the kernel receives control. Wrong console arguments can instead hide a kernel that is still running.
 
-Skip:
-
-```text
-setenv ramdisk_size ${filesize}
-```
-
-or set:
-
-```text
-=> setenv ramdisk_size 100
-```
-
-Expected symptom: kernel cannot unpack the archive or cannot run `/init`.
-
-Lesson: `bootz` needs the real initramfs size.
-
-### Failure 2: overlapping addresses
-
-Set:
-
-```text
-=> setenv fdt_addr_r 0x40200000
-```
-
-Then load kernel and DTB. You overwrite the kernel.
-
-Expected symptom: boot failure or strange decompressor error.
-
-Lesson: load addresses are part of the design.
-
-### Failure 3: wrong console
-
-Set:
-
-```text
-=> setenv bootargs "console=ttyS0 root=/dev/ram0 rdinit=/init"
-```
-
-Expected symptom: Linux output disappears after console handoff.
-
-Lesson: firmware can break Linux with one wrong bootarg.
-
-### Failure 4: missing `virtio scan`
-
-Run:
-
-```text
-=> fatls virtio 0:0 /boot
-```
-
-before `virtio scan`.
-
-Expected symptom: U-Boot may not know the device yet.
-
-Lesson: boot scripts must initialize the buses they use.
+Storage discovery is another boundary: a script cannot load from a virtio device that its selected U-Boot configuration has not discovered. These failures explain why load policy includes sizes, addresses, bus state and arguments, not merely filenames.
 
 ## 130.17  Why this matters for Xen
 
@@ -471,24 +422,14 @@ jump to Xen
 
 If this chapter feels mechanical, good. Chapter 134 is the same handoff pattern with a hypervisor instead of a plain kernel.
 
-## 130.18  Lab
+<span id="lab"></span>
+## 130.18  Key Notes
 
-Deliverables:
-
-1. `boot/u-boot-qemu-arm.bin`
-2. `boot/qemu-fat.img`
-3. `boot-qemu-linux.cmd`
-4. `boot-qemu-linux.scr`
-5. `logs/qemu-uboot-manual.log`
-6. `logs/qemu-uboot-script.log`
-7. Failure notes for wrong size, overlap, wrong console, and missing `virtio scan`
-
-The lab is complete when:
-
-- manual U-Boot commands boot Linux,
-- the script boots Linux,
-- `fdt print /chosen` shows the bootargs,
-- you can explain every load address.
+- U-Boot owns artifact loading and the next-stage handoff. The kernel owns interpreting its DTB, arguments and initial filesystem after that handoff.
+- Load addresses are a memory-layout design. Kernel placement, decompression, DTB and initramfs must remain compatible with available RAM and each other.
+- File sizes and module extents are metadata with consequences. A correctly named file loaded to the wrong range is still an invalid handoff.
+- Boot scripts encode policy and failure behavior. Automation should preserve the same checks and stop conditions as the mechanism it describes.
+- The QEMU virtio storage path is an emulated interface, not evidence that a MINI USDHC or physical card works.
 
 ## 130.19  Pitfalls
 

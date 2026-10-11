@@ -11,7 +11,7 @@ status: draft
 > **MCU bridge:** Think of an IRQ like an EXTI/NVIC interrupt path, except Linux splits the hard interrupt from deferred work and must share lines across drivers.
 > **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
 
-> **What:** trace the kernel from the first instruction at `stext` to the moment it `exec`s `/sbin/init`, with the source files and line numbers at every step. By the end you should be able to point at any line of the boot log from Chapter 26 and say which function in which source file printed it.
+> **What:** the kernel path from `stext` to executing `/sbin/init`, with source locations connecting the boot log from Chapter 26 to subsystem initialization.
 >
 > **Why:** The boot path is long but readable. Each line you trace becomes one less thing that surprises you when something breaks. By the time you have walked `stext → __mmap_switched → start_kernel → rest_init → kernel_init` once, you can debug "why is my system not booting?" with confidence.
 >
@@ -435,15 +435,19 @@ For every memorable boot-log line, you can now name the source location. Spot-ch
 | `Freeing unused kernel image (initmem) memory: 1024K` | `mm/page_alloc.c` | `free_initmem` |
 | `Run /sbin/init as init process` | `init/main.c` | `run_init_process` |
 
-That table is the goal of this chapter. After it, you can grep the kernel for any boot-log line and find its source in under a minute.
+The table connects visible messages to initialization stages. Matching source and image versions matters more than memorizing line numbers.
 
-## 28.8  Lab
 
-1. **Walk `start_kernel()` end-to-end** with the source open. Count the init-step calls. Mark which ones you'd expect to be expensive (memory init, clocksource init, console init) vs cheap.
-2. **Find which DT property each setup_arch step reads.** Look at `early_init_dt_scan_*()` functions in `drivers/of/fdt.c`. Note which ones look at `/chosen/bootargs`, which at `/cpus`, which at `/memory`.
-3. **Build with `ftrace_dump_on_oops`** in `.config` and add `printk.devkmsg=on initcall_debug` to bootargs. Boot. Run `dmesg | grep initcall`. You will see every initcall function name printed as it runs, a more detailed view of the same flow this chapter described.
-4. **Boot with `loglevel=8`** to see *all* `printk` levels. You'll see kilobytes more output than the default. Among it are the debug-level prints that document things like the page allocator's initial population, slab cache creation, and so on.
-5. **Trace a panic.** Pass `init=/nonexistent` in bootargs. Boot. The kernel reaches `kernel_init`, the four `try_to_run_init_process()` calls fail in turn, and `panic("No working init found.")` fires. Compare the panic message to the source in `kernel_init()`.
+(28-8-lab)=
+## 28.8  Key Notes
+
+- Architecture entry establishes CPU recognition and the initial address mappings before ordinary kernel C services exist. Failures there may precede a usable console.
+- `start_kernel()` orders dependent subsystem initialization. Allocation, scheduling, interrupts and timekeeping cannot be treated as independent startup callbacks.
+- `setup_arch()` translates boot-time hardware and memory information into kernel state. The DTB pointer and command line belong to the firmware-to-kernel interface.
+- `rest_init()` creates the task that becomes PID 1 and the kernel-thread manager. The boot task becomes idle rather than becoming the user-space init program.
+- Executing init changes PID 1's program image without changing its PID. Root mounting and executable availability are separate requirements for this transition.
+- Initialization-only sections are reclaimed after boot. Pointers to `__initdata` cannot remain part of a driver's steady-state data ownership.
+- Boot logs and initcall diagnostics expose progress, but diagnosis needs source and symbols from the matching build. More output is not a substitute for locating the failed phase.
 
 ## 28.9  Pitfalls
 
@@ -463,4 +467,4 @@ That table is the goal of this chapter. After it, you can grep the kernel for an
 - **`Documentation/core-api/printk-formats.rst`**: printk format specifiers (`%pK`, `%pS`, `%px`, …) that you'll see all through the kernel.
 - **The Bootlin "Embedded Linux kernel" training material** (free, public), covers the same startup path with different emphasis.
 
-> Next chapter: **Chapter 29: Initramfs from scratch.** Now that we understand the kernel's boot path, we build the smallest possible thing it can hand off to, a single statically-linked binary in a cpio archive.
+> Next chapter: **Chapter 29: Initramfs from scratch.** A small cpio archive illustrates the earliest user-space environment that the kernel can hand control to.

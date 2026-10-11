@@ -299,14 +299,14 @@ The same rootfs works whether served over NFS or mounted from eMMC.
 
 For our continuing work in this book, **Buildroot** is the default. **Ubuntu-base** is a great option when (a) you're spinning up a new dev board, (b) you need a weird package that's in Ubuntu but not Buildroot, or (c) you'd rather pay 70 MB and 10 seconds of boot for the comfort of `apt install`.
 
-## 35A.9  Lab
+<span id="a-9-lab"></span>
+## 35A.9  Key Notes
 
-1. **Build the Ubuntu rootfs.** Follow §35A.2 through §35A.6. Get to a login prompt over NFS.
-2. **`apt install` something useful.** Try `htop`, then `python3-pip`, then `nodejs`. Verify each runs.
-3. **Time the boot.** Compare BusyBox rootfs boot time vs Ubuntu-base.
-4. **Try `systemd-analyze`.** On the Ubuntu rootfs, `systemd-analyze blame` shows which services took longest at boot. Identify the top three.
-5. **Disable a heavyweight service.** Pick one (e.g., `snapd` if present, `unattended-upgrades`). `sudo systemctl disable <name>`. Reboot. Compare boot times.
-6. **Build a packaged image.** Tar the rootfs, write to a real partition, change `bootargs` to mount from disk, verify the system boots without the host. This is what you'd ship.
+- Ubuntu-base trades a small, tightly controlled image for familiar packages and a larger maintenance surface. The choice depends on product storage, memory and update policy, not on whether a shell can start.
+- QEMU user-mode emulation executes ARM user-space binaries during host-side preparation. It does not emulate MINI hardware or qualify the target kernel, bootloader or peripheral drivers.
+- A chroot changes the apparent filesystem root. Bind mounts, name resolution and host kernel services remain separate dependencies that need deliberate setup and cleanup.
+- The rootfs architecture must match the target ABI. A working host-side package installation is not evidence that the target can boot that filesystem.
+- Services, writable state and package updates need a product policy. An NFS-mounted development rootfs and a locally shipped image have different availability and persistence assumptions.
 
 ## 35A.10  Pitfalls
 

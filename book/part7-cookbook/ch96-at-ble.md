@@ -131,17 +131,13 @@ Compare to Ch 95's GATT server: about 250 lines of D-Bus code versus ten lines o
 
 For a real product with a custom phone app, the BlueZ GATT path (Ch 95) is better, it gives standard GATT the app can use cleanly. The AT module fits quick, simple "wireless serial cable" use cases.
 
-## 96.6  Lab
+<span id="lab"></span>
+## 96.6  Key Notes
 
-1. **Identify your module.** Wire to a UART. Send `AT+VERS?`. Record the firmware version (tells you the clone variant + command dialect).
-2. **Configure.** Set name, baud, peripheral role. Reset.
-3. **Connect from a phone.** Use "Serial Bluetooth Terminal" (Android) or "LightBlue" (iOS). Find your module's name. Connect.
-4. **Bidirectional data.** From Linux, write text to the UART → see it in the phone app. From the phone, send text → read it on the UART.
-5. **Real integration.** Wire it to a BME280 (Ch 67): Linux sends temperature every 5 s. The phone app shows it. Add a command parser (phone sends "LED ON" → Linux toggles a GPIO).
-> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-6. **Compare effort.** Reflect on the ~10 lines here vs the ~250-line GATT server of Ch 95. Note what you gave up (standard GATT, throughput, multiple characteristics).
-7. **Range test.** Walk away with the phone. Note where the connection drops (~20–30 m).
+- An AT-BLE module owns most of the Bluetooth stack and exposes a serial-facing service. Linux sees its command/data protocol, not necessarily an HCI controller managed by BlueZ.
+- Command mode and connected data mode have different interpretations of the same bytes. Firmware dialect and line framing are part of the host-module contract.
+- A transparent link still needs application framing, reconnect handling and flow control. Wireless delivery should not be treated as an infallible serial cable.
+- Reduced integration effort comes with limits on GATT flexibility, connections, throughput and security policy. Those limits belong in the architecture decision.
 
 ## 96.7  Pitfalls
 

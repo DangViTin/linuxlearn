@@ -247,17 +247,18 @@ make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- -j$(nproc) zImage dtbs
 
 For i.MX6ULL specifically: mainline support is *excellent* as of 6.6, most BSP work was upstreamed during 2018–2023. Many migrations end up with ~50 forward-ported patches (board DTS + a couple of out-of-tree drivers). Expect months of work, not years.
 
-## 122A.10  Lab
+<a id="lab"></a>
 
-1. **Inventory a real BSP.** Download NXP's `linux-imx 4.1.15`. `git log --oneline v4.1.15..` to see the patch count. Sample 10 patches. Classify each into the 4 categories.
-2. **Cross-reference with mainline.** For each "still-needed" patch, search mainline (`git log -p` on the file): is the same fix already merged?
-3. **Port the trivial subsystem.** Pick gpio or i2c. Verify the BSP patches are all merged in mainline 6.6. Confirm: no porting needed for this subsystem.
-4. **Find an unmerged patch.** Pick one that's not in mainline. Investigate why (was it submitted? Rejected? Never submitted?). Read the Lore archive (Ch 120A).
-5. **Upstream candidate.** Take a BSP patch that's a clear improvement. Clean it. Submit to mainline per Ch 120A. (Even if rejected, the experience is valuable.)
-6. **Compile mainline for your board.** Use mainline 6.6's imx6ull defconfig. Build zImage + DTB. Boot on the Point Atom MINI.
-7. **Run-time comparison.** Boot the same hardware on BSP 4.1.15 and mainline 6.6. Compare: boot time, dmesg output count, kernel size, RAM usage at idle.
-8. **CVE diff.** Use `cve-checker` (or NIST CVE search) to count CVEs against 4.1.15 vs 6.6 LTS. The number will shock.
-9. **Plan a migration.** Imagine you're the engineer-in-charge. Write a 1-page proposal: subsystem-by-subsystem timeline, person-weeks estimate, risk register, fallback plan.
+<span id="a-10-lab"></span>
+(122a10-lab)=
+## 122A.10  Key Notes
+
+- Migration preserves required product behavior across changing interfaces, rather than replaying every vendor patch onto a newer tree.
+- Inventory separates already-merged fixes, obsolete changes, forward-port candidates, and vendor-only contracts. A patch's purpose matters more than whether it cherry-picks cleanly.
+- Clock, pin-control, power, bus, and application dependencies constrain migration order. A peripheral failure can originate in a provider below its driver.
+- Pinned vendor APIs and binary components can make a mainline replacement incomplete. Feature loss, out-of-tree maintenance, and future hardware changes are distinct tradeoffs.
+- Parallel BSP and migration branches preserve a shipping baseline but require ownership of security fixes, integration evidence, and eventual cutover.
+- Kernel, DT, rootfs, and application contracts all contribute to migration risk. Mainline compilation alone does not establish compatibility with the fitted MINI or existing product.
 
 ## 122A.11  Pitfalls
 

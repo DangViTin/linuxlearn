@@ -8,11 +8,7 @@ status: draft
 
 # Chapter 126: Closing: what to read next
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
-> Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
-
-
-> In 125 chapters you've gone from MCU engineer to someone who can bring up a custom i.MX6ULL board with mainline U-Boot, Linux, a hand-built rootfs, drivers, secure boot, CI, and OTA. That's a lot of ground. This chapter points to what to read and do next.
+The main path has followed an embedded system from its boot contract to its update policy. The important result is a model of the responsibilities in that system, not a claim that reading it qualifies a board or turns every example into production code. This chapter points to references for refining that model.
 > **MCU bridge:** Think of the rootfs as the firmware image's file-backed runtime environment. On an MCU you link everything into flash. On Linux, programs and config live in this mounted tree.
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **rootfs:** root filesystem, the directory tree mounted at / that contains /bin, /etc, /dev, and libraries.
@@ -139,15 +135,15 @@ Goal: build trustworthy embedded systems.
 - **Schematic / PCB reading**: you may never design boards, but you'll read thousands.
 - **Public speaking and writing**: explaining technical decisions to non-engineers is a force multiplier.
 
-## 126.6  A short list of "if you remember nothing else"
+<span id="a-short-list-of-if-you-remember-nothing-else"></span>
+## 126.6  Key Notes
 
-1. **The kernel-userspace split is the most important concept in this book.** Every confusion ultimately reduces to "I forgot which side that runs on."
-2. **Driver-binding is via DT `compatible` strings.** Add your chip's compatible to the driver's table. DT enables it. The kernel binds.
-3. **A/B partitioning + rollback is mandatory for OTA.** Without it, one bad update bricks your fleet.
-4. **`printk` is the universal Linux debugger.** When in doubt, add a printk. Trust dmesg.
-5. **Mainline first. Fork only when you must.** Vendor BSPs cost more over the product's life than the engineering to use mainline.
-6. **Secure boot, key ceremony, and OTA together, not individually, is what makes a product secure.** Each in isolation is theatrical.
-7. **The community is your colleague.** Lurk lists. Ask after lurking. Help others. Submit patches. Embedded Linux is built by humans. Be a good human.
+- Every layer needs an owner and a contract: what it receives, what it changes, what it promises, and how failure is reported.
+- Device Tree describes hardware relationships, while drivers and frameworks implement behavior. A matching node is not proof that electrical or timing assumptions are correct.
+- Update design must preserve a recoverable state through interruption and incompatible changes. A/B is one useful mechanism, not the only possible strategy.
+- Source versions and board provenance are part of an implementation's meaning. Vendor support and upstream support should be assessed against actual hardware coverage and maintenance needs.
+- Secure boot, provisioning, runtime authority and updates protect different boundaries. None alone establishes a secure product.
+- Implementation tools can generate code, but design judgment still has to account for dependencies, failure modes and evidence from the real system.
 
 ## 126.7  Acknowledgements
 
@@ -161,14 +157,6 @@ Goal: build trustworthy embedded systems.
 
 > **End of the main i.MX6ULL path.**
 
-> You started with a question: *"How do I become an embedded-Linux engineer when my background is microcontrollers and bare-metal?"*
+An embedded system is easier to reason about when a failure can be traced to a particular responsibility. That is the thread joining the bootloader, kernel, rootfs and application chapters. The details will change, but questions about ownership, interfaces and recovery will remain useful.
 
-> Now you have an answer: *"By understanding every layer from the reset vector to the systemd target, having built each by hand once, and knowing where to look up the rest when you need it."*
-
-> Most importantly, you now have the vocabulary to read kernel source, the frameworks to think about new problems, the debugging instincts to solve them, and the community connections to learn faster than alone.
-
-> Build something. Ship it. Watch a customer use it for years. That is embedded Linux.
-
-> Good luck. Send your first patch.
-
-> Optional next path: **Part IX, Applied virtualization and mixed-criticality systems**, starts with QEMU as a lab bench, then moves through Xen, real i.MX6ULL constraints, Jailhouse, and STM32MP1 Linux + RTOS patterns.
+The optional next path, **Part IX: Applied virtualization and mixed-criticality systems**, asks when those responsibilities should be separated more strongly. It uses QEMU models, Xen, the i.MX6ULL's limits, Jailhouse and STM32MP1's Linux/RTOS split.

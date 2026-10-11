@@ -169,14 +169,14 @@ The host PC sees a 64 MB USB stick.
 
 For specialised use cases (e.g., a custom protocol over USB), you can write a kernel function driver. But before doing so, check whether **FunctionFS** (a userspace-driven generic function) fits your needs. With FunctionFS, your gadget function lives in user space, the kernel just relays bytes between endpoints and your daemon. Much less work than a kernel function.
 
-## 55.6  Lab
+<span id="lab"></span>
+## 55.6  Key Notes
 
-1. **Compose a USB serial gadget.** Use ConfigFS as in §55.4. Plug into a host PC, see `/dev/ttyACM0`.
-2. **USB Ethernet over OTG.** Set up `ecm` function, assign IPs both sides, SSH into the i.MX6ULL.
-3. **Mass storage from a backing file.** Expose a virtual disk. Mount it on the host. Copy files.
-4. **HID keyboard.** Use `g_hid` to make the i.MX6ULL appear as a USB keyboard. "type" characters by writing report descriptors.
-5. **Hot re-bind.** Write to `UDC` with empty string to disconnect. Then re-bind. Useful for changing config without reboot.
-6. **Composite gadget.** Stack ACM + ECM + mass storage in one configuration. Verify all three function on the host.
+- A USB gadget is the device side of a connection, not a USB host. The controller role, connector wiring and VBUS handling must support that role.
+- ConfigFS composes functions into configurations and binds the result to a USB device controller. Descriptor identity and host compatibility are part of the interface contract.
+- Only one gadget can own a controller at a time. Reconfiguration requires an explicit disconnect and rebinding lifecycle.
+- Mass-storage export gives the host access to a backing store. Host and target must not independently mount and modify the same filesystem at the same time.
+- A composite gadget combines useful interfaces but also exposes more authority. Recovery, networking and storage functions need separate access and data-ownership decisions.
 
 ## 55.7  Pitfalls
 

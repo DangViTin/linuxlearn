@@ -246,18 +246,14 @@ The order of operations for "make this product 3× longer-lasting":
 
 Each step saves a few mA. Together they take a 1 Ah cell from 4 hours to 4 days.
 
-## 51B.6  Lab
+<span id="b-6-lab"></span>
+## 51B.6  Key Notes
 
-> **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
-> After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
-
-
-1. **Add runtime PM to a driver.** Take your fastadc / I²C / SPI driver. Implement `runtime_suspend`/`resume`. Verify `/sys/.../power/runtime_status` shows `suspended` between accesses.
-2. **DVFS sweep.** Run a CPU-heavy workload at each governor (`performance`, `powersave`, `schedutil`). Time the run and measure current. Build the trade-off curve.
-3. **System suspend.** `echo mem > /sys/power/state` from console. Wake via `wakealarm` set for 30 s. Verify devices come back up correctly.
-4. **Catch a suspend failure.** Deliberately omit `regcache_sync` in resume. Observe that the chip's config is wrong after wake. Add it back.
-5. **`powertop` baseline.** Get powertop output at idle. Tune until wake-ups are < 5/s.
-6. **Measure absolute current.** With a USB meter or INA219, record current at: 696 MHz busy, 396 MHz idle, suspended. Compare.
+- Runtime PM follows a device's activity, DVFS changes operating points under load, and system sleep coordinates the whole platform. These are distinct policies with different dependency and wakeup requirements.
+- A driver owns the ordering of register restoration, clocks, rails and in-flight work. Suspend is safe only when those resources can be quiesced and resumed consistently.
+- Register caching is useful only when software's cached state remains aligned with hardware after reset or power removal. Resume must restore the state that the device actually lost.
+- Lower current in one state is not the same as lower energy for a workload. Transition cost, time to completion and wakeup frequency belong in the comparison.
+- A valid operating point depends on the fitted silicon, regulator and board conditions. A nominal frequency in an example is not permission to select it on every MINI.
 
 ## 51B.7  Pitfalls
 

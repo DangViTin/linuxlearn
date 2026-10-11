@@ -1,17 +1,17 @@
-﻿# Chapter 3: Host environment setup
+# Chapter 3: Host environment setup
 
 A new terminal can look exactly like the last one and still choose a different compiler. It can even report "command not found" while the compiler files are sitting where you left them. The files and the terminal's knowledge of them are two different things.
 
 An MCU IDE usually keeps that distinction out of sight by choosing tools with the project. Here we make the choice ourselves. The computer on your desk is the **host**: it edits and builds the code, inspects the result, and sends it to the i.MX6ULL **target** board. Our first job is to give the files a known home and make each terminal's tool selection visible.
 
-For Part II we need a workspace, two compilers, a serial-terminal program, and a USB download tool. All can be prepared with the board disconnected. Follow this route now; keep the remaining sections as later reference:
+Part II's examples use a workspace, two compilers, a serial-terminal program, and a USB download tool. All can be prepared with the board disconnected. The sections below separate project-local tool selection from hardware access and persistent host services. Reading the examples does not require installing or operating them:
 
 | When | Sections | Result to keep |
 | --- | --- | --- |
-| Now, host only | 3.1-3.4, then 3.5's introduction, [3.8](ch03-usb-tools), [3.11](ch03-sanity-check), and 3.12 | Two selected compilers, a built `uuu`, and the two-terminal comparison |
+| Host-only tool selection | 3.1-3.4, then 3.5's introduction, [3.8](ch03-usb-tools), [3.11](ch03-sanity-check), and 3.12 | Compiler paths, a project-local `uuu`, and terminal-local exports |
 | Chapter 8 | The serial/ROM reference commands in 3.5 and 3.8 | Board connections and device identities, after the power checks |
 | Before Chapter 11 | 3.9 | An identified spare card; no write in this chapter |
-| Later network labs, starting in Chapter 24 | [3.10](ch03-host-ip-plan) first, then 3.6 and 3.7 | A stable address plan and deliberately started lab servers |
+| Network-boot examples, starting in Chapter 24 | [3.10](ch03-host-ip-plan) first, then 3.6 and 3.7 | A stable address plan and deliberately started development servers |
 
 The Windows-tool alternatives in 3.5a-3.5b are optional. Neither an SD card nor a network server is a prerequisite for Chapter 9's USB-loaded LED experiment.
 
@@ -51,7 +51,7 @@ $ ls
 .
 ├── boot       # bootable artefacts staged here, then dd'd to SD
 ├── build      # all out-of-tree build outputs (kernel, U-Boot, BusyBox)
-├── notes      # your lab journal, per-chapter
+├── notes      # configuration and diagnostic records
 ├── rootfs     # exported over NFS to the target
 ├── scripts    # helpers, shared between chapters
 ├── src        # upstream sources: linux, u-boot, busybox, your bare-metal code
@@ -65,7 +65,7 @@ You will also see `$HOME`, the shell-variable form of your home-directory path. 
 Two distinctions will save confusion later:
 
 1. **Sources and outputs have different roles.** Edit tracked sources in `src/`, including your own bare-metal files. Git records source changes against upstream. Where a project supports `O=`, place generated output in `build/`; this does not move or apply source patches for you.
-2. **`rootfs/` is the future NFS root.** Once the later lab exports it and Linux mounts it, the board uses files from this host directory without reflashing storage. Creating the directory alone does not configure NFS or boot the target.
+2. **`rootfs/` is the future NFS root.** In the later NFS-root example, Linux uses files from this exported host directory without reflashing storage. Creating the directory alone does not configure NFS or boot the target.
 
 ## 3.3  Host packages
 
@@ -119,7 +119,7 @@ We use two official prebuilt Arm toolchains because the target environments diff
 
 Both archives go into the workspace, with their original directory names. We will not install another Arm compiler through `apt` or rename these folders. Keeping the two paths visible makes it easier to check which tool a build actually used.
 
-Use **13.2.Rel1** for both targets in this edition. A fixed release gives us the same starting point when comparing build results; it is not a claim that every lab has been tested on hardware with that release. The [13.2 release notes](https://documentation-service.arm.com/static/666180bfd72aaf32efecd262) identify the host and target packages. Create the archive directory first:
+Use **13.2.Rel1** for both targets in this edition. A fixed release gives the examples a consistent starting point; it is not a claim that every example has been tested on hardware with that release. The [13.2 release notes](https://documentation-service.arm.com/static/666180bfd72aaf32efecd262) identify the host and target packages. The archive directory in this layout is:
 
 ```sh
 $ mkdir -p ~/imx6ull/src/toolchains
@@ -361,7 +361,7 @@ $ sudo apt install tftpd-hpa tftp-hpa
 $ sudo systemctl disable --now tftpd-hpa
 ```
 
-On the reference host, systemctl also coordinates this package's legacy startup arrangement. Record the command's confirmation and inspect `is-active`/`is-enabled` again; do not infer reboot behavior from current inactivity. Restore the original state if the service predated this lab.
+On the reference host, systemctl also coordinates this package's legacy startup arrangement. Record the command's confirmation and inspect `is-active`/`is-enabled` again; do not infer reboot behavior from current inactivity. Restore the original state if the service predated this example.
 
 Now open the server configuration:
 
@@ -443,13 +443,13 @@ $ sudo ufw allow in on enp0s31f6 from 192.168.7.2 to 192.168.7.1 port 69 proto u
 
 TFTP uses additional UDP transfer ports; UDP/69 alone is not proof that the whole exchange is allowed. If a restart or transfer fails, first check the host address, then `systemctl status tftpd-hpa --no-pager` and `sudo journalctl -u tftpd-hpa -n 30 --no-pager`. Next inspect the file permissions, VM attachment, and firewall policy. Do not disable workstation protection to make the symptom disappear.
 
-After the lab, stop the server and recheck both its active and enabled states. Restore only the prior configuration and firewall rules you changed. A service installed just for the lab should remain disabled; an existing shared service needs its recorded original state instead.
+After a development session, stop the server and recheck both its active and enabled states. Restore only the prior configuration and firewall rules you changed. A service installed just for these examples should remain disabled; an existing shared service needs its recorded original state instead.
 
 ## 3.7  NFS server
 
 TFTP saves us a trip with the SD card, but it still transfers individual files. What if Linux could use a directory on the host as its root filesystem? **NFS**, the Network File System, allows that. During development, the host can hold the target's files, and the board can read an updated file without needing a new SD-card image.
 
-We will not boot that way until the later kernel and root-filesystem labs. For now, if you are preparing networking, tell the host which directory the board may access.
+The later kernel and root-filesystem chapters explain NFS-root boot. This host-side example describes which directory the board may access and the trust that export grants.
 
 **Use a disposable lab VM for this recipe**, with no personal files or shared host folders. During installation, use only the VM's outbound NAT connection without incoming port forwards, not a bridged public/shared uplink. Before starting the lab server, disconnect that uplink and use the dedicated target link, or an isolated lab router. Do not run this trusting development export on your everyday home/work LAN.
 
@@ -488,7 +488,7 @@ What the commands do:
 
 - `exportfs -ar` asks the NFS server to re-read `/etc/exports` and apply the export table.
 - `systemctl restart nfs-kernel-server` restarts the NFS daemon so the kernel-side service is using the current config.
-- `showmount -e localhost` checks the advertised export, not whether the target can mount or boot it. That requires the later kernel/rootfs lab.
+- `showmount -e localhost` checks the advertised export, not whether the target can mount or boot it. Target acceptance also depends on the kernel, network path, boot arguments, and root filesystem described later.
 
 The options in the export line determine what that access means:
 
@@ -501,7 +501,7 @@ The options in the export line determine what that access means:
 
 Export authorization, listener addresses, and firewall rules are separate checks. NFS/RPC can listen on interfaces other than the lab link. Inspect `sudo ss -lntup`, `rpcinfo -p localhost`, and the existing firewall policy before and after startup. NFSv3 uses RPC services and may require additional ports; allowing only 2049 is not a complete recipe. If the isolated topology or allowed listener path is uncertain, leave the server stopped. Check `systemctl status nfs-kernel-server --no-pager` and `sudo journalctl -u nfs-kernel-server -n 30 --no-pager` before blaming a target mount failure.
 
-To undo this lab export, remove only its line from `/etc/exports` with `sudoedit`, then run `sudo exportfs -ar`. Stop the lab-only server and inspect activity, startup enablement, and remaining RPC listeners; stopping NFS does not promise every RPC socket is gone. Restore recorded states for pre-existing services. In the disposable VM, disable newly installed lab-only services, including `rpcbind.service`/`rpcbind.socket` if no other RPC work needs them. Do not erase a pre-existing export table or stop services other users require.
+To undo this example export, remove only its line from `/etc/exports` with `sudoedit`, then run `sudo exportfs -ar`. Stop the lab-only server and inspect activity, startup enablement, and remaining RPC listeners; stopping NFS does not promise every RPC socket is gone. Restore recorded states for pre-existing services. In the disposable VM, disable newly installed lab-only services, including `rpcbind.service`/`rpcbind.socket` if no other RPC work needs them. Do not erase a pre-existing export table or stop services other users require.
 
 (ch03-usb-tools)=
 ## 3.8  USB-OTG flashing tools
@@ -537,7 +537,7 @@ Run this device check only after Chapter 8's power and USB-mode checks. `15a2:00
 
 ## 3.9  SD card preparation for later chapters
 
-Choose a spare 4-32 GB SD card, class 10 or better, with no data you need to keep. Later we will write images over its contents. Today's task is only to recognize the card on the host; there is no image to write yet.
+The SD-boot examples assume a spare 4-32 GB SD card, class 10 or better, with no data to preserve. Raw image writes overwrite its contents. This section explains device identification only, not an image-writing operation.
 
 Identify which device it is, **carefully**:
 
@@ -551,9 +551,9 @@ Here, a command finishing successfully can be the wrong result. `dd` can write p
 
 Compare the device list before and after insertion. Match size, model/serial, and the newly appearing reader/card; `RM=1` alone is not proof. Reject a device containing `/`, `/boot`, swap, or unrelated mounted data. A host disk can be `/dev/sdb`; a card can be `/dev/sda` or `/dev/mmcblkN`. Disk letters do not establish safety.
 
-Do not write or repartition the card here. Record its identity and wait for Chapter 11's actual image and placement instructions. A whole-disk path and a partition path are not interchangeable, and a raw `.imx` payload is not a partitioned Linux card image. The later lab explains its selected format and verifies the written bytes; a partition list alone cannot verify raw boot code.
+Do not write or repartition the card here. Chapter 11 explains the image and its placement contract. A whole-disk path and a partition path are not interchangeable, and a raw `.imx` payload is not a partitioned Linux card image. The later case study distinguishes its selected format from the verification of written bytes; a partition list alone cannot verify raw boot code.
 
-Before any later write or physical removal, close programs using the card and unmount **every mounted card partition**. If an unmount fails or a mount point remains, stop; do not use forced/lazy unmount to get past the warning. At the actual writing lab, stop on any write error and require successful completion before flushing or removing the card. `sync` succeeding after a failed write does not make that write complete. We keep identification and writing manual, without a disk-selection script.
+Before any later write or physical removal, close programs using the card and unmount **every mounted card partition**. If an unmount fails or a mount point remains, stop; do not use forced/lazy unmount to get past the warning. During an actual write, stop on any write error and require successful completion before flushing or removing the card. `sync` succeeding after a failed write does not make that write complete. We keep identification and writing manual, without a disk-selection script.
 
 (ch03-host-ip-plan)=
 ## 3.10  Host IP plan
@@ -607,7 +607,7 @@ Require the expected lab device and source address in your actual route result b
 
 Use this when your computer has only one Ethernet port and it already connects to your Wi-Fi modem or home router. In that case, do **not** force the host to `192.168.7.1`. Leave the host on the router's LAN, usually something like `192.168.1.x`, and plug the i.MX6ULL board into the same router or switch.
 
-For the network-server labs, use an isolated lab router/network rather than opening the trusting NFS recipe on the household or office LAN. Being on the same subnet establishes neither trust nor a safe listener/firewall boundary. If the required isolation is unavailable, postpone those services and use the non-network boot route.
+For the network-server examples, use an isolated development router/network rather than opening the trusting NFS recipe on the household or office LAN. Being on the same subnet establishes neither trust nor a safe listener/firewall boundary. If the required isolation is unavailable, postpone those services and use the non-network boot route.
 
 Example:
 
@@ -690,35 +690,20 @@ $ ls -d ~/imx6ull/{src,build,boot,rootfs,scripts,toolchains,notes}
 
 This completes the host-only check. During Chapter 8, identify the serial bridge and confirm ROM USB enumeration after the power checks. Card identity is recorded before SD boot, without writing it here.
 
-For later network labs only, check each service separately with `systemctl is-active tftpd-hpa` and `systemctl is-active nfs-kernel-server`; require `active` for each service you intended to start. A combined multi-unit query can return success when only one unit is active. Also check the address/route, host-local TFTP retrieval, export, listener isolation, and recorded startup state. These checks do not replace target transfers/boots and do not block Chapter 9.
+For a network-boot configuration, each service has its own state: `systemctl is-active tftpd-hpa` and `systemctl is-active nfs-kernel-server` report them separately. A combined multi-unit query can return success when only one unit is active. The address/route, host-local TFTP retrieval, export, listener isolation, and startup state describe different host-side properties. None replaces target transfers or boots, and these services are not required by Chapter 9's USB route.
 
-## 3.12  Lab
+<a id="lab"></a>
 
-Open a new terminal and source the environment script:
+(ch03-key-notes)=
+## 3.12  Key Notes
 
-```sh
-$ . ~/imx6ull/scripts/env.sh
-```
-
-Check that this terminal has selected the two project-local compilers:
-
-```sh
-$ echo "$CROSS_COMPILE"
-arm-none-linux-gnueabihf-
-
-$ echo "$BAREMETAL_CROSS_COMPILE"
-arm-none-eabi-
-
-$ command -v arm-none-linux-gnueabihf-gcc
-/home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-linux-gnueabihf/bin/arm-none-linux-gnueabihf-gcc
-
-$ command -v arm-none-eabi-gcc
-/home/<you>/imx6ull/toolchains/arm-gnu-toolchain-<version>-x86_64-arm-none-eabi/bin/arm-none-eabi-gcc
-```
-
-Now open another terminal from the desktop, rather than launching it from the configured shell. Before sourcing the file, try `echo "$CROSS_COMPILE"` there. With no prior setup, it should be empty. Source `env.sh` and check again.
-
-The compiler files did not move during that comparison. Only the second terminal's selection changed. A child terminal can inherit its parent's exported values, so an inherited value alone does not mean `.bashrc` was edited. Record the two compiler paths and the sourcing command in your notes. If the tools disappear from a future window, you now have a specific setting to inspect before downloading them again.
+- Compiler installation and compiler selection are separate state. `. ~/imx6ull/scripts/env.sh` changes the current Bash shell and its future children, not another already-open terminal. Running the file in a child shell cannot change its parent.
+- The two Arm 13.2.Rel1 archives remain project-local with Arm's extracted names. `CROSS_COMPILE` selects the Linux-target tools, while `BAREMETAL_CROSS_COMPILE` selects the no-OS tools. A prefix has meaning only when command lookup reaches the intended executable.
+- Sources, generated outputs, staged boot files, and the target root filesystem have different owners and lifetimes. Creating `rootfs/` does not export it, and exporting it does not supply the kernel or a usable PID 1.
+- Package installation, network profiles, and services persist beyond a terminal. TFTP transfers boot files into target RAM, whereas NFS supplies ongoing access to a host tree. Listener binding, firewall policy, and export authorization are separate controls.
+- The illustrated `no_root_squash` NFS export trusts target root as host UID 0. An IP address is not authentication, and a subdirectory is not a strong sandbox. This configuration belongs on an isolated disposable system without personal files or shared host folders.
+- Normal builds need no root credentials. Explicit `sudo` is confined to restricted devices or host configuration. A serial port opening, ROM USB enumeration, and a host-local transfer each establish only their own interface boundary.
+- Storage paths identify current kernel objects, not a permanent physical card. Whole disks and partitions are distinct targets. Raw writes require fresh identity and unmount checks, and a successful `sync` cannot repair a failed write.
 
 ## 3.13  Pitfalls
 

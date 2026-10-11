@@ -272,18 +272,13 @@ static int fec_enet_rx_napi(struct napi_struct *napi, int budget) {
 
 This is canonical NAPI: process up to `budget` packets per call. If fewer, complete and re-enable IRQ. Higher latency, much higher throughput than per-packet interrupts.
 
-## 115.9  Lab
+<span id="lab"></span>
+## 115.9  Key Notes
 
-1. **Single FEC up.** Default config: confirm eth0 works (`ping`, `curl`).
-2. **Add second PHY.** Wire up FEC2 + a second PHY (KSZ8081 on a breakout). Configure DT. Verify eth1 appears + carrier detects when cable plugged.
-3. **MAC address uniqueness.** Confirm eth0 and eth1 have different MAC addresses (the kernel auto-generates from the chip UID if DT doesn't specify). Set explicit MACs in DT via `local-mac-address` if needed.
-4. **Router scenario.** Configure eth0 as WAN + DHCP client. Eth1 as LAN + DHCP server. Plug a laptop into eth1. It should DHCP an IP and route to internet via eth0.
-5. **Bridge scenario.** Same boards as a transparent L2 bridge. Tcpdump traffic on br0. Verify no MAC NAT.
-6. **Industrial isolation.** eth1 in 192.168.2.0/24 (no route to/from eth0). Attach 5 simulated Modbus-TCP devices. Verify your collector reads them and forwards summaries via eth0 with strict iptables rules.
-7. **Add DM9051 SPI Ethernet.** Wire DM9051 to ECSPI3 + IRQ + RESET GPIOs. DT update. `modprobe dm9051`. Confirm eth2 appears.
-8. **Throughput test.** `iperf3` between two i.MX6ULLs via FEC (95 Mbps), then via DM9051 (8 Mbps). Quantify.
-9. **PTP timestamping.** Enable `ethtool -T eth0` PTP HW timestamping. Run `ptp4l` to discipline the clock via PTP. Measure offset over time.
-10. **Mixed routing.** Three interfaces. Routing rules send VLAN 1 → eth0, VLAN 2 → eth1, mgmt → eth2.
+- Multiple network interfaces provide distinct links, while routing, bridging and segmentation define how traffic crosses between them.
+- Each MAC/PHY path needs consistent wiring, management addressing and identity. Device enumeration does not establish a safe WAN/LAN assignment.
+- A bridge forwards at layer 2, while a router applies layer-3 policy. Interface count alone does not create isolation.
+- An SPI Ethernet chip's integration depends on its driver and operating mode. Hardware socket offload and Linux netdev operation are different interfaces, so support must be established for the selected stack.
 
 ## 115.10  Pitfalls
 

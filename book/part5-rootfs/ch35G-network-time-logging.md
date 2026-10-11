@@ -223,14 +223,14 @@ ps | grep 'syslog\|journald'
 ls -lh /var/log /data/log 2>/dev/null
 ```
 
-## 35G.9  Lab
+<span id="g-9-lab"></span>
+## 35G.9  Key Notes
 
-1. Bring up `eth0` manually with static IP.
-2. Bring up `eth0` with DHCP.
-3. Break DNS and prove ping-by-IP still works.
-4. Start NTP and verify time changes.
-5. Configure BusyBox `syslogd` to log to `/data/log/messages`.
-6. Reboot and confirm logs survive only if `/data` is persistent.
+- Link state, IP configuration, routing and DNS are separate layers. Success at one layer narrows a diagnosis but does not establish that the next layer works.
+- Network configuration needs one clear owner. Competing static settings, DHCP clients and service scripts can overwrite addresses or resolver state.
+- Wall-clock time supports certificates and useful logs, while elapsed-time measurements need a clock that is not changed by synchronization.
+- Log retention is a storage policy. Tmpfs limits persistence, while flash-backed logs need capacity and wear controls.
+- A service should cope with delayed or lost connectivity. One successful boot-time connection is not a lifetime availability guarantee.
 
 ## 35G.10  Pitfalls
 

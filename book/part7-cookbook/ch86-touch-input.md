@@ -393,15 +393,13 @@ After calibration, `/etc/pointercal` holds the transform. `tslib`-linked apps (o
 
 For a cleaner kernel-side approach, the mainline `ads7846` driver + the `touchscreen` DT properties + `libinput`'s calibration matrix handle it without `tslib`.
 
-## 86.7  Lab
+<span id="lab"></span>
+## 86.7  Key Notes
 
-1. **TTP223 button.** Wire one to a GPIO. Use `gpio-keys` with `KEY_POWER`. `evtest` shows the key on touch.
-2. **MPR121 keypad.** Wire to I²C. Use mainline `mpr121_touchkey`. Configure 12 keycodes. Touch each electrode. Verify distinct keys in `evtest`.
-3. **XPT2046 raw.** Build and load `myxpt2046.ko`. `evtest` shows raw ABS_X/Y (0–4095). Touch corners. Note the raw values.
-4. **Calibrate.** Run `ts_calibrate` (tslib). Touch the crosshairs. Verify `ts_test` shows the cursor tracking your finger correctly.
-5. **Full UI.** Pair the XPT2046 (Ch 86) with the parallel LCD (Ch 82). Run a Qt/LVGL app with touch. Verify taps land where expected.
-6. **Pressure.** Read ABS_PRESSURE. Verify harder presses give higher values. Use it to reject light/ghost touches.
-7. **Compare to GT911.** If you have a capacitive panel (Ch 55G), compare the experience: cap is smoother and multi-touch. Resistive works with gloves but is single-point and needs calibration.
+- A capacitive button, multi-electrode touch controller and resistive panel expose different signals. The input subsystem can unify events without erasing their physical differences.
+- Resistive measurements need a transform from raw ADC coordinates into the display frame. Axis orientation, calibration and pressure validity belong in that contract.
+- Thresholds, filtering and release behavior determine whether noise becomes an input event. Application gestures should remain separate from low-level measurement handling.
+- Electrical straps and acquisition behavior are hardware-specific. Reusing an input driver does not establish identical polarity, key mapping or interrupt timing.
 
 ## 86.8  Pitfalls
 

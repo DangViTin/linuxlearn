@@ -269,27 +269,22 @@ To debug ROM execution: from `reset halt` state, set a breakpoint on the first D
 `reset init` runs OpenOCD's TCL "init" hooks first (typically configure clocks/DDR via OpenOCD before loading your binary), useful for debugging code that requires DDR but you don't want to depend on the Boot ROM doing it.
 > **DDR:** external DRAM that must be configured and trained before most software can run from it.
 
-## 118.11  Lab
 
-> **Lab vs production:** Do not burn fuses, enroll production keys, or sign release images while following the lab.
+(11811-lab)=
+## 118.11  Key Notes
+
+> **Example safety:** Do not burn fuses, enroll production keys, or sign release images while studying these examples.
 > Use throwaway keys and back up the unsigned image plus the key directory before testing irreversible security flows.
-
 
 > **Privilege boundary:** $ means normal user. # or sudo means root and can change host or target state.
 > After a privileged command, verify the expected device, service, or file appears before continuing. Roll back by undoing the config change or stopping the service you just enabled.
 
-
-1. **OpenOCD up.** Wire JTAG (FT2232H breakout). Run OpenOCD with your config. Verify TAP IDCODE.
-2. **Halt + dump.** `telnet :4444`. `reset halt`. `mdw 0x900000 16`, see what's in OCRAM.
-3. **Single-step bare-metal LED.** Load Ch 9's bare-metal binary. Set breakpoint on first instruction. Step every instruction. Observe register changes.
-4. **Bare-metal DDR debug.** Run Ch 14's DDR3 init. Set breakpoint on `mmdc_init` first instruction. Step through. Verify MMDC registers reach expected values. If DRAM doesn't work, this is *the* way to find which MDCFGn value was wrong.
-> **MMDC:** the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
-5. **U-Boot stepping.** Build U-Boot with `-O0` if needed. Halt at `_start`, step into SPL init, watch DRAM come up, watch relocation copy U-Boot to high DRAM.
-> **SPL:** Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
-6. **Kernel attach.** Boot kernel from SD. From another shell, run `gdb vmlinux` + `target remote`. Use `lx-dmesg` to see the kernel log. Set a soft breakpoint on `printk`. Trigger a printk from `/proc/sysrq-trigger`. See it hit.
-7. **Module debugging.** `insmod` a kernel module of your own (Ch 36's hello-LKM). `lx-symbols`. `break my_init`. `rmmod` then `insmod` → breakpoint hits.
-8. **Watch a corruption.** Set a watchpoint on a kernel structure (e.g., `init_task.comm`). Write to it from user-space via `/proc/self/comm`. See watchpoint trigger.
-9. **Production fuse.** Look up the i.MX6ULL "JTAG disable" fuse. Read it via OpenOCD. Verify it's *not* blown (or you've bricked debug access). In production: blow this fuse to prevent attacker debug, but accept the support cost.
+- JTAG provides a hardware access path when the target cannot run a software debug agent. The adapter, OpenOCD configuration, and GDB symbol files have separate responsibilities.
+- Reset control and memory initialization determine which addresses are usable. Halting a core does not make uninitialized DDR safe to load or inspect.
+- Symbols describe a particular image at particular runtime addresses. U-Boot relocation, kernel address randomization, and module loading each change that relationship.
+- Hardware breakpoints and watchpoints are finite resources. Read-only code and changing memory state place different demands on them.
+- Halting or writing target state can disturb interrupts, watchdogs, and peripherals. A debugger observation is not evidence of normal real-time behavior.
+- Debug accessibility is a production security and support tradeoff. JTAG-disable fuses are irreversible provisioning decisions, not reading prerequisites.
 
 ## 118.12  Pitfalls
 

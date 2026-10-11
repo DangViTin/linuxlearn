@@ -181,14 +181,14 @@ network={
 [root@pa-mini:~]# iwconfig wlan0           # legacy tool; still useful
 ```
 
-## 55E.7  Lab
+<span id="e-7-lab"></span>
+## 55E.7  Key Notes
 
-1. **Add the AP6212 to your DT.** Verify SDIO enumerates, firmware loads, `wlan0` appears.
-2. **Scan.** `iw wlan0 scan` should return SSIDs.
-3. **Connect WPA2.** Configure wpa_supplicant, start it, get an IP, ping the gateway.
-4. **Throughput.** iperf3 to a wired host. Expect 30–80 Mbps on a 2.4 GHz network (i.MX6ULL with SDIO has limited bandwidth).
-5. **Roam test.** Move between APs of the same SSID. Observe BSSID change.
-6. **Switch to softAP.** Run hostapd to make `wlan0` an access point.
+- Wi-Fi spans bus discovery, chip firmware, kernel wireless interfaces, authentication and IP networking. Failure at one layer should not be diagnosed as a failure of the whole stack.
+- Board-specific calibration and firmware are part of the hardware support contract. A driver name alone does not establish that a module is correctly supported.
+- `wpa_supplicant` owns authentication policy, while the driver and firmware own radio operations. DHCP and routing begin after that connection boundary.
+- Regulatory configuration and supported authentication modes constrain deployment. Connectivity in one environment is not universal regional or security compatibility.
+- Roaming, power saving and reconnect behavior need application-level availability assumptions beyond a single successful association.
 
 ## 55E.8  Pitfalls
 

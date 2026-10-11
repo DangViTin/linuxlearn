@@ -200,13 +200,14 @@ The list grows monthly. Check `rust/kernel/` in mainline.
 **For an embedded project**: if you're writing a new driver for a chip that doesn't exist in mainline, and you control the build environment, Rust is worth considering on Rust-supported architectures. For maintaining 4.1 BSP code or anything on ARM32, not yet.
 > **BSP:** Board Support Package: vendor patches, configs, bootloader files, and scripts needed to boot one board.
 
-## 55I.7  Lab
+<span id="i-7-lab"></span>
+## 55I.7  Key Notes
 
-1. **Check rustavailable**: On a Rust-supported arch + recent kernel, verify `make rustavailable` says yes.
-2. **Build rust_hello**: Use the example above. Load it. Verify dmesg output.
-3. **Add a module parameter**: Look up `kernel::module_param!` usage.
-4. **Convert a small chardev to Rust**: Use `kernel::miscdev::Registration`.
-5. **Provoke a compile error**: Pass a moved value somewhere. Note the borrow-check diagnostic.
+- Rust changes how memory ownership and some concurrency rules are expressed, but a driver still needs a correct hardware and kernel-interface design.
+- Safe abstractions depend on justified unsafe boundaries. Wrapping a C API does not remove the need to establish lifetime, context and locking rules.
+- Kernel Rust does not use the ordinary user-space standard library. The selected kernel's exposed abstractions and supported target determine what can actually be implemented.
+- Toolchain compatibility belongs to the chosen kernel source version. A generic Rust installation is not evidence that its kernel integration is available.
+- Language-level safety does not qualify register values, DMA behavior, timing or recovery policy. Those remain architectural and hardware responsibilities.
 
 ## 55I.8  Pitfalls
 
@@ -243,6 +244,6 @@ The list grows monthly. Check `rust/kernel/` in mainline.
 > **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
 > **regmap:** a kernel helper that wraps register reads and writes over I2C, SPI, or MMIO.
 >
-> The next Part is the **Device Cookbook (Part VII)**, Ch 64 onwards, where these subsystem chapters get applied to real chips: 2–3 representative chips per category, with schematics, DT, drivers, labs, and pitfalls per chip.
+> The next Part is the **Device Cookbook (Part VII)**, Ch 64 onwards. It applies these subsystem interfaces to representative chips, comparing wiring, Device Tree, driver responsibilities and failure modes. Its Key Notes focus on the decisions behind each integration.
 
 > Next chapter: **Chapter 64: QSPI NOR flash** (Winbond W25Q128 / Macronix MX25L256 / Micron MT25Q).

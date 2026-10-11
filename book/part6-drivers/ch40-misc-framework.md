@@ -60,7 +60,7 @@ Two functions. The full API.
 
 ## 40.3  Hello, misc
 
-Take the chardev from Ch 37 and rewrite it as a misc device. The before:
+The Chapter 37 chardev can expose the same operations through a misc device. The manual registration path is:
 
 ```c
 /* Ch 37 — by hand */
@@ -152,12 +152,16 @@ Read any of them: you'll see `misc_register` used exactly as we used it, surroun
 | Multiple instances of same driver | Easy | Each needs its own `miscdevice` struct |
 | Right for: | "Custom subsystem feel"; many instances | Simple one-off chardev |
 
-## 40.6  Lab
+<a id="lab"></a>
 
-1. **Convert your Ch 38 driver to misc.** Drop `alloc_chrdev_region`, `cdev_*`, `class_create`, `device_create`. Replace with `misc_register`. Verify same external behavior.
-2. **Two misc devices in one module.** Define two `miscdevice` structs (`hello_a`, `hello_b`) and `misc_register` both. Confirm `/dev/hello_a` and `/dev/hello_b` appear.
-3. **Combine misc + platform driver.** In your Ch 39 demo platform driver, register a misc device from inside `probe()` and `misc_deregister` from `remove()`. Now you have a DT-described platform driver that exposes a `/dev/` interface, the canonical pattern for embedded chardev drivers.
-4. **Read `drivers/char/hw_random/core.c`.** Specifically the calls to `misc_register`. Note how the hwrng subsystem manages multiple RNG backends with one shared misc device.
+(ch40-lab)=
+## 40.6  Key Notes
+
+- Misc devices share major 10 and obtain an individual minor. The framework reduces registration plumbing without changing the `file_operations` contract.
+- A standard subsystem is preferable when it already represents the device's role. Misc does not supply input, sensor, audio, or networking semantics.
+- Each registered instance needs a persistent `miscdevice` and backing state. A stack-local registration object cannot outlive the function that created it.
+- Platform binding and misc registration solve different problems: the first connects hardware to a driver, the second exposes a user-space endpoint.
+- Deregistration prevents new access through the registered endpoint. Existing open files and asynchronous users require driver-owned lifetime handling before state is freed.
 
 ## 40.7  Pitfalls
 

@@ -17,7 +17,7 @@ status: draft
 >
 > **Why:** standard Linux has a few-millisecond worst-case scheduling latency under load. That's fine for general computing but disqualifies it from motor control, audio processing, industrial PLCs, and anything that needs deterministic response. PREEMPT_RT bridges that gap. Many industrial products run PREEMPT_RT Linux today, CNCs, robotic arms, real-time camera inference.
 >
-> **Focus:** **the deterministic-latency contract**. PREEMPT_RT promises that a high-priority thread will run within a bounded time after its waking event, regardless of what lower-priority threads or kernel code are doing. What "bounded" actually means, and what breaks it, is the main thing to learn.
+> **Focus:** **the latency budget**. PREEMPT_RT reduces sources of kernel scheduling latency, but a configuration option does not guarantee every application deadline. Interrupt behavior, driver work, priorities, memory access and hardware interference all contribute to the bound a product must justify.
 
 
 ## 52A.1  What "real-time" means here
@@ -171,16 +171,14 @@ int main(void) {
 - **VFS / page fault latency on first access.** Read a file, the kernel may fault pages from storage. Mlockall + warmup avoids this.
 - **Hardware quirks.** Some i.MX6ULL peripherals (SDMA, USB) introduce latency. Profile with `ftrace` to find the culprit.
 
-## 52A.7  Lab
+<span id="a-7-lab"></span>
+## 52A.7  Key Notes
 
-1. **Build PREEMPT_RT kernel** for i.MX6ULL. Boot, verify `uname -a` shows PREEMPT_RT.
-2. **Run cyclictest at idle.** Get a baseline Max latency.
-3. **Run cyclictest under load.** `stress-ng` + cyclictest in parallel. Record worst case.
-4. **Tune.** Try `isolcpus` (no-op single-core), `processor.max_cstate=0`, mlockall in cyclictest source. Measure improvement.
-5. **Compare with standard kernel.** Build same kernel with `CONFIG_PREEMPT_NONE`. Run cyclictest under same load. Note the 30–100× worse worst case.
-6. **Real workload.** Run a 1 kHz GPIO toggle from a SCHED_FIFO thread. Scope the period jitter. Tune until jitter is < 50 µs.
-> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
+- Real-time design concerns deadlines and worst-case interference, not average throughput. PREEMPT_RT reduces sources of kernel scheduling latency but does not establish a universal deadline guarantee.
+- Threaded interrupts and changed locking behavior alter where work runs and who can preempt it. Priority choices must include kernel service threads, not just the application.
+- Page faults, storage, device drivers and hardware behavior remain part of the latency budget. Kernel configuration alone is not a complete timing argument.
+- A latency measurement describes a specific kernel, board, workload and observation period. Its maximum is evidence for those conditions, not proof of an absolute bound.
+- The i.MX6ULL has one Cortex-A7 core. Multicore isolation recipes do not create a spare core, so shared CPU demand must fit the design.
 
 ## 52A.8  Going deeper
 

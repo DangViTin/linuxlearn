@@ -192,14 +192,14 @@ When a new panel doesn't display:
 
 `drm.debug=15` on the kernel cmdline fills dmesg with DRM trace output. Very useful for modeset bugs.
 
-## 54.8  Lab
+<span id="lab"></span>
+## 54.8  Key Notes
 
-1. **Bring up a panel.** Use a known-good panel (Ampire, ATK7016) with mainline timings. Boot. Confirm `/dev/fb0` and `modetest` output. `cat /dev/urandom > /dev/fb0` shows pixels.
-2. **Custom panel timings.** Add timings for a panel that isn't in panel-simple's database. Iterate until display is stable.
-3. **Backlight.** Verify `/sys/class/backlight/backlight/brightness` adjusts visibly.
-4. **modetest.** Run on a kernel with DRM-only. See the modes. Pick one. Observe modeset.
-5. **A Qt app.** Compile a simple Qt app with `-platform linuxfb`. Run. Verify it draws.
-6. **DRM client.** Write a small libdrm program that creates a dumb buffer, fills it red, and presents it. Useful for understanding DRM bring-up.
+- DRM/KMS separates framebuffer storage, scanout, mode selection and output connections. Legacy fbdev exposure does not describe the whole display pipeline.
+- Panel timing, controller limits and board wiring must agree. A panel's advertised mode does not mean the LCDIF or memory system can sustain it.
+- Panel power and backlight are separate from pixel transport. A blank screen can come from either path even when a modeset is accepted.
+- Device Tree describes the physical display chain and timing requirements. Existing panel drivers are preferable when they represent the actual hardware.
+- Buffer ownership and presentation timing matter above the driver as well. Drawing pixels and displaying the intended complete frame are different operations.
 
 ## 54.9  Pitfalls
 

@@ -19,9 +19,9 @@ arch/arm/dts/imx6ull-pa-mini.dts
 include/configs/mx6ull_pa_mini.h
 ```
 
-The supplied MINI V2.2 schematic gives us a real starting point: the stock **KEY0** button and two routed I2C buses. The TMP102 at `0x48` is an **optional lab add-on**, not an onboard temperature sensor. We will study its error handling on the host, then use KEY0 for a policy that needs no added sensor.
+The supplied MINI V2.2 schematic gives us a real starting point: the stock **KEY0** button and two routed I2C buses. The TMP102 at `0x48` is an **optional external add-on**, not an onboard temperature sensor. We will study its error handling on the host, then use KEY0 for a policy that needs no added sensor.
 
-These are modern driver-model exercises, not patches to paste into Chapter 19's vendor U-Boot. The vendor baseline establishes the documented MINI starting point; compiling v2026.04 helpers does not establish a working modern MINI image. Keep the two source trees, configurations and build outputs separate.
+These are modern driver-model examples, not patches to paste into Chapter 19's vendor U-Boot. The vendor baseline establishes the documented MINI starting point; compiling v2026.04 helpers does not establish a working modern MINI image. Keep the two source trees, configurations and build outputs separate.
 
 | MINI V2.2 resource | Documented connection | Use here |
 |--------------------|-----------------------|----------|
@@ -280,7 +280,7 @@ Do not run `distclean` in a shared tree or repeat storage writes to test logic. 
 | I2C failure, shutdown, extended mode | Blocked; no uninitialized sample. |
 | Environment update failure | Error returned; normal dispatch not installed. |
 
-Test these on the host first. For a later qualified board test, interrupt autoboot and inspect `board_temp_16c` and `bootcmd`. Do not heat the board. A temporary `setenv` does **not** survive `reset`; inject failures in a separate lab build or host fixture, not by saving a threshold.
+Test these on the host first. For a later qualified board test, interrupt autoboot and inspect `board_temp_16c` and `bootcmd`. Do not heat the board. A temporary `setenv` does **not** survive `reset`; inject failures in a separate example build or host fixture, not by saving a threshold.
 
 ## 24B.10  Add a GPIO recovery button
 
@@ -365,7 +365,7 @@ int board_late_init(void)
 }
 ```
 
-For the **sensor-equipped exercise**, instead replace the final dispatch assignment in 24B.8 with this **hook fragment**, adding `bool pressed;` to its declarations. The temperature gate then remains mandatory:
+For the **sensor-equipped example**, instead replace the final dispatch assignment in 24B.8 with this **hook fragment**, adding `bool pressed;` to its declarations. The temperature gate then remains mandatory:
 
 ```c
     ret = pa_mini_recovery_key(&pressed);
@@ -389,7 +389,7 @@ Recovery and normal boot are exclusive. Changing `bootcmd` inside a running comm
 | Invalid board identity | Hold in Chapter 24D | No invented "safe" DTB. |
 | Optional peripheral absent | Product-specific | Do not silently weaken a mandatory check. |
 
-MINI sheet 4 and CORE sheet 1 show discrete regulators, not an I2C PFUZE3000 PMIC. The vendor board file's inherited "I2C1 for PMIC and EEPROM" comment is not a MINI parts list. A future PMIC fault input would need its own documented polarity, latching and power behavior; there is none to read in this exercise. Boot policy is not a substitute for hardware protection.
+MINI sheet 4 and CORE sheet 1 show discrete regulators, not an I2C PFUZE3000 PMIC. The vendor board file's inherited "I2C1 for PMIC and EEPROM" comment is not a MINI parts list. A future PMIC fault input would need its own documented polarity, latching and power behavior; there is none to read in this example. Boot policy is not a substitute for hardware protection.
 
 ```{figure} ../illustrations/part3/10-policy-dispatch.png
 :name: fig-p3-policy-dispatch
@@ -400,16 +400,15 @@ MINI sheet 4 and CORE sheet 1 show discrete regulators, not an I2C PFUZE3000 PMI
 Open only one path after its prerequisites pass. This diagram shows the combined sensor/identity add-on policy developed across these chapters. A stock MINI uses KEY0 without those absent devices. It is not a hardware safety circuit. Holding at the prompt does not remove power.
 ```
 
-## 24B.12  Lab
+(b-12-lab)=
+## 24B.12  Key Notes
 
-1. Inspect pinned Kconfig and generated configuration.
-2. Test signed conversion, boundaries and read failures on the host.
-3. Integrate the stock KEY0 hook in a private modern-port build; retain non-booting defaults until loading commands are ready.
-4. Keep the temperature helpers as host tests unless the optional sensor is fitted and electrically checked. Only that add-on build installs the temperature gate.
-5. Test key claim failure, polarity, changing samples and cleanup in a fixture before using the documented KEY0 GPIO.
-6. Verify recovery cannot fall through to normal boot. Keep environment tests volatile.
-
-No step needs EEPROM programming, fuse operations or environment storage writes. Later deployment requires a deliberate, separately qualified spare-media procedure.
+- `board_late_init()` runs after environment import but before normal dispatch. A blocked-first hook prevents stale saved commands from opening the gate before required inputs are valid.
+- The stock MINI input is KEY0 on UART1_CTS/GPIO1_IO18. The TMP102 is an optional add-on, so its mandatory temperature gate belongs only to a sensor-equipped hardware contract.
+- TMP102 comparison uses signed sixteenth-degree counts, preserving negative values and fractional thresholds. Transport errors and unsupported sensor modes are not valid samples.
+- GPIO lookup, claim, mux, polarity and release are separate responsibilities. Descriptor logical activity already includes active-low interpretation, while bounded stable samples define the example's debounce policy.
+- Recovery and normal dispatch are exclusive choices. Changing `bootcmd` inside a running script does not cancel commands that follow in that script.
+- A late software hold leaves power applied and permits operator commands. It is neither ROM-time protection nor a security or thermal-shutdown boundary, and it requires no persistent environment or fuse changes.
 
 ## 24B.13  Pitfalls
 

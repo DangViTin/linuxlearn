@@ -396,15 +396,13 @@ What WM8960 adds (the other ~1300 lines): ADC + capture path, mic preamp + boost
 - **ES8388**: cheap. The mainline `es8328.c` driver covers it but the ES8388 has minor register differences, check the compatible.
 - **TLV320AIC3104**: highly configurable routing (a "miniDSP" in bigger siblings). Industrial temp range.
 
-## 89.7  Lab
+<span id="lab"></span>
+## 89.7  Key Notes
 
-1. **Bring up WM8960** (or your codec) per Ch 53. Verify `aplay -l` shows it. Play a WAV.
-2. **From-scratch codec.** Build `mycodec.ko` (adapt registers to a real simple codec, or test the registration logic). Verify the component registers and `alsamixer` shows the volume control.
-3. **DAPM trace.** `cat /sys/kernel/debug/asoc/*/dapm/*` while playing/stopping. Watch widgets power on/off. Confirm the DAC powers down when playback stops.
-4. **Volume + dB.** In `alsamixer`, adjust Master volume. Verify the dB readout matches the TLV scale.
-5. **Capture (WM8960).** `arecord` from the mic input. Verify the capture path + mic boost.
-6. **Speaker (WM8960).** Route to the built-in class-D speaker amp. Drive a small speaker directly (no external amp).
-7. **Anti-pop.** Play/stop repeatedly. Listen for clicks. A correct DAPM power-sequence + soft-mute eliminates them. Comment out the mute_stream op and hear the difference.
+- A codec driver joins register control, digital audio format and analog routing. The board's machine description connects it to the CPU audio interface.
+- DAPM describes which analog blocks and outputs must be powered for an active route. A running PCM transfer can coexist with a silent physical output.
+- Clock roles, sample format and accepted rates must agree at both ends. Register-cache restoration also matters when the codec loses power.
+- Mute and power sequencing affect clicks, current and output safety. They belong to the audio lifecycle rather than a single playback command.
 
 ## 89.8  Pitfalls
 

@@ -193,14 +193,14 @@ i.MX6ULL has no GPU/VPU, so video encoding is software (slow). Useful up to ~5â€
 
 The sensor driver (ov5640) exposes a stack of controls. User-space tunes them. Auto-exposure and auto-white-balance are good enough for general use.
 
-## 54B.6  Lab
+<span id="b-6-lab"></span>
+## 54B.6  Key Notes
 
-1. **Bring up the OV5640.** DT, kernel config (`CONFIG_VIDEO_OV5640`), reboot, look for `/dev/video0`.
-2. **Inspect the pipeline.** `media-ctl -p -d /dev/media0` shows the graph.
-3. **GStreamer capture + display.** Run the launch line above. See your camera on the LCD.
-4. **Save snapshots.** `v4l2-ctl --device /dev/video0 --stream-mmap=3 --stream-to=img.raw --stream-count=1`. Convert to PNG with ImageMagick.
-5. **Auto-exposure off.** Set manual exposure. Sweep values. Observe brightness changes.
-6. **Network stream + viewer.** Stream H.264 (software-encoded. Slow) over UDP to a desktop running `vlc udp://@:5000`.
+- The capture pipeline joins sensor, interface and memory buffers through V4L2 and, where applicable, the media graph. GStreamer consumes that exposed stream in user space.
+- Format and timing must agree across the pipeline. Pixel-format conversion may solve an interface mismatch at a significant CPU and memory cost.
+- Queued buffers transfer ownership between application and driver. Enough buffering absorbs scheduling variation, while more buffering can add latency.
+- Sensor control access does not prove pixel delivery. Power, reset, input clock and parallel bus timing remain separate dependencies.
+- The i.MX6ULL's camera path and processing budget constrain the system. A pipeline syntax example does not establish a sustained frame rate or hardware encoder capability.
 
 ## 54B.7  Pitfalls
 

@@ -1,66 +1,69 @@
 ---
 chapter: 121
-title: Capstone: custom board port
+title: Custom board port as a system design
 part: VIII - Debug, production, advanced
 estimated_pages: 30
 status: draft
 ---
 
-# Chapter 121: Capstone: custom board port
+<span id="chapter-121-capstone-custom-board-port"></span>
+# Chapter 121: Custom board port as a system design
 > **NFS:** Network File System, which lets the target mount a host directory over Ethernet during development.
 
-> **What:** a board-port exercise that uses most of what came before. Take a custom PCB (or a rework of the Point Atom MINI into a non-trivial variant) and port the entire stack to it: **U-Boot defconfig + DTS**, **kernel DTS + drivers**, **at least one new peripheral** the original board didn't have, and a **reproducible build script** that goes from clean checkout → bootable SD in one command. The deliverable is a working, customized Linux system on hardware you (or a colleague) designed.
+> **What:** a board port as an integration problem. A custom PCB or MINI variant changes assumptions shared by **U-Boot configuration**, **kernel Device Tree and drivers**, **rootfs contents**, and **image generation**. This chapter follows those dependencies and shows where each layer owns a decision.
 > **MCU bridge:** Think of U-Boot like a much larger boot stub plus debug monitor: it initializes hardware, loads the next image, and gives you commands before Linux starts.
 > **U-Boot:** the bootloader that initializes enough hardware to load and start the Linux kernel.
 >
-> **Why:** Each Cookbook chapter covered one piece. A real board port is where those pieces have to work together. You'll touch: pin-muxing (Ch 5), DDR initialization (Ch 14), U-Boot porting (Ch 22), kernel DT (Ch 27), each peripheral chapter that applies (whatever your board has). At the end you have a binary build script + a custom DT that any teammate can run and reproduce. That deliverable, plus the debugging experience that comes with it, is what gets you to the next level of confidence on this stack.
+> **Why:** Each Cookbook chapter covered one piece. A board port is where those pieces have to agree: pin multiplexing (Ch 5), DDR initialization (Ch 14), U-Boot policy (Ch 22), kernel DT (Ch 27), and the peripherals actually fitted. Understanding that agreement makes generated code and configuration easier to assess. A successful build alone does not establish a working board.
 > **DDR:** external DRAM that must be configured and trained before most software can run from it.
 >
-> **Focus:** **the bring-up sequence is U-Boot first (you need a boot loader), then kernel + DT for *each* peripheral one at a time, with verification at every step**. Don't try to boot everything at once. Bring up serial, then DDR, then SD, then Ethernet, then your custom peripheral. Probe the serial console after each step. Use Ch 118's JTAG when serial is too coarse. Keep a known-good fall-back image you can flash to recover from bricks. At the end, ask what surprised you and why. That's what makes the next port faster.
+> **Focus:** **dependencies determine the bring-up order**. A console makes early failures observable, DDR supports larger images, and storage or networking supplies later boot inputs. Peripheral integration comes after those foundations. Recovery must remain independent of the candidate being evaluated. The order below is a design example, not a required reader project.
 > **MCU bridge:** Think of JTAG like SWD debugging on Cortex-M: halt, read registers, set breakpoints. The Cortex-A path adds MMU state, privilege modes, and more complex reset behavior.
 > **JTAG:** the hardware debug scan chain used to halt, inspect, and single-step CPUs.
 
 ## 121.1  Scope, what to port
 
-A realistic 4-week capstone:
+The port spans several contracts:
 
-| Phase | What | Deliverable |
+| Boundary | Design responsibility | Evidence needed separately |
 |---|---|---|
-| Week 1 | Hardware bring-up | Custom DT compiles; U-Boot prompt over serial; DDR test passes |
-| Week 2 | Storage + Network | SD/eMMC boot; Ethernet up; NFS root works |
-| Week 3 | Custom peripheral | One chip from Part VII wired + driver bound + user-space test |
-| Week 4 | Reproducible build | One-script flow: clean checkout → bootable image |
+| Early hardware | Power, reset, pin routing and DDR assumptions | Measurements and memory qualification on the fitted board |
+| Boot inputs | Storage layout, image selection and recovery | Actual loader behavior and artifact integrity |
+| Peripheral integration | Supplies, clocks, buses, driver binding and user interface | End-to-end behavior, including failure and removal |
+| Build and release | Pinned inputs, configuration and artifact provenance | Repeatable output and a qualified release candidate |
 
-Pick the peripheral wisely: easiest first time = an existing-driver chip (e.g., AT24 EEPROM, DS3231 RTC, BME280 sensor). Avoid for first attempt: cameras, complex graphics, anything DMA-heavy.
+An existing-driver chip such as an AT24 EEPROM or DS3231 RTC keeps the software contract relatively small. Camera, graphics and DMA-heavy additions widen the dependency set. That difference affects integration risk, not which assignment a reader must complete.
 > **DMA:** Direct Memory Access. Hardware moves data to or from memory without the CPU copying each byte.
 
 ## 121.2  Hardware variants, what counts as "custom"
 
-Three options, in order of ambition:
+Three cases change different parts of the contract:
 
-### Option A, Pretend-port the Point Atom MINI
+<span id="option-a-pretend-port-the-point-atom-mini"></span>
+### Case A, Software policy on unchanged MINI hardware
 
-Even using the standard MINI, you can do a meaningful port:
+The physical board can stay unchanged while product policy differs:
 - Different model string in U-Boot (board name in `bdinfo`)
 - Different default hostname in Linux
-- Add a peripheral the stock MINI doesn't ship (e.g., RTC on I²C, second SPI flash)
 - Custom default `bootargs`
 
-You learn the workflow without designing a PCB.
+These changes affect identity and boot policy, not the power tree or DDR wiring. Adding an external device moves the design into the next case.
 
-### Option B, Rework the Point Atom MINI
+<span id="option-b-rework-the-point-atom-mini"></span>
+### Case B, A MINI variant with changed connections
 
-Solder/desolder peripherals on the existing board:
+Possible additions or changes include:
 - Replace the WiFi module (if any) with a different one
 - Add an external RTC chip + battery
 - Add an SPI Ethernet (DM9051 from Ch 115)
 - Mod the LCD interface
 
-Real wiring, partial-board changes. Tests your DT skills.
+Changed wiring introduces new supply, pin-mux and Device Tree dependencies. Each addition needs its actual module specification and connection review. This is a design comparison, not a soldering instruction.
 
-### Option C, Full custom PCB
+<span id="option-c-full-custom-pcb"></span>
+### Case C, A full custom PCB
 
-Design your own i.MX6ULL board (KiCad / Altium):
+A custom board can change the early boot assumptions themselves:
 - Different RAM (DDR3 256 MB vs the MINI's 512 MB? Different timing).
 - Different PMIC.
 > **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
@@ -69,49 +72,18 @@ Design your own i.MX6ULL board (KiCad / Altium):
 - Different I/O complement (your specific application, sensors, motors, displays).
 - Different connectors / form factor.
 
-This is the real-world product workflow. Takes 4–8 weeks for the PCB alone. Not for the time-constrained reader.
+The port must now account for hardware design and qualification as well as software integration. A similar SoC does not justify reusing another board's DDR, power or reset values. Detailed PCB design is outside this chapter's scope.
 
-For most readers: **Option A or B is right**. The PCB design is a different book.
+<span id="the-bring-up-checklist"></span>
+## 121.3  Bring-up as a dependency model
 
-## 121.3  The bring-up checklist
+Power and reset must be valid before a ROM observation is meaningful. The ROM then needs the correct boot source and image format. Early software needs a usable stack, console and memory arrangement before later storage, network or peripheral behavior can be interpreted.
 
-```
-□ Power
-  □ All rails come up in the right sequence (scope each)
-  □ All rails at the right voltage (within ±5 %)
-  □ POR_B deasserts after rails stable
+Those dependencies do not create a universal pass/fail list. Rail limits come from the actual components and board specification. DDR evidence depends on geometry, timings, operating conditions and the chosen test coverage, not a fixed one-hour run. Destructive memory tests must not overwrite the running image or its data.
 
-□ Boot ROM
-  □ BOOT_MODE pins strap to expected boot source
-  □ Boot ROM reads IVT/DCD from boot media
-  □ DCD configures clocks + DDR (or SPL does)
+Console output also depends on the selected image: the MINI ROM+DCD path in Chapters 19 and 22 has no SPL banner. Similarly, a PHY response, driver probe or bus acknowledgement establishes only part of an interface. The application path and recovery behavior remain separate.
 
-□ Serial console
-  □ UART1 (or your chosen) at 115200 8N1
-  □ U-Boot prints "U-Boot SPL ..." then "U-Boot ..."
-  □ Enter U-Boot prompt with key press
-
-□ DDR
-  □ U-Boot's "mtest" passes across full DDR range
-  □ DDR Stress Tool (NXP) green for 1 hour
-
-□ Storage
-  □ U-Boot can read SD/eMMC (mmc info; ls mmc 0:1)
-  □ Kernel mounts root from same
-
-□ Network
-  □ PHY detected (mdio probes return correct ID)
-  □ Link up when cable plugged
-  □ DHCP gets IP; ping gateway works
-
-□ Each custom peripheral
-  □ I²C bus shows device at expected address (i2cdetect)
-  □ SPI device responds with expected ID
-  □ Kernel driver probes successfully (dmesg | grep <chip>)
-  □ User-space test exercises the device end-to-end
-```
-
-Tick each off in order. Each failure isolates to one layer.
+The useful design model is a chain of prerequisites with an observation at each boundary. A symptom narrows the search, but rarely identifies one failed layer by itself.
 
 ## 121.4  U-Boot port, the steps
 
@@ -263,7 +235,7 @@ If this works, you've taken a peripheral from "nonexistent on the EVK" to "fully
 
 ## 121.7  The reproducible build script
 
-The deliverable: one script, one command, bootable SD.
+The example collects source selection, configuration, artifact generation and image assembly behind one build entry point. The script makes those dependencies visible, but does not by itself make a build reproducible.
 
 `build.sh`:
 
@@ -330,9 +302,9 @@ EOF
 echo "Done. Eject SD and boot the target."
 ```
 
-Run: `./build.sh /dev/sdb`. 30 minutes later (mostly compile time), bootable card.
+The example accepts a target device argument. A real image-writing operation requires independent identification of the removable medium and verification of its layout. `/dev/sdb` is a placeholder, not a disk recommendation.
 
-**This script** is the deliverable. Hand it to a teammate. They get the same image. Reproducibility is the difference between "I shipped a product" and "I have a Linux running on my desk."
+Reproducibility depends on pinned source revisions, toolchains, configuration, dependencies and controlled build inputs. Another engineer needs those inputs and the artifact checks, not only the script. Producing the same bytes and qualifying those bytes on hardware are separate responsibilities.
 
 ## 121.8  Common failures + recovery
 
@@ -359,19 +331,16 @@ Run: `./build.sh /dev/sdb`. 30 minutes later (mostly compile time), bootable car
 - Boot back into recovery via USB-OTG SDP (Ch 8).
 - Re-flash known-good image.
 
-## 121.9  Lab
 
-1. **Set up workspace.** Clone u-boot, linux, buildroot at known versions. Verify each compiles.
-> **Buildroot:** a configuration-driven build system that produces a complete root filesystem and related images.
-2. **Stock build first.** Build U-Boot + kernel for the EVK (no changes). Boot the stock Point Atom MINI. Verify everything works.
-3. **Customize step by step.** Fork the EVK as your board. Change only the model string. Rebuild. Reboot. Verify `bdinfo` shows your name.
-4. **Add a peripheral.** Wire DS3231 RTC (Ch 117). Add DT. Enable driver. Verify.
-5. **Or replace a peripheral.** Remove the stock WM8960 audio. Add an SGTL5000 (Ch 89). Update DT. Verify `aplay` works.
-6. **Or add a new bus.** Wire a second I²C bus to spare pins. Add DT. Verify `i2cdetect -y 1` works.
-7. **Build script.** Write `build.sh` from scratch. Test on a clean checkout. Time the full build.
-8. **CI integration (preview of Ch 121A).** Wire `build.sh` into GitHub Actions. Verify it runs on every commit.
-9. **Document it.** Write a 1-page README: "what hardware is needed, what software prerequisites, how to build, how to flash, how to verify." A new engineer should be able to follow it.
-10. **(Stretch) Upstream the DT.** Format-patch + send your board DT to linux-arm-kernel + linux-imx (per Ch 120A). Even if rejected, the experience is valuable.
+(1219-lab)=
+## 121.9  Key Notes
+
+- A board port connects fitted hardware to several software descriptions. Power and reset behavior, early DDR setup, U-Boot configuration, kernel DT, and rootfs contents have distinct owners.
+- The dependency chain starts before Linux. Unusable rails, reset, or DDR can prevent any kernel diagnostic, while a serial banner establishes only partial progress.
+- Device Tree describes wiring and resources, while drivers implement behavior. A matching `compatible` string alone does not establish correct clocks, supplies, interrupts, or pin mux.
+- The external RTC case separates board description, driver selection, and userspace access. Its presence and wiring are additions, not stock MINI assumptions.
+- Reproducible image construction needs pinned inputs and matching modules and libraries. Writing an image to a particular medium is a separate, destructive deployment operation.
+- Recovery depends on a board-specific known-good image and accessible boot path. Compilation and illustrative output do not qualify a custom board or the MINI.
 
 ## 121.10  Reflection
 

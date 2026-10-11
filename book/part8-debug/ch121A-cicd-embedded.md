@@ -349,20 +349,18 @@ When the board farm is offline or builds fail repeatedly:
       -d "{\"text\":\":x: Build failed: ${{ github.event.pull_request.title }} (${{ github.run_id }})\"}"
 ```
 
-## 121A.10  Lab
+<a id="lab"></a>
 
-1. **GitHub Actions cross-build.** Set up `.github/workflows/build.yml`. Push a commit. Verify the build runs in cloud.
-2. **Trigger failure.** Introduce a syntax error in a DT. Push. Verify the build fails red.
-3. **Self-hosted runner.** Install runner on a Linux box with USB to a board. Register. Verify it shows "Idle" in GitHub UI.
-4. **Hardware test job.** Add `hardware-smoke` job. Verify it runs on the self-hosted runner.
-5. **smoke_test.py.** Write a Python script that drives the serial console and runs 3 checks. Run locally first. Then in CI.
-6. **Power-cycle GPIO.** Wire a USB-controlled power switch (e.g., `usbrelay`) so the runner can hard-reboot the board between tests.
-> **MCU bridge:** Think of Linux GPIO like the same pin set/reset block you used on STM32, but accessed through a kernel subsystem that owns numbering, direction, interrupts, and user-space exposure.
-> **GPIO:** General-Purpose Input/Output, a pin controlled as a digital input, output, or interrupt source.
-7. **uuu flashing.** Set up the runner to use `uuu` to flash a fresh image on every test. Verify it works clean.
-8. **ccache.** Wire ccache into the build. Observe 5× speedup on the second run.
-9. **Labgrid (stretch).** Install Labgrid. Expose 2 boards via the framework. Have CI acquire one at random.
-10. **Slack notification.** On test failure, post a message to a Slack channel.
+<span id="a-10-lab"></span>
+(121a10-lab)=
+## 121A.10  Key Notes
+
+- Cloud runners construct cross-built artifacts and check source. A hardware runner owns the physical board and provides a different kind of evidence.
+- The build-to-test handoff must identify matching bootloader, kernel, DTB, and rootfs artifacts. A successful build does not establish that those artifacts boot together.
+- Board control requires exclusive ownership of power, boot selection, storage, and serial access. Labgrid or equivalent locking prevents concurrent jobs from changing the same target.
+- A serial prompt or sysfs entry is a bounded smoke-test observation, not full functional, power, or fault-recovery qualification.
+- Self-hosted runners are a trust boundary because submitted code can reach attached hardware and host resources. Untrusted contributions cannot inherit unrestricted board or signing access.
+- Caches shorten builds but do not replace pinned inputs. Retained logs and exact debug artifacts connect a failed test or field report to its build.
 
 ## 121A.11  Pitfalls
 

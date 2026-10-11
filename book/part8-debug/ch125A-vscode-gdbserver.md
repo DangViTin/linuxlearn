@@ -208,18 +208,18 @@ It's not a debugger. Not an editor for serious projects. But for "I'm reading th
 
 VSCode's IntelliSense on the kernel source works but is slower (~5 minutes to index). For active editing: VSCode. For pure reading: Source Insight.
 
-## 125A.8  Lab
+<a id="lab"></a>
 
-1. **Install gdbserver target / gdb-multiarch host.** Verify versions match major ARM target.
-2. **Hello-world C app cross-compile.** With `-g` flag. Copy to target.
-3. **Manual gdbserver test.** `gdbserver :2345 ./hello` on target. `gdb-multiarch ./hello` + `target remote target-ip:2345` on host. Step, print. Confirm it works before introducing VSCode.
-4. **VSCode launch.json.** Set up the config. F5. Confirm debug session connects.
-5. **Set breakpoint.** Click in gutter at a source line. Continue. Verify breakpoint hits and you can inspect locals.
-6. **Set sysroot properly.** Try without (note libc symbol errors). Then set. Observe they resolve.
-7. **c_cpp_properties.json.** Configure to point at target sysroot. Verify hover-over-symbol finds the target's libc, not your host's.
-8. **Multi-target.** Add 2 board configs. Switch between them via dropdown.
-9. **Debug a real driver in your app** that wraps Ch 105 (RFID) or Ch 117 (RTC). Set breakpoint on init. Trace through.
-10. **Source Insight evaluation (stretch).** Try the 30-day trial. Index your kernel. Compare navigation speed to VSCode.
+<span id="a-8-lab"></span>
+(125a8-lab)=
+## 125A.8  Key Notes
+
+- VSCode presents debugger state but does not implement target debugging. Host GDB and target `gdbserver` retain their command-line responsibilities.
+- `launch.json` identifies the executable, debugger, endpoint, and setup commands. Those references must describe one consistent deployed build.
+- `c_cpp_properties.json` controls editor parsing and source navigation. Correct IntelliSense does not establish that runtime symbols or libraries match.
+- The host ELF and target sysroot supply debug context. Source-path substitution solves moved trees, not executable or library version mismatches.
+- Pre-launch automation owns connection readiness and cleanup. A background SSH command that never becomes ready can block the IDE without exposing a target defect.
+- Kernel-module debugging needs a kernel transport and relocated module symbols. An application `gdbserver` connection cannot substitute for that interface.
 
 ## 125A.9  Pitfalls
 
@@ -252,4 +252,4 @@ VSCode's IntelliSense on the kernel source works but is slower (~5 minutes to in
 
 ---
 
-> Next chapter: **Chapter 126: Closing: what to read next**. This closes the main i.MX6ULL bring-up path; Part IX continues with optional virtualization labs.
+> Next chapter: **Chapter 126: Closing: what to read next**. This closes the main i.MX6ULL bring-up path; Part IX continues with optional virtualization studies.

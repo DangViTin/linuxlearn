@@ -1,6 +1,6 @@
 # Chapter 10: C + startup.S + linker script
 
-The LED already blinks. Rewriting its loop in C ought to be a small change, but C arrives with expectations: a usable stack, initialized globals and zero-initialized static storage. The compiler generates code on that basis. It does not arrange those conditions for this flat, ROM-loaded image.
+Chapter 9's assembly model reaches the LED without a C runtime. Rewriting its loop in C ought to be a small change, but C arrives with expectations: a usable stack, initialized globals and zero-initialized static storage. The compiler generates code on that basis. It does not arrange those conditions for this flat, ROM-loaded image.
 
 We will keep the same LED and supply the missing work before calling `main()`. The linker script describes where code and objects belong. `startup.S` uses that description to prepare memory. Seeing those two files agree is more useful than treating startup as a block to paste into every project.
 
@@ -106,7 +106,7 @@ Decoded line by line:
 - **`_stack_top` / `_stack_limit`** reserve 4 KiB for a descending stack. This is a budget, not an automatic stack-overflow guard. Loaded bytes must fit below `0x00918000` while ROM is active. Our own stack uses the upper OCRAM only after handoff, without returning to ROM services.
 - **`/DISCARD/`**: throws away ELF notes and attributes that have no place in a bare-metal binary.
 
-Four things in this script are easy to get wrong. Check them now.
+Four layout decisions explain common startup failures:
 
 1. **Putting `ALIGN` and `AT` in the wrong order.** Use `.data ALIGN(4) : AT(_etext)`. Linker-script keywords have a fixed grammar, and `ld` reports only a line number when this order is wrong.
 2. **Forgetting `KEEP` around the vector table.** When you later link with `-gc-sections`, the linker removes the table because nothing in C references it. `KEEP` prevents this.
@@ -295,15 +295,13 @@ A few observations:
 - **`data` is 0.** No initialized globals in our C.
 - **`bss` is 0.** No uninitialized globals.
 
-The loops are present, but their ranges are empty. To give `.data` a visible object, replace the `LED_BIT` macro with:
-
-In `main.c`, change `LED_BIT`:
+The loops are present, but their ranges are empty. A worked variant uses an initialized object instead of the `LED_BIT` macro:
 
 ```c
 static volatile uint32_t led_mask = (1u << 3);   /* stored in .data */
 ```
 
-Use `led_mask` in place of every use of `LED_BIT`. The volatile qualifier keeps GCC from replacing this demonstration object with a constant. Rebuild and inspect:
+In that variant, `led_mask` replaces each use of `LED_BIT`. The volatile qualifier keeps GCC from replacing this demonstration object with a constant. The section-inspection commands are:
 
 ```sh
 $ arm-none-eabi-size led.elf
@@ -322,7 +320,7 @@ $ python3 wrap.py
 $ sudo "$IMX6ULL_HOME/build/mfgtools/uuu/uuu" led.imx
 ```
 
-If the LED blinks again, our startup has reached compiled C. That observation alone does not test empty `.bss` or a relocated `.data` section. The lab below makes those limits explicit.
+An LED blink from this image would show that startup reached compiled C. That observation alone does not test empty `.bss` or a relocated `.data` section. Section 10.10 distinguishes those memory-initialization guarantees.
 
 ## 10.7  Stepping through with `objdump`
 
@@ -342,7 +340,7 @@ Find `_start`. Follow the working-mode and vector setup, then the stack, clear, 
 
 The literal pool follows the function. You can see the resolved addresses there.
 
-If you change the linker script's `OCRAM` origin, every code address changes. The image wrapper's entry and code placement must change with it. Try changing `ORIGIN` to `0x00909000`, rebuild, and inspect the new addresses. Then restore `0x00908000` before wrapping the image.
+A different linker-script `OCRAM` origin changes every code address. For example, an origin of `0x00909000` would no longer agree with the wrapper's default entry at `0x00908000`. The image wrapper's entry and code placement must change with the linker layout, not independently of it.
 
 ## 10.8  What if `main()` returns?
 
@@ -380,13 +378,16 @@ while ((REG(UART_STATUS) & TX_EMPTY) == 0) {}
 
 Use volatile access for MMIO, but keep reading the register definition. `REG(x) |= mask` is still a read-modify-write operation. It can be wrong for write-one-to-clear status bits or registers with read side effects. Volatile also does not supply atomicity, cache maintenance or CPU memory ordering. Those are separate decisions.
 
-## 10.10  Lab
 
-1. **Build and run.** Confirm LED blinks.
-2. **Inspect the ELF.** Use `readelf -SW led.elf` for section types and `objdump -h led.elf` for VMA/LMA. The `led_mask` variant changes `.data`, not `.bss`.
-3. **Add a `.bss` object.** Add `static volatile uint32_t counter;`. Before the loop, stop in a `for (;;) {}` if it is nonzero. Increment it in the blink loop. Confirm four bytes of `.bss` storage and a `NOBITS` section. A blinking result checks the initial value, not whether SRAM happened to be zero without startup.
-4. **Make the clear test deterministic.** In `startup.S`, immediately before the clear loop, load `_sbss` into `r0`, load `0xA5A5A5A5` into `r2`, and store `r2` through `r0`. Do this only with the four-byte counter variant. With the clear loop present, the counter begins at zero. With it removed, the nonzero check stops the LED. Restore the normal startup afterward. Do not rely on power-up RAM being randomly nonzero.
-5. **Predict the copy result.** With the current equal LMA/VMA, would omitting the copy change `led_mask`? No: its initialization bytes are already there. Record that result rather than trying to provoke a failure the layout cannot produce.
+(1010-lab)=
+## 10.10  Key Notes
+
+- The linker describes placement and exports boundaries. Startup establishes the aligned stack and object contents before calling C. Neither the compiler nor the IVT supplies that runtime preparation.
+- `.bss` reserves storage without carrying initialization bytes in the flat image. A nonempty clear range is necessary to establish C's zero-initialization guarantee, regardless of OCRAM's previous contents.
+- Equal `.data` LMA and VMA make the copy loop a self-copy. The initialized `led_mask` case explains stored data but cannot demonstrate relocation or expose an omitted copy.
+- In a deterministic clear case, a four-byte `.bss` counter containing `0xA5A5A5A5` becomes zero after startup clears its range. A naturally zero SRAM value would not distinguish a working clear from an omitted one.
+- The reserved stack and loaded-byte limits protect different lifetimes: ROM-active loading and post-handoff execution. Link-time bounds do not provide a runtime stack-overflow guard.
+- `volatile` preserves MMIO accesses at the compiler boundary. Register side effects, read-modify-write safety, CPU ordering and cache attributes remain separate responsibilities.
 
 ## 10.11  Pitfalls
 
@@ -408,7 +409,7 @@ Use volatile access for MMIO, but keep reading the register definition. `REG(x) 
 
 ## Sidebar, `REG(addr)` macro vs the NXP SDK header
 
-We use raw addresses to keep the register lookup visible. A matching, verified vendor header can instead provide typed register layouts and bit masks. The following illustrates that style, not an extra dependency required for this lab. Obtain the header from the exact vendor SDK or board package and check its SoC and revision:
+We use raw addresses to keep the register lookup visible. A matching, verified vendor header can instead provide typed register layouts and bit masks. The following illustrates that style, not an extra dependency for this example. Such a header must match the exact vendor SDK or board package, SoC and revision:
 
 ```c
 #include "MCIMX6Y2.h"
@@ -430,4 +431,4 @@ With matching addresses and types, both styles can produce the same register-acc
 
 Chapter 18A separates register definitions from driver policy. Raw addresses and typed headers can both be appropriate. Neither removes the need to verify offsets, reserved bits and register access semantics.
 
-> Next chapter: **Chapter 11: Hand-building a Boot ROM-acceptable image.** We extend `wrap.py` into a reusable tool, decode every byte of the IVT, and `dd` an SD card by hand.
+> Next chapter: **Chapter 11: Hand-building a Boot ROM-acceptable image.** The reusable image builder connects IVT fields to file offsets, RAM addresses and primary SD-card placement.

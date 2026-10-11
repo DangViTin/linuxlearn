@@ -297,18 +297,13 @@ int main(void) {
 
 Run this. You'll see each fix printed with the exact GPS-derived UTC time it was valid for. Compare with the PPS-disciplined system clock to verify they agree.
 
-## 107.8  Lab
+<span id="lab"></span>
+## 107.8  Key Notes
 
-1. **Antenna + first fix.** Wire the module's UART. Place the antenna with sky view. Launch `cat /dev/ttymxc3`. Watch NMEA stream. Wait for `$GPGGA` with non-zero "fix quality", TTFF should be < 60 s outdoors.
-2. **gpsd up.** Configure gpsd. Run `cgps -s` to see live position. Indoors near a window may work for u-blox. ATGM336H usually won't.
-3. **PPS wired.** Add the DT pps-gpio node. Reboot. Verify `/dev/pps0`. Run `ppstest /dev/pps0`. Each pulse should print one second later.
-4. **chrony stratum-1.** Configure refclock SHM+PPS. Restart chrony. `chronyc sources` should show PPS selected. `date +%N.%9N` should show stable sub-µs precision.
-5. **UBX binary mode.** Use `ubxtool -p MON-VER` to verify u-blox. Then `ubxtool -e UBX -d NMEA` to disable NMEA + enable UBX. Verify with `ubxtool -p NAV-PVT`.
-6. **NTP client benchmark.** From another Linux box, `chronyc -h <gpsbox> sources` should show your box at stratum 1, offset < 1 µs.
-7. **Cold-start time.** Power-cycle the module. Measure TTFF outdoors vs indoors-by-window. Multi-constellation modules should win.
-8. **PPS jitter measurement.** Capture 1000 PPS edges. Histogram the timestamp delta from 1.000000000 s. Should show ±20–50 ns.
-9. **Geofencing.** Write a script that alerts when the lat/lon leaves a circle (haversine distance > 100 m). Useful for asset-theft alerts.
-10. **TPS6594 + GPS for outage survival.** If your product is a stratum-1 server, hooking a UPS so the clock survives mains outages buys you 24+ hours of holdover (the OCXO inside drifts, but GPS resyncs as soon as power is back).
+- GNSS messages identify time and position, while PPS provides a timing edge. Combining them requires associating that edge with the correct second and validity state.
+- Receiver time, the system clock and network time distribution are different stages. A good receiver specification does not establish the target's GPIO timestamp or NTP accuracy.
+- Transport framing and checksums protect message interpretation. Fix status, antenna conditions and leap-second information affect whether the resulting data is usable.
+- Loss of reception needs a holdover and recovery policy. The system should distinguish synchronized time from an estimate based on an aging local clock.
 
 ## 107.9  Pitfalls
 

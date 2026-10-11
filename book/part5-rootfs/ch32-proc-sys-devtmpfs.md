@@ -289,7 +289,7 @@ It creates device *nodes*, not the metadata around them. For things like:
 
 ### `mdev`, BusyBox's user-space helper
 
-We already wired this up in Chapter 31's `rcS`:
+Chapter 31's `rcS` example uses this interface:
 
 ```sh
 echo /sbin/mdev > /proc/sys/kernel/hotplug
@@ -319,14 +319,17 @@ mmcblk[0-9]p[0-9]      root:root   0660  @/etc/mdev/auto-mount.sh
 
 The `@` prefix runs the command *after* the node is created (`$` runs *before*. `*` both).
 
-## 32.5  Lab
 
-1. **Tour `/proc`.** Run `cat /proc/cpuinfo`, `/proc/meminfo`, `/proc/version`, `/proc/cmdline`, `/proc/interrupts`. Match each output line to what you know about the hardware.
-2. **Tour `/sys/class/`.** `ls` each subdirectory. Identify which one corresponds to your LED, your network interface, your I²C buses.
-3. **Manually toggle the LED via sysfs.** `echo 1 > /sys/class/leds/led0/brightness` should turn the LED on.
-4. **Read the ADC.** `cat /sys/bus/iio/devices/iio:device0/in_voltage0_raw`, get a raw value. Apply the scale. Compute volts. Touch the ADC pin and re-read. See it change.
-5. **Find the device tree.** Walk `/sys/firmware/devicetree/base/` and find the I²C controller's `compatible` string. Verify it matches what's in `imx6ull.dtsi`.
-6. **Make mdev set audio permissions.** Add `snd/[!c].*` to `/etc/mdev.conf` (with a group that exists). Reboot. `ls -l /dev/snd/*` should show the new permissions.
+(32-5-lab)=
+## 32.5  Key Notes
+
+- procfs exposes process and system state, sysfs exposes the device model, and devtmpfs supplies device nodes. Their common file-shaped interface does not give them the same purpose.
+- A virtual-file read obtains kernel-generated information. A permitted write can invoke a driver or kernel callback, so it is an operation on live state rather than an ordinary text-file edit.
+- `/proc/<pid>/maps` describes address-space layout, while `/proc/<pid>/mem` represents memory bytes with stronger access controls. A readable process directory does not authorize unrestricted memory access.
+- sysfs bus, class and topology paths are views of related kernel objects. Device identity and documented attributes matter more than incidental enumeration numbers.
+- Device nodes connect major/minor numbers to driver interfaces. mdev or udev adds permission, naming and event policy beyond devtmpfs's basic node creation.
+- Runtime Device Tree properties show the description Linux received, not proof of the circuit attached to it. Likewise, an ADC raw value needs its documented scale and electrical context before it represents a voltage.
+- Mount availability, driver registration and access permissions are separate failure boundaries. A missing or unwritable path cannot be diagnosed from its filename alone.
 
 ## 32.6  Pitfalls
 

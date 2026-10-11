@@ -1,12 +1,13 @@
 ---
 chapter: 128
-title: QEMU as a virtual hardware lab
+title: QEMU as a virtual hardware model
 part: IX - Applied virtualization and mixed-criticality systems
 estimated_pages: 26
 status: draft
 ---
 
-# Chapter 128: QEMU as a virtual hardware lab
+<span id="chapter-128-qemu-as-a-virtual-hardware-lab"></span>
+# Chapter 128: QEMU as a virtual hardware model
 
 > **What:** install QEMU, create 32-bit and 64-bit Arm virtual machines, inspect QEMU's generated Device Tree, and attach GDB before any kernel exists.
 >
@@ -40,7 +41,7 @@ host Linux
     generated DTB
 ```
 
-It does not emulate the i.MX6ULL. That is deliberate. The QEMU `virt` board is a clean lab target. It gives us enough standard Arm hardware to learn Linux and hypervisor boot contracts before real-board details enter the story.
+It does not emulate the i.MX6ULL. The QEMU `virt` board gives us a simpler Arm hardware model for examining Linux and hypervisor boot contracts. Its successful boot cannot establish compatibility with the MINI's controllers or wiring.
 
 What QEMU `virt` gives us:
 
@@ -91,7 +92,7 @@ $ gdb-multiarch --version | head -1 | tee logs/gdb-version.txt
 $ dtc --version | tee logs/dtc-version.txt
 ```
 
-Hypervisor labs are version-sensitive. Keep the versions with the logs.
+hypervisor examples are version-sensitive. Keep the versions with the logs.
 
 ## 128.3  Start a 32-bit Arm board with no kernel
 
@@ -128,7 +129,7 @@ The machine did not boot, but this was not a failure. It proved QEMU is installe
 
 ## 128.4  Start a 64-bit Arm board
 
-Jailhouse later needs spare CPUs. Use ARM64 QEMU for that lab:
+The later Jailhouse example needs spare CPUs. ARM64 QEMU supplies a multicore model:
 
 ```sh
 $ qemu-system-aarch64 \
@@ -343,7 +344,7 @@ Save a copy:
 (qemu) log none
 ```
 
-For most labs we use the serial console, not the monitor, but knowing the monitor exists is useful when a guest is silent.
+for most examples we use the serial console, not the monitor, but knowing the monitor exists is useful when a guest is silent.
 
 ## 128.10  The virtual board memory map
 
@@ -388,7 +389,8 @@ Create `notes/qemu-command-line.md`:
 ```md
 # QEMU command line notes
 
-## 32-bit ARM lab machine
+<span id="bit-arm-lab-machine"></span>
+## 32-bit ARM model
 
 Command:
 
@@ -412,26 +414,14 @@ Options:
 
 If you cannot fill that note, do not go to Chapter 129 yet.
 
-## 128.12  Lab
+<span id="lab"></span>
+## 128.12  Key Notes
 
-Deliverables:
-
-1. `logs/qemu-system-arm-version.txt`
-2. `logs/qemu-system-aarch64-version.txt`
-3. `boot/qemu-virt-arm.dtb`
-4. `boot/qemu-virt-arm.dts`
-5. `boot/qemu-virt-arm-512m.dts`
-6. `logs/gdb-qemu-no-kernel.txt`
-7. `notes/qemu-command-line.md`
-
-The lab is complete when you can answer:
-
-- What is the difference between `qemu-system-arm` and `qemu-arm`?
-- Why are we using `virt` instead of an i.MX6ULL machine?
-- Which UART will become `ttyAMA0`?
-- How does the DTB change when RAM changes?
-- What does `-S -s` do?
-- How do you exit QEMU in `-nographic` mode?
+- A QEMU launch describes a virtual machine: CPU, memory, interrupt controller, devices and firmware are explicit inputs. Its generated DTB describes that selected model.
+- System emulation and user-mode emulation have different boundaries. `qemu-system-arm` models a machine, while `qemu-arm` executes an ARM user-space program using host services.
+- The `virt` machine is not an i.MX6ULL replica. It exposes boot and virtualization contracts without qualifying MINI pinmux, DDR, clocks or electrical behavior.
+- Halting the virtual CPU and providing a GDB connection are independent controls. They make startup inspectable without making the model identical to physical timing.
+- Machine parameters, artifact versions and logs are reproducibility evidence. Changing memory or devices changes the system being described.
 
 ## 128.13  Pitfalls
 

@@ -508,15 +508,13 @@ Kernel config: `CONFIG_VL53L0X_I2C=y`.
 
 For multi-chip setups (3 VL53L0X looking forward/left/right), the chips share I²C address 0x29 by default. Use XSHUT to hold all-but-one off at boot. Each one is brought up sequentially and reassigned to a unique address before the next is woken. This sequencing happens in the driver via `xshut-gpios`.
 
-## 72.9  Lab
+<span id="lab"></span>
+## 72.9  Key Notes
 
-1. **VL53L0X bring-up.** Wire it on I²C1 at 0x29. Verify probe in dmesg.
-2. **Build and load `myvl53l0x.ko`.** Wave a hand at 100–500 mm. Verify reasonable readings. Compare to ruler.
-3. **Test extreme range.** At < 30 mm (below min range): observe garbage or zero. At > 2 m: similarly garbage. Add a sanity check in user-space.
-4. **HC-SR04 attempt.** Wire one up. Write a user-space `gpiomon`-based reader. Compare its accuracy to a tape measure. Note variance under CPU load (`stress-ng &`).
-5. **HC-SR04 with PREEMPT_RT.** Boot RT kernel. Retest. Variance should drop.
-6. **GP2Y0A on ADC.** Wire to i.MX6ULL ADC1 channel. Verify IIO ADC reading. Write a polynomial-fit converter in user-space.
-7. **Multi-VL53L0X.** Wire three on the same bus with separate XSHUT GPIOs. Use mainline driver. Configure in DT. Verify three `iio:device0/1/2` appear with separate addresses.
+- Distance sensors use different physical mechanisms, so target shape, ambient conditions and range affect them differently. Software cannot make their limitations interchangeable.
+- Pulse-based ultrasonic ranging needs a timing owner that can capture edges reliably. User-space scheduling latency is not equivalent to signal flight time.
+- Analog ranging includes the ADC, reference and nonlinear conversion path. Some parts of the response curve cannot uniquely identify distance.
+- Invalid or out-of-range results need an explicit status. Returning a convenient zero can turn a measurement failure into a false nearby-object indication.
 
 ## 72.10  Pitfalls
 
