@@ -585,7 +585,7 @@ Device ownership is the embedded version of process isolation.
 
 A mixed Linux plus RTOS product needs a watchdog policy.
 
-Answer these:
+The policy must define supervision and reset authority, including these cases:
 
 ```text
 which side kicks the hardware watchdog?

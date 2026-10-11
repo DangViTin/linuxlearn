@@ -149,9 +149,9 @@ Chapter 24F. No `.bashrc` or host-global settings are needed.
 ## 24H.5  Example Device Tree for a PMIC
 
 Device Tree is a hardware description, not a place to invent a register map.
-Before writing a node, fill this worksheet from the fitted design and
-matching chip documentation. On the stock discrete-power MINI, the correct
-result is **no PMIC node**; complete this worksheet only for the added device:
+An added PMIC's description depends on the fitted design and matching chip
+documentation. The table shows that evidence contract. On the stock
+discrete-power MINI, the correct result is **no PMIC node**:
 
 | Field | Required evidence |
 |---|---|

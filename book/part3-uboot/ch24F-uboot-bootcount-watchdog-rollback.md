@@ -101,7 +101,7 @@ both during this example. These routes are visible on MINI schematic sheets
 Use an identified spare microSD as the first disposable A/B medium, leaving
 the vendor baseline and accepted installation recoverable. An eMMC-core
 owner can later qualify the eMMC user area separately. A NAND-core owner
-can still use the microSD lab: **the MMC/PARTUUID policy below is not a NAND
+can still consider the microSD example: **the MMC/PARTUUID policy below is not a NAND
 or UBI updater**. Do not translate its partition numbers into NAND offsets.
 
 Record the baseline's `mmc list`, `mmc info`, `part list`, environment
@@ -221,32 +221,28 @@ $ make O="$IMX6ULL_HOME/build/uboot-ab" ARCH=arm CROSS_COMPILE="$CROSS_COMPILE" 
 
 Build success does not validate the MINI's DDR or reset circuit.
 
-## 24F.6  Manual bootcount test
+<span id="f-6-manual-bootcount-test"></span>
+## 24F.6  Counter evolution across attempts
 
-This cross-reset persistence test is unavailable with `ENV_IS_NOWHERE`. First
-pass the mandatory gate in Section 24F.3; until then use the paper/host-mock
-tests instead. Before `saveenv`, confirm the approved storage range, record
-current boot variables, and keep Chapter 8 ROM recovery available. This writes persistent
-metadata: use only the prepared disposable lab medium.
+The counter is a state-machine input, not a Linux-health measurement. With
+an initial count of zero, an active upgrade and `bootlimit=3`, the intended
+selection is:
 
-Temporarily make both paths stop after identifying themselves:
+| Attempt | Count after increment | Dispatch |
+|---|---|---|
+| First | 1 | Candidate command |
+| Second | 2 | Candidate command |
+| Third | 3 | Candidate command |
+| Fourth | 4 | Alternate command |
 
-```text
-pa-mini=> setenv bootcmd 'echo candidate path; false'
-pa-mini=> setenv altbootcmd 'echo limit path; false'
-pa-mini=> setenv bootlimit 3
-pa-mini=> setenv bootcount 0
-pa-mini=> setenv upgrade_available 1
-pa-mini=> saveenv
-```
+This model assumes the count survives each reset and no health-confirmation
+step clears it. Interrupting autoboot still occurs after U-Boot's increment,
+so the counter does not identify why the previous attempt stopped.
 
-Require an actual successful save before resetting. On permitted lab resets,
-record the path and `printenv bootcount bootlimit`. Predict the fourth
-selection before observing it. Interrupting autoboot is not a Linux failure,
-but U-Boot has already incremented the counter at this stage.
-
-Restore your recorded commands and clear candidate/count in one save when
-finished. Do not leave this echo-only test as the product policy.
+Chapter 22's `ENV_IS_NOWHERE` candidate cannot provide this persistence.
+Section 24F.3 defines the storage and recovery evidence needed for a separate
+hardware variant. The table explains dispatch without requiring reader
+resets, environment writes or a particular storage allocation.
 
 ## 24F.7  A/B environment variables
 

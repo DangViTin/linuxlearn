@@ -436,8 +436,8 @@ fixture's PASS must correspond to a defined measurement, expected identity,
 and limits. Keep command status as well as printed tokens. Never print
 `TEST:I2C:PASS` merely because `i2c probe` ran.
 
-Start a MINI factory worksheet with UART1 console, identified TF/eMMC
-enumeration, KEY0 input, and the optional display's separate checks. LED0
+A MINI factory policy separates UART1 console, identified TF/eMMC
+enumeration, KEY0 input, and the optional display's observations. LED0
 is GPIO1_IO03, active-low; BEEP is SNVS_TAMPER1/GPIO5 bit 1, active-low
 through sheet 2's S8550 PNP high-side switch. Neither should be driven
 before reviewing its ownership/startup state. An I2C OLED or PMIC is not

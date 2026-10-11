@@ -1157,7 +1157,7 @@ The source provenance is now complete. Keep its evidence separate from the physi
 | Independent memory validation | Cover aliasing, the whole usable bank, cold/warm starts, and relevant voltage/temperature conditions. A banner is insufficient. |
 | Bank size | Keep `IMX6ULL_DDR_SIZE` and the DTS memory node consistent with the accepted geometry. |
 
-There is no separate DDR include to supply and no macro claiming qualification. Follow Part II's DDR worksheet to understand the preserved write order, timing units, mode-register commands, refresh, ZQ, and calibration. A successful compile checks software contracts; `mkimage` checks syntax and layout. Neither evaluates electrical timing.
+There is no separate DDR include to supply and no macro claiming qualification. Part II's DDR timing analysis explains the preserved write order, timing units, mode-register commands, refresh, ZQ, and calibration. A successful compile checks software contracts; `mkimage` checks syntax and layout. Neither evaluates electrical timing.
 
 Create `board/point-atom/imx6ull-mini/imximage.cfg` with the complete content below:
 

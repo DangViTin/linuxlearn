@@ -128,17 +128,16 @@ Migrate subsystems in dependency order, **most-isolated first**. The graph:
    display      ──► drm/kms ──► applications (heaviest)
 ```
 
-For each phase:
-1. **Phase 1 (week 1–4)**: clk, pinctrl, gpio, the *foundation* every other subsystem uses. Most BSP-vs-mainline divergence. Lots of NXP-internal pinmux files to merge.
-2. **Phase 2 (week 5–8)**: i2c, spi controllers + the *trivial* sensors hanging off them. Easy wins to build confidence.
-3. **Phase 3 (week 9–12)**: PMIC, regulators, eMMC, USB host. The "boot reliably" phase.
-> **MCU bridge:** Think of a PMIC like a programmable power-tree supervisor: it replaces discrete enables and LDO assumptions with sequenced rails the kernel can model.
-> **PMIC:** Power Management IC, a chip that sequences and regulates the board's voltage rails.
-4. **Phase 4 (week 13–16)**: Ethernet, network stack. Verify customer-facing connectivity.
-5. **Phase 5 (week 17–20)**: Audio, display, camera, GPU. The "rich apps work" phase. Hardest because of vendor's binary blobs (Vivante GPU on i.MX) and downstream GStreamer integrations.
-6. **Phase 6 (week 21–24)**: Application port. Update Buildroot/Yocto recipes for newer library versions.
+This graph expresses dependencies, not a universal six-month schedule. Clock,
+pin-control and supply providers must exist before their consumers can work.
+Storage supplies later filesystem access, and a working controller is only one
+part of a complete peripheral path.
 
-Each phase: **bring up subsystem on mainline, run integration tests, only then move to next**. Don't skip ahead.
+Migration order follows the fitted hardware and the product's required boot,
+application and recovery paths. Optional media devices can wait when they are
+outside those paths. Application packages also need compatible libraries and
+interfaces. Risk comes from the actual BSP divergence and missing evidence,
+not a fixed number of weeks assigned to each subsystem.
 
 ## 122A.5  Per-subsystem migration
 

@@ -386,7 +386,7 @@ DATA 4 0x021B0010 0xB66D0B63
 ```
 
 The `4` means a 32-bit write. The addresses select `MDCFG0` and `MDCFG1`.
-Follow them into the reference manual and the DDR worksheet from Chapter 14.
+Their meaning comes from the reference manual and Chapter 14's DDR timing analysis.
 Do not stop at "these numbers also appear in an EVK file." The provenance
 here is the vendor's board configuration for the documented core, not a
 guess made from the SoC name.

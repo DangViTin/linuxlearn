@@ -61,7 +61,8 @@ That is fine when the boundary is worth it. It is waste when the boundary is ima
 
 ## 127.3  The failure-containment question
 
-For every product, fill this table before choosing tools:
+The following cases illustrate how a failure model can suggest a boundary.
+They are design candidates, not guarantees of containment on every platform:
 
 | Failure | Must keep running | Allowed response | Boundary needed |
 |---------|-------------------|------------------|-----------------|

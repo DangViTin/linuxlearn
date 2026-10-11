@@ -85,251 +85,136 @@ Console output also depends on the selected image: the MINI ROM+DCD path in Chap
 
 The useful design model is a chain of prerequisites with an observation at each boundary. A symptom narrows the search, but rarely identifies one failed layer by itself.
 
-## 121.4  U-Boot port, the steps
+<span id="u-boot-port-the-steps"></span>
+## 121.4  U-Boot's board contract
 
-### 121.4.1  Fork the reference defconfig
+The bootloader does not discover every detail of a new PCB. Its configuration, board code and hardware description must agree with the fitted design. Chapters 19 and 22 distinguish the vendor MINI reference from the modern MINI candidate. An EVK configuration is a comparison, not a substitute for either.
 
-```sh
-cd u-boot
-cp configs/mx6ull_14x14_evk_defconfig configs/myboard_defconfig
-make myboard_defconfig menuconfig
-# Change CONFIG_DEFAULT_DEVICE_TREE to "imx6ull-myboard"
-# Change CONFIG_SYS_BOARD to "myboard"
-# Change CONFIG_SYS_CONFIG_NAME to "myboard"
-```
+<span id="fork-the-reference-defconfig"></span>
+### 121.4.1  Reference selection
 
-### 121.4.2  Create board files
+A reference is useful when its assumptions are visible: source revision, CPU, memory geometry, power/reset arrangement, boot media and supported peripherals. A similar processor name is only the beginning of that comparison. Keep inherited features disabled until their connections and supporting drivers are understood.
 
-```sh
-mkdir -p board/myvendor/myboard
-cp -r board/freescale/mx6ull_14x14_evk/* board/myvendor/myboard/
-# Edit Kconfig, MAINTAINERS, Makefile to reference myvendor/myboard
-```
+<span id="create-board-files"></span>
+### 121.4.2  Board integration
 
-### 121.4.3  Adapt the DTS
+Build-system entries select which board implementation exists in the resulting image. Board hooks then own operations that cannot be expressed by generic drivers alone. The important design question is which component owns each initialization step, not how many files were copied.
 
-```sh
-cp arch/arm/dts/imx6ull-14x14-evk.dts arch/arm/dts/imx6ull-myboard.dts
-# Edit:
-#   model = "MyVendor MyBoard"
-#   compatible = "myvendor,myboard", "fsl,imx6ull"
-#   Remove unused peripherals
-#   Add your additions
-```
+<span id="adapt-the-dts"></span>
+### 121.4.3  Hardware description
 
-### 121.4.4  DDR config (if you changed RAM chip)
+The U-Boot hardware description must match the services needed before Linux: console, boot storage and any qualified policy inputs. Linux can need additional devices later. The two descriptions have different consumers, but cannot disagree about the physical wiring.
 
-Run NXP's **DDR Stress Tool** with your DDR chip's datasheet values. Export the calibration. Update `board/myvendor/myboard/mx6ullevk.c` (the C-language DDR init in U-Boot SPL) with the new register values:
-> **MCU bridge:** Think of SPL like the tiny early startup code that runs from internal SRAM before DDR is usable.
-> **SPL:** Secondary Program Loader, a tiny first U-Boot stage that fits in OCRAM and initializes DDR.
+<span id="ddr-config-if-you-changed-ram-chip"></span>
+### 121.4.4  DDR handoff
 
-```c
-const struct mx6_mmdc_calibration mx6_mmcd_calib = {
-    .p0_mpwldectrl0  = 0x00000000,
-    .p0_mpwldectrl1  = 0x00000000,
-    .p0_mpdgctrl0    = 0x4140043F,        /* from Stress Tool */
-    .p0_mpdgctrl1    = 0x0124013E,
-    .p0_mprddlctl    = 0x40404546,
-    .p0_mpwrdlctl    = 0x40402E32,
-};
-```
+Changed RAM changes the memory contract: geometry, clock, timing, pad settings and calibration belong to the fitted part and board. Chapter 14 explains those relationships. A tool's generated values still need a documented input set and qualification.
 
-This is the riskiest step. If DDR config is wrong, nothing else will work. Use the DDR Stress Tool. Don't hand-calculate.
+The MINI ROM+DCD paths in Chapters 19 and 22 prepare DDR before U-Boot executes. An SPL-based platform assigns that job differently. These are alternative ownership models, not interchangeable places to paste a calibration table.
 
-### 121.4.5  Build and flash
+<span id="build-and-flash"></span>
+### 121.4.5  Candidate acceptance and recovery
 
-```sh
-make CROSS_COMPILE=arm-none-linux-gnueabihf- -j8
-# u-boot-dtb.imx is the SD-flashable image
+Compilation establishes a software milestone. Image inspection establishes format and placement. A UART banner establishes observed execution. None represents a fixed percentage of completed bring-up.
 
-sudo dd if=u-boot-dtb.imx of=/dev/sdX bs=1k seek=1 conv=fsync
-sudo eject /dev/sdX
+Persistent installation is a separate acceptance decision. It needs an identified medium, a verified image layout, safe power conditions and a board-matched recovery path. Building a candidate must not automatically authorize writing it to a disk.
 
-# Insert SD into target; power on; watch serial console
-```
+<span id="kernel-dt-port"></span>
+## 121.5  Kernel and boot-input agreement
 
-If you see U-Boot banner → 80 % of bring-up complete. If you see only DCD garbage → DDR config wrong, debug with JTAG.
-> **DCD:** Device Configuration Data: ROM-executed register writes that prepare clocks and DDR before your code runs.
+Linux receives a kernel image, a hardware description and boot arguments. The root filesystem supplies the first process and its dependencies. A board port succeeds only when those independently produced inputs agree.
 
-## 121.5  Kernel DT port
+<span id="fork-the-evk-dt"></span>
+### 121.5.1  Describe the fitted hardware
 
-Once U-Boot is up, port the kernel DT.
+A MINI variant starts from a description whose routing matches that variant. Additions and omissions follow the schematic, not the peripherals on an EVK. Pin control, clocks, supplies, reset lines and interrupt wiring form one connected device path.
 
-### 121.5.1  Fork the EVK DT
+<span id="add-to-makefile"></span>
+### 121.5.2  Own the board artifact
 
-```sh
-cd linux
-cp arch/arm/boot/dts/nxp/imx/imx6ull-14x14-evk.dts arch/arm/boot/dts/nxp/imx/imx6ull-myboard.dts
-# Edit to match your hardware
-```
+Including a DTS in the build produces an artifact; it does not ensure that the bootloader selects that artifact. Model and compatible strings identify a design, while the release configuration owns which DTB is delivered and loaded.
 
-### 121.5.2  Add to Makefile
+<span id="build-kernel-dt"></span>
+### 121.5.3  Keep runtime dependencies matched
 
-```
-# arch/arm/boot/dts/Makefile
-dtb-$(CONFIG_SOC_IMX6ULL) += imx6ull-myboard.dtb
-```
+The kernel configuration decides which drivers exist and whether they are built in or loaded as modules. Rootfs assembly must include matching modules, firmware and userspace dependencies. A stale DTB or module tree can invalidate an otherwise successful kernel build.
 
-### 121.5.3  Build kernel + DT
+<span id="boot-from-u-boot"></span>
+### 121.5.4  Define the handoff
 
-```sh
-make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- imx_v7_defconfig
-make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- zImage imx6ull-myboard.dtb modules
-```
-
-### 121.5.4  Boot from U-Boot
-
-```
-=> tftp 0x80800000 zImage
-=> tftp 0x83000000 imx6ull-myboard.dtb
-=> setenv bootargs console=ttymxc0,115200 root=/dev/mmcblk0p2 rw
-=> bootz 0x80800000 - 0x83000000
-```
-
-If kernel hangs early → use `earlycon` to see early printks. If kernel hangs after init → check `console=` arg matches your DT's UART.
+Load addresses must respect the selected image format and memory layout. Console selection must match the supported UART, and the root argument must identify the intended filesystem. Diagnostic output narrows the failure search; silence alone does not identify a bad DTB, DDR setting or console.
 
 ## 121.6  Custom peripheral, adding an external RTC
 
-Pick something simple: DS3231 RTC on I²C2.
+An attached DS3231 illustrates a small integration boundary. It is an optional device, not a stock MINI feature. Its supply, logic levels, pull-ups, backup circuit and chosen bus need a connection design before software description.
 
 ### 121.6.1  DT addition
 
-```dts
-&i2c2 {
-    pinctrl-names = "default";
-    pinctrl-0 = <&pinctrl_i2c2>;
-    clock-frequency = <100000>;
-    status = "okay";
+Inside a qualified I2C controller node, a minimal child fragment can express the device's identity and bus address:
 
-    rtc@68 {
-        compatible = "maxim,ds3231";
-        reg = <0x68>;
-        interrupt-parent = <&gpio4>;
-        interrupts = <23 IRQ_TYPE_EDGE_FALLING>;
-        wakeup-source;
-    };
+```dts
+rtc@68 {
+    compatible = "maxim,ds3231";
+    reg = <0x68>;
 };
 ```
 
-### 121.6.2  Enable kernel driver
+This is not a complete board DTS. It omits the parent controller, pin control and board-specific resources. The [Linux v6.6 RTC binding](https://github.com/torvalds/linux/blob/v6.6/Documentation/devicetree/bindings/rtc/rtc-ds1307.yaml) defines the node's properties. An interrupt or wakeup property needs actual wiring and a supported wake path; neither should be copied from another board.
 
-```sh
-make ARCH=arm menuconfig
-# Device Drivers → Real Time Clock → Dallas/Maxim DS1307/37/38/39/40, DS1685/87/89 → built-in
-```
+<span id="enable-kernel-driver"></span>
+### 121.6.2  Driver selection
 
-Rebuild zImage + DT.
+The compatible string connects the node to a supported driver. The kernel configuration determines whether that implementation is present. Device Tree does not supply a missing driver or implement the RTC protocol.
 
-### 121.6.3  Verify
+<span id="verify"></span>
+### 121.6.3  Observation boundaries
 
-```sh
-dmesg | grep ds
-# rtc-ds1307 1-0068: registered as rtc1
-# rtc-ds1307 1-0068: setting system clock to 2026-05-31 12:34:56 UTC
+Driver binding, readable time, valid backup state, alarm behavior and system-clock policy are different observations. Registration as an RTC device does not qualify all of them. Device numbering also does not identify which RTC the product should trust at startup.
 
-hwclock --show
-# 2026-05-31 12:34:56.123456+00:00
-```
+<span id="the-reproducible-build-script"></span>
+## 121.7  Reproducible artifacts, separate deployment
 
-If this works, you've taken a peripheral from "nonexistent on the EVK" to "fully driven by mainline Linux" via DT alone, the canonical pattern.
+A build entry point is useful when it exposes its inputs and produces reviewable artifacts. Combining source checkout, compilation and destructive disk writes in one script hides an important approval boundary.
 
-## 121.7  The reproducible build script
+| Layer | Inputs it owns | Output consumed elsewhere |
+|---|---|---|
+| Bootloader build | Pinned source, board configuration, toolchain and image format | Loader candidate |
+| Kernel build | Pinned source, kernel configuration and board description | Kernel, DTB and matching modules |
+| Rootfs build | Package selection, libraries, firmware and service policy | Root tree and image |
+| Image assembly | Partition layout, placement rules and artifact identities | Candidate media image |
+| Deployment | Identified physical medium and recovery policy | Installed candidate |
 
-The example collects source selection, configuration, artifact generation and image assembly behind one build entry point. The script makes those dependencies visible, but does not by itself make a build reproducible.
+Reproducibility needs controlled sources, tools, configuration and other build inputs. A script name is not that evidence. The two project-local Arm toolchains and explicit environment selection remain the policy from Chapter 3.
 
-`build.sh`:
+Image assembly can produce a file for inspection without touching a device. Deployment is intentionally separate: a correct build can still be written to the wrong medium, at the wrong offset, or before recovery is available.
 
-```bash
-#!/bin/bash
-set -euo pipefail
+<span id="common-failures-recovery"></span>
+## 121.8  Failure boundaries and recovery
 
-ROOT=$(pwd)
-JOBS=$(nproc)
-TARGET_SD=${1:-}
-[ -z "$TARGET_SD" ] && { echo "Usage: $0 /dev/sdX"; exit 1; }
+<span id="u-boot-prints-dcd-garbage-then-dies"></span>
+### No usable early output
 
-# Tools
-. ~/imx6ull/scripts/env.sh
+Power/reset, boot selection, image format, memory initialization and console configuration are possible boundaries. The ROM's DCD is a register-write structure, not a producer of a UART transcript. Preserve observations rather than calling every garbled character a DDR diagnosis.
 
-# 1. Build U-Boot
-cd "$ROOT/u-boot"
-[ -d .git ] || git clone https://git.denx.de/u-boot.git . && git checkout v2026.04
-make myboard_defconfig
-make -j$JOBS
+<span id="u-boot-prompt-but-kernel-hangs-after-uncompressing-linux"></span>
+### U-Boot runs, but Linux does not reach userspace
 
-# 2. Build kernel
-cd "$ROOT/linux"
-[ -d .git ] || git clone https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git . && git checkout v6.6
-make imx_v7_defconfig
-make -j$JOBS zImage modules dtbs
+A prompt narrows the search without qualifying all RAM. The next boundary includes kernel format, load ranges, DTB, handoff state and console selection. Later failures add rootfs access, PID 1 and its runtime dependencies.
 
-# 3. Build rootfs (Buildroot)
-cd "$ROOT/buildroot"
-[ -d .git ] || git clone https://git.buildroot.net/buildroot . && git checkout 2026.02
-make myboard_defconfig
-make -j$JOBS
+<span id="kernel-boots-but-no-ethernet"></span>
+### Linux runs, but a peripheral path fails
 
-# 4. Flash SD
-sudo bash -c "
-  set -euo pipefail
-  # Partition (1 MB unused | 64 MB FAT for boot | rest EXT4 for root)
-  sfdisk $TARGET_SD <<EOF
-,,1M
-,64M,c,*
-,,L
-EOF
-  mkfs.vfat ${TARGET_SD}1
-  mkfs.ext4 -F ${TARGET_SD}2
+A peripheral depends on routing, power, clocks, reset, controller support and driver binding. For MINI Ethernet, retain the actual carrier/PHY qualification limits from Part III rather than treating EVK networking as board evidence.
 
-  # Mount + copy
-  mkdir -p /mnt/boot /mnt/root
-  mount ${TARGET_SD}1 /mnt/boot
-  mount ${TARGET_SD}2 /mnt/root
+<span id="driver-doesnt-probe"></span>
+### Description and implementation do not meet
 
-  cp $ROOT/linux/arch/arm/boot/zImage /mnt/boot/
-  cp $ROOT/linux/arch/arm/boot/dts/nxp/imx/imx6ull-myboard.dtb /mnt/boot/
+A missing node, disabled node, unmatched compatible or absent driver can prevent binding. A driver may also defer while waiting for a supply or clock provider. A log entry is evidence to interpret, not a universal diagnosis.
 
-  tar -C /mnt/root -xf $ROOT/buildroot/output/images/rootfs.tar
-  cd $ROOT/linux && make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabihf- INSTALL_MOD_PATH=/mnt/root modules_install
+<span id="worked-once-now-bricked"></span>
+### A candidate cannot start
 
-  umount /mnt/boot /mnt/root
-
-  # Flash U-Boot (with offset 1k)
-  dd if=$ROOT/u-boot/u-boot-dtb.imx of=$TARGET_SD bs=1k seek=1 conv=fsync
-  sync
-"
-
-echo "Done. Eject SD and boot the target."
-```
-
-The example accepts a target device argument. A real image-writing operation requires independent identification of the removable medium and verification of its layout. `/dev/sdb` is a placeholder, not a disk recommendation.
-
-Reproducibility depends on pinned source revisions, toolchains, configuration, dependencies and controlled build inputs. Another engineer needs those inputs and the artifact checks, not only the script. Producing the same bytes and qualifying those bytes on hardware are separate responsibilities.
-
-## 121.8  Common failures + recovery
-
-### "U-Boot prints DCD garbage then dies"
-- DDR init failed. Use JTAG to dump MMDC registers. Compare to Stress Tool output.
-> **MMDC:** the i.MX6ULL DDR controller block that owns timing, calibration, and DRAM command sequencing.
-- Verify the SPL DDR init values match your DDR3 chip's datasheet.
-
-### "U-Boot prompt but kernel hangs after 'Uncompressing Linux...'"
-- DT name mismatch, kernel can't find the DT. Verify `console=` and root= args.
-- `earlycon` and `loglevel=8` for more info.
-
-### "Kernel boots but no Ethernet"
-- PHY MDIO address wrong. `cat /sys/class/net/eth0/phydev/phy_id` to see. `mdio` U-Boot command to scan addresses.
-> **PHY:** physical-layer block or chip that converts digital MAC signals to electrical or radio signals.
-- PHY power rail not up. Verify with multimeter.
-
-### "Driver doesn't probe"
-- Compatible string mismatch, check kernel's table vs your DT.
-- Required clock not declared, check `clocks` in DT.
-- Required regulator not declared, `dmesg | grep regulator`.
-
-### "Worked once, now bricked"
-- Boot back into recovery via USB-OTG SDP (Ch 8).
-- Re-flash known-good image.
+Recovery must not depend on the failing candidate executing correctly. Chapter 8 distinguishes ROM USB access from later U-Boot services. The recovery image and media layout must match the board; a stock EVK card is not automatically a MINI fallback.
 
 
 (1219-lab)=
@@ -342,45 +227,31 @@ Reproducibility depends on pinned source revisions, toolchains, configuration, d
 - Reproducible image construction needs pinned inputs and matching modules and libraries. Writing an image to a particular medium is a separate, destructive deployment operation.
 - Recovery depends on a board-specific known-good image and accessible boot path. Compilation and illustrative output do not qualify a custom board or the MINI.
 
-## 121.10  Reflection
+<span id="reflection"></span>
+## 121.10  Design history
 
-After 4 weeks of bring-up, write a 500-word retrospective:
+A useful bring-up record connects a decision to its assumptions, observed evidence and remaining uncertainty. It explains why a clock, memory setting or recovery policy was accepted, not merely which command was typed.
 
-- What did you expect to be hard that wasn't?
-- What did you expect to be easy that wasn't?
-- What did you learn that surprised you?
-- What did you wish you'd known on day 1?
-- What single tool / technique saved the most time?
-- What was the most frustrating debug session, and how did you eventually solve it?
-
-These answers are gold for the next board you port. Reread them when you start.
+That history lets a later engineer distinguish a deliberate constraint from an inherited default. A compiler upgrade, changed component or new carrier revision can then reopen the relevant decision without repeating every earlier investigation.
 
 ## 121.11  Pitfalls
 
-- **Trying to bring up everything at once.** Bring up one layer at a time. Verify each.
-- **No serial console early.** UART1 with PowerView / minicom from minute zero. Other debug paths require more setup.
-- **No JTAG when needed.** When the serial output is "boots and hangs at unknown location," JTAG is the only ground truth. Don't argue.
-- **Cargo-culting EVK config.** Read every line of the defconfig and DTS. Understand why each is there before changing.
-- **DDR config "close enough."** No. Stress Tool every time. A 5 % timing margin difference can mean "works at 25 °C, crashes at 40 °C."
-- **DT compile errors not fatal-looking.** `dtc` gives warnings that often hide errors. Read every line.
-- **One-script build that depends on your laptop.** Test on a fresh checkout in a fresh VM. If it doesn't work, it's not reproducible.
-- **Forgetting modules.** `make modules_install` to the rootfs partition. Without it, your driver isn't actually present on the target.
-- **Wrong rootfs init.** Buildroot's default init is BusyBox. Verify `/sbin/init` exists.
-- **Wrong console in bootargs.** `console=ttyS0` won't work on i.MX6ULL (it's `ttymxc0`). Verify against your DT.
-- **No fallback image.** Brick your custom board with no way to recover. Always keep a stock-EVK SD on hand for comparison.
+- **Copying a reference without its assumptions.** Configuration and DTS reuse need a hardware and source-version comparison.
+- **Treating one observation as full qualification.** A banner, probe message or successful build establishes only a particular milestone.
+- **Hiding deployment inside the build.** Artifact production and permission to write a physical medium are separate responsibilities.
+- **Reusing DDR values after hardware changes.** Timing, geometry and calibration need evidence for the fitted design and operating conditions.
+- **Shipping mismatched artifacts.** The kernel, DTB, modules, firmware and rootfs must belong to a consistent release.
+- **Depending on the candidate for recovery.** Keep a documented board-specific route that remains usable when normal boot fails.
 
 ## 121.12  Going deeper
 
-- **NXP IMX6ULL Reference Manual**: your single most important reference.
-- **NXP DDR Stress Tool**: for DDR bring-up.
-- **`U-Boot README.imx` + `doc/imx/mkimage/`**: for IMX-specific boot flow.
-- **`Documentation/devicetree/bindings/arm/fsl.yaml`**: the i.MX SoC binding.
-- **`MAINTAINERS`**: to find subsystem maintainers when upstreaming.
-- **Bootlin training materials**: http://bootlin.com/training/embedded-linux/.
-- **i.MX Solutions Catalog**: NXP's reference designs for various i.MX SoCs.
-- **Ch 120A**: for upstreaming your DT.
-- **Ch 121A**: to wire your `build.sh` into CI.
-- **Ch 22 + Ch 25**: the original U-Boot and kernel port chapters.
+- Chapter 14: DDR timing, initialization ownership and qualification limits.
+- Chapters 19 and 22: vendor reference versus modern MINI candidate.
+- Chapters 25-27: kernel artifacts, boot inputs and Device Tree.
+- Chapters 31-35: init, libraries and rootfs construction.
+- Chapter 121A: build evidence and controlled hardware integration in CI.
+- Chapter 122A: preserving hardware contracts during BSP migration.
+- Chapter 120A: upstream maintenance and review.
 
 ---
 
